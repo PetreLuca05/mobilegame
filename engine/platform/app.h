@@ -50,7 +50,9 @@ struct MgApp {
     uint64_t frame_index;
     int ticks_this_frame;
 
-    /* desktop testing: --quit-after <seconds> */
+    /* command line (desktop testing flags such as --quit-after <seconds>) */
+    int argc;
+    char **argv;
     double quit_after;
 };
 

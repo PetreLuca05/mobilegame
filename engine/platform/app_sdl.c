@@ -36,6 +36,8 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     MgApp *app = &g_app;
     *appstate = app;
     app->cb = cb;
+    app->argc = argc;
+    app->argv = argv;
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--quit-after") == 0 && i + 1 < argc) {
             app->quit_after = SDL_atof(argv[++i]);

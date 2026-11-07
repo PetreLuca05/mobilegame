@@ -109,6 +109,7 @@ endif()
 set(MG_GAME_SOURCES
   game/main.c
   game/game.c
+  game/devroom.c
 )
 
 # --------------------------------------------------------------- targets
