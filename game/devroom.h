@@ -5,6 +5,7 @@
 #define MG_DEVROOM_H
 
 #include "gfx/gfx.h"
+#include "physics/collide.h"
 
 #define DEVROOM_MAX_PIECES 48
 #define DEVROOM_SPAWNS 4
@@ -35,6 +36,11 @@ typedef struct DevRoom {
 
 extern const uint32_t k_slot_colors[DEVROOM_SPAWNS];
 
+/* devroom_layout.c (no GPU): fill pieces + spawns, and build colliders */
+void devroom_layout(DevRoom *r);
+void devroom_colliders(const DevRoom *r, ColWorld *w);
+
+/* devroom.c: meshes */
 bool devroom_init(DevRoom *r, GfxContext *g, Arena *scratch);
 void devroom_draw(const DevRoom *r, GfxContext *g, bool show_ref_capsule);
 

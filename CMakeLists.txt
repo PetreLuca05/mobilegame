@@ -82,6 +82,17 @@ endif()
 # ----------------------------------------------------------------- engine
 set(MG_WARNINGS -Wall -Wextra -Wshadow -Wno-unused-parameter -Wno-missing-field-initializers)
 
+add_library(mg_physics STATIC
+  engine/physics/collide.c
+  engine/physics/kinematic.c
+)
+target_include_directories(mg_physics PUBLIC engine)
+target_link_libraries(mg_physics PUBLIC mg_thirdparty)
+target_compile_options(mg_physics PRIVATE ${MG_WARNINGS})
+if(NOT WIN32)
+  target_link_libraries(mg_physics PUBLIC m)
+endif()
+
 add_library(mg_engine STATIC
   ${MG_EMBED_C}
   engine/core/arena.c
@@ -98,7 +109,7 @@ add_library(mg_engine STATIC
   engine/ui/text.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
-target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty)
+target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
 target_compile_options(mg_engine PRIVATE ${MG_WARNINGS})
 string(TOUPPER "${MG_PLATFORM}" MG_PLATFORM_UPPER)
 target_compile_definitions(mg_engine PUBLIC MG_PLATFORM_${MG_PLATFORM_UPPER}=1)
@@ -110,6 +121,9 @@ set(MG_GAME_SOURCES
   game/main.c
   game/game.c
   game/devroom.c
+  game/devroom_layout.c
+  game/player.c
+  game/camera_tp.c
 )
 
 # --------------------------------------------------------------- targets
@@ -118,6 +132,13 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(mobilegame PRIVATE mg_engine)
   target_include_directories(mobilegame PRIVATE game)
   target_compile_options(mobilegame PRIVATE ${MG_WARNINGS})
+
+  enable_testing()
+  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c game/devroom_layout.c)
+  target_include_directories(mg_tests PRIVATE game)
+  target_link_libraries(mg_tests PRIVATE mg_physics)
+  target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
+  add_test(NAME controller COMMAND mg_tests)
 
 elseif(MG_PLATFORM STREQUAL "android")
   # SDLActivity loads libmain.so (SDL3 is linked in statically).
