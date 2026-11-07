@@ -107,6 +107,9 @@ add_library(mg_engine STATIC
   engine/gfx/mesh.c
   engine/gfx/reflection.c
   engine/ui/text.c
+  engine/ui/widgets.c
+  engine/ui/touch_controls.c
+  engine/ui/hud.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
@@ -124,6 +127,8 @@ set(MG_GAME_SOURCES
   game/devroom_layout.c
   game/player.c
   game/camera_tp.c
+  game/debug_menu.c
+  game/autotest.c
 )
 
 # --------------------------------------------------------------- targets

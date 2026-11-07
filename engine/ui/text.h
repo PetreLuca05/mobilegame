@@ -17,8 +17,7 @@ typedef struct TextGlyph {
 } TextGlyph;
 
 typedef struct TextFont {
-    TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* ASCII; extras remapped below */
-    TextGlyph degree, bullet;
+    TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* ASCII; non-ASCII extras live in control-char slots */
     float em_px;
     float ascent_px;
     float line_px;
@@ -26,6 +25,12 @@ typedef struct TextFont {
     float circle_u0, circle_v0, circle_u1, circle_v1;
     float circle_fill; /* edge radius / half cell size */
 } TextFont;
+
+/* Non-ASCII glyphs, usable inside strings */
+#define TEXT_DEGREE "\x01"
+#define TEXT_BULLET "\x02"
+#define TEXT_GEAR "\x03"
+#define TEXT_ARROW_UP "\x04"
 
 typedef struct UiColor {
     uint8_t r, g, b, a;

@@ -36,6 +36,9 @@ PAD = 6              # atlas px padding around each glyph
 ATLAS_W, ATLAS_H = 512, 512
 CIRCLE = 64
 CHARS = [chr(c) for c in range(32, 127)] + ["°", "•"]
+# Procedural icons (not in the font)
+ICON_GEAR = 0x2699
+ICON_ARROW_UP = 0x2191
 
 
 def load_font(size):
@@ -75,6 +78,47 @@ def glyph_sdf(font, ch):
     return (val * 255.0 + 0.5).astype(np.uint8), xoff, yoff, advance
 
 
+def draw_gear(d, s):
+    """Gear in an s x s box (white on black)."""
+    import math
+    cx = cy = s / 2
+    r_out, r_body, r_hole = s * 0.47, s * 0.36, s * 0.15
+    teeth, half_w = 8, s * 0.085
+    for i in range(teeth):
+        a = 2 * math.pi * i / teeth
+        ca, sa = math.cos(a), math.sin(a)
+        pts = []
+        for (r, w) in ((r_body * 0.9, -half_w), (r_out, -half_w * 0.8), (r_out, half_w * 0.8), (r_body * 0.9, half_w)):
+            pts.append((cx + ca * r - sa * w, cy + sa * r + ca * w))
+        d.polygon(pts, fill=255)
+    d.ellipse([cx - r_body, cy - r_body, cx + r_body, cy + r_body], fill=255)
+    d.ellipse([cx - r_hole, cy - r_hole, cx + r_hole, cy + r_hole], fill=0)
+
+
+def draw_arrow_up(d, s):
+    head = [(s * 0.5, s * 0.08), (s * 0.92, s * 0.52), (s * 0.66, s * 0.52), (s * 0.66, s * 0.92),
+            (s * 0.34, s * 0.92), (s * 0.34, s * 0.52), (s * 0.08, s * 0.52)]
+    d.polygon(head, fill=255)
+
+
+def icon_sdf(draw_fn):
+    """SDF for a square icon one em tall sitting on the baseline."""
+    em_hi = EM_PX * UPSCALE
+    pad_hi = PAD * UPSCALE
+    size = em_hi + 2 * pad_hi
+    img = Image.new("L", (size, size), 0)
+    sub = Image.new("L", (em_hi, em_hi), 0)
+    draw_fn(ImageDraw.Draw(sub), em_hi)
+    img.paste(sub, (pad_hi, pad_hi))
+    inside = np.asarray(img) > 127
+    sd = (ndimage.distance_transform_edt(inside) - ndimage.distance_transform_edt(~inside)) / UPSCALE
+    sd = sd[UPSCALE // 2::UPSCALE, UPSCALE // 2::UPSCALE]
+    val = np.clip(0.5 + sd / (2.0 * RANGE_PX), 0.0, 1.0)
+    xoff = -PAD
+    yoff = -EM_PX * 0.85 - PAD  # top of the icon a bit above cap height
+    return (val * 255.0 + 0.5).astype(np.uint8), float(xoff), float(yoff), float(EM_PX * 1.05)
+
+
 def main():
     font = load_font(EM_PX * UPSCALE)
     ascent, descent = font.getmetrics()
@@ -92,10 +136,12 @@ def main():
 
     glyphs = []
     x, y, row_h = 8 + CIRCLE + 2, 0, CIRCLE
-    for ch in CHARS:
-        sdf, xoff, yoff, adv = glyph_sdf(font, ch)
+    items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in CHARS]
+    items += [(ICON_GEAR, lambda: icon_sdf(draw_gear)), (ICON_ARROW_UP, lambda: icon_sdf(draw_arrow_up))]
+    for cp, make in items:
+        sdf, xoff, yoff, adv = make()
         if sdf is None:
-            glyphs.append((ord(ch), 0, 0, 0, 0, 0.0, 0.0, adv))
+            glyphs.append((cp, 0, 0, 0, 0, 0.0, 0.0, adv))
             continue
         h, w = sdf.shape
         if x + w > ATLAS_W:
@@ -103,7 +149,7 @@ def main():
         if y + h > ATLAS_H:
             raise SystemExit("atlas too small")
         atlas[y:y + h, x:x + w] = sdf
-        glyphs.append((ord(ch), x, y, w, h, xoff, yoff, adv))
+        glyphs.append((cp, x, y, w, h, xoff, yoff, adv))
         x += w + 2
         row_h = max(row_h, h)
 

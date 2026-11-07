@@ -1,12 +1,18 @@
-/* Step 3: kinematic player in the dev room, keyboard controls on desktop. */
+/* Step 4: dev room, kinematic player, portrait touch controls, third-person
+ * camera, debug HUD and gear menu. Keyboard/mouse also work on desktop. */
 #include "game.h"
 
+#include "autotest.h"
 #include "camera_tp.h"
+#include "debug_menu.h"
 #include "devroom.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 #include "player.h"
+#include "settings.h"
+#include "ui/hud.h"
+#include "ui/touch_controls.h"
 
 typedef struct Game {
     DevRoom room;
@@ -16,6 +22,14 @@ typedef struct Game {
     TpCamera cam;
     FlyCamera fly;
     bool fly_mode;
+    GameSettings settings;
+    TouchControlsConfig touch_cfg;
+    TouchControls touch;
+    Ui ui;
+    DebugMenu menu;
+    GfxMeshId unit_box;
+    char status[96];
+    Autotest autotest;
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -27,6 +41,16 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
                 *out = HMM_V3(x, y, z);
                 return true;
             }
+        }
+    }
+    return false;
+}
+
+static bool has_flag(int argc, char **argv, const char *flag)
+{
+    for (int i = 1; i < argc; i++) {
+        if (SDL_strcmp(argv[i], flag) == 0) {
+            return true;
         }
     }
     return false;
@@ -57,6 +81,10 @@ bool game_init(MgApp *app)
     }
     devroom_colliders(&g->room, &g->world);
     kinematic_default_params(&g->kparams);
+    settings_default(&g->settings);
+    touch_controls_default_config(&g->touch_cfg);
+    touch_controls_reset(&g->touch);
+
     HMM_Vec3 spawn = g->room.spawns[0];
     parse_vec3_arg(app->argc, app->argv, "--spawn", &spawn);
     player_init(&g->player, spawn, 0.0f);
@@ -64,7 +92,18 @@ bool game_init(MgApp *app)
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
-    return true;
+    g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
+    g->menu.open = has_flag(app->argc, app->argv, "--menu");
+
+    size_t mark = arena_mark(&app->perm);
+    MeshBuilder mb;
+    mb_init(&mb, &app->perm, 64, 64);
+    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(1, 1, 1), HMM_V4(1, 1, 1, 1));
+    g->unit_box = mb_upload(&mb, app->gfx);
+    arena_reset_to(&app->perm, mark);
+    SDL_snprintf(g->status, sizeof(g->status), "offline");
+    autotest_init(&g->autotest, app->argc, app->argv);
+    return g->unit_box != GFX_MESH_NONE;
 }
 
 void game_tick(MgApp *app)
@@ -81,21 +120,12 @@ static void update_fly_camera(Game *g, MgApp *app)
     float fwd = (k[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_S] ? 1.0f : 0.0f);
     float strafe = (k[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_A] ? 1.0f : 0.0f);
     float up = (k[SDL_SCANCODE_E] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_Q] ? 1.0f : 0.0f);
-    float look_x = in->mouse_dx + ((k[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f)) * 240.0f * dt;
-    float look_y = in->mouse_dy + ((k[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_UP] ? 1.0f : 0.0f)) * 240.0f * dt;
-    for (int i = 0; i < MG_MAX_TOUCHES; i++) {
-        MgTouch *t = &in->touches[i];
-        if (!t->active) {
-            continue;
-        }
-        if (t->x0 < app->width_pt * 0.5f) {
-            fwd += mg_clampf(-(t->y - t->y0) / 80.0f, -1.0f, 1.0f);
-            strafe += mg_clampf((t->x - t->x0) / 80.0f, -1.0f, 1.0f);
-        } else {
-            look_x += t->dx;
-            look_y += t->dy;
-        }
-    }
+    float look_x = in->mouse_dx + g->touch.camera_dx;
+    float look_y = in->mouse_dy + g->touch.camera_dy;
+    look_x += ((k[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f)) * 240.0f * dt;
+    look_y += ((k[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_UP] ? 1.0f : 0.0f)) * 240.0f * dt;
+    fwd += g->touch.move_y;
+    strafe += g->touch.move_x;
     g->fly.yaw -= HMM_AngleDeg(0.25f) * look_x;
     g->fly.pitch = mg_clampf(g->fly.pitch - HMM_AngleDeg(0.2f) * look_y, HMM_AngleDeg(-89.0f), HMM_AngleDeg(89.0f));
     HMM_Vec3 f = camera_forward(g->fly.yaw, g->fly.pitch);
@@ -104,19 +134,25 @@ static void update_fly_camera(Game *g, MgApp *app)
     g->fly.pos = HMM_AddV3(g->fly.pos, HMM_MulV3F(v, 6.0f * dt));
 }
 
-/* Keyboard: WASD relative to the camera, Shift sprint, Space jump,
- * arrows / right mouse drag orbit the camera. */
+/* Touch stick / camera drag / jump button, plus WASD, Shift, Space, arrows
+ * and right-mouse drag on desktop. */
 static void update_player_input(Game *g, MgApp *app)
 {
     MgInput *in = &app->input;
+    const GameSettings *s = &g->settings;
     const bool *k = in->key_down;
     float dt = mg_minf(app->frame_dt, 0.1f);
-    float fw = (k[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_S] ? 1.0f : 0.0f);
-    float st = (k[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_A] ? 1.0f : 0.0f);
-    float dyaw = in->mouse_dx + ((k[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f)) * 400.0f * dt;
-    float dpitch = in->mouse_dy + ((k[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_UP] ? 1.0f : 0.0f)) * 300.0f * dt;
-    tpcam_orbit(&g->cam, -HMM_AngleDeg(0.25f) * dyaw, -HMM_AngleDeg(0.2f) * dpitch);
 
+    float look_x = g->touch.camera_dx + in->mouse_dx;
+    float look_y = g->touch.camera_dy + in->mouse_dy;
+    look_x += ((k[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f)) * 400.0f * dt;
+    look_y += ((k[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_UP] ? 1.0f : 0.0f)) * 300.0f * dt;
+    float invert = s->invert_y ? -1.0f : 1.0f;
+    tpcam_orbit(&g->cam, -HMM_AngleDeg(s->yaw_deg_per_pt) * look_x, -HMM_AngleDeg(s->pitch_deg_per_pt) * look_y * invert);
+    g->settings.cam_pitch_deg = HMM_ToDeg(g->cam.pitch);
+
+    float fw = g->touch.move_y + (k[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_S] ? 1.0f : 0.0f);
+    float st = g->touch.move_x + (k[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_A] ? 1.0f : 0.0f);
     float sy = HMM_SinF(g->cam.yaw), cy = HMM_CosF(g->cam.yaw);
     float mx = -sy * fw + cy * st;
     float mz = -cy * fw - sy * st;
@@ -125,34 +161,78 @@ static void update_player_input(Game *g, MgApp *app)
         mx /= len;
         mz /= len;
     }
-    bool sprint = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
-    player_set_input(&g->player, mx, mz, sprint, k[SDL_SCANCODE_SPACE]);
+    bool sprint = g->touch.sprint || k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
+    bool jump = g->touch.jump_held || k[SDL_SCANCODE_SPACE];
+    player_set_input(&g->player, mx, mz, sprint, jump);
 }
 
-static void draw_hud(MgApp *app)
+static void handle_menu_action(Game *g, MenuAction a)
 {
-    Game *g = (Game *)app->game;
-    char buf[96];
-    float x = app->safe_left + 10.0f;
-    float y = app->safe_top + 8.0f;
-    UiColor white = ui_rgba(0xFFFFFFFF);
-    SDL_snprintf(buf, sizeof(buf), "%.0f fps  %.1f ms", app->fps, app->frame_ms);
-    text_draw_shadow(app->gfx, &app->font, x, y, 16.0f, white, buf);
-    const KinematicState *k = &g->player.kin;
-    SDL_snprintf(buf, sizeof(buf), "pos %.2f %.2f %.2f  %s", k->pos.X, k->pos.Y, k->pos.Z,
-                 k->grounded ? "ground" : "air");
-    text_draw_shadow(app->gfx, &app->font, x, y + 20.0f, 14.0f, white, buf);
-    float hs = HMM_SqrtF(k->vel.X * k->vel.X + k->vel.Z * k->vel.Z);
-    SDL_snprintf(buf, sizeof(buf), "speed %.2f m/s  vy %.2f", hs, k->vel.Y);
-    text_draw_shadow(app->gfx, &app->font, x, y + 38.0f, 14.0f, white, buf);
+    switch (a) {
+    case MENU_JOIN:
+        SDL_snprintf(g->status, sizeof(g->status), "room %s: networking arrives in step 6", g->settings.room_code);
+        break;
+    case MENU_NEW_ROOM:
+        SDL_snprintf(g->status, sizeof(g->status), "new room: networking arrives in step 6");
+        break;
+    case MENU_DISCONNECT:
+        SDL_snprintf(g->status, sizeof(g->status), "offline");
+        break;
+    case MENU_CAMERA_PITCH:
+        g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
+        break;
+    default:
+        break;
+    }
+}
+
+static void draw_colliders(Game *g, GfxContext *gfx, HMM_Vec3 feet)
+{
+    GfxMaterial ghost = mat_ghost(HMM_V4(0.2f, 1.0f, 0.4f, 0.35f));
+    for (int i = 0; i < g->world.count; i++) {
+        const ColBox *b = &g->world.boxes[i];
+        HMM_Mat4 m = HMM_M4D(1.0f);
+        for (int c = 0; c < 3; c++) {
+            m.Columns[c] = HMM_V4V(HMM_MulV3F(b->axis[c], b->half.Elements[c] + 0.002f), 0.0f);
+        }
+        m.Columns[3] = HMM_V4V(b->center, 1.0f);
+        gfx_draw(gfx, g->unit_box, &m, &ghost, 0);
+    }
+    HMM_Mat4 pm = HMM_Translate(feet);
+    GfxMaterial cap = mat_ghost(HMM_V4(1.0f, 0.85f, 0.2f, 0.5f));
+    gfx_draw(gfx, g->room.ref_capsule, &pm, &cap, 0);
 }
 
 void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
+    GameSettings *s = &g->settings;
+    AutotestProbe probe = {g->player.kin.pos, g->player.kin.vel, HMM_ToDeg(g->cam.yaw), g->player.kin.jump_count,
+                           g->touch.sprint, 1};
+    autotest_update(&g->autotest, app, &probe);
     if (app->input.key_pressed[SDL_SCANCODE_F1]) {
         g->fly_mode = !g->fly_mode;
     }
+    if (app->input.key_pressed[SDL_SCANCODE_F2]) {
+        s->show_colliders = !s->show_colliders;
+    }
+
+    /* UI claims touches first (gear + menu), then gameplay controls. The
+     * menu is drawn first too; while it is open (modal) nothing else 2D is. */
+    ui_begin(&g->ui, app->gfx, &app->font, &app->input);
+    MenuAction action = debug_menu(&g->menu, &g->ui, s, app->width_pt, app->height_pt, app->safe_left,
+                                   app->safe_top, app->safe_right, app->safe_bottom, g->status);
+    handle_menu_action(g, action);
+    g->touch_cfg.dead_zone_pt = s->dead_zone_pt;
+    g->cam.distance = s->cam_distance;
+    g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
+    if (g->menu.open) {
+        touch_controls_reset(&g->touch);
+    } else {
+        touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
+                              app->safe_bottom);
+    }
+
     HMM_Vec3 feet = player_render_pos(&g->player, alpha);
     GfxSceneParams sp = {0};
     float aspect = app->width_pt / app->height_pt;
@@ -161,7 +241,7 @@ void game_frame(MgApp *app, float alpha)
         update_fly_camera(g, app);
         sp.eye = g->fly.pos;
         sp.view = camera_view(g->fly.pos, g->fly.yaw, g->fly.pitch);
-        sp.proj = camera_projection(HMM_AngleDeg(70.0f), aspect, 0.05f, 400.0f, 0.0f);
+        sp.proj = camera_projection(HMM_AngleDeg(s->fov_deg), aspect, 0.05f, 400.0f, 0.0f);
     } else {
         update_player_input(g, app);
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
@@ -179,7 +259,26 @@ void game_frame(MgApp *app, float alpha)
     HMM_Mat4 m = HMM_MulM4(HMM_Translate(feet), HMM_Rotate_RH(player_render_yaw(&g->player, alpha), HMM_V3(0, 1, 0)));
     GfxMaterial cap = mat_toon(mg_rgb(0xF26B3A), 0.35f);
     gfx_draw(app->gfx, g->room.ref_capsule, &m, &cap, GFX_DRAW_REFLECT);
-    draw_hud(app);
+    if (s->show_colliders) {
+        draw_colliders(g, app->gfx, feet);
+    }
+
+    if (g->menu.open) {
+        return;
+    }
+    touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
+                        app->safe_bottom);
+    HudInfo hud = {0};
+    hud.fps = app->fps;
+    hud.frame_ms = app->frame_ms;
+    hud.cpu_ms = app->cpu_ms;
+    hud.pos = g->player.kin.pos;
+    hud.grounded = g->player.kin.grounded;
+    hud.ping_ms = -1;
+    hud.players = 1;
+    hud.mode = "offline";
+    hud.net = "";
+    hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
 }
 
 void game_event(MgApp *app, const SDL_Event *e)
@@ -188,6 +287,12 @@ void game_event(MgApp *app, const SDL_Event *e)
     (void)e;
 }
 
-void game_pause(MgApp *app) { (void)app; }
+void game_pause(MgApp *app)
+{
+    Game *g = (Game *)app->game;
+    touch_controls_reset(&g->touch);
+    player_set_input(&g->player, 0, 0, false, false);
+}
+
 void game_resume(MgApp *app) { (void)app; }
 void game_quit(MgApp *app) { (void)app; }

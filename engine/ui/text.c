@@ -60,26 +60,21 @@ bool text_init(TextFont *f, GfxContext *g)
         gl.yoff = rdf(p + 16);
         gl.advance = rdf(p + 20);
         gl.present = true;
-        if (cp < TEXT_GLYPH_SLOTS) {
+        static const uint32_t extras[][2] = {{0xB0, 1}, {0x2022, 2}, {0x2699, 3}, {0x2191, 4}};
+        if (cp >= 32 && cp < TEXT_GLYPH_SLOTS) {
             f->glyphs[cp] = gl;
-        } else if (cp == 0xB0) {
-            f->degree = gl;
-        } else if (cp == 0x2022) {
-            f->bullet = gl;
+        }
+        for (size_t e = 0; e < MG_ARRAY_COUNT(extras); e++) {
+            if (extras[e][0] == cp) {
+                f->glyphs[extras[e][1]] = gl;
+            }
         }
     }
     return gfx_set_ui_atlas(g, p, aw, ah);
 }
 
-/* '\x01' and '\x02' in strings select the degree sign and bullet glyphs. */
 static const TextGlyph *glyph_for(const TextFont *f, unsigned char ch)
 {
-    if (ch == 1) {
-        return &f->degree;
-    }
-    if (ch == 2) {
-        return &f->bullet;
-    }
     if (ch < TEXT_GLYPH_SLOTS && f->glyphs[ch].present) {
         return &f->glyphs[ch];
     }

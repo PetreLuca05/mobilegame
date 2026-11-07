@@ -23,5 +23,6 @@ GfxMaterial mat_toon(HMM_Vec4 color, float rim);
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */
 GfxMaterial mat_floor(HMM_Vec4 color);
 GfxMaterial mat_sprite(HMM_Vec4 color, float shape);
+GfxMaterial mat_ghost(HMM_Vec4 color);
 
 #endif
