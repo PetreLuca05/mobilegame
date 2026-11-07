@@ -203,6 +203,51 @@ void mb_cylinder(MeshBuilder *mb, HMM_Mat4 xform, float radius, float height, in
     }
 }
 
+void mb_sphere_cap(MeshBuilder *mb, HMM_Mat4 xform, float radius, float theta_max, int rings, int segs,
+                   HMM_Vec4 color)
+{
+    HMM_Mat4 nm = normal_matrix(xform);
+    uint32_t base = mb->nv;
+    for (int r = 0; r <= rings; r++) {
+        float th = theta_max * (float)r / (float)rings;
+        float y = HMM_CosF(th), s = HMM_SinF(th);
+        for (int k = 0; k <= segs; k++) {
+            float ph = 2.0f * HMM_PI32 * (float)k / (float)segs;
+            HMM_Vec3 d = HMM_V3(s * HMM_SinF(ph), y, s * HMM_CosF(ph));
+            mb_vertex(mb, xform_point(xform, HMM_MulV3F(d, radius)), xform_normal(nm, d), color);
+        }
+    }
+    uint32_t stride = (uint32_t)segs + 1;
+    for (int r = 0; r < rings; r++) {
+        for (int k = 0; k < segs; k++) {
+            uint32_t a = base + (uint32_t)r * stride + (uint32_t)k;
+            uint32_t b = a + stride;
+            mb_triangle_idx(mb, a, b, a + 1);
+            mb_triangle_idx(mb, a + 1, b, b + 1);
+        }
+    }
+}
+
+void mb_cone(MeshBuilder *mb, HMM_Mat4 xform, float radius, float height, int segs, HMM_Vec4 color)
+{
+    HMM_Mat4 nm = normal_matrix(xform);
+    float slope = radius / height;
+    for (int k = 0; k < segs; k++) {
+        float p0 = 2.0f * HMM_PI32 * (float)k / (float)segs;
+        float p1 = 2.0f * HMM_PI32 * (float)(k + 1) / (float)segs;
+        float pm = (p0 + p1) * 0.5f;
+        HMM_Vec3 n0 = HMM_NormV3(HMM_V3(HMM_SinF(p0), slope, HMM_CosF(p0)));
+        HMM_Vec3 n1 = HMM_NormV3(HMM_V3(HMM_SinF(p1), slope, HMM_CosF(p1)));
+        HMM_Vec3 nm_ = HMM_NormV3(HMM_V3(HMM_SinF(pm), slope, HMM_CosF(pm)));
+        uint32_t a = mb_vertex(mb, xform_point(xform, HMM_V3(HMM_SinF(p0) * radius, 0, HMM_CosF(p0) * radius)),
+                               xform_normal(nm, n0), color);
+        uint32_t b = mb_vertex(mb, xform_point(xform, HMM_V3(HMM_SinF(p1) * radius, 0, HMM_CosF(p1) * radius)),
+                               xform_normal(nm, n1), color);
+        uint32_t c = mb_vertex(mb, xform_point(xform, HMM_V3(0, height, 0)), xform_normal(nm, nm_), color);
+        mb_triangle_idx(mb, a, b, c);
+    }
+}
+
 void mb_sprite_quad(MeshBuilder *mb)
 {
     uint32_t b = mb->nv;

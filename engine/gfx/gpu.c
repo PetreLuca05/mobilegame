@@ -88,7 +88,8 @@ struct GfxContext {
     SDL_GPUSampleCount msaa;
 
     PipelineSet pipes[TARGET_COUNT];
-    SDL_GPUGraphicsPipeline *ui_pipe;
+    SDL_GPUGraphicsPipeline *ui_pipe;        /* UI inside the MSAA main pass */
+    SDL_GPUGraphicsPipeline *ui_pipe_direct; /* UI pass on the swapchain (render scale < 1) */
     ShaderCacheEntry shaders[GFX_MAX_SHADERS];
     uint32_t shader_count;
 
@@ -114,7 +115,9 @@ struct GfxContext {
     SDL_GPUTexture *refl_color;
     SDL_GPUTexture *refl_depth;
     SDL_GPUTexture *dummy_tex;
+    SDL_GPUTexture *scene_tex; /* resolved 3D image when rendering below native size */
     uint32_t target_w, target_h;
+    float render_scale;
 
     SDL_GPUCommandBuffer *cmd;
     SDL_GPUTexture *swap;
@@ -191,6 +194,7 @@ typedef struct PipeDesc {
     SDL_GPUFrontFace front;
     SDL_GPUTextureFormat color_fmt;
     SDL_GPUSampleCount samples;
+    bool no_depth;
 } PipeDesc;
 
 static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
@@ -252,8 +256,8 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     ci.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
     ci.target_info.color_target_descriptions = &ctd;
     ci.target_info.num_color_targets = 1;
-    ci.target_info.depth_stencil_format = g->depth_fmt;
-    ci.target_info.has_depth_stencil_target = true;
+    ci.target_info.depth_stencil_format = d->no_depth ? SDL_GPU_TEXTUREFORMAT_INVALID : g->depth_fmt;
+    ci.target_info.has_depth_stencil_target = !d->no_depth;
 
     SDL_GPUGraphicsPipeline *p = SDL_CreateGPUGraphicsPipeline(g->dev, &ci);
     if (!p) {
@@ -315,8 +319,11 @@ static bool create_pipelines(GfxContext *g)
         .samples = g->msaa,
     };
     g->ui_pipe = make_pipeline(g, &ui);
+    ui.samples = SDL_GPU_SAMPLECOUNT_1;
+    ui.no_depth = true;
+    g->ui_pipe_direct = make_pipeline(g, &ui);
     release_shaders(g);
-    return g->ui_pipe != NULL;
+    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -343,7 +350,7 @@ static SDL_GPUTexture *make_texture(GfxContext *g, SDL_GPUTextureFormat fmt, uin
 
 static void release_targets(GfxContext *g)
 {
-    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->refl_color, &g->refl_depth};
+    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->refl_color, &g->refl_depth, &g->scene_tex};
     for (size_t i = 0; i < MG_ARRAY_COUNT(ts); i++) {
         if (*ts[i]) {
             SDL_ReleaseGPUTexture(g->dev, *ts[i]);
@@ -352,9 +359,9 @@ static void release_targets(GfxContext *g)
     }
 }
 
-static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h)
+static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
 {
-    if (g->target_w == w && g->target_h == h && g->depth) {
+    if (g->target_w == w && g->target_h == h && g->depth && scaled == (g->scene_tex != NULL)) {
         return true;
     }
     release_targets(g);
@@ -371,8 +378,13 @@ static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h)
                                  SDL_GPU_SAMPLECOUNT_1);
     g->refl_depth = make_texture(g, g->depth_fmt, rw, rh, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
                                  SDL_GPU_SAMPLECOUNT_1);
-    return g->depth && g->refl_color && g->refl_depth &&
-           (g->msaa == SDL_GPU_SAMPLECOUNT_1 || g->msaa_color);
+    if (scaled) {
+        g->scene_tex = make_texture(g, g->color_fmt, w, h,
+                                    SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                    SDL_GPU_SAMPLECOUNT_1);
+    }
+    return g->depth && g->refl_color && g->refl_depth && (g->msaa == SDL_GPU_SAMPLECOUNT_1 || g->msaa_color) &&
+           (!scaled || g->scene_tex);
 }
 
 /* ------------------------------------------------------------------- init */
@@ -537,6 +549,7 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     }
     upload_texture(g, g->dummy_tex, &white, 1, 1, 4);
     g->stats.backend = g->backend;
+    g->render_scale = 1.0f;
     *out = g;
     return true;
 }
@@ -560,6 +573,9 @@ void gfx_shutdown(GfxContext *g)
     }
     if (g->ui_pipe) {
         SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe);
+    }
+    if (g->ui_pipe_direct) {
+        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe_direct);
     }
     SDL_ReleaseGPUBuffer(g->dev, g->vb);
     SDL_ReleaseGPUBuffer(g->dev, g->ib);
@@ -611,6 +627,8 @@ bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t
 /* ------------------------------------------------------------------ frame */
 
 void gfx_set_paused(GfxContext *g, bool paused) { g->paused = paused; }
+
+void gfx_set_render_scale(GfxContext *g, float scale) { g->render_scale = mg_clampf(scale, 0.5f, 1.0f); }
 
 bool gfx_frame_begin(GfxContext *g)
 {
@@ -775,11 +793,16 @@ void gfx_frame_end(GfxContext *g)
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_quads;
-    g->stats.width_px = g->swap_w;
-    g->stats.height_px = g->swap_h;
+    uint32_t rw = (uint32_t)((float)g->swap_w * g->render_scale + 0.5f);
+    uint32_t rh = (uint32_t)((float)g->swap_h * g->render_scale + 0.5f);
+    rw = rw > 0 ? rw : 1;
+    rh = rh > 0 ? rh : 1;
+    const bool scaled = rw != g->swap_w || rh != g->swap_h;
+    g->stats.width_px = rw;
+    g->stats.height_px = rh;
     g->stats.msaa = g->msaa == SDL_GPU_SAMPLECOUNT_4 ? 4 : 1;
 
-    if (!ensure_targets(g, g->swap_w, g->swap_h)) {
+    if (!ensure_targets(g, rw, rh, scaled)) {
         SDL_SubmitGPUCommandBuffer(g->cmd);
         g->cmd = NULL;
         return;
@@ -823,10 +846,10 @@ void gfx_frame_end(GfxContext *g)
         dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
         dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
         SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
-        float rw = (float)(g->target_w / 2 > 0 ? g->target_w / 2 : 1);
-        float rh = (float)(g->target_h / 2 > 0 ? g->target_h / 2 : 1);
+        float refl_w = (float)(g->target_w / 2 > 0 ? g->target_w / 2 : 1);
+        float refl_h = (float)(g->target_h / 2 > 0 ? g->target_h / 2 : 1);
         draw_sky(g, rp, g->pipes[TARGET_REFL].sky, &rv.sky_inv_vp, rv.eye);
-        push_frame_uniforms(g, &rv.view_proj, rv.eye, rw, rh, 0.0f);
+        push_frame_uniforms(g, &rv.view_proj, rv.eye, refl_w, refl_h, 0.0f);
         g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL);
         SDL_EndGPURenderPass(rp);
     }
@@ -836,12 +859,13 @@ void gfx_frame_end(GfxContext *g)
     SDL_zero(cti);
     cti.clear_color = horizon;
     cti.load_op = SDL_GPU_LOADOP_CLEAR;
+    SDL_GPUTexture *final_color = scaled ? g->scene_tex : g->swap;
     if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
         cti.texture = g->msaa_color;
         cti.store_op = SDL_GPU_STOREOP_RESOLVE;
-        cti.resolve_texture = g->swap;
+        cti.resolve_texture = final_color;
     } else {
-        cti.texture = g->swap;
+        cti.texture = final_color;
         cti.store_op = SDL_GPU_STOREOP_STORE;
     }
     SDL_GPUDepthStencilTargetInfo dti;
@@ -857,9 +881,31 @@ void gfx_frame_end(GfxContext *g)
     push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, s->reflection_strength);
     g->stats.draws = draw_list(g, pass, TARGET_MAIN);
 
+    if (scaled) {
+        /* upscale the 3D image to the swapchain, then draw UI at native size */
+        SDL_EndGPURenderPass(pass);
+        SDL_GPUBlitInfo blit;
+        SDL_zero(blit);
+        blit.source.texture = g->scene_tex;
+        blit.source.w = rw;
+        blit.source.h = rh;
+        blit.destination.texture = g->swap;
+        blit.destination.w = g->swap_w;
+        blit.destination.h = g->swap_h;
+        blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
+        blit.filter = SDL_GPU_FILTER_LINEAR;
+        SDL_BlitGPUTexture(g->cmd, &blit);
+        SDL_GPUColorTargetInfo uti;
+        SDL_zero(uti);
+        uti.texture = g->swap;
+        uti.load_op = SDL_GPU_LOADOP_LOAD;
+        uti.store_op = SDL_GPU_STOREOP_STORE;
+        pass = SDL_BeginGPURenderPass(g->cmd, &uti, 1, NULL);
+    }
+
     if (g->ui_quads > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) {
         HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
-        SDL_BindGPUGraphicsPipeline(pass, g->ui_pipe);
+        SDL_BindGPUGraphicsPipeline(pass, scaled ? g->ui_pipe_direct : g->ui_pipe);
         SDL_PushGPUVertexUniformData(g->cmd, 0, &screen, sizeof(screen));
         SDL_GPUBufferBinding vbb = {g->ui_vb, 0};
         SDL_GPUBufferBinding ibb = {g->ui_ib, 0};

@@ -29,6 +29,11 @@ void mb_sphere(MeshBuilder *mb, HMM_Mat4 xform, float radius, int rings, int seg
 void mb_tapered_capsule(MeshBuilder *mb, HMM_Mat4 xform, float r_bottom, float r_top, float height, int rings,
                         int segs, HMM_Vec4 color);
 void mb_cylinder(MeshBuilder *mb, HMM_Mat4 xform, float radius, float height, int segs, HMM_Vec4 color);
+/* Top part of a sphere from the pole down to polar angle theta_max (open). */
+void mb_sphere_cap(MeshBuilder *mb, HMM_Mat4 xform, float radius, float theta_max, int rings, int segs,
+                   HMM_Vec4 color);
+/* Cone along +Y from a base disc (radius) to the apex (height). */
+void mb_cone(MeshBuilder *mb, HMM_Mat4 xform, float radius, float height, int segs, HMM_Vec4 color);
 /* Unit quad in XY (-1..1) facing +Z; UVs are stored in the normal (sprites). */
 void mb_sprite_quad(MeshBuilder *mb);
 

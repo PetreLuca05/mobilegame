@@ -1,7 +1,11 @@
 #include "common.hlsli"
 
-// Grid floor. 1 m major lines, 10 cm minor lines, anti-aliased with fwidth.
-// u_params: x major width (m), y minor width (m), z minor line alpha
+// Glossy grid floor: light blue-grey slab, thick black 1 m lines, faint 10 cm
+// lines, planar reflection blended with Fresnel.
+// u_params: x major width (m), y minor width (m), z minor alpha, w reflection mix
+Texture2D u_reflection : register(t0, space2);
+SamplerState u_reflection_sampler : register(s0, space2);
+
 float grid(float2 p, float spacing, float width)
 {
     float2 d = abs(frac(p / spacing - 0.5) - 0.5) * spacing; // metres to nearest line
@@ -19,9 +23,17 @@ float4 PSMain(VSOut i) : SV_Target0
     float minor = grid(p, 0.1, u_params.y) * u_params.z;
     float3 base = i.col.rgb * u_tint.rgb;
     float3 n = normalize(i.nrm);
+    float3 v = normalize(u_eye.xyz - i.wpos);
     float lit = smoothstep(0.0, 0.04, dot(n, u_sun_dir.xyz));
     float3 c = base * (u_ambient.rgb + u_sun_color.rgb * lit);
-    c = lerp(c, c * 0.55, minor);
-    c = lerp(c, float3(0.05, 0.05, 0.06), major);
+    if (u_misc.y > 0.0 && n.y > 0.9) {
+        float2 uv = i.pos.xy * u_misc.zw;
+        float3 refl = u_reflection.Sample(u_reflection_sampler, uv).rgb;
+        float fresnel = pow(1.0 - saturate(dot(n, v)), 4.0);
+        float k = saturate(u_params.w * (0.6 + 0.9 * fresnel)) * u_misc.y;
+        c = lerp(c, refl, k);
+    }
+    c = lerp(c, c * 0.6, minor);
+    c = lerp(c, float3(0.04, 0.045, 0.06), major);
     return float4(c, 1.0);
 }

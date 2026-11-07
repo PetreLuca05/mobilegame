@@ -14,6 +14,8 @@ typedef struct HudInfo {
     int players;        /* including the local player */
     const char *mode;   /* "offline", "party ABCD", "world 01" */
     const char *net;    /* connection status text */
+    uint32_t draws, reflect_draws;
+    uint32_t render_w, render_h;
 } HudInfo;
 
 void hud_draw(GfxContext *g, const TextFont *f, float x, float y, const HudInfo *info);

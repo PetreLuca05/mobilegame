@@ -100,6 +100,9 @@ void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
 void gfx_frame_end(GfxContext *g);
 
+/* Render the 3D scene at a fraction of native resolution (0.5..1) and
+ * upscale; UI stays native. Cuts fill cost on older phones. */
+void gfx_set_render_scale(GfxContext *g, float scale);
 /* Drop GPU work while the app is in the background (iOS forbids it). */
 void gfx_set_paused(GfxContext *g, bool paused);
 void gfx_get_stats(const GfxContext *g, GfxStats *out);

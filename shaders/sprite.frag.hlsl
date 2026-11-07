@@ -23,7 +23,8 @@ float4 PSMain(VSOut i) : SV_Target0
         a = saturate(b) * (1.0 - smoothstep(0.0, 0.35, -uv.y - 0.25));
         c *= lerp(0.86, 1.0, saturate(uv.y * 0.6 + 0.6));
     } else {
-        a = exp(-r * r * 5.0) + 0.35 * exp(-r * r * 1.2);
+        a = exp(-r * r * 9.0) + 0.3 * exp(-r * r * 2.2);
+        a *= 1.0 - smoothstep(0.55, 1.0, r); // reach zero before the quad edge
         return float4(c * a * u_tint.a, 0.0); // additive
     }
     a *= u_tint.a;

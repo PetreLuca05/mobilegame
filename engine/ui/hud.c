@@ -24,6 +24,10 @@ void hud_draw(GfxContext *g, const TextFont *f, float x, float y, const HudInfo 
     }
     text_draw_shadow(g, f, x, y, 13.0f, dim, buf);
     y += line;
+    SDL_snprintf(buf, sizeof(buf), "draws %u+%u  %ux%u", (unsigned)h->draws, (unsigned)h->reflect_draws,
+                 (unsigned)h->render_w, (unsigned)h->render_h);
+    text_draw_shadow(g, f, x, y, 13.0f, dim, buf);
+    y += line;
     SDL_snprintf(buf, sizeof(buf), "%s  %s", h->mode ? h->mode : "", h->net ? h->net : "");
     text_draw_shadow(g, f, x, y, 13.0f, dim, buf);
 }

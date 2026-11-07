@@ -3,6 +3,7 @@
 #include "game.h"
 
 #include "autotest.h"
+#include "avatar.h"
 #include "camera_tp.h"
 #include "debug_menu.h"
 #include "devroom.h"
@@ -10,6 +11,7 @@
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 #include "player.h"
+#include "scenery.h"
 #include "settings.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
@@ -28,6 +30,10 @@ typedef struct Game {
     Ui ui;
     DebugMenu menu;
     GfxMeshId unit_box;
+    Scenery scenery;
+    AvatarMeshes avatar_meshes;
+    AvatarAnim local_anim;
+    AvatarLook local_look;
     char status[96];
     Autotest autotest;
 } Game;
@@ -101,6 +107,11 @@ bool game_init(MgApp *app)
     mb_box(&mb, HMM_M4D(1.0f), HMM_V3(1, 1, 1), HMM_V4(1, 1, 1, 1));
     g->unit_box = mb_upload(&mb, app->gfx);
     arena_reset_to(&app->perm, mark);
+    if (!scenery_init(&g->scenery, app->gfx, &app->perm) ||
+        !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
+        return false;
+    }
+    g->local_look = avatar_look_for_slot(0);
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     return g->unit_box != GFX_MESH_NONE;
@@ -224,6 +235,7 @@ void game_frame(MgApp *app, float alpha)
                                    app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, action);
     g->touch_cfg.dead_zone_pt = s->dead_zone_pt;
+    gfx_set_render_scale(app->gfx, s->render_scale);
     g->cam.distance = s->cam_distance;
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
     if (g->menu.open) {
@@ -247,18 +259,22 @@ void game_frame(MgApp *app, float alpha)
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
     }
-    sp.sun_dir = HMM_NormV3(HMM_V3(0.45f, 0.8f, 0.35f));
+    sp.sun_dir = HMM_NormV3(HMM_V3(0.5f, 0.75f, 0.45f));
     sp.sun_color = HMM_V3(0.48f, 0.46f, 0.42f);
     sp.ambient = HMM_V3(0.58f, 0.6f, 0.68f);
     sp.sky_horizon = mg_rgb(0xBFE3FF);
     sp.sky_zenith = mg_rgb(0x3F8FE8);
+    sp.reflection_y = 0.0f;
+    sp.reflection_strength = 1.0f;
     sp.time = (float)app->time;
     gfx_set_scene(app->gfx, &sp);
 
     devroom_draw(&g->room, app->gfx, false);
-    HMM_Mat4 m = HMM_MulM4(HMM_Translate(feet), HMM_Rotate_RH(player_render_yaw(&g->player, alpha), HMM_V3(0, 1, 0)));
-    GfxMaterial cap = mat_toon(mg_rgb(0xF26B3A), 0.35f);
-    gfx_draw(app->gfx, g->room.ref_capsule, &m, &cap, GFX_DRAW_REFLECT);
+    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
+    AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
+                       g->player.kin.jumping};
+    avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
+    avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
     if (s->show_colliders) {
         draw_colliders(g, app->gfx, feet);
     }
@@ -278,6 +294,12 @@ void game_frame(MgApp *app, float alpha)
     hud.players = 1;
     hud.mode = "offline";
     hud.net = "";
+    GfxStats gs;
+    gfx_get_stats(app->gfx, &gs);
+    hud.draws = gs.draws;
+    hud.reflect_draws = gs.reflect_draws;
+    hud.render_w = gs.width_px;
+    hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
 }
 

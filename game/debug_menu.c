@@ -104,6 +104,8 @@ MenuAction debug_menu(DebugMenu *m, Ui *ui, GameSettings *s, float w_pt, float h
     ui_slider(ui, "Field of view##s5", x, y, w, &s->fov_deg, 50.0f, 100.0f, "%.0f" TEXT_DEGREE);
     y += 54.0f;
     ui_slider(ui, "Stick dead zone##s6", x, y, w, &s->dead_zone_pt, 0.0f, 100.0f, "%.0f pt");
+    y += 54.0f;
+    ui_slider(ui, "Render scale##s7", x, y, w, &s->render_scale, 0.5f, 1.0f, "%.2f");
     y += 58.0f;
     ui_toggle(ui, "Show colliders", x, y, w, &s->show_colliders);
     y += 42.0f;

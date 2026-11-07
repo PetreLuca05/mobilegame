@@ -129,6 +129,8 @@ set(MG_GAME_SOURCES
   game/camera_tp.c
   game/debug_menu.c
   game/autotest.c
+  game/avatar.c
+  game/scenery.c
 )
 
 # --------------------------------------------------------------- targets

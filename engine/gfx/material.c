@@ -31,7 +31,7 @@ GfxMaterial mat_toon_flat(HMM_Vec4 color)
 GfxMaterial mat_floor(HMM_Vec4 color)
 {
     /* x major line width, y minor line width, z minor alpha, w reflection mix */
-    GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(0.05f, 0.012f, 0.6f, 0.4f)};
+    GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(0.07f, 0.012f, 0.5f, 0.4f)};
     return m;
 }
 

@@ -30,18 +30,30 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _97 [[buffer(0)]], constant FrameFS& _141 [[buffer(1)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _97 [[buffer(0)]], constant FrameFS& _139 [[buffer(1)]], texture2d<float> u_reflection [[texture(0)]], sampler u_reflection_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
-    float2 _298 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
-    float2 _312 = float2(1.0) - smoothstep(float2(_97.u_params.x * 0.5) - _298, float2(_97.u_params.x * 0.5) + _298, abs(fract(in.i_wpos.xz - float2(0.5)) - float2(0.5)) * 1.0);
-    float2 _320 = fast::clamp(float2(_97.u_params.x) / (_298 * 1.5), float2(0.0), float2(1.0));
-    float2 _352 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
-    float2 _366 = float2(1.0) - smoothstep(float2(_97.u_params.y * 0.5) - _352, float2(_97.u_params.y * 0.5) + _352, abs(fract((in.i_wpos.xz * float2(10.0)) - float2(0.5)) - float2(0.5)) * 0.100000001490116119384765625);
-    float2 _374 = fast::clamp(float2(_97.u_params.y) / (_352 * 1.5), float2(0.0), float2(1.0));
-    float3 _262 = (in.i_col.xyz * _97.u_tint.xyz) * (_141.u_ambient.xyz + (_141.u_sun_color.xyz * smoothstep(0.0, 0.039999999105930328369140625, dot(fast::normalize(in.i_nrm), _141.u_sun_dir.xyz))));
-    float3 _272 = mix(mix(_262, _262 * 0.550000011920928955078125, float3(fast::max(_366.x * _374.x, _366.y * _374.y) * _97.u_params.z)), float3(0.0500000007450580596923828125, 0.0500000007450580596923828125, 0.0599999986588954925537109375), float3(fast::max(_312.x * _320.x, _312.y * _320.y)));
-    out._entryPointOutput = float4(_272, 1.0);
+    float2 _419 = fwidth(in.i_wpos.xz);
+    float2 _420 = fast::max(_419, float2(9.9999997473787516355514526367188e-05));
+    float2 _434 = float2(1.0) - smoothstep(float2(_97.u_params.x * 0.5) - _420, float2(_97.u_params.x * 0.5) + _420, abs(fract(in.i_wpos.xz - float2(0.5)) - float2(0.5)) * 1.0);
+    float2 _442 = fast::clamp(float2(_97.u_params.x) / (_420 * 1.5), float2(0.0), float2(1.0));
+    float2 _473 = fwidth(in.i_wpos.xz);
+    float2 _474 = fast::max(_473, float2(9.9999997473787516355514526367188e-05));
+    float2 _488 = float2(1.0) - smoothstep(float2(_97.u_params.y * 0.5) - _474, float2(_97.u_params.y * 0.5) + _474, abs(fract((in.i_wpos.xz * float2(10.0)) - float2(0.5)) - float2(0.5)) * 0.100000001490116119384765625);
+    float2 _496 = fast::clamp(float2(_97.u_params.y) / (_474 * 1.5), float2(0.0), float2(1.0));
+    float3 _317 = fast::normalize(in.i_nrm);
+    float3 _341 = (in.i_col.xyz * _97.u_tint.xyz) * (_139.u_ambient.xyz + (_139.u_sun_color.xyz * smoothstep(0.0, 0.039999999105930328369140625, dot(_317, _139.u_sun_dir.xyz))));
+    float3 _540;
+    if ((_139.u_misc.y > 0.0) && (_317.y > 0.89999997615814208984375))
+    {
+        _540 = mix(_341, u_reflection.sample(u_reflection_sampler, (gl_FragCoord.xy * _139.u_misc.zw)).xyz, float3(fast::clamp(_97.u_params.w * (0.60000002384185791015625 + (0.89999997615814208984375 * pow(1.0 - fast::clamp(dot(_317, fast::normalize(_139.u_eye.xyz - in.i_wpos)), 0.0, 1.0), 4.0))), 0.0, 1.0) * _139.u_misc.y));
+    }
+    else
+    {
+        _540 = _341;
+    }
+    float3 _394 = mix(mix(_540, _540 * 0.60000002384185791015625, float3(fast::max(_488.x * _496.x, _488.y * _496.y) * _97.u_params.z)), float3(0.039999999105930328369140625, 0.04500000178813934326171875, 0.0599999986588954925537109375), float3(fast::max(_434.x * _442.x, _434.y * _442.y)));
+    out._entryPointOutput = float4(_394, 1.0);
     return out;
 }
 
