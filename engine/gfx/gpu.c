@@ -1,0 +1,877 @@
+/* SDL3 GPU implementation of gfx.h.
+ *
+ * Passes per frame:
+ *   copy pass        UI vertices for this frame
+ *   reflection pass  half-res mirrored scene (sky + GFX_DRAW_REFLECT draws)
+ *   main pass        sky, opaque by material, floor (samples reflection),
+ *                    sprites back-to-front, UI; 4x MSAA resolved to swapchain
+ */
+#include <SDL3/SDL.h>
+#include <string.h>
+
+#include "core/assets.h"
+#include "core/log.h"
+#include "gfx.h"
+#include "material.h"
+#include "reflection.h"
+
+#define GFX_MAX_MESHES 256
+#define GFX_MAX_DRAWS 2048
+#define GFX_VB_BYTES (8u << 20)
+#define GFX_IB_BYTES (4u << 20)
+#define GFX_MAX_UI_QUADS 8192
+#define GFX_MAX_SHADERS 16
+
+typedef struct GfxMeshRec {
+    uint32_t first_index;
+    uint32_t index_count;
+    int32_t vertex_offset;
+} GfxMeshRec;
+
+typedef struct DrawItem {
+    HMM_Mat4 model;
+    HMM_Mat4 normal;
+    HMM_Vec4 tint;
+    HMM_Vec4 params;
+    float sort;
+    GfxMeshId mesh;
+    uint8_t kind;
+    uint8_t flags;
+} DrawItem;
+
+typedef struct DrawVSUniforms {
+    HMM_Mat4 model;
+    HMM_Mat4 normal;
+} DrawVSUniforms;
+
+typedef struct DrawFSUniforms {
+    HMM_Vec4 tint;
+    HMM_Vec4 params;
+} DrawFSUniforms;
+
+typedef struct FrameFSUniforms {
+    HMM_Vec4 sun_dir;
+    HMM_Vec4 sun_color;
+    HMM_Vec4 ambient;
+    HMM_Vec4 eye;
+    HMM_Vec4 misc;
+} FrameFSUniforms;
+
+typedef struct SkyFSUniforms {
+    HMM_Mat4 inv_view_proj;
+    HMM_Vec4 eye;
+    HMM_Vec4 horizon;
+    HMM_Vec4 zenith;
+} SkyFSUniforms;
+
+enum { TARGET_MAIN, TARGET_REFL, TARGET_COUNT };
+enum { LAYOUT_NONE, LAYOUT_MESH, LAYOUT_UI };
+
+typedef struct PipelineSet {
+    SDL_GPUGraphicsPipeline *mat[GFX_MAT_COUNT];
+    SDL_GPUGraphicsPipeline *sky;
+} PipelineSet;
+
+typedef struct ShaderCacheEntry {
+    const char *name;
+    SDL_GPUShader *shader;
+} ShaderCacheEntry;
+
+struct GfxContext {
+    SDL_GPUDevice *dev;
+    SDL_Window *win;
+    SDL_GPUShaderFormat shader_fmt;
+    const char *backend;
+    SDL_GPUTextureFormat color_fmt;
+    SDL_GPUTextureFormat depth_fmt;
+    SDL_GPUTextureFormat refl_fmt;
+    SDL_GPUSampleCount msaa;
+
+    PipelineSet pipes[TARGET_COUNT];
+    SDL_GPUGraphicsPipeline *ui_pipe;
+    ShaderCacheEntry shaders[GFX_MAX_SHADERS];
+    uint32_t shader_count;
+
+    SDL_GPUBuffer *vb;
+    SDL_GPUBuffer *ib;
+    uint32_t vb_used;
+    uint32_t ib_used;
+    GfxMeshRec meshes[GFX_MAX_MESHES];
+    uint32_t mesh_count;
+
+    SDL_GPUBuffer *ui_vb;
+    SDL_GPUBuffer *ui_ib;
+    SDL_GPUTransferBuffer *ui_tb;
+    GfxUiVertex *ui_verts;
+    uint32_t ui_quads;
+    float ui_w_pt, ui_h_pt;
+    SDL_GPUTexture *ui_atlas;
+    SDL_GPUSampler *ui_sampler;
+    SDL_GPUSampler *linear_clamp;
+
+    SDL_GPUTexture *msaa_color;
+    SDL_GPUTexture *depth;
+    SDL_GPUTexture *refl_color;
+    SDL_GPUTexture *refl_depth;
+    SDL_GPUTexture *dummy_tex;
+    uint32_t target_w, target_h;
+
+    SDL_GPUCommandBuffer *cmd;
+    SDL_GPUTexture *swap;
+    uint32_t swap_w, swap_h;
+    bool in_frame;
+    bool paused;
+    GfxSceneParams scene;
+
+    DrawItem *draws;
+    uint16_t *order;
+    uint32_t draw_count;
+    GfxStats stats;
+};
+
+/* ---------------------------------------------------------------- shaders */
+
+static SDL_GPUShader *load_shader(GfxContext *g, const char *name, uint32_t ubos, uint32_t samplers)
+{
+    for (uint32_t i = 0; i < g->shader_count; i++) {
+        if (strcmp(g->shaders[i].name, name) == 0) {
+            return g->shaders[i].shader;
+        }
+    }
+    char path[128];
+    const bool msl = (g->shader_fmt == SDL_GPU_SHADERFORMAT_MSL);
+    SDL_snprintf(path, sizeof(path), "shaders/compiled/%s/%s.%s", msl ? "msl" : "spv", name,
+                 msl ? "msl" : "spv");
+    const MgAsset *a = mg_asset_find(path);
+    if (!a) {
+        mg_log_error("gfx: missing shader asset %s", path);
+        return NULL;
+    }
+    const bool vert = SDL_strstr(name, ".vert") != NULL;
+    SDL_GPUShaderCreateInfo ci;
+    SDL_zero(ci);
+    ci.code = a->data;
+    ci.code_size = a->size;
+    ci.entrypoint = vert ? "VSMain" : "PSMain";
+    ci.format = g->shader_fmt;
+    ci.stage = vert ? SDL_GPU_SHADERSTAGE_VERTEX : SDL_GPU_SHADERSTAGE_FRAGMENT;
+    ci.num_uniform_buffers = ubos;
+    ci.num_samplers = samplers;
+    SDL_GPUShader *s = SDL_CreateGPUShader(g->dev, &ci);
+    if (!s) {
+        mg_log_error("gfx: shader %s failed: %s", name, SDL_GetError());
+        return NULL;
+    }
+    if (g->shader_count < GFX_MAX_SHADERS) {
+        g->shaders[g->shader_count].name = name;
+        g->shaders[g->shader_count].shader = s;
+        g->shader_count++;
+    }
+    return s;
+}
+
+static void release_shaders(GfxContext *g)
+{
+    for (uint32_t i = 0; i < g->shader_count; i++) {
+        SDL_ReleaseGPUShader(g->dev, g->shaders[i].shader);
+    }
+    g->shader_count = 0;
+}
+
+/* -------------------------------------------------------------- pipelines */
+
+typedef struct PipeDesc {
+    SDL_GPUShader *vs;
+    SDL_GPUShader *fs;
+    int layout;
+    bool blend;
+    bool depth_test;
+    bool depth_write;
+    SDL_GPUCullMode cull;
+    SDL_GPUFrontFace front;
+    SDL_GPUTextureFormat color_fmt;
+    SDL_GPUSampleCount samples;
+} PipeDesc;
+
+static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
+{
+    if (!d->vs || !d->fs) {
+        return NULL;
+    }
+    SDL_GPUVertexBufferDescription vbd;
+    SDL_zero(vbd);
+    SDL_GPUVertexAttribute attrs[3];
+    SDL_zeroa(attrs);
+    uint32_t nattr = 0;
+    if (d->layout == LAYOUT_MESH) {
+        vbd.slot = 0;
+        vbd.pitch = sizeof(GfxVertex);
+        vbd.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        attrs[0] = (SDL_GPUVertexAttribute){0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, offsetof(GfxVertex, px)};
+        attrs[1] = (SDL_GPUVertexAttribute){1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, offsetof(GfxVertex, nx)};
+        attrs[2] = (SDL_GPUVertexAttribute){2, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxVertex, r)};
+        nattr = 3;
+    } else if (d->layout == LAYOUT_UI) {
+        vbd.slot = 0;
+        vbd.pitch = sizeof(GfxUiVertex);
+        vbd.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        attrs[0] = (SDL_GPUVertexAttribute){0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiVertex, x)};
+        attrs[1] = (SDL_GPUVertexAttribute){1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiVertex, u)};
+        attrs[2] = (SDL_GPUVertexAttribute){2, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiVertex, r)};
+        nattr = 3;
+    }
+
+    SDL_GPUColorTargetDescription ctd;
+    SDL_zero(ctd);
+    ctd.format = d->color_fmt;
+    if (d->blend) {
+        ctd.blend_state.enable_blend = true;
+        ctd.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        ctd.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        ctd.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+        ctd.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+        ctd.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        ctd.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    }
+
+    SDL_GPUGraphicsPipelineCreateInfo ci;
+    SDL_zero(ci);
+    ci.vertex_shader = d->vs;
+    ci.fragment_shader = d->fs;
+    ci.vertex_input_state.vertex_buffer_descriptions = nattr ? &vbd : NULL;
+    ci.vertex_input_state.num_vertex_buffers = nattr ? 1 : 0;
+    ci.vertex_input_state.vertex_attributes = nattr ? attrs : NULL;
+    ci.vertex_input_state.num_vertex_attributes = nattr;
+    ci.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    ci.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    ci.rasterizer_state.cull_mode = d->cull;
+    ci.rasterizer_state.front_face = d->front;
+    ci.multisample_state.sample_count = d->samples;
+    ci.depth_stencil_state.enable_depth_test = d->depth_test;
+    ci.depth_stencil_state.enable_depth_write = d->depth_write;
+    ci.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    ci.target_info.color_target_descriptions = &ctd;
+    ci.target_info.num_color_targets = 1;
+    ci.target_info.depth_stencil_format = g->depth_fmt;
+    ci.target_info.has_depth_stencil_target = true;
+
+    SDL_GPUGraphicsPipeline *p = SDL_CreateGPUGraphicsPipeline(g->dev, &ci);
+    if (!p) {
+        mg_log_error("gfx: pipeline failed: %s", SDL_GetError());
+    }
+    return p;
+}
+
+static bool create_pipelines(GfxContext *g)
+{
+    for (int t = 0; t < TARGET_COUNT; t++) {
+        const bool refl = (t == TARGET_REFL);
+        const SDL_GPUTextureFormat fmt = refl ? g->refl_fmt : g->color_fmt;
+        const SDL_GPUSampleCount samples = refl ? SDL_GPU_SAMPLECOUNT_1 : g->msaa;
+        /* the mirror flips winding, so the reflection pass treats CW as front */
+        const SDL_GPUFrontFace front =
+            refl ? SDL_GPU_FRONTFACE_CLOCKWISE : SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+        for (int k = 0; k < GFX_MAT_COUNT; k++) {
+            const MaterialProgram *mp = material_program((GfxMaterialKind)k);
+            PipeDesc d = {
+                .vs = load_shader(g, mp->vert, mp->vert_ubos, 0),
+                .fs = load_shader(g, mp->frag, mp->frag_ubos, mp->frag_samplers),
+                .layout = LAYOUT_MESH,
+                .blend = mp->blend,
+                .depth_test = true,
+                .depth_write = mp->depth_write,
+                .cull = mp->cull_back ? SDL_GPU_CULLMODE_BACK : SDL_GPU_CULLMODE_NONE,
+                .front = front,
+                .color_fmt = fmt,
+                .samples = samples,
+            };
+            g->pipes[t].mat[k] = make_pipeline(g, &d);
+            if (!g->pipes[t].mat[k]) {
+                return false;
+            }
+        }
+        PipeDesc sky = {
+            .vs = load_shader(g, "sky.vert", 0, 0),
+            .fs = load_shader(g, "sky.frag", 1, 0),
+            .layout = LAYOUT_NONE,
+            .cull = SDL_GPU_CULLMODE_NONE,
+            .front = front,
+            .color_fmt = fmt,
+            .samples = samples,
+        };
+        g->pipes[t].sky = make_pipeline(g, &sky);
+        if (!g->pipes[t].sky) {
+            return false;
+        }
+    }
+    PipeDesc ui = {
+        .vs = load_shader(g, "ui.vert", 1, 0),
+        .fs = load_shader(g, "ui.frag", 0, 1),
+        .layout = LAYOUT_UI,
+        .blend = true,
+        .cull = SDL_GPU_CULLMODE_NONE,
+        .front = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .color_fmt = g->color_fmt,
+        .samples = g->msaa,
+    };
+    g->ui_pipe = make_pipeline(g, &ui);
+    release_shaders(g);
+    return g->ui_pipe != NULL;
+}
+
+/* ---------------------------------------------------------------- targets */
+
+static SDL_GPUTexture *make_texture(GfxContext *g, SDL_GPUTextureFormat fmt, uint32_t w, uint32_t h,
+                                    SDL_GPUTextureUsageFlags usage, SDL_GPUSampleCount samples)
+{
+    SDL_GPUTextureCreateInfo ci;
+    SDL_zero(ci);
+    ci.type = SDL_GPU_TEXTURETYPE_2D;
+    ci.format = fmt;
+    ci.usage = usage;
+    ci.width = w;
+    ci.height = h;
+    ci.layer_count_or_depth = 1;
+    ci.num_levels = 1;
+    ci.sample_count = samples;
+    SDL_GPUTexture *t = SDL_CreateGPUTexture(g->dev, &ci);
+    if (!t) {
+        mg_log_error("gfx: texture %ux%u failed: %s", w, h, SDL_GetError());
+    }
+    return t;
+}
+
+static void release_targets(GfxContext *g)
+{
+    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->refl_color, &g->refl_depth};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(ts); i++) {
+        if (*ts[i]) {
+            SDL_ReleaseGPUTexture(g->dev, *ts[i]);
+            *ts[i] = NULL;
+        }
+    }
+}
+
+static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h)
+{
+    if (g->target_w == w && g->target_h == h && g->depth) {
+        return true;
+    }
+    release_targets(g);
+    g->target_w = w;
+    g->target_h = h;
+    if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
+        g->msaa_color = make_texture(g, g->color_fmt, w, h, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
+    }
+    g->depth = make_texture(g, g->depth_fmt, w, h, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
+    uint32_t rw = w / 2 > 0 ? w / 2 : 1;
+    uint32_t rh = h / 2 > 0 ? h / 2 : 1;
+    g->refl_color = make_texture(g, g->refl_fmt, rw, rh,
+                                 SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                 SDL_GPU_SAMPLECOUNT_1);
+    g->refl_depth = make_texture(g, g->depth_fmt, rw, rh, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                                 SDL_GPU_SAMPLECOUNT_1);
+    return g->depth && g->refl_color && g->refl_depth &&
+           (g->msaa == SDL_GPU_SAMPLECOUNT_1 || g->msaa_color);
+}
+
+/* ------------------------------------------------------------------- init */
+
+static bool upload_bytes(GfxContext *g, SDL_GPUBuffer *dst, uint32_t dst_offset, const void *data,
+                         uint32_t size)
+{
+    SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, size, 0};
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g->dev, &tci);
+    if (!tb) {
+        return false;
+    }
+    void *map = SDL_MapGPUTransferBuffer(g->dev, tb, false);
+    memcpy(map, data, size);
+    SDL_UnmapGPUTransferBuffer(g->dev, tb);
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTransferBufferLocation src = {tb, 0};
+    SDL_GPUBufferRegion region = {dst, dst_offset, size};
+    SDL_UploadToGPUBuffer(cp, &src, &region, false);
+    SDL_EndGPUCopyPass(cp);
+    bool ok = SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(g->dev, tb);
+    return ok;
+}
+
+static bool upload_texture(GfxContext *g, SDL_GPUTexture *tex, const void *pixels, uint32_t w, uint32_t h,
+                           uint32_t bytes_per_pixel)
+{
+    uint32_t size = w * h * bytes_per_pixel;
+    SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, size, 0};
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g->dev, &tci);
+    if (!tb) {
+        return false;
+    }
+    void *map = SDL_MapGPUTransferBuffer(g->dev, tb, false);
+    memcpy(map, pixels, size);
+    SDL_UnmapGPUTransferBuffer(g->dev, tb);
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTextureTransferInfo src = {tb, 0, w, h};
+    SDL_GPUTextureRegion region;
+    SDL_zero(region);
+    region.texture = tex;
+    region.w = w;
+    region.h = h;
+    region.d = 1;
+    SDL_UploadToGPUTexture(cp, &src, &region, false);
+    SDL_EndGPUCopyPass(cp);
+    bool ok = SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(g->dev, tb);
+    return ok;
+}
+
+static SDL_GPUTextureFormat pick_depth_format(SDL_GPUDevice *dev)
+{
+    const SDL_GPUTextureFormat cands[] = {SDL_GPU_TEXTUREFORMAT_D32_FLOAT, SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+                                          SDL_GPU_TEXTUREFORMAT_D16_UNORM};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(cands); i++) {
+        if (SDL_GPUTextureSupportsFormat(dev, cands[i], SDL_GPU_TEXTURETYPE_2D,
+                                         SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+            return cands[i];
+        }
+    }
+    return SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+}
+
+bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
+{
+    GfxContext *g = ARENA_PUSH(perm, GfxContext, 1);
+    g->draws = ARENA_PUSH(perm, DrawItem, GFX_MAX_DRAWS);
+    g->order = ARENA_PUSH(perm, uint16_t, GFX_MAX_DRAWS);
+    g->ui_verts = ARENA_PUSH(perm, GfxUiVertex, GFX_MAX_UI_QUADS * 4);
+    if (!g || !g->draws || !g->order || !g->ui_verts) {
+        mg_log_error("gfx: out of permanent memory");
+        return false;
+    }
+    g->win = window;
+
+    bool debug = false;
+#ifdef MG_GPU_DEBUG
+    debug = true;
+#endif
+    g->dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL, debug, NULL);
+    if (!g->dev) {
+        mg_log_error("gfx: SDL_CreateGPUDevice failed: %s", SDL_GetError());
+        return false;
+    }
+    g->backend = SDL_GetGPUDeviceDriver(g->dev);
+    SDL_GPUShaderFormat fmts = SDL_GetGPUShaderFormats(g->dev);
+    g->shader_fmt = (fmts & SDL_GPU_SHADERFORMAT_SPIRV) ? SDL_GPU_SHADERFORMAT_SPIRV : SDL_GPU_SHADERFORMAT_MSL;
+    if (!SDL_ClaimWindowForGPUDevice(g->dev, window)) {
+        mg_log_error("gfx: claim window failed: %s", SDL_GetError());
+        return false;
+    }
+    SDL_SetGPUSwapchainParameters(g->dev, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
+    g->color_fmt = SDL_GetGPUSwapchainTextureFormat(g->dev, window);
+    g->refl_fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    g->depth_fmt = pick_depth_format(g->dev);
+    g->msaa = SDL_GPU_SAMPLECOUNT_1;
+    if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, SDL_GPU_SAMPLECOUNT_4) &&
+        SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, SDL_GPU_SAMPLECOUNT_4)) {
+        g->msaa = SDL_GPU_SAMPLECOUNT_4;
+    }
+    mg_log_info("gfx: backend %s, shaders %s, color fmt %d, depth fmt %d, msaa %s", g->backend,
+                g->shader_fmt == SDL_GPU_SHADERFORMAT_MSL ? "msl" : "spirv", (int)g->color_fmt,
+                (int)g->depth_fmt, g->msaa == SDL_GPU_SAMPLECOUNT_4 ? "4x" : "off");
+
+    if (!create_pipelines(g)) {
+        return false;
+    }
+
+    SDL_GPUBufferCreateInfo vbci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_VB_BYTES, 0};
+    SDL_GPUBufferCreateInfo ibci = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_IB_BYTES, 0};
+    g->vb = SDL_CreateGPUBuffer(g->dev, &vbci);
+    g->ib = SDL_CreateGPUBuffer(g->dev, &ibci);
+
+    SDL_GPUBufferCreateInfo uvci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_UI_QUADS * 4 * sizeof(GfxUiVertex), 0};
+    SDL_GPUBufferCreateInfo uici = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_MAX_UI_QUADS * 6 * sizeof(uint16_t), 0};
+    SDL_GPUTransferBufferCreateInfo utci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                                            GFX_MAX_UI_QUADS * 4 * sizeof(GfxUiVertex), 0};
+    g->ui_vb = SDL_CreateGPUBuffer(g->dev, &uvci);
+    g->ui_ib = SDL_CreateGPUBuffer(g->dev, &uici);
+    g->ui_tb = SDL_CreateGPUTransferBuffer(g->dev, &utci);
+    if (!g->vb || !g->ib || !g->ui_vb || !g->ui_ib || !g->ui_tb) {
+        mg_log_error("gfx: buffer creation failed: %s", SDL_GetError());
+        return false;
+    }
+
+    /* static quad index buffer for the UI */
+    size_t mark = arena_mark(perm);
+    uint16_t *qi = ARENA_PUSH(perm, uint16_t, GFX_MAX_UI_QUADS * 6);
+    for (uint32_t q = 0; q < GFX_MAX_UI_QUADS; q++) {
+        uint16_t b = (uint16_t)(q * 4);
+        uint16_t *p = &qi[q * 6];
+        p[0] = b;
+        p[1] = (uint16_t)(b + 1);
+        p[2] = (uint16_t)(b + 2);
+        p[3] = b;
+        p[4] = (uint16_t)(b + 2);
+        p[5] = (uint16_t)(b + 3);
+    }
+    upload_bytes(g, g->ui_ib, 0, qi, GFX_MAX_UI_QUADS * 6 * sizeof(uint16_t));
+    arena_reset_to(perm, mark);
+
+    SDL_GPUSamplerCreateInfo sci;
+    SDL_zero(sci);
+    sci.min_filter = SDL_GPU_FILTER_LINEAR;
+    sci.mag_filter = SDL_GPU_FILTER_LINEAR;
+    sci.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+    sci.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    sci.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    sci.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    g->linear_clamp = SDL_CreateGPUSampler(g->dev, &sci);
+    g->ui_sampler = g->linear_clamp;
+
+    const uint32_t white = 0xFFFFFFFFu;
+    g->dummy_tex = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 1, 1, SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                SDL_GPU_SAMPLECOUNT_1);
+    if (!g->linear_clamp || !g->dummy_tex) {
+        return false;
+    }
+    upload_texture(g, g->dummy_tex, &white, 1, 1, 4);
+    g->stats.backend = g->backend;
+    *out = g;
+    return true;
+}
+
+void gfx_shutdown(GfxContext *g)
+{
+    if (!g || !g->dev) {
+        return;
+    }
+    SDL_WaitForGPUIdle(g->dev);
+    release_targets(g);
+    for (int t = 0; t < TARGET_COUNT; t++) {
+        for (int k = 0; k < GFX_MAT_COUNT; k++) {
+            if (g->pipes[t].mat[k]) {
+                SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].mat[k]);
+            }
+        }
+        if (g->pipes[t].sky) {
+            SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].sky);
+        }
+    }
+    if (g->ui_pipe) {
+        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe);
+    }
+    SDL_ReleaseGPUBuffer(g->dev, g->vb);
+    SDL_ReleaseGPUBuffer(g->dev, g->ib);
+    SDL_ReleaseGPUBuffer(g->dev, g->ui_vb);
+    SDL_ReleaseGPUBuffer(g->dev, g->ui_ib);
+    SDL_ReleaseGPUTransferBuffer(g->dev, g->ui_tb);
+    if (g->ui_atlas) {
+        SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
+    }
+    SDL_ReleaseGPUTexture(g->dev, g->dummy_tex);
+    SDL_ReleaseGPUSampler(g->dev, g->linear_clamp);
+    SDL_ReleaseWindowFromGPUDevice(g->dev, g->win);
+    SDL_DestroyGPUDevice(g->dev);
+    g->dev = NULL;
+}
+
+GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices,
+                          uint32_t index_count)
+{
+    uint32_t vbytes = vert_count * (uint32_t)sizeof(GfxVertex);
+    uint32_t ibytes = index_count * (uint32_t)sizeof(uint32_t);
+    if (g->mesh_count >= GFX_MAX_MESHES || g->vb_used + vbytes > GFX_VB_BYTES ||
+        g->ib_used + ibytes > GFX_IB_BYTES || index_count == 0) {
+        mg_log_error("gfx: mesh pool full (%u meshes, %u/%u vb bytes)", g->mesh_count, g->vb_used, GFX_VB_BYTES);
+        return GFX_MESH_NONE;
+    }
+    if (!upload_bytes(g, g->vb, g->vb_used, verts, vbytes) || !upload_bytes(g, g->ib, g->ib_used, indices, ibytes)) {
+        return GFX_MESH_NONE;
+    }
+    GfxMeshRec *m = &g->meshes[g->mesh_count];
+    m->vertex_offset = (int32_t)(g->vb_used / sizeof(GfxVertex));
+    m->first_index = g->ib_used / (uint32_t)sizeof(uint32_t);
+    m->index_count = index_count;
+    g->vb_used += vbytes;
+    g->ib_used += ibytes;
+    return (GfxMeshId)g->mesh_count++;
+}
+
+bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t h)
+{
+    if (g->ui_atlas) {
+        SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
+    }
+    g->ui_atlas = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8_UNORM, w, h, SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                               SDL_GPU_SAMPLECOUNT_1);
+    return g->ui_atlas && upload_texture(g, g->ui_atlas, pixels, w, h, 1);
+}
+
+/* ------------------------------------------------------------------ frame */
+
+void gfx_set_paused(GfxContext *g, bool paused) { g->paused = paused; }
+
+bool gfx_frame_begin(GfxContext *g)
+{
+    g->draw_count = 0;
+    g->ui_quads = 0;
+    g->in_frame = false;
+    if (g->paused) {
+        return false;
+    }
+    g->cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    if (!g->cmd) {
+        return false;
+    }
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(g->cmd, g->win, &g->swap, &g->swap_w, &g->swap_h) || !g->swap) {
+        SDL_SubmitGPUCommandBuffer(g->cmd);
+        g->cmd = NULL;
+        return false;
+    }
+    g->in_frame = true;
+    return true;
+}
+
+void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt)
+{
+    g->ui_w_pt = w_pt;
+    g->ui_h_pt = h_pt;
+}
+
+void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene) { g->scene = *scene; }
+
+void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat, uint32_t flags)
+{
+    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS) {
+        return;
+    }
+    DrawItem *d = &g->draws[g->draw_count++];
+    d->model = *model;
+    if (mat->kind == GFX_MAT_SPRITE) {
+        d->normal = HMM_M4D(1.0f); /* sprites carry UVs in the normal */
+    } else {
+        d->normal = HMM_TransposeM4(HMM_InvGeneralM4(*model));
+    }
+    d->tint = mat->tint;
+    d->params = mat->params;
+    d->mesh = mesh;
+    d->kind = (uint8_t)mat->kind;
+    d->flags = (uint8_t)flags;
+    HMM_Vec3 pos = model->Columns[3].XYZ;
+    d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
+}
+
+GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count)
+{
+    if (!g->in_frame || g->ui_quads + quad_count > GFX_MAX_UI_QUADS) {
+        return NULL;
+    }
+    GfxUiVertex *v = &g->ui_verts[g->ui_quads * 4];
+    g->ui_quads += quad_count;
+    return v;
+}
+
+/* Opaque draws grouped by material, then sprites far-to-near. */
+static void sort_draws(GfxContext *g)
+{
+    uint32_t n = g->draw_count;
+    for (uint32_t i = 0; i < n; i++) {
+        g->order[i] = (uint16_t)i;
+    }
+    for (uint32_t i = 1; i < n; i++) {
+        uint16_t key = g->order[i];
+        const DrawItem *a = &g->draws[key];
+        uint32_t j = i;
+        while (j > 0) {
+            const DrawItem *b = &g->draws[g->order[j - 1]];
+            bool before;
+            if (a->kind != b->kind) {
+                before = a->kind < b->kind;
+            } else if (a->kind == GFX_MAT_SPRITE) {
+                before = a->sort > b->sort;
+            } else {
+                before = a->mesh < b->mesh;
+            }
+            if (!before) {
+                break;
+            }
+            g->order[j] = g->order[j - 1];
+            j--;
+        }
+        g->order[j] = key;
+    }
+}
+
+static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Vec3 eye, float target_w,
+                                float target_h, float reflection)
+{
+    SDL_PushGPUVertexUniformData(g->cmd, 1, view_proj, sizeof(HMM_Mat4));
+    FrameFSUniforms f;
+    f.sun_dir = HMM_V4V(g->scene.sun_dir, 0.0f);
+    f.sun_color = HMM_V4V(g->scene.sun_color, 0.0f);
+    f.ambient = HMM_V4V(g->scene.ambient, 0.0f);
+    f.eye = HMM_V4V(eye, 1.0f);
+    f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
+    SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
+}
+
+static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipeline *pipe,
+                     const HMM_Mat4 *inv_vp, HMM_Vec3 eye)
+{
+    SkyFSUniforms s;
+    s.inv_view_proj = *inv_vp;
+    s.eye = HMM_V4V(eye, 1.0f);
+    s.horizon = g->scene.sky_horizon;
+    s.zenith = g->scene.sky_zenith;
+    SDL_BindGPUGraphicsPipeline(pass, pipe);
+    SDL_PushGPUFragmentUniformData(g->cmd, 0, &s, sizeof(s));
+    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+}
+
+static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target)
+{
+    SDL_GPUBufferBinding vbb = {g->vb, 0};
+    SDL_GPUBufferBinding ibb = {g->ib, 0};
+    SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
+    SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    int bound = -1;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < g->draw_count; i++) {
+        const DrawItem *d = &g->draws[g->order[i]];
+        if (target == TARGET_REFL) {
+            if (!(d->flags & GFX_DRAW_REFLECT) || d->kind == GFX_MAT_FLOOR) {
+                continue;
+            }
+        } else if (d->flags & GFX_DRAW_NO_MAIN) {
+            continue;
+        }
+        if (bound != d->kind) {
+            SDL_BindGPUGraphicsPipeline(pass, g->pipes[target].mat[d->kind]);
+            bound = d->kind;
+            if (d->kind == GFX_MAT_FLOOR) {
+                SDL_GPUTextureSamplerBinding tsb = {
+                    g->scene.reflection_strength > 0.0f ? g->refl_color : g->dummy_tex, g->linear_clamp};
+                SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+            }
+        }
+        DrawVSUniforms vu = {d->model, d->normal};
+        DrawFSUniforms fu = {d->tint, d->params};
+        SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
+        SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
+        const GfxMeshRec *m = &g->meshes[d->mesh];
+        SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);
+        count++;
+    }
+    return count;
+}
+
+void gfx_frame_end(GfxContext *g)
+{
+    if (!g->in_frame) {
+        return;
+    }
+    g->in_frame = false;
+    g->stats.draws = 0;
+    g->stats.reflect_draws = 0;
+    g->stats.ui_quads = g->ui_quads;
+    g->stats.width_px = g->swap_w;
+    g->stats.height_px = g->swap_h;
+    g->stats.msaa = g->msaa == SDL_GPU_SAMPLECOUNT_4 ? 4 : 1;
+
+    if (!ensure_targets(g, g->swap_w, g->swap_h)) {
+        SDL_SubmitGPUCommandBuffer(g->cmd);
+        g->cmd = NULL;
+        return;
+    }
+
+    /* UI vertices for this frame */
+    if (g->ui_quads > 0) {
+        uint32_t bytes = g->ui_quads * 4 * (uint32_t)sizeof(GfxUiVertex);
+        void *map = SDL_MapGPUTransferBuffer(g->dev, g->ui_tb, true);
+        memcpy(map, g->ui_verts, bytes);
+        SDL_UnmapGPUTransferBuffer(g->dev, g->ui_tb);
+        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+        SDL_GPUTransferBufferLocation src = {g->ui_tb, 0};
+        SDL_GPUBufferRegion region = {g->ui_vb, 0, bytes};
+        SDL_UploadToGPUBuffer(cp, &src, &region, true);
+        SDL_EndGPUCopyPass(cp);
+    }
+
+    sort_draws(g);
+    const GfxSceneParams *s = &g->scene;
+    HMM_Mat4 view_proj = HMM_MulM4(s->proj, s->view);
+    HMM_Mat4 inv_vp = HMM_InvGeneralM4(view_proj);
+    SDL_FColor horizon = {s->sky_horizon.X, s->sky_horizon.Y, s->sky_horizon.Z, 1.0f};
+
+    /* reflection pass */
+    if (s->reflection_strength > 0.0f) {
+        ReflectionView rv;
+        reflection_build(s, &rv);
+        SDL_GPUColorTargetInfo cti;
+        SDL_zero(cti);
+        cti.texture = g->refl_color;
+        cti.clear_color = horizon;
+        cti.load_op = SDL_GPU_LOADOP_CLEAR;
+        cti.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPUDepthStencilTargetInfo dti;
+        SDL_zero(dti);
+        dti.texture = g->refl_depth;
+        dti.clear_depth = 1.0f;
+        dti.load_op = SDL_GPU_LOADOP_CLEAR;
+        dti.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+        dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
+        float rw = (float)(g->target_w / 2 > 0 ? g->target_w / 2 : 1);
+        float rh = (float)(g->target_h / 2 > 0 ? g->target_h / 2 : 1);
+        draw_sky(g, rp, g->pipes[TARGET_REFL].sky, &rv.sky_inv_vp, rv.eye);
+        push_frame_uniforms(g, &rv.view_proj, rv.eye, rw, rh, 0.0f);
+        g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL);
+        SDL_EndGPURenderPass(rp);
+    }
+
+    /* main pass */
+    SDL_GPUColorTargetInfo cti;
+    SDL_zero(cti);
+    cti.clear_color = horizon;
+    cti.load_op = SDL_GPU_LOADOP_CLEAR;
+    if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
+        cti.texture = g->msaa_color;
+        cti.store_op = SDL_GPU_STOREOP_RESOLVE;
+        cti.resolve_texture = g->swap;
+    } else {
+        cti.texture = g->swap;
+        cti.store_op = SDL_GPU_STOREOP_STORE;
+    }
+    SDL_GPUDepthStencilTargetInfo dti;
+    SDL_zero(dti);
+    dti.texture = g->depth;
+    dti.clear_depth = 1.0f;
+    dti.load_op = SDL_GPU_LOADOP_CLEAR;
+    dti.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
+    draw_sky(g, pass, g->pipes[TARGET_MAIN].sky, &inv_vp, s->eye);
+    push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, s->reflection_strength);
+    g->stats.draws = draw_list(g, pass, TARGET_MAIN);
+
+    if (g->ui_quads > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) {
+        HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
+        SDL_BindGPUGraphicsPipeline(pass, g->ui_pipe);
+        SDL_PushGPUVertexUniformData(g->cmd, 0, &screen, sizeof(screen));
+        SDL_GPUBufferBinding vbb = {g->ui_vb, 0};
+        SDL_GPUBufferBinding ibb = {g->ui_ib, 0};
+        SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
+        SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+        SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas, g->ui_sampler};
+        SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+        SDL_DrawGPUIndexedPrimitives(pass, g->ui_quads * 6, 1, 0, 0, 0);
+    }
+    SDL_EndGPURenderPass(pass);
+    SDL_SubmitGPUCommandBuffer(g->cmd);
+    g->cmd = NULL;
+}
+
+void gfx_get_stats(const GfxContext *g, GfxStats *out) { *out = g->stats; }

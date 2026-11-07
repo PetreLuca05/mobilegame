@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Release signing comes from platform/android/keystore.properties (git-ignored):
+//   storeFile=/abs/path/release.jks  storePassword=...  keyAlias=...  keyPassword=...
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace 'ro.docvex.mobilegame'
+    compileSdk 35
+    ndkVersion '27.3.13750724' // NDK r27d
+
+    defaultConfig {
+        applicationId 'ro.docvex.mobilegame'
+        minSdk 29        // Android 10
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+        externalNativeBuild {
+            cmake {
+                arguments '-DMG_PLATFORM=android', '-DANDROID_STL=none'
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=RelWithDebInfo' } }
+        }
+        release {
+            minifyEnabled false
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=Release' } }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../../CMakeLists.txt')
+            version '3.31.6'
+            buildStagingDirectory file('../../../build/android-cxx')
+        }
+    }
+
+    sourceSets {
+        main {
+            // SDL's Java glue straight from the submodule
+            java.srcDirs += ['../../../third_party/SDL3/android-project/app/src/main/java']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}

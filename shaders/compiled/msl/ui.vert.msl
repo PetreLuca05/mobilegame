@@ -1,0 +1,33 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct UiVS
+{
+    float4 u_screen;
+};
+
+struct VSMain_out
+{
+    float2 _entryPointOutput_uv [[user(locn0)]];
+    float4 _entryPointOutput_col [[user(locn1)]];
+    float4 gl_Position [[position]];
+};
+
+struct VSMain_in
+{
+    float2 i_pos [[attribute(0)]];
+    float2 i_uv [[attribute(1)]];
+    float4 i_col [[attribute(2)]];
+};
+
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _27 [[buffer(0)]])
+{
+    VSMain_out out = {};
+    out.gl_Position = float4((in.i_pos.x * _27.u_screen.x) - 1.0, 1.0 - (in.i_pos.y * _27.u_screen.y), 0.0, 1.0);
+    out._entryPointOutput_uv = in.i_uv;
+    out._entryPointOutput_col = in.i_col;
+    return out;
+}
+

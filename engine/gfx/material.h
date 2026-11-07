@@ -1,0 +1,27 @@
+/* Material kinds -> shader programs + fixed-function state, and helpers to
+ * build GfxMaterial values. */
+#ifndef MG_MATERIAL_H
+#define MG_MATERIAL_H
+
+#include "gfx.h"
+
+typedef struct MaterialProgram {
+    const char *vert;    /* shader base name, e.g. "mesh.vert" */
+    const char *frag;
+    uint32_t vert_ubos;
+    uint32_t frag_ubos;
+    uint32_t frag_samplers;
+    bool blend;          /* premultiplied alpha */
+    bool depth_write;
+    bool cull_back;
+} MaterialProgram;
+
+const MaterialProgram *material_program(GfxMaterialKind kind);
+
+GfxMaterial mat_unlit(HMM_Vec4 color);
+GfxMaterial mat_toon(HMM_Vec4 color, float rim);
+GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */
+GfxMaterial mat_floor(HMM_Vec4 color);
+GfxMaterial mat_sprite(HMM_Vec4 color, float shape);
+
+#endif

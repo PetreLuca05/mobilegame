@@ -1,0 +1,54 @@
+/* SDF text and UI shapes (rects, rounded rects, circles) drawn through the
+ * gfx UI quad stream. Coordinates are points from the window's top-left. */
+#ifndef MG_TEXT_H
+#define MG_TEXT_H
+
+#include "gfx/gfx.h"
+
+#define TEXT_FIRST_CHAR 32
+#define TEXT_GLYPH_SLOTS 128
+
+typedef struct TextGlyph {
+    float u0, v0, u1, v1; /* atlas UVs */
+    float xoff, yoff;     /* atlas px from pen/baseline to the quad's top-left */
+    float w, h;           /* atlas px */
+    float advance;        /* atlas px */
+    bool present;
+} TextGlyph;
+
+typedef struct TextFont {
+    TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* ASCII; extras remapped below */
+    TextGlyph degree, bullet;
+    float em_px;
+    float ascent_px;
+    float line_px;
+    float solid_u, solid_v;
+    float circle_u0, circle_v0, circle_u1, circle_v1;
+    float circle_fill; /* edge radius / half cell size */
+} TextFont;
+
+typedef struct UiColor {
+    uint8_t r, g, b, a;
+} UiColor;
+
+static inline UiColor ui_rgba(uint32_t rgba)
+{
+    UiColor c = {(uint8_t)(rgba >> 24), (uint8_t)(rgba >> 16), (uint8_t)(rgba >> 8), (uint8_t)rgba};
+    return c;
+}
+
+bool text_init(TextFont *f, GfxContext *g);
+float text_width(const TextFont *f, const char *s, float size_pt);
+float text_line_height(const TextFont *f, float size_pt);
+/* (x, y) is the top-left of the line box. Returns the advance width. */
+float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s);
+/* Text with a soft drop shadow for readability over the 3D scene. */
+float text_draw_shadow(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s);
+void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, float size_pt, UiColor c,
+                        const char *s);
+
+void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c);
+void ui_round_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, float r, UiColor c);
+void ui_circle(GfxContext *g, const TextFont *f, float cx, float cy, float r, UiColor c);
+
+#endif

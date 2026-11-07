@@ -1,0 +1,31 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct SkyFS
+{
+    float4x4 u_inv_view_proj;
+    float4 u_eye;
+    float4 u_horizon;
+    float4 u_zenith;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float2 i_ndc [[user(locn0)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant SkyFS& _29 [[buffer(0)]])
+{
+    PSMain_out out = {};
+    float4 _106 = _29.u_inv_view_proj * float4(in.i_ndc, 1.0, 1.0);
+    out._entryPointOutput = float4(mix(_29.u_horizon.xyz, _29.u_zenith.xyz, float3(smoothstep(0.0, 0.64999997615814208984375, fast::normalize((_106.xyz / float3(_106.w)) - _29.u_eye.xyz).y))), 1.0);
+    return out;
+}
+

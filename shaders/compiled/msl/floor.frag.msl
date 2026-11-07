@@ -1,0 +1,47 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct DrawFS
+{
+    float4 u_tint;
+    float4 u_params;
+};
+
+struct FrameFS
+{
+    float4 u_sun_dir;
+    float4 u_sun_color;
+    float4 u_ambient;
+    float4 u_eye;
+    float4 u_misc;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_wpos [[user(locn0)]];
+    float3 i_nrm [[user(locn1)]];
+    float4 i_col [[user(locn2)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _97 [[buffer(0)]], constant FrameFS& _141 [[buffer(1)]])
+{
+    PSMain_out out = {};
+    float2 _298 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
+    float2 _312 = float2(1.0) - smoothstep(float2(_97.u_params.x * 0.5) - _298, float2(_97.u_params.x * 0.5) + _298, abs(fract(in.i_wpos.xz - float2(0.5)) - float2(0.5)) * 1.0);
+    float2 _320 = fast::clamp(float2(_97.u_params.x) / (_298 * 1.5), float2(0.0), float2(1.0));
+    float2 _352 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
+    float2 _366 = float2(1.0) - smoothstep(float2(_97.u_params.y * 0.5) - _352, float2(_97.u_params.y * 0.5) + _352, abs(fract((in.i_wpos.xz * float2(10.0)) - float2(0.5)) - float2(0.5)) * 0.100000001490116119384765625);
+    float2 _374 = fast::clamp(float2(_97.u_params.y) / (_352 * 1.5), float2(0.0), float2(1.0));
+    float3 _262 = (in.i_col.xyz * _97.u_tint.xyz) * (_141.u_ambient.xyz + (_141.u_sun_color.xyz * smoothstep(0.0, 0.039999999105930328369140625, dot(fast::normalize(in.i_nrm), _141.u_sun_dir.xyz))));
+    float3 _272 = mix(mix(_262, _262 * 0.550000011920928955078125, float3(fast::max(_366.x * _374.x, _366.y * _374.y) * _97.u_params.z)), float3(0.0500000007450580596923828125, 0.0500000007450580596923828125, 0.0599999986588954925537109375), float3(fast::max(_312.x * _320.x, _312.y * _320.y)));
+    out._entryPointOutput = float4(_272, 1.0);
+    return out;
+}
+
