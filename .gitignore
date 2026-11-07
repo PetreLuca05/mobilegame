@@ -1,0 +1,44 @@
+# build output
+build/
+build-*/
+out/
+*.o
+*.a
+*.so
+*.dylib
+
+# secrets
+config.local.h
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcarchive
+*.ipa
+platform/ios/build/
+
+# Android / Gradle
+.gradle/
+local.properties
+platform/android/app/.cxx/
+platform/android/app/build/
+platform/android/build/
+*.apk
+*.aab
+*.keystore
+*.jks
+keystore.properties
+
+# editors / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# generated previews
+assets/*.preview.png
+
+# supabase CLI local state
+supabase/.temp/
+supabase/.branches/

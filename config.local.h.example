@@ -1,0 +1,12 @@
+/* Copy to config.local.h (git-ignored) and fill in.
+ * Only the project URL host and the publishable (anon) key belong in the app.
+ * NEVER put the service_role / secret key here. */
+#ifndef MG_CONFIG_LOCAL_H
+#define MG_CONFIG_LOCAL_H
+
+/* Host part of the Supabase project URL, e.g. "abcdefghijklmnop.supabase.co" */
+#define MG_SUPABASE_HOST     ""
+/* Publishable key (sb_publishable_...) or legacy anon JWT */
+#define MG_SUPABASE_ANON_KEY ""
+
+#endif
