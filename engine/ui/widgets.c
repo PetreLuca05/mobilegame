@@ -172,3 +172,29 @@ bool ui_toggle(Ui *ui, const char *label, float x, float y, float w, bool *value
               k_ui_theme.text);
     return clicked;
 }
+
+float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float key_h, char *code, int max_len)
+{
+    const int cols = 9;
+    const float gap = 4.0f;
+    float kw = (w - (float)(cols - 1) * gap) / (float)cols;
+    int len = (int)strlen(code);
+    for (int i = 0; i < 27; i++) {
+        float kx = x + (float)(i % cols) * (kw + gap);
+        float ky = y + (float)(i / cols) * (key_h + gap);
+        char label[24];
+        if (i < 26) {
+            SDL_snprintf(label, sizeof(label), "%c##%s", 'A' + i, id);
+            if (ui_button(ui, label, kx, ky, kw, key_h, false) && len < max_len) {
+                code[len++] = (char)('A' + i);
+                code[len] = 0;
+            }
+        } else {
+            SDL_snprintf(label, sizeof(label), "<##%s_del", id);
+            if (ui_button(ui, label, kx, ky, kw, key_h, false) && len > 0) {
+                code[--len] = 0;
+            }
+        }
+    }
+    return 3.0f * (key_h + gap);
+}

@@ -11,11 +11,13 @@ typedef enum MenuAction {
     MENU_JOIN,        /* join settings->room_code */
     MENU_NEW_ROOM,    /* create a fresh room code and join it */
     MENU_DISCONNECT,  /* leave the room, back to offline play */
-    MENU_CAMERA_PITCH /* pitch slider moved: apply to the camera */
+    MENU_CAMERA_PITCH, /* pitch slider moved: apply to the camera */
+    MENU_MAIN_MENU     /* back to the launch screen */
 } MenuAction;
 
 typedef struct DebugMenu {
     bool open;
+    int tab; /* 0 room, 1 settings */
     char code[5];
     int code_len;
 } DebugMenu;

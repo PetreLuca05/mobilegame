@@ -45,6 +45,16 @@ cd platform/android && ./gradlew assembleDebug
 ```
 APK: `platform/android/app/build/outputs/apk/debug/app-debug.apk`
 
+Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [--apk]`
+(Play internal testing; needs `platform/android/keystore.properties`), and the
+`android` GitHub workflow publishes `android-latest` on every push to main.
+Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
+
+Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
+`--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu`,
+`--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
+`--autotest touch`, `--public-test`. Any of the first group skips the launch screen.
+
 ## Shaders
 
 HLSL in `shaders/*.vert.hlsl` / `*.frag.hlsl` (entry points `VSMain` / `PSMain`).

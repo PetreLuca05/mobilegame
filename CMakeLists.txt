@@ -138,6 +138,7 @@ set(MG_GAME_SOURCES
   game/avatar.c
   game/scenery.c
   game/net_session.c
+  game/launch_screen.c
 )
 
 # --------------------------------------------------------------- targets

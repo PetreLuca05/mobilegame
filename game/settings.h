@@ -3,6 +3,7 @@
 #define MG_SETTINGS_H
 
 #include "core/mg_types.h"
+#include "gfx/gfx.h"
 
 typedef struct GameSettings {
     float yaw_deg_per_pt;   /* 0.25 */
@@ -27,11 +28,7 @@ static inline void settings_default(GameSettings *s)
     s->fov_deg = 70.0f;
     s->dead_zone_pt = 60.0f;
     s->show_colliders = false;
-#if defined(MG_PLATFORM_DESKTOP)
-    s->render_scale = 1.0f;
-#else
-    s->render_scale = 0.8f; /* older phones: iPhone 12 / Galaxy S20 class */
-#endif
+    s->render_scale = gfx_default_render_scale();
     s->room_code[0] = 0;
 }
 

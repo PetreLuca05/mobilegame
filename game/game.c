@@ -8,6 +8,7 @@
 #include "config.local.h"
 #include "debug_menu.h"
 #include "devroom.h"
+#include "launch_screen.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
@@ -39,6 +40,7 @@ typedef struct Game {
     NetTransport *net;
     NetSession session;
     bool demo_walk;
+    LaunchScreen launch;
     char status[96];
     Autotest autotest;
 } Game;
@@ -139,6 +141,11 @@ bool game_init(MgApp *app)
     } else if (has_flag(app->argc, app->argv, "--world")) {
         session_start(&g->session, MODE_WORLD, NULL);
     }
+    /* the launch screen comes first unless a test flag already chose */
+    g->launch.active = !party && !has_flag(app->argc, app->argv, "--world") &&
+                       !has_flag(app->argc, app->argv, "--offline") && !has_flag(app->argc, app->argv, "--autotest") &&
+                       !arg_value(app->argc, app->argv, "--spawn") && !arg_value(app->argc, app->argv, "--cam") &&
+                       !has_flag(app->argc, app->argv, "--menu") && !has_flag(app->argc, app->argv, "--colliders");
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
@@ -228,6 +235,12 @@ static void handle_menu_action(Game *g, MenuAction a)
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
         break;
+    case MENU_MAIN_MENU:
+        session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
+        session_stop(&g->session);
+        g->launch.active = true;
+        g->launch.page = 0;
+        break;
     default:
         break;
     }
@@ -248,6 +261,96 @@ static void draw_colliders(Game *g, GfxContext *gfx, HMM_Vec3 feet)
     HMM_Mat4 pm = HMM_Translate(feet);
     GfxMaterial cap = mat_ghost(HMM_V4(1.0f, 0.85f, 0.2f, 0.5f));
     gfx_draw(gfx, g->room.ref_capsule, &pm, &cap, 0);
+}
+
+static void scene_defaults(GfxSceneParams *sp, float time)
+{
+    sp->sun_dir = HMM_NormV3(HMM_V3(0.5f, 0.75f, 0.45f));
+    sp->sun_color = HMM_V3(0.48f, 0.46f, 0.42f);
+    sp->ambient = HMM_V3(0.58f, 0.6f, 0.68f);
+    sp->sky_horizon = mg_rgb(0xBFE3FF);
+    sp->sky_zenith = mg_rgb(0x3F8FE8);
+    sp->reflection_y = 0.0f;
+    sp->reflection_strength = 1.0f;
+    sp->time = time;
+}
+
+/* Launch screen: slow orbit around the room, menu on top. */
+static void game_frame_launch(Game *g, MgApp *app)
+{
+    float a = (float)app->time * 0.07f + 0.6f;
+    GfxSceneParams sp = {0};
+    sp.eye = HMM_V3(HMM_SinF(a) * 15.0f, 7.5f, HMM_CosF(a) * 15.0f);
+    sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(0, 0.5f, 0), HMM_V3(0, 1, 0));
+    sp.proj = camera_projection(HMM_AngleDeg(62.0f), app->width_pt / app->height_pt, 0.05f, 400.0f, -0.25f);
+    scene_defaults(&sp, (float)app->time);
+    gfx_set_scene(app->gfx, &sp);
+    devroom_draw(&g->room, app->gfx, false);
+    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
+    for (int i = 0; i < DEVROOM_SPAWNS; i++) { /* the cast, idling on their discs */
+        AvatarLook look = avatar_look_for_slot(i);
+        AvatarPose pose = {g->room.spawns[i], HMM_PI32 + 0.3f * (float)(i - 1), HMM_V3(0, 0, 0), true, false};
+        avatar_draw(app->gfx, &g->avatar_meshes, &look, &pose, &g->local_anim, &g->world);
+    }
+    avatar_animate(&g->local_anim, &(AvatarPose){HMM_V3(0, 0, 0), 0, HMM_V3(0, 0, 0), true, false},
+                   mg_minf(app->frame_dt, 0.1f));
+
+    LaunchChoice c = launch_screen(&g->launch, &g->ui, app->width_pt, app->height_pt, app->safe_top,
+                                   app->safe_bottom, g->net != NULL);
+    switch (c) {
+    case LAUNCH_OFFLINE:
+        session_stop(&g->session);
+        player_init(&g->player, g->room.spawns[0], 0.0f);
+        break;
+    case LAUNCH_CREATE_PARTY:
+        session_start(&g->session, MODE_PARTY, NULL);
+        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->session.room_code);
+        break;
+    case LAUNCH_JOIN_PARTY:
+        session_start(&g->session, MODE_PARTY, g->launch.code);
+        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->launch.code);
+        break;
+    case LAUNCH_WORLD:
+        session_start(&g->session, MODE_WORLD, NULL);
+        break;
+    default:
+        break;
+    }
+    if (c != LAUNCH_NONE) {
+        g->cam.initialized = false;
+        touch_controls_reset(&g->touch);
+    }
+}
+
+/* Big room badge at the top so the code can be read out to friends;
+ * connection problems show here in red. */
+static void draw_room_badge(Game *g, MgApp *app)
+{
+    const NetSession *s = &g->session;
+    if (s->mode == MODE_OFFLINE && s->status != NET_FAILED) {
+        return;
+    }
+    char line[128];
+    bool bad = s->status == NET_FAILED || s->status == NET_RECONNECTING;
+    if (s->mode == MODE_PARTY) {
+        SDL_snprintf(line, sizeof(line), "Room %s", s->room_code);
+    } else if (s->mode == MODE_WORLD) {
+        SDL_snprintf(line, sizeof(line), "World %02d", s->shard);
+    } else {
+        SDL_snprintf(line, sizeof(line), "Offline");
+    }
+    float cx = app->width_pt * 0.5f;
+    float y = app->safe_top + 104.0f; /* below the debug HUD lines */
+    float tw = text_width(&app->font, line, 24.0f);
+    ui_round_rect(app->gfx, &app->font, cx - tw * 0.5f - 18.0f, y, tw + 36.0f, 40.0f, 20.0f, ui_rgba(0x1E2230C0));
+    text_draw_centered(app->gfx, &app->font, cx, y + 20.0f, 24.0f, ui_rgba(0xFFFFFFFF), line);
+    if (s->status != NET_JOINED) {
+        const char *msg = s->status_text;
+        float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
+        ui_round_rect(app->gfx, &app->font, cx - mw * 0.5f - 12.0f, y + 46.0f, mw + 24.0f, 26.0f, 13.0f,
+                      bad ? ui_rgba(0xD94141E0) : ui_rgba(0x1E2230A0));
+        text_draw_centered(app->gfx, &app->font, cx, y + 59.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
+    }
 }
 
 void game_frame(MgApp *app, float alpha)
@@ -283,6 +386,10 @@ void game_frame(MgApp *app, float alpha)
     /* UI claims touches first (gear + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
+    if (g->launch.active) {
+        game_frame_launch(g, app);
+        return;
+    }
     MenuAction action = debug_menu(&g->menu, &g->ui, s, app->width_pt, app->height_pt, app->safe_left,
                                    app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, action);
@@ -311,14 +418,7 @@ void game_frame(MgApp *app, float alpha)
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
     }
-    sp.sun_dir = HMM_NormV3(HMM_V3(0.5f, 0.75f, 0.45f));
-    sp.sun_color = HMM_V3(0.48f, 0.46f, 0.42f);
-    sp.ambient = HMM_V3(0.58f, 0.6f, 0.68f);
-    sp.sky_horizon = mg_rgb(0xBFE3FF);
-    sp.sky_zenith = mg_rgb(0x3F8FE8);
-    sp.reflection_y = 0.0f;
-    sp.reflection_strength = 1.0f;
-    sp.time = (float)app->time;
+    scene_defaults(&sp, (float)app->time);
     gfx_set_scene(app->gfx, &sp);
 
     devroom_draw(&g->room, app->gfx, false);
@@ -364,6 +464,7 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+    draw_room_badge(g, app);
 }
 
 void game_event(MgApp *app, const SDL_Event *e)

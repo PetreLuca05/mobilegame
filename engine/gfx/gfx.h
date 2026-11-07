@@ -103,6 +103,8 @@ void gfx_frame_end(GfxContext *g);
 /* Render the 3D scene at a fraction of native resolution (0.5..1) and
  * upscale; UI stays native. Cuts fill cost on older phones. */
 void gfx_set_render_scale(GfxContext *g, float scale);
+/* 1.0 on desktop; 0.8 on phones (tuned for iPhone 12 / Galaxy S20 class). */
+float gfx_default_render_scale(void);
 /* Drop GPU work while the app is in the background (iOS forbids it). */
 void gfx_set_paused(GfxContext *g, bool paused);
 void gfx_get_stats(const GfxContext *g, GfxStats *out);

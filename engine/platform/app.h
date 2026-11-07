@@ -55,6 +55,7 @@ struct MgApp {
     int argc;
     char **argv;
     double quit_after;
+    bool log_events;
 };
 
 SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, char **argv);

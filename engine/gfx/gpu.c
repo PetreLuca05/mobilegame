@@ -630,6 +630,15 @@ void gfx_set_paused(GfxContext *g, bool paused) { g->paused = paused; }
 
 void gfx_set_render_scale(GfxContext *g, float scale) { g->render_scale = mg_clampf(scale, 0.5f, 1.0f); }
 
+float gfx_default_render_scale(void)
+{
+#if defined(MG_PLATFORM_DESKTOP)
+    return 1.0f;
+#else
+    return 0.8f;
+#endif
+}
+
 bool gfx_frame_begin(GfxContext *g)
 {
     g->draw_count = 0;

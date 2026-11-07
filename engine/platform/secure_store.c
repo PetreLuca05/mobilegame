@@ -146,13 +146,13 @@ bool secure_store_get(const SecureStore *s, const char *key, char *out, size_t c
     if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
     } else if (jval) {
-        const char *s = (*env)->GetStringUTFChars(env, jval, NULL);
-        size_t n = strlen(s);
+        const char *str = (*env)->GetStringUTFChars(env, jval, NULL);
+        size_t n = strlen(str);
         if (n + 1 <= cap) {
-            memcpy(out, s, n + 1);
+            memcpy(out, str, n + 1);
             ok = true;
         }
-        (*env)->ReleaseStringUTFChars(env, jval, s);
+        (*env)->ReleaseStringUTFChars(env, jval, str);
         (*env)->DeleteLocalRef(env, jval);
     }
     (*env)->DeleteLocalRef(env, jkey);

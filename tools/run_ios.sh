@@ -23,9 +23,7 @@ if [[ "${1:-}" == "--open" ]]; then
     exit 0
 fi
 xcodebuild -project "$BUILD/mobilegame.xcodeproj" -scheme mobilegame -configuration "$CONFIG" \
-    -destination 'generic/platform=iOS' -allowProvisioningUpdates build | xcpretty 2>/dev/null || \
-xcodebuild -project "$BUILD/mobilegame.xcodeproj" -scheme mobilegame -configuration "$CONFIG" \
-    -destination 'generic/platform=iOS' -allowProvisioningUpdates build -quiet
+    -destination 'generic/platform=iOS' -allowProvisioningUpdates -quiet build
 APP=$(find "$BUILD" -path "*${CONFIG}-iphoneos/Mobilegame.app" -maxdepth 3 | head -1)
 [[ -d "$APP" ]] || { echo "built app not found under $BUILD" >&2; exit 1; }
 

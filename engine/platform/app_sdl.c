@@ -41,6 +41,8 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--quit-after") == 0 && i + 1 < argc) {
             app->quit_after = SDL_atof(argv[++i]);
+        } else if (SDL_strcmp(argv[i], "--log-events") == 0) {
+            app->log_events = true;
         }
     }
 
@@ -54,6 +56,12 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
         mg_log_error("SDL_Init failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+#if defined(MG_PLATFORM_DESKTOP)
+    /* re-apply after init: the synthetic "mouse" touch device is registered
+     * by the hint callback and must exist once the touch subsystem is up */
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1");
+#endif
 
     void *mem = SDL_malloc(MG_PERM_ARENA_BYTES); /* the one big allocation */
     if (!mem) {
@@ -159,6 +167,9 @@ SDL_AppResult app_iterate(void *appstate)
 SDL_AppResult app_event(void *appstate, SDL_Event *e)
 {
     MgApp *app = (MgApp *)appstate;
+    if (app->log_events && e->type >= SDL_EVENT_KEY_DOWN && e->type <= SDL_EVENT_FINGER_CANCELED) {
+        mg_log_info("event 0x%x", (unsigned)e->type);
+    }
     switch (e->type) {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_TERMINATING:
