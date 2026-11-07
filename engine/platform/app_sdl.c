@@ -68,6 +68,12 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
 #if defined(MG_PLATFORM_DESKTOP)
     flags |= SDL_WINDOW_RESIZABLE;
     app->window = SDL_CreateWindow(cb->title, 390, 844, flags);
+    for (int i = 1; app->window && i + 1 < argc; i++) {
+        int wx, wy;
+        if (SDL_strcmp(argv[i], "--window-pos") == 0 && SDL_sscanf(argv[i + 1], "%d,%d", &wx, &wy) == 2) {
+            SDL_SetWindowPosition(app->window, wx, wy);
+        }
+    }
 #else
     flags |= SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS;
     app->window = SDL_CreateWindow(cb->title, 0, 0, flags);
@@ -156,7 +162,8 @@ SDL_AppResult app_event(void *appstate, SDL_Event *e)
     switch (e->type) {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_TERMINATING:
-        if (app->cb->quit) {
+        if (app->cb->quit && !app->quit_notified) {
+            app->quit_notified = true;
             app->cb->quit(app);
         }
         return SDL_APP_SUCCESS;
@@ -201,6 +208,10 @@ void app_quit(void *appstate, SDL_AppResult result)
     MgApp *app = (MgApp *)appstate;
     if (!app) {
         return;
+    }
+    if (app->game && app->cb->quit && !app->quit_notified) { /* every exit path says goodbye */
+        app->quit_notified = true;
+        app->cb->quit(app);
     }
     if (app->gfx) {
         gfx_shutdown(app->gfx);

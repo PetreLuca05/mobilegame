@@ -1,0 +1,832 @@
+/* Supabase Realtime backend for net_transport.h.
+ *
+ * Network thread: anonymous auth -> WebSocket
+ *   wss://<host>/realtime/v1/websocket?apikey=<key>&vsn=1.0.0
+ * Phoenix channel "realtime:<topic>" joined with
+ *   {config:{broadcast:{self:false,ack:false},presence:{key:<uid>},private:true},access_token}
+ * Presence carries NetPeerMeta, Broadcast event "s" carries state payloads
+ * ({"u":uid,"d":base64}). Heartbeat every 25 s keeps the socket alive; extra
+ * heartbeats sample RTT for the HUD. Reconnects with exponential backoff. */
+#include <SDL3/SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cJSON.h"
+#include "core/log.h"
+#include "mongoose.h"
+#include "net_transport.h"
+#include "platform/secure_store.h"
+#include "supabase_auth.h"
+#include "ws_client.h"
+
+#define CMD_CAPACITY 64
+#define EVENT_CAPACITY 256
+#define MAX_PEERS 16
+#define CA_STORAGE (512 * 1024)
+#define BACKOFF_STEPS 6
+
+typedef enum NetCmdType { CMD_JOIN, CMD_LEAVE, CMD_META, CMD_STATE, CMD_BACKGROUND, CMD_QUIT } NetCmdType;
+
+typedef struct NetCmd {
+    NetCmdType type;
+    char topic[NET_TOPIC_LEN];
+    NetPeerMeta meta;
+    int max_players;
+    uint8_t data[NET_STATE_MAX];
+    uint16_t len;
+    bool flag;
+} NetCmd;
+
+typedef struct Peer {
+    bool present;
+    char id[NET_ID_LEN];
+    NetPeerMeta meta;
+} Peer;
+
+struct NetTransport {
+    NetConfig cfg;
+    char host[128];
+    char anon_key[160];
+    char profile[32];
+    SecureStore store;
+
+    SDL_Thread *thread;
+    SDL_Mutex *lock;
+    SDL_AtomicInt quit;
+    SDL_AtomicInt status;
+    char self_id[NET_ID_LEN]; /* under lock */
+
+    NetCmd cmds[CMD_CAPACITY];
+    int cmd_head, cmd_count;
+    NetEvent events[EVENT_CAPACITY];
+    int ev_head, ev_count;
+
+    /* ---- network thread only ---- */
+    struct mg_mgr mgr;
+    NetEndpoint ep;
+    char *ca_storage;
+    char *ws_buf;
+    SupaAuth auth;
+    WsClient ws;
+    char topic[NET_TOPIC_LEN];
+    NetPeerMeta me;
+    int max_players;
+    bool want_room;
+    bool background;
+    bool joined;
+    bool track_sent;
+    int ref;
+    int join_ref;
+    double now;
+    double next_heartbeat;
+    double next_probe;
+    int probe_ref;
+    double probe_sent;
+    double last_reply;
+    double reconnect_at;
+    int backoff;
+    uint32_t sent_token_version;
+    Peer peers[MAX_PEERS];
+    char line[8192]; /* outgoing message scratch */
+};
+
+const char *net_status_name(NetStatus s)
+{
+    static const char *names[] = {"offline", "signing in", "connecting", "joining", "joined", "reconnecting", "failed"};
+    return (unsigned)s < MG_ARRAY_COUNT(names) ? names[s] : "?";
+}
+
+/* ------------------------------------------------------------- queues */
+
+static void push_event(NetTransport *n, const NetEvent *e)
+{
+    SDL_LockMutex(n->lock);
+    if (n->ev_count < EVENT_CAPACITY) {
+        n->events[(n->ev_head + n->ev_count) % EVENT_CAPACITY] = *e;
+        n->ev_count++;
+    }
+    SDL_UnlockMutex(n->lock);
+}
+
+static void push_cmd(NetTransport *n, const NetCmd *c)
+{
+    SDL_LockMutex(n->lock);
+    if (n->cmd_count < CMD_CAPACITY) {
+        n->cmds[(n->cmd_head + n->cmd_count) % CMD_CAPACITY] = *c;
+        n->cmd_count++;
+    } else if (c->type != CMD_STATE) {
+        /* never drop control commands: overwrite the oldest state packet */
+        for (int i = 0; i < n->cmd_count; i++) {
+            NetCmd *slot = &n->cmds[(n->cmd_head + i) % CMD_CAPACITY];
+            if (slot->type == CMD_STATE) {
+                *slot = *c;
+                break;
+            }
+        }
+    }
+    SDL_UnlockMutex(n->lock);
+}
+
+static bool pop_cmd(NetTransport *n, NetCmd *out)
+{
+    bool ok = false;
+    SDL_LockMutex(n->lock);
+    if (n->cmd_count > 0) {
+        *out = n->cmds[n->cmd_head];
+        n->cmd_head = (n->cmd_head + 1) % CMD_CAPACITY;
+        n->cmd_count--;
+        ok = true;
+    }
+    SDL_UnlockMutex(n->lock);
+    return ok;
+}
+
+static void set_status(NetTransport *n, NetStatus s, const char *detail)
+{
+    if (SDL_GetAtomicInt(&n->status) == (int)s && !detail) {
+        return;
+    }
+    SDL_SetAtomicInt(&n->status, (int)s);
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_STATUS;
+    e.value = (int)s;
+    snprintf(e.text, sizeof(e.text), "%s", detail ? detail : net_status_name(s));
+    push_event(n, &e);
+}
+
+/* --------------------------------------------------------- phoenix out */
+
+static void send_line(NetTransport *n, int len)
+{
+    if (len > 0 && (size_t)len < sizeof(n->line)) {
+        ws_send_text(&n->ws, n->line, (size_t)len);
+    }
+}
+
+static void send_join(NetTransport *n)
+{
+    n->ref++;
+    n->join_ref = n->ref;
+    if (n->cfg.public_test) {
+        int plen = snprintf(n->line, sizeof(n->line),
+                            "{\"topic\":\"realtime:%s\",\"event\":\"phx_join\",\"payload\":{\"config\":{"
+                            "\"broadcast\":{\"self\":false,\"ack\":false},\"presence\":{\"key\":\"%s\",\"enabled\":true},"
+                            "\"postgres_changes\":[],\"private\":false}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                            n->topic, n->auth.user_id, n->join_ref, n->join_ref);
+        send_line(n, plen);
+        return;
+    }
+    int len = snprintf(n->line, sizeof(n->line),
+                       "{\"topic\":\"realtime:%s\",\"event\":\"phx_join\",\"payload\":{\"config\":{"
+                       "\"broadcast\":{\"self\":false,\"ack\":false},\"presence\":{\"key\":\"%s\",\"enabled\":true},"
+                       "\"postgres_changes\":[],\"private\":true},\"access_token\":\"%s\"},"
+                       "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                       n->topic, n->auth.user_id, n->auth.access_token, n->join_ref, n->join_ref);
+    send_line(n, len);
+    n->sent_token_version = n->auth.token_version;
+}
+
+static void send_track(NetTransport *n)
+{
+    const NetPeerMeta *m = &n->me;
+    n->ref++;
+    int len = snprintf(n->line, sizeof(n->line),
+                       "{\"topic\":\"realtime:%s\",\"event\":\"presence\",\"payload\":{\"type\":\"presence\","
+                       "\"event\":\"track\",\"payload\":{\"n\":\"%s\",\"p\":[%u,%u,%u,%u],\"a\":%u,\"s\":%d}},"
+                       "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                       n->topic, m->name, (unsigned)m->palette[0], (unsigned)m->palette[1], (unsigned)m->palette[2],
+                       (unsigned)m->palette[3], (unsigned)m->accessories, m->slot, n->ref, n->join_ref);
+    send_line(n, len);
+    n->track_sent = true;
+}
+
+static void send_heartbeat(NetTransport *n, bool probe)
+{
+    n->ref++;
+    int len = snprintf(n->line, sizeof(n->line),
+                       "{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":\"%d\"}", n->ref);
+    send_line(n, len);
+    if (probe) {
+        n->probe_ref = n->ref;
+        n->probe_sent = n->now;
+    }
+}
+
+static void send_access_token(NetTransport *n)
+{
+    n->ref++;
+    int len = snprintf(n->line, sizeof(n->line),
+                       "{\"topic\":\"realtime:%s\",\"event\":\"access_token\",\"payload\":{\"access_token\":\"%s\"},"
+                       "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                       n->topic, n->auth.access_token, n->ref, n->join_ref);
+    send_line(n, len);
+    n->sent_token_version = n->auth.token_version;
+}
+
+static void send_state(NetTransport *n, const uint8_t *data, uint16_t len)
+{
+    char b64[NET_STATE_MAX * 2];
+    mg_base64_encode(data, len, b64, sizeof(b64));
+    n->ref++;
+    int l = snprintf(n->line, sizeof(n->line),
+                     "{\"topic\":\"realtime:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+                     "\"event\":\"s\",\"payload\":{\"u\":\"%s\",\"d\":\"%s\"}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                     n->topic, n->auth.user_id, b64, n->ref, n->join_ref);
+    send_line(n, l);
+}
+
+static void send_leave(NetTransport *n)
+{
+    n->ref++;
+    int len = snprintf(n->line, sizeof(n->line),
+                       "{\"topic\":\"realtime:%s\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":\"%d\","
+                       "\"join_ref\":\"%d\"}",
+                       n->topic, n->ref, n->join_ref);
+    send_line(n, len);
+}
+
+/* ------------------------------------------------------------- presence */
+
+static Peer *find_peer(NetTransport *n, const char *id, bool create)
+{
+    Peer *free_slot = NULL;
+    for (int i = 0; i < MAX_PEERS; i++) {
+        if (n->peers[i].present && strcmp(n->peers[i].id, id) == 0) {
+            return &n->peers[i];
+        }
+        if (!n->peers[i].present && !free_slot) {
+            free_slot = &n->peers[i];
+        }
+    }
+    if (create && free_slot) {
+        memset(free_slot, 0, sizeof(*free_slot));
+        free_slot->present = true;
+        snprintf(free_slot->id, sizeof(free_slot->id), "%s", id);
+        free_slot->meta.slot = -1;
+        return free_slot;
+    }
+    return NULL;
+}
+
+static int peer_count(const NetTransport *n)
+{
+    int c = 0;
+    for (int i = 0; i < MAX_PEERS; i++) {
+        c += n->peers[i].present ? 1 : 0;
+    }
+    return c;
+}
+
+static void parse_meta(const cJSON *metas, NetPeerMeta *m)
+{
+    const cJSON *meta = cJSON_IsArray(metas) ? cJSON_GetArrayItem(metas, cJSON_GetArraySize(metas) - 1) : NULL;
+    if (!meta) {
+        return;
+    }
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(meta, "n");
+    const cJSON *pal = cJSON_GetObjectItemCaseSensitive(meta, "p");
+    const cJSON *acc = cJSON_GetObjectItemCaseSensitive(meta, "a");
+    const cJSON *slot = cJSON_GetObjectItemCaseSensitive(meta, "s");
+    if (cJSON_IsString(name)) {
+        snprintf(m->name, sizeof(m->name), "%s", name->valuestring);
+    }
+    if (cJSON_IsArray(pal)) {
+        for (int i = 0; i < 4 && i < cJSON_GetArraySize(pal); i++) {
+            const cJSON *v = cJSON_GetArrayItem(pal, i);
+            m->palette[i] = cJSON_IsNumber(v) ? (uint32_t)v->valuedouble : 0;
+        }
+    }
+    m->accessories = cJSON_IsNumber(acc) ? (uint32_t)acc->valuedouble : 0;
+    m->slot = cJSON_IsNumber(slot) ? (int)slot->valuedouble : -1;
+}
+
+static void emit_peer(NetTransport *n, NetEventType type, const Peer *p)
+{
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = type;
+    snprintf(e.peer, sizeof(e.peer), "%s", p->id);
+    e.meta = p->meta;
+    push_event(n, &e);
+}
+
+static void presence_joins(NetTransport *n, const cJSON *joins)
+{
+    const cJSON *entry;
+    cJSON_ArrayForEach(entry, joins)
+    {
+        if (!entry->string || strcmp(entry->string, n->auth.user_id) == 0) {
+            continue;
+        }
+        Peer *p = find_peer(n, entry->string, true);
+        if (!p) {
+            continue;
+        }
+        parse_meta(cJSON_GetObjectItemCaseSensitive(entry, "metas"), &p->meta);
+        emit_peer(n, NET_EV_PEER_JOIN, p);
+    }
+}
+
+static void presence_leaves(NetTransport *n, const cJSON *leaves, const cJSON *joins)
+{
+    const cJSON *entry;
+    cJSON_ArrayForEach(entry, leaves)
+    {
+        if (!entry->string || (joins && cJSON_GetObjectItemCaseSensitive(joins, entry->string))) {
+            continue; /* leave + join of the same key = meta update, not a departure */
+        }
+        Peer *p = find_peer(n, entry->string, false);
+        if (p) {
+            emit_peer(n, NET_EV_PEER_LEAVE, p);
+            p->present = false;
+        }
+    }
+}
+
+static void drop_all_peers(NetTransport *n)
+{
+    for (int i = 0; i < MAX_PEERS; i++) {
+        if (n->peers[i].present) {
+            emit_peer(n, NET_EV_PEER_LEAVE, &n->peers[i]);
+            n->peers[i].present = false;
+        }
+    }
+}
+
+/* ------------------------------------------------------------ messages */
+
+static void leave_room(NetTransport *n);
+
+static void on_ws_open(void *user)
+{
+    NetTransport *n = (NetTransport *)user;
+    n->joined = false;
+    n->track_sent = false;
+    n->last_reply = n->now;
+    n->next_heartbeat = n->now + (double)n->cfg.heartbeat_s;
+    n->next_probe = n->now + 1.0;
+    send_join(n);
+    set_status(n, NET_JOINING, NULL);
+}
+
+static void handle_reply(NetTransport *n, const cJSON *topic, int ref, const cJSON *payload)
+{
+    n->last_reply = n->now;
+    const cJSON *st = cJSON_GetObjectItemCaseSensitive(payload, "status");
+    bool ok = cJSON_IsString(st) && strcmp(st->valuestring, "ok") == 0;
+    if (cJSON_IsString(topic) && strcmp(topic->valuestring, "phoenix") == 0) {
+        if (ref == n->probe_ref && n->probe_sent > 0.0) {
+            NetEvent e;
+            memset(&e, 0, sizeof(e));
+            e.type = NET_EV_RTT;
+            e.value = (int)((n->now - n->probe_sent) * 1000.0 + 0.5);
+            push_event(n, &e);
+            n->probe_sent = 0.0;
+        }
+        return;
+    }
+    if (ref == n->join_ref && !n->joined) {
+        if (ok) {
+            n->joined = true;
+            n->backoff = 0;
+            send_track(n);
+            set_status(n, NET_JOINED, NULL);
+            NetEvent e;
+            memset(&e, 0, sizeof(e));
+            e.type = NET_EV_JOINED;
+            snprintf(e.text, sizeof(e.text), "%s", n->topic);
+            snprintf(e.peer, sizeof(e.peer), "%s", n->auth.user_id);
+            push_event(n, &e);
+        } else {
+            const cJSON *resp = cJSON_GetObjectItemCaseSensitive(payload, "response");
+            const cJSON *reason = resp ? cJSON_GetObjectItemCaseSensitive(resp, "reason") : NULL;
+            char msg[96];
+            snprintf(msg, sizeof(msg), "join refused: %s",
+                     cJSON_IsString(reason) ? reason->valuestring : "unknown reason");
+            mg_log_warn("realtime: %s", msg);
+            n->want_room = false;
+            ws_close(&n->ws);
+            set_status(n, NET_FAILED, msg);
+        }
+    }
+}
+
+static void handle_broadcast(NetTransport *n, const cJSON *payload)
+{
+    const cJSON *ev = cJSON_GetObjectItemCaseSensitive(payload, "event");
+    const cJSON *inner = cJSON_GetObjectItemCaseSensitive(payload, "payload");
+    if (!cJSON_IsString(ev) || strcmp(ev->valuestring, "s") != 0 || !inner) {
+        return;
+    }
+    const cJSON *u = cJSON_GetObjectItemCaseSensitive(inner, "u");
+    const cJSON *d = cJSON_GetObjectItemCaseSensitive(inner, "d");
+    if (!cJSON_IsString(u) || !cJSON_IsString(d)) {
+        return;
+    }
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_PEER_STATE;
+    snprintf(e.peer, sizeof(e.peer), "%s", u->valuestring);
+    size_t dl = strlen(d->valuestring);
+    if (dl > (size_t)NET_STATE_MAX * 4 / 3 + 4) {
+        return;
+    }
+    e.len = (uint16_t)mg_base64_decode(d->valuestring, dl, (char *)e.data, sizeof(e.data));
+    if (e.len > 0) {
+        push_event(n, &e);
+    }
+}
+
+static void on_ws_text(void *user, const char *data, size_t len)
+{
+    NetTransport *n = (NetTransport *)user;
+    cJSON *j = cJSON_ParseWithLength(data, len);
+    if (!j) {
+        return;
+    }
+    const cJSON *topic = cJSON_GetObjectItemCaseSensitive(j, "topic");
+    const cJSON *event = cJSON_GetObjectItemCaseSensitive(j, "event");
+    const cJSON *payload = cJSON_GetObjectItemCaseSensitive(j, "payload");
+    const cJSON *refj = cJSON_GetObjectItemCaseSensitive(j, "ref");
+    int ref = cJSON_IsString(refj) ? atoi(refj->valuestring) : -1;
+    const char *ev = cJSON_IsString(event) ? event->valuestring : "";
+
+    if (strcmp(ev, "phx_reply") == 0) {
+        handle_reply(n, topic, ref, payload);
+    } else if (strcmp(ev, "broadcast") == 0) {
+        handle_broadcast(n, payload);
+    } else if (strcmp(ev, "presence_state") == 0) {
+        presence_joins(n, payload);
+        int others = peer_count(n);
+        if (n->max_players > 0 && others + 1 > n->max_players) {
+            NetEvent e;
+            memset(&e, 0, sizeof(e));
+            e.type = NET_EV_ROOM_FULL;
+            e.value = others;
+            snprintf(e.text, sizeof(e.text), "%s", n->topic);
+            push_event(n, &e);
+            leave_room(n);
+        }
+    } else if (strcmp(ev, "presence_diff") == 0) {
+        const cJSON *joins = cJSON_GetObjectItemCaseSensitive(payload, "joins");
+        const cJSON *leaves = cJSON_GetObjectItemCaseSensitive(payload, "leaves");
+        presence_leaves(n, leaves, joins);
+        presence_joins(n, joins);
+    } else if (strcmp(ev, "phx_error") == 0 || strcmp(ev, "phx_close") == 0) {
+        mg_log_warn("realtime: channel %s", ev);
+        ws_close(&n->ws);
+    } else if (strcmp(ev, "system") == 0) {
+        const cJSON *msg = payload ? cJSON_GetObjectItemCaseSensitive(payload, "message") : NULL;
+        const cJSON *st = payload ? cJSON_GetObjectItemCaseSensitive(payload, "status") : NULL;
+        if (cJSON_IsString(st) && strcmp(st->valuestring, "ok") != 0) {
+            mg_log_warn("realtime: system %s: %s", st->valuestring, cJSON_IsString(msg) ? msg->valuestring : "");
+        }
+    }
+    cJSON_Delete(j);
+}
+
+static void on_ws_close(void *user, const char *reason)
+{
+    NetTransport *n = (NetTransport *)user;
+    bool was_joined = n->joined;
+    n->joined = false;
+    drop_all_peers(n);
+    if (n->want_room && !n->background) {
+        static const double steps[BACKOFF_STEPS] = {1.0, 2.0, 4.0, 8.0, 15.0, 30.0};
+        double delay = steps[n->backoff < BACKOFF_STEPS ? n->backoff : BACKOFF_STEPS - 1];
+        uint8_t r = 0;
+        mg_random(&r, 1);
+        delay *= 0.8 + 0.4 * (double)r / 255.0; /* jitter so clients do not reconnect in lockstep */
+        if (was_joined) {
+            n->backoff = 0;
+            delay = 0.5;
+        } else if (n->backoff < BACKOFF_STEPS) {
+            n->backoff++;
+        }
+        n->reconnect_at = n->now + delay;
+        char msg[96];
+        snprintf(msg, sizeof(msg), "%s; retry in %.0f s", reason, delay);
+        mg_log_info("realtime: socket closed (%s)", msg);
+        set_status(n, NET_RECONNECTING, msg);
+    } else if (SDL_GetAtomicInt(&n->status) != NET_FAILED) {
+        set_status(n, NET_OFFLINE, NULL);
+    }
+}
+
+static void leave_room(NetTransport *n)
+{
+    if (n->joined) {
+        send_leave(n);
+    }
+    n->want_room = false;
+    n->joined = false;
+    ws_close(&n->ws);
+    drop_all_peers(n);
+    set_status(n, NET_OFFLINE, NULL);
+}
+
+/* ---------------------------------------------------------- the thread */
+
+static void connect_socket(NetTransport *n)
+{
+    char path[256];
+    snprintf(path, sizeof(path), "/realtime/v1/websocket?apikey=%s&vsn=1.0.0", n->anon_key);
+    WsCallbacks cb = {on_ws_open, on_ws_text, on_ws_close, n};
+    set_status(n, NET_CONNECTING, NULL);
+    if (!ws_connect(&n->ws, &n->mgr, &n->ep, path, &cb)) {
+        n->reconnect_at = n->now + 2.0;
+        set_status(n, NET_RECONNECTING, "cannot reach server");
+    }
+}
+
+static void process_commands(NetTransport *n)
+{
+    NetCmd c;
+    while (pop_cmd(n, &c)) {
+        switch (c.type) {
+        case CMD_JOIN:
+            if (n->want_room && strcmp(n->topic, c.topic) == 0) {
+                break;
+            }
+            if (n->ws.c) {
+                leave_room(n);
+            }
+            snprintf(n->topic, sizeof(n->topic), "%s", c.topic);
+            n->me = c.meta;
+            n->max_players = c.max_players;
+            n->want_room = true;
+            n->backoff = 0;
+            n->reconnect_at = 0.0;
+            break;
+        case CMD_LEAVE:
+            leave_room(n);
+            break;
+        case CMD_META:
+            n->me = c.meta;
+            if (n->joined) {
+                send_track(n);
+            }
+            break;
+        case CMD_STATE:
+            if (n->joined) {
+                send_state(n, c.data, c.len);
+            }
+            break;
+        case CMD_BACKGROUND:
+            n->background = c.flag;
+            if (c.flag && n->ws.c) {
+                /* leave now so others see us go immediately */
+                if (n->joined) {
+                    send_leave(n);
+                }
+                n->joined = false;
+                ws_close(&n->ws);
+            }
+            if (!c.flag) {
+                n->reconnect_at = 0.0;
+                n->backoff = 0;
+            }
+            break;
+        case CMD_QUIT:
+            SDL_SetAtomicInt(&n->quit, 1);
+            break;
+        }
+    }
+}
+
+static void drive(NetTransport *n)
+{
+    if (!n->want_room || n->background) {
+        return;
+    }
+    if (n->cfg.public_test && !n->auth.user_id[0]) {
+        /* diagnostics: no sign-in, random presence key */
+        uint8_t rnd[16];
+        mg_random(rnd, sizeof(rnd));
+        snprintf(n->auth.user_id, sizeof(n->auth.user_id),
+                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", rnd[0], rnd[1], rnd[2], rnd[3],
+                 rnd[4], rnd[5], rnd[6], rnd[7], rnd[8], rnd[9], rnd[10], rnd[11], rnd[12], rnd[13], rnd[14], rnd[15]);
+        snprintf(n->auth.access_token, sizeof(n->auth.access_token), "public");
+        n->auth.state = AUTH_OK;
+    }
+    if (!supa_auth_ready(&n->auth)) {
+        if (n->auth.state == AUTH_IDLE) {
+            set_status(n, NET_SIGNING_IN, NULL);
+            supa_auth_start(&n->auth, &n->mgr, n->now);
+        } else if (n->auth.state == AUTH_FAILED) {
+            if (n->auth.retry_at == 0.0) { /* report once, retry every 10 s */
+                n->auth.retry_at = n->now + 10.0;
+                char msg[96];
+                snprintf(msg, sizeof(msg), "sign-in failed: %.78s", n->auth.error);
+                set_status(n, NET_FAILED, msg);
+            } else if (n->now >= n->auth.retry_at) {
+                n->auth.retry_at = 0.0;
+                set_status(n, NET_SIGNING_IN, NULL);
+                supa_auth_start(&n->auth, &n->mgr, n->now);
+            }
+        }
+        return;
+    }
+    {
+        char id[NET_ID_LEN];
+        snprintf(id, sizeof(id), "%s", n->auth.user_id);
+        SDL_LockMutex(n->lock);
+        memcpy(n->self_id, id, sizeof(id));
+        SDL_UnlockMutex(n->lock);
+    }
+    if (!n->ws.c && n->now >= n->reconnect_at) {
+        connect_socket(n);
+        return;
+    }
+    if (n->ws.state == WS_OPEN) {
+        if (n->now >= n->next_heartbeat) {
+            send_heartbeat(n, n->probe_sent == 0.0);
+            n->next_heartbeat = n->now + (double)n->cfg.heartbeat_s;
+        }
+        if (n->cfg.rtt_probe_s > 0 && n->joined && n->now >= n->next_probe && n->probe_sent == 0.0) {
+            send_heartbeat(n, true);
+            n->next_probe = n->now + (double)n->cfg.rtt_probe_s;
+        }
+        if (n->now - n->last_reply > 2.5 * (double)n->cfg.heartbeat_s) {
+            mg_log_warn("realtime: no reply for %.0f s, reconnecting", n->now - n->last_reply);
+            ws_close(&n->ws);
+        }
+        if (n->joined && n->auth.token_version != n->sent_token_version) {
+            send_access_token(n);
+        }
+    }
+}
+
+static int net_thread(void *arg)
+{
+    NetTransport *n = (NetTransport *)arg;
+    mg_log_set(MG_LL_NONE);
+    mg_mgr_init(&n->mgr);
+    net_sync_clock();
+    while (!SDL_GetAtomicInt(&n->quit)) {
+        n->now = (double)SDL_GetTicksNS() * 1e-9;
+        process_commands(n);
+        supa_auth_update(&n->auth, &n->mgr, n->now);
+        drive(n);
+        mg_mgr_poll(&n->mgr, n->want_room ? 5 : 20);
+    }
+    if (n->joined) {
+        send_leave(n);
+        for (int i = 0; i < 10; i++) {
+            mg_mgr_poll(&n->mgr, 5);
+        }
+    }
+    mg_mgr_free(&n->mgr);
+    return 0;
+}
+
+/* ------------------------------------------------------------- public */
+
+NetTransport *net_create(Arena *perm, const NetConfig *cfg)
+{
+    if (!cfg->host || !*cfg->host || !cfg->anon_key || !*cfg->anon_key) {
+        mg_log_warn("net: Supabase host/key not configured (config.local.h); online play disabled");
+        return NULL;
+    }
+    NetTransport *n = ARENA_PUSH(perm, NetTransport, 1);
+    if (!n) {
+        return NULL;
+    }
+    n->ca_storage = (char *)arena_alloc(perm, CA_STORAGE, 16);
+    n->ws_buf = (char *)arena_alloc(perm, WS_MAX_MESSAGE, 16);
+    if (!n->ca_storage || !n->ws_buf) {
+        return NULL;
+    }
+    n->cfg = *cfg;
+    snprintf(n->host, sizeof(n->host), "%s", cfg->host);
+    snprintf(n->anon_key, sizeof(n->anon_key), "%s", cfg->anon_key);
+    snprintf(n->profile, sizeof(n->profile), "%s", cfg->profile ? cfg->profile : "");
+    n->cfg.host = n->host;
+    n->cfg.anon_key = n->anon_key;
+    n->cfg.profile = n->profile;
+    if (n->cfg.heartbeat_s <= 0) {
+        n->cfg.heartbeat_s = 25;
+    }
+    secure_store_init(&n->store, n->profile);
+    net_endpoint_init(&n->ep, n->host, n->ca_storage, CA_STORAGE);
+    supa_auth_init(&n->auth, &n->store, &n->ep, n->anon_key);
+    ws_init(&n->ws, n->ws_buf);
+    n->lock = SDL_CreateMutex();
+    SDL_SetAtomicInt(&n->status, NET_OFFLINE);
+    n->thread = SDL_CreateThread(net_thread, "net", n);
+    if (!n->lock || !n->thread) {
+        mg_log_error("net: cannot start network thread: %s", SDL_GetError());
+        return NULL;
+    }
+    mg_log_info("net: realtime backend ready (%s%s)", n->host, n->ep.proxy[0] ? ", via proxy" : "");
+    return n;
+}
+
+void net_destroy(NetTransport *n)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_QUIT;
+    push_cmd(n, &c);
+    SDL_WaitThread(n->thread, NULL);
+    SDL_DestroyMutex(n->lock);
+}
+
+void net_join(NetTransport *n, const char *topic, const NetPeerMeta *me, int max_players)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_JOIN;
+    snprintf(c.topic, sizeof(c.topic), "%s", topic);
+    c.meta = *me;
+    c.max_players = max_players;
+    push_cmd(n, &c);
+}
+
+void net_leave(NetTransport *n)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_LEAVE;
+    push_cmd(n, &c);
+}
+
+void net_set_meta(NetTransport *n, const NetPeerMeta *me)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_META;
+    c.meta = *me;
+    push_cmd(n, &c);
+}
+
+void net_send_state(NetTransport *n, const uint8_t *data, uint16_t len)
+{
+    if (!n || len > NET_STATE_MAX || SDL_GetAtomicInt(&n->status) != NET_JOINED) {
+        return;
+    }
+    NetCmd c;
+    c.type = CMD_STATE;
+    memcpy(c.data, data, len);
+    c.len = len;
+    push_cmd(n, &c);
+}
+
+bool net_poll(NetTransport *n, NetEvent *out)
+{
+    if (!n) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(n->lock);
+    if (n->ev_count > 0) {
+        *out = n->events[n->ev_head];
+        n->ev_head = (n->ev_head + 1) % EVENT_CAPACITY;
+        n->ev_count--;
+        ok = true;
+    }
+    SDL_UnlockMutex(n->lock);
+    return ok;
+}
+
+NetStatus net_status(const NetTransport *n)
+{
+    return n ? (NetStatus)SDL_GetAtomicInt((SDL_AtomicInt *)&n->status) : NET_OFFLINE;
+}
+
+void net_self_id(const NetTransport *n, char out[NET_ID_LEN])
+{
+    out[0] = 0;
+    if (!n) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    memcpy(out, n->self_id, NET_ID_LEN);
+    SDL_UnlockMutex(n->lock);
+}
+
+void net_set_background(NetTransport *n, bool background)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_BACKGROUND;
+    c.flag = background;
+    push_cmd(n, &c);
+}

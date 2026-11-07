@@ -41,6 +41,7 @@ struct MgApp {
     float safe_left, safe_top, safe_right, safe_bottom; /* insets, pt */
     bool background;
     bool quit_requested;
+    bool quit_notified; /* cb->quit already ran */
 
     double time;      /* seconds since start */
     float frame_dt;   /* seconds since previous frame */

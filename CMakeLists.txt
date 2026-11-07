@@ -43,6 +43,7 @@ target_include_directories(mg_thirdparty SYSTEM PUBLIC
 target_compile_definitions(mg_thirdparty PUBLIC
   MG_TLS=MG_TLS_BUILTIN      # mongoose built-in TLS 1.3, no OpenSSL needed on phones
   MG_ENABLE_LINES=0
+  MG_ENABLE_IPV6=1           # NAT64 / IPv6-only mobile networks
 )
 set_target_properties(mg_thirdparty PROPERTIES C_EXTENSIONS ON) # mongoose needs POSIX/GNU declarations
 if(NOT MSVC)
@@ -80,7 +81,7 @@ else()
 endif()
 
 # ----------------------------------------------------------------- engine
-set(MG_WARNINGS -Wall -Wextra -Wshadow -Wno-unused-parameter -Wno-missing-field-initializers)
+set(MG_WARNINGS -Wall -Wextra -Wshadow -Wno-unused-parameter -Wno-missing-field-initializers -Wno-missing-braces)
 
 add_library(mg_physics STATIC
   engine/physics/collide.c
@@ -110,6 +111,11 @@ add_library(mg_engine STATIC
   engine/ui/widgets.c
   engine/ui/touch_controls.c
   engine/ui/hud.c
+  engine/platform/secure_store.c
+  engine/net/ws_client.c
+  engine/net/supabase_auth.c
+  engine/net/supabase_rt.c
+  engine/net/replication.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
@@ -131,6 +137,7 @@ set(MG_GAME_SOURCES
   game/autotest.c
   game/avatar.c
   game/scenery.c
+  game/net_session.c
 )
 
 # --------------------------------------------------------------- targets
@@ -141,11 +148,16 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_compile_options(mobilegame PRIVATE ${MG_WARNINGS})
 
   enable_testing()
-  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c game/devroom_layout.c)
+  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c tests/test_replication.c
+    game/devroom_layout.c engine/net/replication.c)
   target_include_directories(mg_tests PRIVATE game)
   target_link_libraries(mg_tests PRIVATE mg_physics)
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
+
+  add_executable(mg_nettest tools/nettest.c)
+  target_link_libraries(mg_nettest PRIVATE mg_engine)
+  target_compile_options(mg_nettest PRIVATE ${MG_WARNINGS})
 
 elseif(MG_PLATFORM STREQUAL "android")
   # SDLActivity loads libmain.so (SDL3 is linked in statically).

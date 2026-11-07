@@ -76,6 +76,40 @@ supabase db push
 Dashboard settings that SQL cannot change: Authentication → Sign In / Providers →
 "Allow anonymous sign-ins" must be ON.
 
+## Networking
+
+- `engine/net/net_transport.h` is the only API the game uses; `supabase_rt.c`
+  implements it on a network thread (fixed-size command/event queues, no
+  allocation on the caller side).
+- `ws_client.c`: mongoose TCP + built-in TLS 1.3, our own WebSocket framing
+  and a one-shot HTTPS helper. Hostnames resolve with getaddrinfo (works on
+  NAT64). Desktop honours `HTTPS_PROXY` + `SSL_CERT_FILE`; phones use the
+  embedded `assets/cacert.pem` (regenerate: `python3 tools/gen_ca_bundle.py`).
+- Auth: refresh token in Keychain / Android Keystore (`SecureStore.java`) /
+  desktop pref file per `--profile`.
+- Topics: party `room:ABCD` (max 4), open world `world:01`.. (cap 4 per
+  shard, see `game/net_session.h`). RLS in `supabase/migrations`.
+- Replication (`engine/net/replication.c`): 33-byte state, 10 Hz (2 players)
+  / 8 Hz (3-4), 1 Hz keepalive when still, 100 ms interpolation, 200 ms
+  extrapolation, correction smoothing. Peers silent for 3.5 s are dropped;
+  leaving clients send a final `REP_LEAVING` packet.
+
+Diagnostics (desktop):
+```
+build/desktop/mg_nettest probe                       # HTTPS + WebSocket + RTT, no sign-in
+build/desktop/mg_nettest join ABCD alice 20          # signed-in join (needs anonymous sign-ins)
+build/desktop/mg_nettest join ABCD alice 20 --public # public test channel, no sign-in
+build/desktop/mobilegame --party ABCD --profile a    # two instances: different --profile
+build/desktop/mobilegame --party ABCD --profile b --demo-walk --window-pos 600,90
+```
+`--public-test` makes the game use a public channel without sign-in (testing only).
+
+## Tests
+
+`ctest --test-dir build/desktop` runs the controller and replication checks.
+`build/desktop/mobilegame --autotest touch` drives multi-touch input end to end
+(needs a display; use Xvfb on headless Linux).
+
 ## Conventions
 
 - C11, plain C, small files. No heap allocation in the frame loop: use

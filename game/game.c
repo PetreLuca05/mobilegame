@@ -5,11 +5,13 @@
 #include "autotest.h"
 #include "avatar.h"
 #include "camera_tp.h"
+#include "config.local.h"
 #include "debug_menu.h"
 #include "devroom.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
+#include "net_session.h"
 #include "player.h"
 #include "scenery.h"
 #include "settings.h"
@@ -34,6 +36,9 @@ typedef struct Game {
     AvatarMeshes avatar_meshes;
     AvatarAnim local_anim;
     AvatarLook local_look;
+    NetTransport *net;
+    NetSession session;
+    bool demo_walk;
     char status[96];
     Autotest autotest;
 } Game;
@@ -60,6 +65,16 @@ static bool has_flag(int argc, char **argv, const char *flag)
         }
     }
     return false;
+}
+
+static const char *arg_value(int argc, char **argv, const char *flag)
+{
+    for (int i = 1; i + 1 < argc; i++) {
+        if (SDL_strcmp(argv[i], flag) == 0) {
+            return argv[i + 1];
+        }
+    }
+    return NULL;
 }
 
 static bool parse_cam_arg(int argc, char **argv, FlyCamera *c)
@@ -112,8 +127,21 @@ bool game_init(MgApp *app)
         return false;
     }
     g->local_look = avatar_look_for_slot(0);
+
+    const char *profile = arg_value(app->argc, app->argv, "--profile");
+    NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
+                      has_flag(app->argc, app->argv, "--public-test")};
+    g->net = net_create(&app->perm, &ncfg);
+    session_init(&g->session, g->net);
+    const char *party = arg_value(app->argc, app->argv, "--party");
+    if (party) {
+        session_start(&g->session, MODE_PARTY, party);
+    } else if (has_flag(app->argc, app->argv, "--world")) {
+        session_start(&g->session, MODE_WORLD, NULL);
+    }
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
+    g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
     return g->unit_box != GFX_MESH_NONE;
 }
 
@@ -174,6 +202,12 @@ static void update_player_input(Game *g, MgApp *app)
     }
     bool sprint = g->touch.sprint || k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
     bool jump = g->touch.jump_held || k[SDL_SCANCODE_SPACE];
+    if (g->demo_walk) { /* desktop test: walk circles and hop every few seconds */
+        float a = (float)app->time * 0.9f;
+        mx = HMM_CosF(a);
+        mz = HMM_SinF(a);
+        jump = SDL_fmodf((float)app->time, 3.0f) < 0.3f;
+    }
     player_set_input(&g->player, mx, mz, sprint, jump);
 }
 
@@ -181,13 +215,15 @@ static void handle_menu_action(Game *g, MenuAction a)
 {
     switch (a) {
     case MENU_JOIN:
-        SDL_snprintf(g->status, sizeof(g->status), "room %s: networking arrives in step 6", g->settings.room_code);
+        session_start(&g->session, MODE_PARTY, g->settings.room_code);
         break;
     case MENU_NEW_ROOM:
-        SDL_snprintf(g->status, sizeof(g->status), "new room: networking arrives in step 6");
+        session_start(&g->session, MODE_PARTY, NULL);
+        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->session.room_code);
         break;
     case MENU_DISCONNECT:
-        SDL_snprintf(g->status, sizeof(g->status), "offline");
+        session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
+        session_stop(&g->session);
         break;
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
@@ -221,6 +257,22 @@ void game_frame(MgApp *app, float alpha)
     AutotestProbe probe = {g->player.kin.pos, g->player.kin.vel, HMM_ToDeg(g->cam.yaw), g->player.kin.jump_count,
                            g->touch.sprint, 1};
     autotest_update(&g->autotest, app, &probe);
+
+    /* network: events, remote buffers, our state at the adaptive rate */
+    {
+        const KinematicState *k = &g->player.kin;
+        uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
+                                  (g->player.sprint ? REP_SPRINTING : 0));
+        session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags);
+        if (g->session.spawn_pending) {
+            g->session.spawn_pending = false;
+            int slot = g->session.slot < 0 ? 0 : g->session.slot;
+            player_init(&g->player, g->room.spawns[slot], 0.0f);
+            g->cam.initialized = false;
+        }
+        g->local_look = session_my_look(&g->session);
+        SDL_snprintf(g->status, sizeof(g->status), "%s", g->session.status_text);
+    }
     if (app->input.key_pressed[SDL_SCANCODE_F1]) {
         g->fly_mode = !g->fly_mode;
     }
@@ -275,6 +327,16 @@ void game_frame(MgApp *app, float alpha)
                        g->player.kin.jumping};
     avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
+    for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+        RemotePlayer *r = &g->session.remotes[i];
+        if (!r->active || !r->visible) {
+            continue;
+        }
+        AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,
+                         (r->sample.flags & REP_JUMPING) != 0};
+        avatar_animate(&r->anim, &rp, mg_minf(app->frame_dt, 0.1f));
+        avatar_draw(app->gfx, &g->avatar_meshes, &r->look, &rp, &r->anim, &g->world);
+    }
     if (s->show_colliders) {
         draw_colliders(g, app->gfx, feet);
     }
@@ -290,10 +352,11 @@ void game_frame(MgApp *app, float alpha)
     hud.cpu_ms = app->cpu_ms;
     hud.pos = g->player.kin.pos;
     hud.grounded = g->player.kin.grounded;
-    hud.ping_ms = -1;
-    hud.players = 1;
-    hud.mode = "offline";
-    hud.net = "";
+    char mode_buf[32];
+    hud.ping_ms = g->session.mode == MODE_OFFLINE ? -1 : g->session.rtt_ms;
+    hud.players = session_player_count(&g->session);
+    hud.mode = session_mode_label(&g->session, mode_buf, sizeof(mode_buf));
+    hud.net = g->session.mode == MODE_OFFLINE ? "" : g->session.status_text;
     GfxStats gs;
     gfx_get_stats(app->gfx, &gs);
     hud.draws = gs.draws;
@@ -314,7 +377,22 @@ void game_pause(MgApp *app)
     Game *g = (Game *)app->game;
     touch_controls_reset(&g->touch);
     player_set_input(&g->player, 0, 0, false, false);
+    session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
+    net_set_background(g->net, true); /* leave the room: others see us go at once */
 }
 
-void game_resume(MgApp *app) { (void)app; }
-void game_quit(MgApp *app) { (void)app; }
+void game_resume(MgApp *app)
+{
+    Game *g = (Game *)app->game;
+    net_set_background(g->net, false);
+}
+
+void game_quit(MgApp *app)
+{
+    Game *g = (Game *)app->game;
+    if (g && g->net) {
+        session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
+        net_destroy(g->net); /* sends phx_leave before closing */
+        g->net = NULL;
+    }
+}
