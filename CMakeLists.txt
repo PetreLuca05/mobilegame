@@ -203,6 +203,8 @@ else()
   target_sources(mg_engine PRIVATE engine/platform/metal_capture_stub.c engine/platform/device_stats_stub.c)
 endif()
 target_compile_options(mg_engine PRIVATE ${MG_WARNINGS})
+# the NPC sim must give the same floats in every build type: no fused multiply-add in only some of them
+set_source_files_properties(game/npc_sim.c game/npc_pkg.c engine/nav/astar.c engine/world/spatial.c PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 if(MG_PROF)
   target_compile_definitions(mg_engine PUBLIC MG_PROF=1)
 endif()

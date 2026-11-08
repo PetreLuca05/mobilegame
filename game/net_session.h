@@ -53,6 +53,7 @@ typedef struct NetSession {
     /* identity sent in Presence */
     char my_name[NET_NAME_LEN];
     NetSkin my_skin;
+    double npc_epoch_ms;   /* see NetPeerMeta */
     /* account events, picked up by the game */
     NetProfile profile;
     bool profile_new;      /* a NET_EV_PROFILE arrived since the game last looked */
@@ -76,5 +77,7 @@ void session_random_code(char out[5]);
 AvatarLook session_my_look(const NetSession *s);
 /* Name + skin sent in Presence; re-broadcast at once when joined. */
 void session_set_identity(NetSession *s, const char *name, NetSkin skin);
+/* Publish when NPC tick 0 of this room happened (Presence). */
+void session_set_npc_epoch(NetSession *s, double epoch_ms);
 
 #endif

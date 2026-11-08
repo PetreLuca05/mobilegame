@@ -131,6 +131,9 @@ typedef struct Game {
     RoomGraph rooms;
     NpcWorld npcs;
     bool npcs_ok, npcs_on;
+    bool npc_catching_up, npc_sync_log;
+    double npc_epoch_ms;       /* online: wall clock of tick 0 */
+    uint32_t npc_resume_tick;  /* offline Continue: the save's tick */
     int msaa_samples;           /* what the thermal path returns to */
     int thermal, thermal_force; /* thermal_force: --force-thermal N, -1 = ask the OS */
     double next_thermal_poll;
@@ -382,6 +385,7 @@ bool game_init(MgApp *app)
     gfx_set_msaa(app->gfx, g->msaa_samples);
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
+    g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log");
     const char *force_thermal = arg_value(app->argc, app->argv, "--force-thermal");
     g->thermal_force = force_thermal ? SDL_atoi(force_thermal) : -1;
     g->logged_fe = -1;
@@ -403,6 +407,8 @@ bool game_init(MgApp *app)
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
     return g->unit_box != GFX_MESH_NONE;
 }
+
+static void npc_step(Game *g, MgApp *app);
 
 void game_tick(MgApp *app)
 {
@@ -436,9 +442,9 @@ void game_tick(MgApp *app)
         PROF_SCOPE("kinematic");
         player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
     }
-    if (g->npcs_ok && g->npcs_on && g->nav && !g->settings.freeze_npcs) {
+    if (g->npcs_ok && g->npcs_on && g->nav && !g->settings.freeze_npcs && !g->npc_catching_up) {
         PROF_SCOPE("npc.roster");
-        npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
+        npc_step(g, app);
     }
     if (g->crowd_ok && g->nav) {
         PROF_SCOPE("npc");
@@ -484,6 +490,8 @@ static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
 static void run_determinism_check(Game *g, MgApp *app);
 static void run_npc_bench(Game *g, MgApp *app);
 static uint32_t npc_seed_for(Game *g, MgApp *app);
+static void npc_step(Game *g, MgApp *app);
+static void npc_catch_up(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
 static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
@@ -1138,6 +1146,70 @@ static uint32_t npc_seed_for(Game *g, MgApp *app)
     return g->save.npc_seed;
 }
 
+static double wall_clock_ms(void)
+{
+    SDL_Time t = 0;
+    SDL_GetCurrentTime(&t);
+    return (double)t / 1e6;
+}
+
+/* One sim tick, plus what the tests watch */
+static void npc_step(Game *g, MgApp *app)
+{
+    const size_t mark = arena_mark(&app->frame);
+    npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
+    arena_reset_to(&app->frame, mark);
+    if (g->npc_sync_log && g->npcs.tick % 600u == 0u) {
+        mg_log_info("npc-sync: tick %u hash %08x alive %d seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.pool.count, g->npcs.seed);
+    }
+}
+
+/* Joining a room, or Continue: replay from the seed up to the tick the others are on, at most 1 ms per
+ * frame. The NPCs appear when it has caught up. Online the target keeps moving with the clock. */
+static void npc_catch_up(Game *g, MgApp *app)
+{
+    if (!g->npcs_on || !g->npc_catching_up) {
+        return;
+    }
+    const bool online = !g->offline_play && g->session.mode != MODE_OFFLINE;
+    const double deadline = mg_time_now() + 0.001;
+    const uint32_t target = online ? (g->npc_epoch_ms > 0.0 ? (uint32_t)((wall_clock_ms() - g->npc_epoch_ms) * 0.06) : 0u) : g->npc_resume_tick;
+    PROF_SCOPE("npc.catch_up");
+    while (g->npcs.tick < target && mg_time_now() < deadline) {
+        npc_step(g, app);
+    }
+    if (g->npcs.tick >= target) {
+        g->npc_catching_up = false;
+        mg_log_info("npc: caught up at tick %u", g->npcs.tick);
+    }
+}
+
+/* Online: tick 0 of the room is the earliest epoch anyone in it published */
+static void npc_room_epoch(Game *g)
+{
+    if (g->offline_play || g->session.mode == MODE_OFFLINE || g->session.status != NET_JOINED) {
+        return;
+    }
+    if (g->npc_epoch_ms <= 0.0) {
+        g->npc_epoch_ms = wall_clock_ms();
+        session_set_npc_epoch(&g->session, g->npc_epoch_ms);
+    }
+    double earliest = g->npc_epoch_ms;
+    for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+        const RemotePlayer *r = &g->session.remotes[i];
+        if (r->active && r->meta.npc_epoch_ms > 0.0 && r->meta.npc_epoch_ms < earliest) {
+            earliest = r->meta.npc_epoch_ms;
+        }
+    }
+    if (earliest < g->npc_epoch_ms - 0.5) { /* someone was here first: replay from their tick 0 */
+        g->npc_epoch_ms = earliest;
+        session_set_npc_epoch(&g->session, earliest);
+        npc_world_start(&g->npcs, g->npcs.seed);
+        g->npc_catching_up = true;
+        mg_log_info("npc: joining a room in progress, epoch %.0f", earliest);
+    }
+}
+
 /* M7 roster: culled and given a LOD on the job system, drawn on the main thread */
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
 {
@@ -1256,7 +1328,8 @@ void game_frame(MgApp *app, float alpha)
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
-        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "npcs") == 0 || (g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0));
+        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
+                                             (g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0));
         if (!at_kind || roster_test) {
             const uint32_t seed = npc_seed_for(g, app);
             const bool want = roster_test || s->npc_density > 0.0f; /* density Low only draws fewer: every client simulates the same people */
@@ -1264,6 +1337,7 @@ void game_frame(MgApp *app, float alpha)
                 s->respawn_npcs = false;
                 g->npcs_on = true;
                 npc_world_start(&g->npcs, seed);
+                g->npc_catching_up = true; /* to the room's tick, or the save's */
             } else if (!want && g->npcs_on) {
                 g->npcs_on = false;
                 npc_world_stop(&g->npcs);
@@ -1273,6 +1347,10 @@ void game_frame(MgApp *app, float alpha)
         g->npcs_on = false;
         npc_world_stop(&g->npcs);
     }
+    if (g->npcs_on) {
+        npc_room_epoch(g);
+    }
+    npc_catch_up(g, app);
     if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
         const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
         if (want != g->crowd.pool.count) {
@@ -1804,7 +1882,7 @@ void game_frame(MgApp *app, float alpha)
         }
 #endif
     }
-    if (g->npcs_ok && g->npcs_on && g->npcs.pool.count > 0) {
+    if (g->npcs_ok && g->npcs_on && g->npcs.pool.count > 0 && !g->npc_catching_up) {
         PROF_SCOPE("npc.roster_draw");
         draw_npcs(g, app, floor, alpha);
     }
@@ -2296,6 +2374,14 @@ static void npc_autotest_check(Game *g, MgApp *app)
         const NpcPool *p = &w->pool;
         const npc_hot_t *hot = p->hot[p->read];
         min_alive = p->count < min_alive ? p->count : min_alive;
+        static uint32_t last_hash, last_change_tick;
+        const uint32_t now_hash = npc_world_hash(w);
+        if (now_hash != last_hash) {
+            last_hash = now_hash;
+            last_change_tick = w->tick;
+        } else if (w->tick - last_change_tick > 1200u && !g->perf.why_failed[0]) {
+            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "assert world_moving: tick %u, no NPC has moved since tick %u, seed %u", w->tick, last_change_tick, w->seed);
+        }
         for (int i = 0; i < p->count && !g->perf.why_failed[0]; i++) {
             const npc_hot_t *h = &hot[i];
             const npc_cold_t *c = &p->cold[i];

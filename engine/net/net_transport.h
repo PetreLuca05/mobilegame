@@ -49,6 +49,7 @@ typedef struct NetPeerMeta {
     char name[NET_NAME_LEN];
     NetSkin skin;
     int slot;              /* spawn disc / colour slot, -1 = not chosen yet */
+    double npc_epoch_ms;   /* wall clock of NPC tick 0 in this room; the earliest in the room wins */
 } NetPeerMeta;
 
 /* Totals as stored in public.stats. */

@@ -269,9 +269,9 @@ static void send_track(NetTransport *n)
     n->ref++;
     int len = snprintf(n->line, sizeof(n->line),
                        "{\"topic\":\"realtime:%s\",\"event\":\"presence\",\"payload\":{\"type\":\"presence\","
-                       "\"event\":\"track\",\"payload\":{\"name\":\"%s\",\"skin\":%s,\"slot\":%d}},"
+                       "\"event\":\"track\",\"payload\":{\"name\":\"%s\",\"skin\":%s,\"slot\":%d,\"npc_epoch\":%.0f}},"
                        "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
-                       n->topic, name, skin, m->slot, n->ref, n->join_ref);
+                       n->topic, name, skin, m->slot, m->npc_epoch_ms, n->ref, n->join_ref);
     send_line(n, len);
     n->track_sent = true;
 }
@@ -369,6 +369,8 @@ static void parse_meta(const cJSON *metas, NetPeerMeta *m)
         read_skin(skin, &m->skin);
     }
     m->slot = cJSON_IsNumber(slot) ? (int)slot->valuedouble : -1;
+    const cJSON *epoch = cJSON_GetObjectItemCaseSensitive(meta, "npc_epoch");
+    m->npc_epoch_ms = cJSON_IsNumber(epoch) ? epoch->valuedouble : 0.0;
 }
 
 static void emit_peer(NetTransport *n, NetEventType type, const Peer *p)

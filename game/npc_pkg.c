@@ -26,6 +26,10 @@ void npc_goto(NpcWorld *w, int i, float x, float z)
     npc_cold_t *c = &w->pool.cold[i];
     c->goal_x = x;
     c->goal_z = z;
+    if (h->req) { /* a new target while a path is pending: free its slot, or the 32 run out for everyone */
+        nav_cancel(w->nav, NAV_CLASS_NPC, h->req);
+        h->req = 0;
+    }
     h->state = MOVE_NEED_PATH;
     c->stuck_count = 0;
 }
@@ -246,7 +250,7 @@ static void escort_update(NpcWorld *w, int i, float dt)
     const npc_cold_t *lc = &w->pool.cold[li];
     const float dx = lh->x - h->x, dz = lh->z - h->z, d2 = dx * dx + dz * dz;
     c->timer -= dt;
-    if (lh->storey != h->storey || (d2 > 1.7f * 1.7f && c->timer <= 0.0f && h->state != MOVE_NEED_PATH && h->state != MOVE_WAIT_PATH)) {
+    if (d2 > 1.7f * 1.7f && c->timer <= 0.0f && h->state != MOVE_NEED_PATH && h->state != MOVE_WAIT_PATH) {
         /* stay beside the leader: 1 m to their side */
         float gx = lh->x + 0.8f, gz = lh->z + 0.3f;
         if (nav_snap(w->nav, grid_of(lh), &gx, &gz, 0.8f)) {

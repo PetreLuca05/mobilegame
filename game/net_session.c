@@ -45,6 +45,16 @@ static void fill_meta(NetSession *s)
     SDL_snprintf(s->me.name, sizeof(s->me.name), "%s", s->my_name);
     s->me.skin = s->my_skin;
     s->me.slot = s->slot;
+    s->me.npc_epoch_ms = s->npc_epoch_ms;
+}
+
+void session_set_npc_epoch(NetSession *s, double epoch_ms)
+{
+    s->npc_epoch_ms = epoch_ms;
+    fill_meta(s);
+    if (s->status == NET_JOINED) {
+        net_set_meta(s->net, &s->me);
+    }
 }
 
 AvatarLook session_my_look(const NetSession *s) { return avatar_look_from_skin(s->my_skin); }
