@@ -70,9 +70,9 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
     devroom_draw(&s->room, g, false);
 }
 
-bool scene_box_cut_away(const Scene *s, int box)
+bool scene_box_cut_away(const Scene *s, int box, const float *fade)
 {
-    (void)s, (void)box;
+    (void)s, (void)box, (void)fade;
     return false;
 }
 

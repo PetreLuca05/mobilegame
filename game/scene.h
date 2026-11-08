@@ -42,8 +42,8 @@ bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
 void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target);
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v);
-/* Collider of geometry the view cuts away (occlusion survey). */
-bool scene_box_cut_away(const Scene *s, int box);
+/* Collider of geometry that is faded out right now (occlusion survey). */
+bool scene_box_cut_away(const Scene *s, int box, const float *fade);
 /* M5 floor fade: where each fade slot should go (FloorFade.target). */
 void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye);
 /* Point/spot lights for this frame; returns how many cast shadows. */

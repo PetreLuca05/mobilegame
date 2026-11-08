@@ -1160,7 +1160,7 @@ void game_frame(MgApp *app, float alpha)
                 if (!col_capsule_sweep(&g->world, &ray, to, 0.0f, &hit) || hit.t >= 0.92f) {
                     break;
                 }
-                if (!scene_box_cut_away(g->scene, hit.box)) {
+                if (!scene_box_cut_away(g->scene, hit.box, g->fade.vis)) {
                     g->occl_hidden++;
                     break;
                 }

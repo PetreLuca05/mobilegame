@@ -129,7 +129,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   ambient through the 2-step toon ramp (`shaders/toon_flat.frag.hlsl`,
   floors `floor_flat.frag.hlsl` with procedural 60 cm tiles). No shadow
   maps, no point/spot lights, no planar reflection, no tiers, no fog; the
-  only "shadow" is the avatar contact disc. Lamps (lamp posts, ceiling
+  only "shadow" is the avatar contact disc. The floor fade slots:
+  storeys + roof, tree canopies, wall pieces (`HOSP_FADE_*`). Lamps (lamp posts, ceiling
   panels) are emissive meshes driven by lamp-on; they light nothing.
   Architecture has no rim light (on big walls the view-angle rim made a
   dark circle that followed the camera); avatars and props keep theirs.
@@ -182,13 +183,15 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   pivot follows, so the view floor and the fades switch as it passes each
   slab. No fade to black; Developer -> Teleport stays instant.
 
-- Occlusion (M5-S): with north up, every east-west interior wall stands
-  between camera and player, so their upper part (`HM_IWALL_HI*`, above
-  0.9 m; colliders unchanged) dithers to 25 % on the view floor, like the
-  exterior low-wall cutaway. `--autotest route` logs "occlusion: player
-  hidden behind walls in N %" (ray from under the ceiling to the chest,
-  ignoring cut-away parts): 59 % before, 10 % after (elevator front wall,
-  door frames - the x-ray covers those).
+- Occlusion (M5-S): with north up, east-west walls stand between camera
+  and player. Interior east-west walls and the south facade are built as
+  wall pieces (`HospSeg`, cut halfway between door/window centres, full
+  height, colliders unchanged); only the piece right in front of the
+  player (nearest east-west wall south of them, overlapping +-1 m) fades,
+  as a whole, to 0.2 over 350 ms - walking into a room fades that room's
+  front wall, nothing else. No half-height walls. `--autotest route` logs
+  "occlusion: player hidden behind walls in N %" (11 %: elevator front
+  wall, door frames - the x-ray covers those).
 - Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
   edge; holding a row views that storey, a tap keeps it for the hold time
   (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the

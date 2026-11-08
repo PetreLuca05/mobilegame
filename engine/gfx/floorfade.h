@@ -8,7 +8,7 @@
 #include "core/mg_types.h"
 
 #define FLOORFADE_TIME 0.35f
-#define FLOORFADE_SLOTS 16
+#define FLOORFADE_SLOTS 128
 
 typedef struct FloorFade {
     float vis[FLOORFADE_SLOTS];    /* current, 1 drawn .. 0 gone */

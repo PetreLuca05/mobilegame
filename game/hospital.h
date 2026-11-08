@@ -16,12 +16,12 @@
 #define HOSP_CELLS 16     /* interior chunks per storey: 8 columns x 2 bands */
 #define HOSP_MAX_LIGHTS 64
 #define HOSP_TREES 6
+#define HOSP_MAX_SEGS 112 /* fadeable wall pieces (see HospSeg) */
 
 /* fade slots (FloorFade / SceneView.fade): visibility 1 drawn .. 0 gone */
 #define HOSP_FADE_STOREY0 0 /* storeys 0..2 and the roof (3) */
-#define HOSP_FADE_WALL0 4   /* upper exterior wall of the view floor: S, N, W, E (low-wall cutaway) */
-#define HOSP_FADE_TREE0 8   /* tree canopies */
-#define HOSP_FADE_IWALL 14  /* upper part of the view floor's east-west partitions (camera faces north) */
+#define HOSP_FADE_TREE0 4   /* tree canopies */
+#define HOSP_FADE_SEG0 16   /* wall pieces (HospSeg), HOSP_MAX_SEGS slots */
 
 /* building footprint */
 #define HOSP_X0 (-15.0f)
@@ -53,14 +53,13 @@ enum {
     HM_TEXT0,
     HM_LAMPS = HM_TEXT0 + HOSP_FLOORS, /* exterior lamp heads (emissive with lamp-on) */
     HM_FIX0,                           /* ceiling light panels per storey (emissive) */
-    HM_WALL_LO0 = HM_FIX0 + HOSP_FLOORS, /* exterior walls per storey, below 0.9 m */
-    HM_WALL_HI0 = HM_WALL_LO0 + HOSP_FLOORS, /* ... above 0.9 m + the blue band, per storey x side (S N W E) */
+    HM_WALL_HI0 = HM_FIX0 + HOSP_FLOORS,     /* exterior walls + blue band per storey x side (S N W E);
+                                                the south side is in wall pieces (HospSeg) instead */
     HM_WIN0 = HM_WALL_HI0 + HOSP_FLOORS * 4, /* window glass per storey x side */
     HM_SLAB0 = HM_WIN0 + HOSP_FLOORS * 4,    /* slab under storey f (its floor, ceiling of f-1) */
     HM_ROOF = HM_SLAB0 + HOSP_FLOORS,        /* roof slab + parapet (storey 3) */
     HM_CANOPY0,                              /* one per tree: fades when the player stands under it */
-    HM_IWALL_HI0 = HM_CANOPY0 + HOSP_TREES,  /* east-west interior walls above 0.9 m, per storey */
-    HM_COUNT = HM_IWALL_HI0 + HOSP_FLOORS,
+    HM_COUNT = HM_CANOPY0 + HOSP_TREES,
 };
 /* Storey ids: -1 yard (always drawn), 0..2 storeys, 3 roof. Every mesh group
  * has one (hospital_group_storey); a slab, ceiling panel or car ceiling
@@ -78,6 +77,17 @@ typedef struct HospLight {
 } HospLight;
 #endif
 
+/* A wall piece that fades as a whole (camera looks north, so east-west
+ * walls stand between it and the player): the interior east-west walls and
+ * the south facade, cut between the centres of their doors / windows. Only
+ * the nearest piece south of the player fades (hospital_fade_targets). */
+typedef struct HospSeg {
+    float x0, x1, z;  /* extent along X, wall centre line */
+    int8_t storey;
+    bool exterior;    /* south facade: drawn from outside too */
+    GfxMeshId mesh;
+} HospSeg;
+
 typedef struct Hospital {
     GfxMeshId mesh[HM_COUNT];
     GfxMeshId cell[HOSP_FLOORS][3][HOSP_CELLS]; /* [storey][matte, glossy, floor][chunk] */
@@ -90,7 +100,9 @@ typedef struct Hospital {
     GfxMeshId trigger;    /* unit cube for the debug trigger view */
     HMM_Vec3 spawns[HOSP_SPAWNS];
     HMM_Vec3 trees[HOSP_TREES];
-    uint8_t see_through[COL_MAX_BOXES / 8]; /* collider bits: wall parts the view cuts away */
+    HospSeg segs[HOSP_MAX_SEGS];
+    int seg_count;
+    int8_t box_seg[COL_MAX_BOXES]; /* collider -> wall piece (-1 none), for the occlusion survey */
     int door_box[HOSP_FLOORS][2]; /* collider index of each door leaf (left, right) */
     float door_open[HOSP_FLOORS]; /* 0 closed .. 1 open, set by the elevator */
 } Hospital;
@@ -107,12 +119,12 @@ typedef struct HospView {
 
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font);
 int hospital_group_storey(int grp);
-/* Collider of a wall part above 0.9 m that the top-down view cuts away. */
-bool hospital_box_cut_away(const Hospital *h, int box);
+/* Collider of a wall piece that is faded out right now (fade = vis slots). */
+bool hospital_box_cut_away(const Hospital *h, int box, const float *fade);
 /* Targets for the fade slots: storeys above the view floor and the roof go
- * when the player is inside; the view floor's upper exterior walls drop to
- * 0.25 where the camera looks over them from outside; canopies over the
- * player go. */
+ * when the player is inside; the wall piece right in front of the player
+ * (nearest east-west wall south of them, within ~1 m sideways) fades to 0.2
+ * as a whole; canopies over the player go. */
 void hospital_fade_targets(const Hospital *h, float *target, int view_floor, bool inside, HMM_Vec3 player,
                            HMM_Vec3 eye);
 /* Slide the door leaves' colliders to match door_open[]. */
