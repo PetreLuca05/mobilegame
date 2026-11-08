@@ -189,6 +189,9 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
     return false;
 }
 
+static void interact_setup(Game *g, MgApp *app);
+static void interact_tick(Game *g, MgApp *app);
+
 static bool has_flag(int argc, char **argv, const char *flag)
 {
     for (int i = 1; i < argc; i++) {
@@ -499,8 +502,6 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
-static void interact_setup(Game *g, MgApp *app);
-static void interact_tick(Game *g, MgApp *app);
 static void layout_autotest(Game *g, MgApp *app);
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha);
 static void npc_autotest_check(Game *g, MgApp *app);
