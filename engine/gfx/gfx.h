@@ -18,7 +18,7 @@ struct SDL_Window;
 typedef struct GfxContext GfxContext;
 typedef uint16_t GfxMeshId;
 #define GFX_MESH_NONE ((GfxMeshId)0xFFFF)
-#define GFX_DEFAULT_MSAA 4 /* see docs/PERF.md */
+#define GFX_DEFAULT_MSAA 2 /* 4x puts the iPhone over 300 MB: docs/PERF.md */
 
 /* 28-byte mesh vertex. For sprite quads, nx/ny carry the quad UV (-1..1). */
 typedef struct GfxVertex {

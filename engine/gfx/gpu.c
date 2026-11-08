@@ -24,8 +24,8 @@
 
 #define GFX_MAX_MESHES 512
 #define GFX_MAX_DRAWS 16384
-#define GFX_VB_BYTES (8u << 20)
-#define GFX_IB_BYTES (4u << 20)
+#define GFX_VB_BYTES (4u << 20)
+#define GFX_IB_BYTES (2u << 20)
 #define GFX_MAX_UI_QUADS 8192
 #define GFX_MAX_SHADERS 32
 #define GFX_MAX_PANELS 4
