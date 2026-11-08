@@ -9,12 +9,6 @@ typedef struct GameSettings {
     float yaw_deg_per_pt;   /* 0.25 */
     float pitch_deg_per_pt; /* 0.2 */
     bool invert_y;
-    float cam_distance;     /* top-down: 16 m (10-24) */
-    bool cam_yaw_lock;      /* top-down: always look north */
-    bool cam_snap;          /* top-down: 45 deg snaps on release (debug) */
-    float cam_pitch_override; /* top-down pitch, deg below horizontal, 62 (debug 45-89) */
-    float cam_fov_td;       /* top-down vertical FOV, 32 (debug) */
-    bool show_pivot;        /* top-down pivot marker (debug) */
     bool show_storeys;      /* colour meshes by storey id (debug) */
     bool show_floor_peek;   /* storey selector on the left edge */
     float floor_peek_hold;  /* s a tapped peek lasts: 0, 3, 10 */
@@ -45,12 +39,6 @@ static inline void settings_default(GameSettings *s)
     s->yaw_deg_per_pt = 0.25f;
     s->pitch_deg_per_pt = 0.2f;
     s->invert_y = false;
-    s->cam_distance = 16.0f;
-    s->cam_yaw_lock = false;
-    s->cam_snap = true;
-    s->cam_pitch_override = 62.0f;
-    s->cam_fov_td = 32.0f;
-    s->show_pivot = false;
     s->show_storeys = false;
     s->show_floor_peek = true;
     s->floor_peek_hold = 3.0f;

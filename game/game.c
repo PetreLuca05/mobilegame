@@ -195,6 +195,9 @@ bool game_init(MgApp *app)
     g->settings = g->prefs.settings; /* per device */
     g->has_save = save_exists(g->profile_name);
     touch_controls_default_config(&g->touch_cfg);
+#ifdef MG_CAMERA_THIRDPERSON
+    g->touch_cfg.camera_zone = true;
+#endif
     if (!PLAYER_JUMP_ENABLED) {
         g->touch_cfg.jump_size_pt = 0.0f; /* no jump button */
     }
@@ -380,10 +383,10 @@ static void update_fly_camera(Game *g, MgApp *app)
     g->fly.pos = HMM_AddV3(g->fly.pos, HMM_MulV3F(v, 6.0f * dt));
 }
 
-/* Touch stick / camera drag / jump button, plus WASD, Shift, Space, arrows
- * and right-mouse drag on desktop. */
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 
+/* Touch stick / jump button, plus WASD, Shift, Space on desktop
+ * (third-person: also camera drag, arrows and right-mouse drag). */
 static void update_player_input(Game *g, MgApp *app)
 {
     MgInput *in = &app->input;
@@ -401,31 +404,10 @@ static void update_player_input(Game *g, MgApp *app)
     g->settings.cam_pitch_deg = HMM_ToDeg(g->cam.pitch);
     const float cam_yaw = g->cam.yaw;
 #else
-    /* right thumb / middle or right mouse drag = yaw, pinch / wheel = zoom,
-     * Q / E = 45 deg steps, double tap = recentre */
-    TdCamera *td = &g->td;
-    tdcam_drag(td, -HMM_AngleDeg(s->yaw_deg_per_pt) * look_x);
-    if (g->touch.camera_released || (td->dragging && !in->mouse_right && g->touch.camera_touch < 0)) {
-        tdcam_release(td);
-    }
-    if (g->touch.pinch_dpt != 0.0f) { /* ~0.02 m per pt at 16 m, logarithmic */
-        tdcam_zoom(td, expf(-g->touch.pinch_dpt * 0.02f / TDCAM_DEFAULT_DISTANCE));
-    }
-    if (in->wheel != 0.0f) {
-        tdcam_zoom(td, expf(-in->wheel * 0.1f));
-    }
-    if (in->key_pressed[SDL_SCANCODE_Q]) {
-        tdcam_step(td, -1);
-    }
-    if (in->key_pressed[SDL_SCANCODE_E]) {
-        tdcam_step(td, 1);
-    }
-    if (g->touch.double_tap) {
-        tdcam_recentre(td);
-    }
-    g->settings.cam_distance = td->distance;
+    /* fixed camera: stick up = screen up = north */
+    const TdCamera *td = &g->td;
     const float cam_yaw = td->yaw;
-    (void)dt;
+    (void)dt, (void)look_x, (void)s;
 #endif
 
     float fw = g->touch.move_y + (k[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_S] ? 1.0f : 0.0f);
@@ -478,7 +460,7 @@ static void write_save(Game *g)
 #ifdef MG_CAMERA_THIRDPERSON
     s->yaw = g->player.yaw;
 #else
-    s->yaw = g->td.yaw_target; /* v2: the camera yaw (the player faces away from it on load) */
+    s->yaw = g->td.yaw; /* v2: the camera yaw (fixed since M5-S; read and ignored) */
 #endif
     s->floor = (uint32_t)scene_floor_of(g->scene, g->player.kin.pos);
     s->play_seconds = g->save_play_base + (uint32_t)g->stats.play_seconds;
@@ -782,9 +764,7 @@ static void load_step(Game *g, MgApp *app)
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
             player_init(&g->player, g->save.pos, g->save.yaw);
 #ifndef MG_CAMERA_THIRDPERSON
-            if (g->save.version >= 2) {
-                g->td.yaw = g->td.yaw_target = g->save.yaw;
-            }
+            /* v2 saves store the camera yaw; the camera is fixed now */
 #endif
             Elevator *el = scene_elevator(g->scene);
             if (el && g->save.floor > 0) {
@@ -1135,11 +1115,6 @@ void game_frame(MgApp *app, float alpha)
 #ifdef MG_CAMERA_THIRDPERSON
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
 #else
-    g->td.distance = mg_clampf(s->cam_distance, TDCAM_MIN_DISTANCE, TDCAM_MAX_DISTANCE);
-    g->td.lock_north = s->cam_yaw_lock;
-    g->td.snap = s->cam_snap;
-    g->td.pitch = -HMM_AngleDeg(s->cam_pitch_override);
-    g->td.fov_y = HMM_AngleDeg(s->cam_fov_td);
 #endif
     if (g->menu.open || riding) {
         touch_controls_reset(&g->touch);
@@ -1150,7 +1125,7 @@ void game_frame(MgApp *app, float alpha)
         g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
-                              app->safe_bottom, app->time);
+                              app->safe_bottom);
     }
 
     HMM_Vec3 feet = player_render_pos(&g->player, alpha);

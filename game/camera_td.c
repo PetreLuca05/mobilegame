@@ -4,70 +4,16 @@
 
 #include "gfx/camera.h"
 
-#define SNAP_STEP (HMM_PI32 * 0.25f)
-#define SNAP_OMEGA 16.0f /* yaw spring: settles in ~250 ms */
-
 void tdcam_init(TdCamera *c)
 {
     *c = (TdCamera){0};
-    c->snap = true;
-    c->pitch = HMM_AngleDeg(-62.0f);
-    c->fov_y = HMM_AngleDeg(32.0f);
-    c->distance = TDCAM_DEFAULT_DISTANCE;
+    c->yaw = HMM_AngleDeg(CAM_YAW_DEG);
+    c->pitch = -HMM_AngleDeg(CAM_PITCH_DEG);
+    c->fov_y = HMM_AngleDeg(CAM_FOV_DEG);
+    c->distance = CAM_DISTANCE;
     c->pivot_height = 0.9f;
     c->stiffness = 8.0f;
     c->look_ahead = 1.2f;
-}
-
-static float wrap_pi(float a)
-{
-    while (a > HMM_PI32) {
-        a -= 2.0f * HMM_PI32;
-    }
-    while (a < -HMM_PI32) {
-        a += 2.0f * HMM_PI32;
-    }
-    return a;
-}
-
-static float nearest_snap(float yaw) { return roundf(yaw / SNAP_STEP) * SNAP_STEP; }
-
-void tdcam_drag(TdCamera *c, float dyaw)
-{
-    if (c->lock_north || dyaw == 0.0f) {
-        return;
-    }
-    c->dragging = true;
-    c->yaw = wrap_pi(c->yaw + dyaw);
-    c->yaw_target = c->yaw;
-    c->yaw_vel = 0.0f;
-}
-
-void tdcam_release(TdCamera *c)
-{
-    c->dragging = false;
-    if (c->snap) {
-        c->yaw_target = nearest_snap(c->yaw);
-    }
-}
-
-void tdcam_step(TdCamera *c, int dir)
-{
-    if (c->lock_north) {
-        return;
-    }
-    c->yaw_target = nearest_snap(c->yaw_target) + (float)dir * SNAP_STEP;
-}
-
-void tdcam_zoom(TdCamera *c, float factor)
-{
-    c->distance = mg_clampf(c->distance * factor, TDCAM_MIN_DISTANCE, TDCAM_MAX_DISTANCE);
-}
-
-void tdcam_recentre(TdCamera *c)
-{
-    c->yaw_target = c->lock_north ? 0.0f : nearest_snap(c->yaw);
-    c->distance = TDCAM_DEFAULT_DISTANCE;
 }
 
 /* exact critically damped spring step (frame-rate independent, no overshoot) */
@@ -82,19 +28,6 @@ static float spring1(float x, float *v, float target, float w, float dt)
 
 void tdcam_update(TdCamera *c, HMM_Vec3 feet, HMM_Vec3 vel, float max_speed, float floor_y, float dt)
 {
-    if (c->lock_north) {
-        c->yaw_target = 0.0f;
-    }
-    if (!c->dragging) { /* shortest way round to the target */
-        float target = c->yaw + wrap_pi(c->yaw_target - c->yaw);
-        c->yaw = spring1(c->yaw, &c->yaw_vel, target, SNAP_OMEGA, dt);
-        c->yaw_target = target;
-        if (fabsf(c->yaw) > HMM_PI32) {
-            float w = wrap_pi(c->yaw);
-            c->yaw_target += w - c->yaw;
-            c->yaw = w;
-        }
-    }
     /* look-ahead: up to 1.2 m along the horizontal velocity, eased */
     float hs = sqrtf(vel.X * vel.X + vel.Z * vel.Z);
     HMM_Vec3 lead_target = HMM_V3(0, 0, 0);

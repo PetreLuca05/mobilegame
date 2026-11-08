@@ -72,15 +72,9 @@ void prefs_load(Prefs *p, const char *profile)
         g->yaw_deg_per_pt = num(s, "yaw_sens", g->yaw_deg_per_pt);
         g->pitch_deg_per_pt = num(s, "pitch_sens", g->pitch_deg_per_pt);
         g->invert_y = flag(s, "invert_y", g->invert_y);
-        g->cam_distance = num(s, "cam_distance", g->cam_distance);
-        if (g->cam_distance < 10.0f || g->cam_distance > 24.0f) { /* third-person value from M1-M4 */
-            g->cam_distance = 16.0f;
-        }
-        g->cam_yaw_lock = flag(s, "cam_yaw_lock", g->cam_yaw_lock);
         g->show_floor_peek = flag(s, "show_floor_peek", g->show_floor_peek);
         g->floor_peek_hold = mg_clampf(num(s, "floor_peek_hold", g->floor_peek_hold), 0.0f, 10.0f);
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
-        g->cam_pitch_override = mg_clampf(num(s, "cam_pitch_override", g->cam_pitch_override), 45.0f, 89.0f);
         g->cam_pitch_deg = num(s, "cam_pitch", g->cam_pitch_deg);
         g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
         g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
@@ -139,12 +133,9 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddNumberToObject(s, "yaw_sens", g->yaw_deg_per_pt);
     cJSON_AddNumberToObject(s, "pitch_sens", g->pitch_deg_per_pt);
     cJSON_AddBoolToObject(s, "invert_y", g->invert_y);
-    cJSON_AddNumberToObject(s, "cam_distance", g->cam_distance);
-    cJSON_AddBoolToObject(s, "cam_yaw_lock", g->cam_yaw_lock);
     cJSON_AddBoolToObject(s, "show_floor_peek", g->show_floor_peek);
     cJSON_AddNumberToObject(s, "floor_peek_hold", g->floor_peek_hold);
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
-    cJSON_AddNumberToObject(s, "cam_pitch_override", g->cam_pitch_override);
     cJSON_AddNumberToObject(s, "cam_pitch", g->cam_pitch_deg);
     cJSON_AddNumberToObject(s, "fov", g->fov_deg);
     cJSON_AddNumberToObject(s, "dead_zone", g->dead_zone_pt);

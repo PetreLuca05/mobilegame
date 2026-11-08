@@ -147,18 +147,17 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 ## Camera (M5)
 
-- Default: diagonal top-down `game/camera_td.c` — pitch 62 deg, vertical FOV
-  32 deg, 10-24 m (default 16) from a pivot 0.9 m above the current storey's
-  floor, near/far 0.5/120 m, no wall collision. Yaw is free while dragged
-  (right 55 % one finger, desktop middle/right drag) and springs to the
-  nearest 45 deg on release; Q/E step 45 deg; pinch (two fingers in the right
-  zone) / wheel zoom; double tap in the right zone recentres. Stick and WASD
-  are camera-relative. Follow spring 8/s + 1.2 m look-ahead.
+- Default: fixed diagonal top-down `game/camera_td.c` (M5-S) - pitch 62 deg,
+  vertical FOV 32 deg, 16 m from a pivot 0.9 m above the current storey's
+  floor, yaw `CAM_YAW_DEG` = 0 (north up: the long east-west axis runs
+  left-right, the entrance and the gate at the bottom). No rotate / pitch /
+  zoom; it only follows (spring 8/s + 1.2 m look-ahead) and rides the
+  elevator. Stick / WASD: up = screen up = north.
+- Touch zones: left 45 % = floating stick; the rest is UI (and marker taps).
 - `-DMG_CAMERA=thirdperson` builds the M1-M4 orbit camera (`camera_tp.c`,
-  wall sphere-cast) for engine tests; not shipped.
-- Settings: Camera distance, Lock camera north; Developer -> Camera: pitch,
-  FOV, snap, show pivot. `--autotest snaps --spawn -12,0.1,10` walks
-  "stick up" in all 8 views.
+  wall sphere-cast, right-half camera drag) for engine tests; not shipped.
+- `--autotest stickdir --spawn -12,0.1,10`: stick up/right/down/left walk
+  north/east/south/west and the camera never turns.
 
 - Storeys (`game/hospital.h`): every mesh group has a storey id
   (`hospital_group_storey`): -1 yard (always drawn), 0..2, 3 roof. A slab,
@@ -196,8 +195,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   Desktop `--peek F`.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
-- Prefs keys (M5): `cam_distance`, `cam_yaw_lock`, `cam_pitch_override`,
-  `show_floor_peek`, `floor_peek_hold`, `show_own_name`.
+- Prefs keys (M5): `show_floor_peek`, `floor_peek_hold`, `show_own_name`
+  (the M5 camera keys are ignored and dropped on the next write).
 
 - Lighting retune (M5): lights culled 35 m from the player (not the eye),
   indoor lights of storeys above the view floor culled, the view floor's

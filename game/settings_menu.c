@@ -42,13 +42,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     y += 6.0f;
     float cx = x, cy = y;
     const float sliders_top = y;
-    ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
-    cy += step;
 #ifndef MG_CAMERA_THIRDPERSON
-    ui_slider(ui, "Camera distance##s3", cx, cy, cw, &s->cam_distance, 10.0f, 24.0f, "%.1f m");
-    cy += step + 4.0f;
-    ui_toggle(ui, "Lock camera north", cx, cy, cw, &s->cam_yaw_lock);
-    cy += 44.0f;
     ui_toggle(ui, "Show floor peek", cx, cy, cw, &s->show_floor_peek);
     cy += 44.0f;
     ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, "Floor peek hold time");
@@ -65,9 +59,9 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
     cy += 44.0f;
 #else
-    ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
+    ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
-    ui_slider(ui, "Camera distance##s3", cx, cy, cw, &s->cam_distance, 1.5f, 8.0f, "%.1f m");
+    ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
     if (ui_slider(ui, "Camera pitch##s4", cx, cy, cw, &s->cam_pitch_deg, -60.0f, 30.0f, "%.0f" TEXT_DEGREE)) {
         *action = MENU_CAMERA_PITCH;
@@ -116,17 +110,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Storey colours", x, y, cw, &s->show_storeys);
         y += 44.0f;
-#ifndef MG_CAMERA_THIRDPERSON
-        ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Camera");
-        y += 22.0f;
-        ui_slider(ui, "Pitch##tdp", x, y, cw, &s->cam_pitch_override, 45.0f, 89.0f, "%.0f" TEXT_DEGREE);
-        y += step;
-        ui_slider(ui, "FOV##tdf", x, y, cw, &s->cam_fov_td, 20.0f, 60.0f, "%.0f" TEXT_DEGREE);
-        y += step;
-        ui_toggle(ui, "Snap yaw to 45" TEXT_DEGREE, x, y, cw, &s->cam_snap);
-        ui_toggle(ui, "Show pivot", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_pivot);
-        y += wide ? 44.0f : 84.0f;
-#endif
 #ifdef MG_RENDER_FULL
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;

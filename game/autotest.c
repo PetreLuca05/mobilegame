@@ -6,11 +6,11 @@
 #include "frontend.h"
 #include "player.h"
 
-enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_SNAPS };
+enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR };
 
 static int kind_of(int argc, char **argv)
 {
-    static const char *const names[] = {"touch", "onboarding", "save", "continue", "snaps"};
+    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < 5 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -32,7 +32,7 @@ bool autotest_starts_in_game(int argc, char **argv)
     for (int i = 1; i + 1 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") == 0) {
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
-                   SDL_strcmp(argv[i + 1], "snaps") == 0;
+                   SDL_strcmp(argv[i + 1], "stickdir") == 0;
         }
     }
     return false;
@@ -106,7 +106,7 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
 #ifdef MG_CAMERA_THIRDPERSON
             bool ok_yaw = fabsf(dyaw + 25.0f) < 1.5f;
 #else
-            bool ok_yaw = fabsf(dyaw + 45.0f) < 1.5f; /* 25 deg drag, sprung to the 45 deg snap */
+            bool ok_yaw = fabsf(dyaw) < 0.01f; /* fixed camera: the right-side drag turns nothing */
 #endif
             bool ok_jump = p->jump_count == t->at_start.jump_count + (PLAYER_JUMP_ENABLED ? 1u : 0u);
             bool ok_stop = fabsf(p->player_vel.X) + fabsf(p->player_vel.Z) < 0.01f;
@@ -124,61 +124,45 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
     return false;
 }
 
-static void key(SDL_Scancode sc, bool down)
+/* Fixed camera: the stick pushed up / right / down / left (0.6 s each) must
+ * walk the player north / east / south / west - screen up is north. */
+static bool run_stickdir(Autotest *t, MgApp *app, const AutotestProbe *p, double el)
 {
-    SDL_Event e;
-    SDL_zero(e);
-    e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-    e.key.scancode = sc;
-    e.key.down = down;
-    SDL_PushEvent(&e);
-}
-
-/* Eight views: E (45 deg step), wait for the spring, push the stick straight
- * up for 0.6 s; the player must walk away from the camera along its yaw. */
-static bool run_snaps(Autotest *t, MgApp *app, const AutotestProbe *p, double el)
-{
-    const float sx = 90.0f, sy = app->height_pt * 0.75f;
-    double base = 1.0 + (double)(t->step) * 1.6; /* per view: key 0, stick 0.5-1.1, check 1.5 */
-    double local = el - base;
+    static const float dir[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};   /* stick, screen space */
+    static const float world[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; /* expected XZ */
+    static const char *const names[4] = {"up", "right", "down", "left"};
+    const float sx = 120.0f, sy = app->height_pt * 0.6f;
+    double local = el - 1.0 - (double)t->step * 1.2;
     if (el < 1.0) {
         return false;
     }
+    float kx = sx + dir[t->step][0] * 110.0f, ky = sy + dir[t->step][1] * 110.0f;
     switch (t->stage) {
     case 0:
-        key(SDL_SCANCODE_E, true);
-        key(SDL_SCANCODE_E, false);
+        t->at_start = *p;
+        finger(app, SDL_EVENT_FINGER_DOWN, 50, sx, sy);
+        finger(app, SDL_EVENT_FINGER_MOTION, 50, kx, ky);
         t->stage = 1;
         break;
     case 1:
-        if (local > 0.5) {
-            t->at_start = *p;
-            finger(app, SDL_EVENT_FINGER_DOWN, 50, sx, sy);
-            finger(app, SDL_EVENT_FINGER_MOTION, 50, sx, sy - 110.0f);
+        finger(app, SDL_EVENT_FINGER_MOTION, 50, kx, ky);
+        if (local > 0.6) {
+            finger(app, SDL_EVENT_FINGER_UP, 50, kx, ky);
             t->stage = 2;
         }
         break;
-    case 2:
-        finger(app, SDL_EVENT_FINGER_MOTION, 50, sx, sy - 110.0f);
-        if (local > 1.1) {
-            finger(app, SDL_EVENT_FINGER_UP, 50, sx, sy - 110.0f);
-            t->stage = 3;
-        }
-        break;
     default:
-        if (local > 1.5) {
-            float yaw = HMM_AngleDeg(p->cam_yaw_deg);
+        if (local > 1.0) {
             HMM_Vec3 d = HMM_SubV3(p->player_pos, t->at_start.player_pos);
             float len = sqrtf(d.X * d.X + d.Z * d.Z);
-            float along = (-sinf(yaw) * d.X - cosf(yaw) * d.Z) / fmaxf(len, 1e-3f);
-            float snapped = fabsf(remainderf(p->cam_yaw_deg, 45.0f));
-            bool ok = len > 1.0f && along > 0.99f && snapped < 0.5f;
-            mg_log_info("autotest snaps: view %d yaw %+.1f, moved %.2f m, along view %.3f (%s)", t->step + 1,
-                        p->cam_yaw_deg, len, along, ok ? "ok" : "FAIL");
+            float along = (d.X * world[t->step][0] + d.Z * world[t->step][1]) / fmaxf(len, 1e-3f);
+            bool ok = len > 1.0f && along > 0.99f && fabsf(p->cam_yaw_deg) < 0.01f;
+            mg_log_info("autotest stickdir: stick %s, moved %.2f m, along %.3f, camera yaw %.1f (%s)",
+                        names[t->step], len, along, p->cam_yaw_deg, ok ? "ok" : "FAIL");
             t->passed = (t->step == 0 || t->passed) && ok;
             t->step++;
             t->stage = 0;
-            if (t->step == 8) {
+            if (t->step == 4) {
                 mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
                 return true;
             }
@@ -375,8 +359,8 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_SAVE:
         finished = run_save(t, app, p, out);
         break;
-    case AUTOTEST_SNAPS:
-        finished = run_snaps(t, app, p, el);
+    case AUTOTEST_STICKDIR:
+        finished = run_stickdir(t, app, p, el);
         break;
     default:
         finished = run_continue(t, app, p);
