@@ -84,3 +84,17 @@ Elevator *scene_elevator(Scene *s)
 }
 
 const char *scene_name(void) { return "devroom"; }
+
+int scene_floor_count(void) { return 1; }
+
+const char *scene_floor_name(int floor)
+{
+    (void)floor;
+    return "Dev room";
+}
+
+HMM_Vec3 scene_floor_lobby(const Scene *s, int floor)
+{
+    (void)floor;
+    return scene_spawn(s, 0);
+}

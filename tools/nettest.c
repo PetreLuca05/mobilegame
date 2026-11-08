@@ -10,6 +10,7 @@
 #include "core/log.h"
 #include "mongoose.h"
 #include "net/net_transport.h"
+#include "net/replication.h"
 #include "net/ws_client.h"
 
 static int g_http_status = -1;
@@ -144,7 +145,7 @@ static int join(const char *room, const char *profile, double seconds)
         }
         double now = (double)SDL_GetTicksNS() * 1e-9;
         if (now >= next_send && net_status(n) == NET_JOINED) {
-            uint8_t data[33] = {0};
+            uint8_t data[REP_PACKET_SIZE] = {0};
             memcpy(data, &seq, 4);
             seq++;
             net_send_state(n, data, sizeof(data));

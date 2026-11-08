@@ -102,6 +102,10 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
 void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
 /* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
+/* Frosted panel behind this frame's UI: the 3D image under it, blurred at
+ * quarter resolution, mixed towards tint.rgb by tint.a, rounded corners.
+ * Drawn before (under) all UI quads. Up to 4 per frame. */
+void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float radius, HMM_Vec4 tint);
 void gfx_frame_end(GfxContext *g);
 
 /* Render the 3D scene at a fraction of native resolution (0.5..1) and

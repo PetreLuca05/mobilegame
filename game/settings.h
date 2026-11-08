@@ -14,6 +14,8 @@ typedef struct GameSettings {
     float fov_deg;          /* 70 */
     float dead_zone_pt;     /* 60 */
     bool show_colliders;
+    bool show_triggers;     /* elevator trigger volume */
+    int teleport_floor;     /* MENU_TELEPORT target */
     float render_scale;     /* 3D resolution vs native (UI stays native) */
     char room_code[5];      /* last entered party code */
 } GameSettings;
@@ -28,6 +30,8 @@ static inline void settings_default(GameSettings *s)
     s->fov_deg = 70.0f;
     s->dead_zone_pt = 60.0f;
     s->show_colliders = false;
+    s->show_triggers = false;
+    s->teleport_floor = 0;
     s->render_scale = gfx_default_render_scale();
     s->room_code[0] = 0;
 }

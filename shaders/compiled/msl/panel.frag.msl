@@ -1,0 +1,28 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct PanelFS
+{
+    float4 u_rect;
+    float4 u_params;
+    float4 u_tint;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+fragment PSMain_out PSMain(constant PanelFS& _20 [[buffer(0)]], texture2d<float> u_blur [[texture(0)]], sampler u_blur_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
+{
+    PSMain_out out = {};
+    float2 _146 = _20.u_rect.zw * 0.5;
+    float2 _160 = abs((gl_FragCoord.xy / float2(_20.u_params.y)) - (_20.u_rect.xy + _146)) - (_146 - float2(_20.u_params.x));
+    float2 _131 = _160;
+    float _179 = fast::clamp(0.5 - (((length(fast::max(_160, float2(0.0))) + fast::min(fast::max(_131.x, _131.y), 0.0)) - _20.u_params.x) * _20.u_params.y), 0.0, 1.0);
+    out._entryPointOutput = float4(mix(u_blur.sample(u_blur_sampler, (gl_FragCoord.xy * _20.u_params.zw)).xyz, _20.u_tint.xyz, float3(_20.u_tint.w)) * _179, _179);
+    return out;
+}
+

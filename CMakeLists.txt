@@ -104,6 +104,7 @@ add_library(mg_engine STATIC
   engine/core/time.c
   engine/platform/app_sdl.c
   engine/platform/input_touch.c
+  engine/audio/audio_sdl.c
   engine/gfx/camera.c
   engine/gfx/gpu.c
   engine/gfx/material.c
@@ -135,6 +136,9 @@ set(MG_GAME_SOURCES
   game/devroom.c
   game/devroom_layout.c
   game/hospital.c
+  game/elevator.c
+  game/floor_menu.c
+  game/route_test.c
   game/player.c
   game/camera_tp.c
   game/debug_menu.c

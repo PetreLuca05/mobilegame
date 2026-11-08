@@ -60,12 +60,13 @@ int rep_pack(const RepState *s, uint8_t out[REP_PACKET_SIZE])
     int16_t q = (int16_t)lrintf(yaw / HMM_PI32 * 32767.0f);
     put_u16(out + 30, (uint16_t)q);
     out[32] = s->flags;
+    out[33] = s->floor;
     return REP_PACKET_SIZE;
 }
 
 bool rep_unpack(const uint8_t *d, int len, RepState *s)
 {
-    if (len < REP_PACKET_SIZE) {
+    if (len < REP_PACKET_SIZE_M1) {
         return false;
     }
     s->seq = get_u16(d);
@@ -76,6 +77,7 @@ bool rep_unpack(const uint8_t *d, int len, RepState *s)
     }
     s->yaw = (float)(int16_t)get_u16(d + 30) / 32767.0f * HMM_PI32;
     s->flags = d[32];
+    s->floor = len >= REP_PACKET_SIZE ? d[33] : 0;
     for (int i = 0; i < 3; i++) {
         if (!isfinite(s->pos.Elements[i]) || !isfinite(s->vel.Elements[i]) || fabsf(s->pos.Elements[i]) > 1e4f) {
             return false; /* reject garbage */
@@ -103,7 +105,7 @@ static bool moved(const RepState *a, const RepState *b)
 {
     HMM_Vec3 d = HMM_SubV3(a->pos, b->pos);
     return HMM_LenSqrV3(d) > 0.01f * 0.01f || HMM_LenSqrV3(a->vel) > 0.01f || HMM_LenSqrV3(b->vel) > 0.01f ||
-           fabsf(a->yaw - b->yaw) > 0.01f || a->flags != b->flags;
+           fabsf(a->yaw - b->yaw) > 0.01f || a->flags != b->flags || a->floor != b->floor;
 }
 
 bool rep_sender_due(RepSender *s, RepState *cur, int players, double now)
@@ -175,6 +177,7 @@ static RepSample raw_sample(const RepReceiver *r, double now, double offset)
         out.vel = first->s.vel;
         out.yaw = first->s.yaw;
         out.flags = first->s.flags;
+        out.floor = first->s.floor;
         return out;
     }
     if (t >= last->t) {
@@ -188,6 +191,7 @@ static RepSample raw_sample(const RepReceiver *r, double now, double offset)
         out.vel = last->s.vel;
         out.yaw = last->s.yaw;
         out.flags = last->s.flags;
+        out.floor = last->s.floor;
         return out;
     }
     for (int i = 0; i + 1 < r->count; i++) {
@@ -200,12 +204,14 @@ static RepSample raw_sample(const RepReceiver *r, double now, double offset)
             out.yaw = lerp_angle(a->s.yaw, b->s.yaw, k);
             /* any jump in the bracket counts, so short hops are not lost */
             out.flags = (uint8_t)((k < 0.5f ? a->s.flags : b->s.flags) | ((a->s.flags | b->s.flags) & REP_JUMPING));
+            out.floor = k < 0.5f ? a->s.floor : b->s.floor;
             return out;
         }
     }
     out.pos = last->s.pos;
     out.yaw = last->s.yaw;
     out.flags = last->s.flags;
+    out.floor = last->s.floor;
     return out;
 }
 

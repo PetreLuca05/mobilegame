@@ -3,10 +3,15 @@
 
 #include <math.h>
 
+#include "elevator.h"
 #include "hospital.h"
+
+static const char *const k_floor_names[HOSP_FLOORS] = {"G " "\x02" " Reception", "1 " "\x02" " Wards",
+                                                       "2 " "\x02" " Surgery"};
 
 struct Scene {
     Hospital h;
+    Elevator lift;
 };
 
 Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont *font)
@@ -15,6 +20,7 @@ Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont 
     if (!s || !hospital_init(&s->h, g, perm, world, font)) {
         return NULL;
     }
+    elevator_init(&s->lift, HOSP_FLOORS, HOSP_STOREY, HOSP_CAR_X0, HOSP_CAR_X1, HOSP_CAR_Z0, HOSP_CAR_Z1, HOSP_CAR_H);
     return s;
 }
 
@@ -63,14 +69,23 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v) { hospital_draw(&s-
 
 void scene_tick(Scene *s, ColWorld *world, float dt)
 {
-    (void)dt;
+    elevator_tick(&s->lift, dt);
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        s->h.door_open[f] = s->lift.door_open[f];
+    }
     hospital_apply_doors(&s->h, world);
 }
 
-Elevator *scene_elevator(Scene *s)
+Elevator *scene_elevator(Scene *s) { return &s->lift; }
+
+int scene_floor_count(void) { return HOSP_FLOORS; }
+
+const char *scene_floor_name(int floor) { return floor >= 0 && floor < HOSP_FLOORS ? k_floor_names[floor] : ""; }
+
+HMM_Vec3 scene_floor_lobby(const Scene *s, int floor)
 {
     (void)s;
-    return NULL; /* step 4 */
+    return HMM_V3(0.0f, (float)floor * HOSP_STOREY, -11.6f);
 }
 
 const char *scene_name(void) { return "hospital"; }

@@ -60,8 +60,8 @@ void session_stop(NetSession *s);
  * network thread then sends phx_leave. */
 void session_say_goodbye(NetSession *s, uint32_t tick, HMM_Vec3 pos, float yaw);
 /* Poll network events, update remotes, send our state. */
-void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_Vec3 vel, float yaw,
-                    uint8_t flags);
+void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_Vec3 vel, float yaw, uint8_t flags,
+                    uint8_t floor);
 int session_player_count(const NetSession *s);
 const char *session_mode_label(const NetSession *s, char *buf, size_t cap);
 void session_random_code(char out[5]);

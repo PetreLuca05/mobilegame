@@ -1,7 +1,8 @@
 /* Client-authoritative state replication (M1).
  *
- * Wire format, 33 bytes little endian, sent base64 inside a Broadcast:
- *   seq u16 | tick u32 | pos 3 x f32 | vel 3 x f32 | yaw i16 | flags u8
+ * Wire format, 34 bytes little endian, sent base64 inside a Broadcast:
+ *   seq u16 | tick u32 | pos 3 x f32 | vel 3 x f32 | yaw i16 | flags u8 | floor u8
+ * (M1 clients sent 33 bytes without `floor`; those still parse as floor 0.)
  *
  * Sender: rate adapts to room size to stay under the Supabase quota
  * (fan-out = N x (N-1) x Hz; Free plan ~100 msg/s): 10 Hz for 2 players,
@@ -16,7 +17,8 @@
 
 #include "core/mg_types.h"
 
-#define REP_PACKET_SIZE 33
+#define REP_PACKET_SIZE 34
+#define REP_PACKET_SIZE_M1 33
 #define REP_BUFFER 16
 
 enum {
@@ -24,6 +26,7 @@ enum {
     REP_JUMPING = 1u << 1,
     REP_SPRINTING = 1u << 2,
     REP_LEAVING = 1u << 3, /* last packet before leaving: peers drop us at once */
+    REP_RIDING = 1u << 4,  /* in a moving elevator: peers close the doors on that floor */
 };
 
 typedef struct RepState {
@@ -33,6 +36,7 @@ typedef struct RepState {
     HMM_Vec3 vel;
     float yaw; /* radians */
     uint8_t flags;
+    uint8_t floor; /* storey; avatars are culled by floor, not distance */
 } RepState;
 
 int rep_pack(const RepState *s, uint8_t out[REP_PACKET_SIZE]);
@@ -80,6 +84,7 @@ typedef struct RepSample {
     HMM_Vec3 vel;
     float yaw;
     uint8_t flags;
+    uint8_t floor;
     bool extrapolating;
     bool valid;
 } RepSample;

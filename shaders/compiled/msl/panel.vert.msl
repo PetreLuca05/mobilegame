@@ -1,0 +1,23 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct PanelVS
+{
+    float4 u_rect;
+};
+
+struct VSMain_out
+{
+    float4 gl_Position [[position]];
+};
+
+vertex VSMain_out VSMain(constant PanelVS& _42 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
+{
+    VSMain_out out = {};
+    uint _92 = (gl_VertexIndex < 3u) ? gl_VertexIndex : uint((gl_VertexIndex == 3u) ? 2 : ((gl_VertexIndex == 4u) ? 1 : 3));
+    out.gl_Position = float4(((_92 & 1u) != 0u) ? _42.u_rect.z : _42.u_rect.x, ((_92 & 2u) != 0u) ? _42.u_rect.w : _42.u_rect.y, 0.0, 1.0);
+    return out;
+}
+

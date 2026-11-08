@@ -42,5 +42,10 @@ void scene_tick(Scene *s, ColWorld *world, float dt);
 /* The scene's elevator, or NULL. */
 Elevator *scene_elevator(Scene *s);
 const char *scene_name(void);
+int scene_floor_count(void);
+/* "G - Reception" etc. for menus. */
+const char *scene_floor_name(int floor);
+/* Where a debug teleport to `floor` lands (in front of the elevator). */
+HMM_Vec3 scene_floor_lobby(const Scene *s, int floor);
 
 #endif

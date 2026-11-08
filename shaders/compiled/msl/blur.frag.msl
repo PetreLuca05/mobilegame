@@ -1,0 +1,27 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct BlurFS
+{
+    float4 u_dir;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float2 i_uv [[user(locn0)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant BlurFS& _44 [[buffer(0)]], texture2d<float> u_src [[texture(0)]], sampler u_src_sampler [[sampler(0)]])
+{
+    PSMain_out out = {};
+    out._entryPointOutput = float4(((((u_src.sample(u_src_sampler, in.i_uv).xyz * 0.2270270287990570068359375) + (u_src.sample(u_src_sampler, (in.i_uv + (_44.u_dir.xy * 1.384615421295166015625))).xyz * 0.3162162303924560546875)) + (u_src.sample(u_src_sampler, (in.i_uv - (_44.u_dir.xy * 1.384615421295166015625))).xyz * 0.3162162303924560546875)) + (u_src.sample(u_src_sampler, (in.i_uv + (_44.u_dir.xy * 3.23076915740966796875))).xyz * 0.0702702701091766357421875)) + (u_src.sample(u_src_sampler, (in.i_uv - (_44.u_dir.xy * 3.23076915740966796875))).xyz * 0.0702702701091766357421875), 1.0);
+    return out;
+}
+

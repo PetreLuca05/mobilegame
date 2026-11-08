@@ -31,7 +31,7 @@ static void test_wire(void)
     int n = rep_pack(&a, buf);
     RepState b;
     bool ok = rep_unpack(buf, n, &b);
-    CHECK(n == 33, "packet is %d bytes (seq u16, tick u32, pos 3f, vel 3f, yaw i16, flags u8)", n);
+    CHECK(n == 34, "packet is %d bytes (seq u16, tick u32, pos 3f, vel 3f, yaw i16, flags u8, floor u8)", n);
     CHECK(ok && b.seq == a.seq && b.tick == a.tick && b.pos.Z == a.pos.Z && b.vel.X == a.vel.X &&
               fabsf(b.yaw - a.yaw) < 0.0002f && b.flags == a.flags,
           "round trip exact (yaw error %.5f rad)", fabsf(b.yaw - a.yaw));

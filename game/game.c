@@ -3,17 +3,21 @@
  * Keyboard/mouse also work on desktop. */
 #include "game.h"
 
+#include "audio/audio.h"
 #include "autotest.h"
 #include "avatar.h"
 #include "camera_tp.h"
 #include "config.local.h"
 #include "debug_menu.h"
+#include "elevator.h"
+#include "floor_menu.h"
 #include "launch_screen.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 #include "net_session.h"
 #include "player.h"
+#include "route_test.h"
 #include "scene.h"
 #include "scenery.h"
 #include "settings.h"
@@ -45,6 +49,9 @@ typedef struct Game {
     LaunchScreen launch;
     char status[96];
     Autotest autotest;
+    Audio *audio;
+    RouteTest route;
+    int last_ride_count; /* elevator rides already counted */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -158,6 +165,8 @@ bool game_init(MgApp *app)
                        !has_flag(app->argc, app->argv, "--menu") && !has_flag(app->argc, app->argv, "--colliders");
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
+    g->audio = audio_create(&app->perm);
+    route_test_init(&g->route, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
     return g->unit_box != GFX_MESH_NONE;
 }
@@ -166,6 +175,19 @@ void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
     scene_tick(g->scene, &g->world, MG_TICK_DT);
+    Elevator *el = scene_elevator(g->scene);
+    if (el && el->arrived) {
+        /* the car jumped storeys behind the fade: take the rider (and the
+         * camera) along, same spot inside the car */
+        el->arrived = false;
+        float dy = (float)(el->car_floor - el->from_floor) * el->storey;
+        if (elevator_contains(el, HMM_AddV3(g->player.kin.pos, HMM_V3(0, dy, 0)), 0.0f)) {
+            g->player.kin.pos.Y += dy;
+            g->player.prev_pos.Y += dy;
+            g->cam.pivot.Y += dy;
+        }
+        audio_ding(g->audio);
+    }
     player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
 }
 
@@ -246,6 +268,16 @@ static void handle_menu_action(Game *g, MenuAction a)
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
         break;
+    case MENU_TELEPORT: {
+        Elevator *el = scene_elevator(g->scene);
+        int f = g->settings.teleport_floor;
+        player_init(&g->player, scene_floor_lobby(g->scene, f), 0.0f);
+        if (el) {
+            elevator_place(el, f);
+        }
+        g->cam.initialized = false;
+        break;
+    }
     case MENU_MAIN_MENU:
         session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
         session_stop(&g->session);
@@ -377,9 +409,23 @@ void game_frame(MgApp *app, float alpha)
     /* network: events, remote buffers, our state at the adaptive rate */
     {
         const KinematicState *k = &g->player.kin;
+        Elevator *el = scene_elevator(g->scene);
         uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
-                                  (g->player.sprint ? REP_SPRINTING : 0));
-        session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags);
+                                  (g->player.sprint ? REP_SPRINTING : 0) |
+                                  (el && elevator_busy(el) ? REP_RIDING : 0));
+        session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
+                       (uint8_t)scene_floor_of(g->scene, k->pos));
+        if (el) { /* someone riding from our landing: their doors close here too */
+            for (int f = 0; f < el->floors; f++) {
+                el->hold_shut[f] = false;
+            }
+            for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+                const RemotePlayer *r = &g->session.remotes[i];
+                if (r->active && r->visible && (r->sample.flags & REP_RIDING) && r->sample.floor < el->floors) {
+                    el->hold_shut[r->sample.floor] = true;
+                }
+            }
+        }
         if (g->session.spawn_pending) {
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
@@ -406,11 +452,22 @@ void game_frame(MgApp *app, float alpha)
     MenuAction action = debug_menu(&g->menu, &g->ui, s, app->width_pt, app->height_pt, app->safe_left,
                                    app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, action);
+    Elevator *el = scene_elevator(g->scene);
+    const bool riding = el && elevator_busy(el);
+    bool menu_shown = false;
+    if (el && !riding && !g->menu.open && elevator_contains(el, g->player.kin.pos, g->kparams.radius)) {
+        menu_shown = true;
+        int pick = floor_menu(&g->ui, app->width_pt, app->safe_top, app->safe_right, el->floors, el->car_floor,
+                              scene_floor_name);
+        if (pick >= 0) {
+            elevator_request(el, pick);
+        }
+    }
     g->touch_cfg.dead_zone_pt = s->dead_zone_pt;
     gfx_set_render_scale(app->gfx, s->render_scale);
     g->cam.distance = s->cam_distance;
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
-    if (g->menu.open) {
+    if (g->menu.open || riding) {
         touch_controls_reset(&g->touch);
     } else {
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
@@ -427,7 +484,19 @@ void game_frame(MgApp *app, float alpha)
         sp.view = camera_view(g->fly.pos, g->fly.yaw, g->fly.pitch);
         sp.proj = camera_projection(HMM_AngleDeg(s->fov_deg), aspect, 0.05f, 400.0f, 0.0f);
     } else {
-        update_player_input(g, app);
+        float rx, rz;
+        bool route = route_test_update(&g->route, app->time, g->player.kin.pos, scene_floor_of(g->scene, feet), el,
+                                       menu_shown, &rx, &rz);
+        if (g->route.done) {
+            app->quit_requested = true;
+        }
+        if (riding) {
+            player_set_input(&g->player, 0, 0, false, false); /* locked for the ride */
+        } else if (route) {
+            player_set_input(&g->player, rx, rz, false, false);
+        } else {
+            update_player_input(g, app);
+        }
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
         tpcam_collide(&g->cam, &g->world, scene_indoors(g->scene, feet) ? 2.4f : 100.0f, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
@@ -437,7 +506,7 @@ void game_frame(MgApp *app, float alpha)
     sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
-    SceneView view = {sp.eye, floor, (float)app->time, s->show_colliders};
+    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers};
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
@@ -446,8 +515,8 @@ void game_frame(MgApp *app, float alpha)
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
         RemotePlayer *r = &g->session.remotes[i];
-        if (!r->active || !r->visible) {
-            continue;
+        if (!r->active || !r->visible || (int)r->sample.floor != floor) {
+            continue; /* culled by storey, not distance */
         }
         AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,
                          (r->sample.flags & REP_JUMPING) != 0};
@@ -482,6 +551,11 @@ void game_frame(MgApp *app, float alpha)
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
     draw_room_badge(g, app);
+    float fade = el ? elevator_fade(el) : 0.0f;
+    if (fade > 0.0f) {
+        ui_rect(app->gfx, &app->font, 0.0f, 0.0f, app->width_pt, app->height_pt,
+                (UiColor){0, 0, 0, (uint8_t)(fade * 255.0f)});
+    }
 }
 
 void game_event(MgApp *app, const SDL_Event *e)
@@ -512,5 +586,9 @@ void game_quit(MgApp *app)
         session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
         net_destroy(g->net); /* sends phx_leave before closing */
         g->net = NULL;
+    }
+    if (g) {
+        audio_destroy(g->audio);
+        g->audio = NULL;
     }
 }

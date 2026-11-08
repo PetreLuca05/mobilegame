@@ -258,7 +258,8 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
     }
 }
 
-void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_Vec3 vel, float yaw, uint8_t flags)
+void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_Vec3 vel, float yaw, uint8_t flags,
+                    uint8_t floor)
 {
     if (!s->net) {
         return;
@@ -293,7 +294,7 @@ void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_
         }
     }
     if (s->status == NET_JOINED && s->slot_announced) {
-        RepState st = {0, tick, pos, vel, yaw, flags};
+        RepState st = {0, tick, pos, vel, yaw, flags, floor};
         if (rep_sender_due(&s->sender, &st, session_player_count(s), now)) {
             uint8_t buf[REP_PACKET_SIZE];
             int n = rep_pack(&st, buf);

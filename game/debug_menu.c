@@ -48,12 +48,15 @@ MenuAction debug_menu(DebugMenu *m, Ui *ui, GameSettings *s, float w_pt, float h
     y += 38.0f;
     ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, status ? status : "");
     y += 24.0f;
-    float tw = (w - 8.0f) * 0.5f;
+    float tw = (w - 16.0f) / 3.0f;
     if (ui_button(ui, "Room##tab0", x, y, tw, 36.0f, m->tab == 0)) {
         m->tab = 0;
     }
     if (ui_button(ui, "Settings##tab1", x + tw + 8.0f, y, tw, 36.0f, m->tab == 1)) {
         m->tab = 1;
+    }
+    if (ui_button(ui, "Dev##tab2", x + 2.0f * (tw + 8.0f), y, tw, 36.0f, m->tab == 2)) {
+        m->tab = 2;
     }
     y += 52.0f;
     /* landscape: two columns, the panel is too short for one */
@@ -96,6 +99,22 @@ MenuAction debug_menu(DebugMenu *m, Ui *ui, GameSettings *s, float w_pt, float h
             action = MENU_MAIN_MENU;
             m->open = false;
         }
+    } else if (m->tab == 2) {
+        ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
+        y += 40.0f;
+        ui_toggle(ui, "Show triggers", x, y, cw, &s->show_triggers);
+        y += 48.0f;
+        ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Teleport to floor");
+        y += 24.0f;
+        static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};
+        float bw = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            if (ui_button(ui, labels[i], x + (float)i * (bw + 8.0f), y, bw, 44.0f, false)) {
+                s->teleport_floor = i;
+                action = MENU_TELEPORT;
+                m->open = false;
+            }
+        }
     } else {
         const float step = 52.0f;
         ui_slider(ui, "Camera yaw sens##s1", x, y, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
@@ -118,8 +137,6 @@ MenuAction debug_menu(DebugMenu *m, Ui *ui, GameSettings *s, float w_pt, float h
         y += step;
         ui_slider(ui, "Render scale##s7", x, y, cw, &s->render_scale, 0.5f, 1.0f, "%.2f");
         y += step + 4.0f;
-        ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
-        y += 40.0f;
         ui_toggle(ui, "Invert Y", x, y, cw, &s->invert_y);
     }
     return action;

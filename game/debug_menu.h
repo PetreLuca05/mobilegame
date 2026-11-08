@@ -12,12 +12,13 @@ typedef enum MenuAction {
     MENU_NEW_ROOM,    /* create a fresh room code and join it */
     MENU_DISCONNECT,  /* leave the room, back to offline play */
     MENU_CAMERA_PITCH, /* pitch slider moved: apply to the camera */
-    MENU_MAIN_MENU     /* back to the launch screen */
+    MENU_MAIN_MENU,    /* back to the launch screen */
+    MENU_TELEPORT      /* debug: to settings->teleport_floor */
 } MenuAction;
 
 typedef struct DebugMenu {
     bool open;
-    int tab; /* 0 room, 1 settings */
+    int tab; /* 0 room, 1 settings, 2 dev */
     char code[5];
     int code_len;
 } DebugMenu;
