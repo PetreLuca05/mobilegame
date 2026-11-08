@@ -521,7 +521,8 @@ static void steer_one(const SteerCtx *s, int i)
         }
     }
     /* wedged against something: ask for a new path now rather than after the stuck time */
-    if (nx == o->x && nz == o->z && !door_wait && speed > 0.0f) {
+    const float mvx = nx - o->x, mvz = nz - o->z, want_step = speed * dt * 0.2f;
+    if (mvx * mvx + mvz * mvz < want_step * want_step && !door_wait && speed > 0.0f) { /* a slide of almost nothing is not progress */
         c->blocked_t += dt;
         if (c->blocked_t > 0.5f) {
             c->blocked_t = 0.0f;
