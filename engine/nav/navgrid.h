@@ -39,6 +39,7 @@ typedef struct NavGrid {
     NavGridDesc d;
     int base;       /* first node id */
     uint8_t *flags; /* cols x rows */
+    uint16_t *region; /* connected area of each walkable cell (0 = none) */
 } NavGrid;
 
 typedef struct NavPoint {

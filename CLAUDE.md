@@ -237,6 +237,14 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   right-click (no drag) on the floor. `--autotest nav` checks every room
   from the gate, rides, the blocked stairwell, and logs bake and path ms.
 
+- `game/autonav.c`: walks a path by feeding a synthetic stick into the normal
+  input (controller, replication, animation and stats are unaware). Any real
+  stick / WASD cancels at once; Settings cancels; room change / load clears.
+  Arrival 0.6 m, stuck 1.5 s -> one re-path, then FAILED. Cross-storey: walks to
+  the car centre, waits 0.3 s (a stick push still cancels and the floor menu
+  appears), rides with `elevator_request`. Desktop right-click = walk there.
+  `--autotest autonav`.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

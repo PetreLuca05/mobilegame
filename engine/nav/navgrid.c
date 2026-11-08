@@ -121,6 +121,40 @@ static void bake_grid(NavGrid *g, Cell *cells, const ColWorld *world, const NavB
     }
 }
 
+/* Flood fill: cells of one connected area share a region number, so an
+ * impossible request is answered without searching. */
+static void label_regions(NavGrid *g, int32_t *stack)
+{
+    const int cols = g->d.cols, rows = g->d.rows;
+    memset(g->region, 0, sizeof(uint16_t) * (size_t)(cols * rows));
+    uint16_t next = 0;
+    for (int start = 0; start < cols * rows; start++) {
+        if (!(g->flags[start] & NAV_WALKABLE) || g->region[start]) {
+            continue;
+        }
+        next++;
+        int sp = 0;
+        stack[sp++] = start;
+        g->region[start] = next;
+        while (sp > 0) {
+            int c = stack[--sp], z = c / cols, x = c - z * cols;
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int ax = x + dx, az = z + dz;
+                    if (ax < 0 || az < 0 || ax >= cols || az >= rows) {
+                        continue;
+                    }
+                    int a = az * cols + ax;
+                    if ((g->flags[a] & NAV_WALKABLE) && !g->region[a]) {
+                        g->region[a] = next;
+                        stack[sp++] = a;
+                    }
+                }
+            }
+        }
+    }
+}
+
 NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
 {
     double t0 = mg_time_now();
@@ -140,7 +174,8 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
         n->total += cells;
         largest = cells > largest ? cells : largest;
         g->flags = ARENA_PUSH(perm, uint8_t, (size_t)cells);
-        if (!g->flags) {
+        g->region = ARENA_PUSH(perm, uint16_t, (size_t)cells);
+        if (!g->flags || !g->region) {
             return NULL;
         }
     }
@@ -160,6 +195,7 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
     }
     for (int i = 0; i < desc->grid_count; i++) {
         bake_grid(&n->grids[i], cells, world, desc);
+        label_regions(&n->grids[i], n->heap);
     }
     arena_reset_to(perm, mark);
     n->bake_ms = (float)((mg_time_now() - t0) * 1000.0);

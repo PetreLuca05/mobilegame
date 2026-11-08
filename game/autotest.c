@@ -7,13 +7,13 @@
 #include "player.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
-       AUTOTEST_SCREENSHOT };
+       AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV };
 
 static int kind_of(int argc, char **argv)
 {
-    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot"};
+    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 6 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 7 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -39,7 +39,7 @@ bool autotest_starts_in_game(int argc, char **argv)
         if (SDL_strcmp(argv[i], "--autotest") == 0) {
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
                    SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0 ||
-                   SDL_strcmp(argv[i + 1], "nav") == 0;
+                   SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0;
         }
     }
     return false;
@@ -186,6 +186,77 @@ static bool run_stickdir(Autotest *t, MgApp *app, const AutotestProbe *p, double
             }
         }
         break;
+    }
+    return false;
+}
+
+static bool fail(Autotest *t, const char *what, const char *detail);
+
+/* Auto-nav legs: each must end ARRIVED within 0.6 m. Leg 1 also pushes the
+ * stick after 2 s: navigation must stop at once and the stick must drive. */
+static bool run_autonav(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el)
+{
+    enum { IDLE_, WALKING_, IN_CAR_, RIDING_, ARRIVED_, CANCELLED_, FAILED_ }; /* mirrors AutonavState */
+    static const struct { float x, y, z; int storey; const char *name; } legs[] = {
+        {-20.0f, 0.0f, 10.0f, -1, "yard"},        {-6.0f, 0.0f, 16.5f, -1, "yard (stick cancels)"},
+        {-10.4f, 0.0f, -4.0f, 0, "pharmacy"},     {8.6f, 8.0f, -3.0f, 2, "OR 2 (via the car)"},
+        {-18.0f, 0.0f, 6.0f, -1, "yard (from floor 2)"},
+    };
+    const int n = (int)MG_ARRAY_COUNT(legs);
+    if (el < 1.0) {
+        return false;
+    }
+    const float sx = 130.0f, sy = app->height_pt * 0.6f;
+    switch (t->stage) {
+    case 0:
+        out->nav_go = true;
+        out->nav_pos = HMM_V3(legs[t->step].x, legs[t->step].y, legs[t->step].z);
+        out->nav_to = legs[t->step].storey;
+        t->step_start = el;
+        t->stage = 1;
+        break;
+    case 1: {
+        double local = el - t->step_start;
+        if (t->step == 1 && local > 1.5) { /* push the stick: must cancel on the spot */
+            finger(app, SDL_EVENT_FINGER_DOWN, 51, sx, sy);
+            finger(app, SDL_EVENT_FINGER_MOTION, 51, sx + 120.0f, sy);
+            t->at_start = *p;
+            t->stage = 2;
+            t->wait_until = el + 0.5;
+            break;
+        }
+        if (local < 0.1) {
+            break;
+        }
+        if (p->nav_state == ARRIVED_) {
+            HMM_Vec3 d = HMM_SubV3(p->player_pos, HMM_V3(legs[t->step].x, p->player_pos.Y, legs[t->step].z));
+            float dist = sqrtf(d.X * d.X + d.Z * d.Z);
+            bool ok = dist <= 0.6f && p->nav_storey == legs[t->step].storey;
+            mg_log_info("autotest autonav: %s arrived %.2f m from the target, %.1f s, storey %d (%s)",
+                        legs[t->step].name, dist, local, p->nav_storey, ok ? "ok" : "FAIL");
+            t->passed = (t->step == 0 || t->passed) && ok;
+            t->step++;
+            t->stage = t->step == n ? 3 : 0;
+        } else if (p->nav_state == FAILED_ || local > 45.0) {
+            return fail(t, "autonav", legs[t->step].name);
+        }
+        break;
+    }
+    case 2: /* stick cancel leg */
+        finger(app, SDL_EVENT_FINGER_MOTION, 51, sx + 120.0f, sy);
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, 51, sx + 120.0f, sy);
+            bool ok = p->nav_state == CANCELLED_ && p->player_pos.X > t->at_start.player_pos.X + 1.0f;
+            mg_log_info("autotest autonav: stick cancel: state %d, moved %+.2f m east under the stick (%s)", p->nav_state,
+                        (double)(p->player_pos.X - t->at_start.player_pos.X), ok ? "ok" : "FAIL");
+            t->passed = t->passed && ok;
+            t->step++;
+            t->stage = 0;
+        }
+        break;
+    default:
+        mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
+        return true;
     }
     return false;
 }
@@ -379,6 +450,9 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_STICKDIR:
         finished = run_stickdir(t, app, p, el);
+        break;
+    case AUTOTEST_AUTONAV:
+        finished = run_autonav(t, app, p, out, el);
         break;
     case AUTOTEST_SCREENSHOT: /* let the scene settle, shoot, quit a second later */
         if (t->stage == 0 && el > 3.0) {

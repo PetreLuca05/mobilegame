@@ -109,6 +109,9 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         float cy = h_pt - mg_maxf(safe_bottom, 16.0f) - 40.0f - r * 0.75f;
         ui_circle(g, f, cx, cy, r * 0.75f, ui_rgba(0xFFFFFF14));
         ui_circle(g, f, cx, cy, 30.0f, ui_rgba(0xFFFFFF40));
+        if (tc->auto_dot) {
+            ui_circle(g, f, cx, cy, 10.0f, ui_rgba(0x4A8BFFFF));
+        }
     }
     float jr = cfg->jump_size_pt * 0.5f;
     if (jr <= 0.0f) {

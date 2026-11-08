@@ -36,6 +36,7 @@ typedef struct TouchControls {
     bool sprint;
     float camera_dx, camera_dy; /* pt dragged this frame (camera_zone) */
     bool jump_held;
+    bool auto_dot;             /* navigation is driving: small dot in the stick's resting spot */
     /* layout */
     float jump_cx, jump_cy;
 } TouchControls;

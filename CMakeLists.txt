@@ -198,6 +198,7 @@ set(MG_GAME_SOURCES
   game/floor_menu.c
   game/route_test.c
   game/nav_debug.c
+  game/autonav.c
   game/stats.c
   game/player.c
   game/camera_td.c

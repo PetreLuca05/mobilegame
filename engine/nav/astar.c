@@ -9,6 +9,9 @@
 #include "nav_internal.h"
 
 #define SQRT2 1.41421356f
+/* Slightly over-weighted heuristic: far fewer cells searched; string-pulling
+ * removes the small detours it can add. */
+static const float k_h_weight = 1.2f;
 
 typedef struct Cellp {
     int x, z;
@@ -138,6 +141,9 @@ static void add_point(NavPath *p, const NavGrid *g, Cellp c, int storey)
 /* A* from a to b on grid g, string-pulled, appended to the path. */
 static bool search(NavWorld *n, const NavGrid *g, Cellp a, Cellp b, int storey, NavPath *path, bool first)
 {
+    if (g->region[a.z * g->d.cols + a.x] != g->region[b.z * g->d.cols + b.x]) {
+        return false; /* different connected areas: no need to flood the grid */
+    }
     n->generation += 2;
     const uint32_t open_mark = n->generation, closed_mark = n->generation + 1;
     Heap h = {n->heap, n->heap_f, 0, n->total * 8};
@@ -146,7 +152,7 @@ static bool search(NavWorld *n, const NavGrid *g, Cellp a, Cellp b, int storey, 
     n->g[start] = 0.0f;
     n->parent[start] = -1;
     n->stamp[start] = open_mark;
-    heap_push(&h, start, octile(a.x, a.z, b.x, b.z));
+    heap_push(&h, start, k_h_weight * octile(a.x, a.z, b.x, b.z));
     bool found = false;
     while (h.n > 0) {
         int32_t cur = heap_pop(&h);
@@ -180,7 +186,7 @@ static bool search(NavWorld *n, const NavGrid *g, Cellp a, Cellp b, int storey, 
                     n->g[next] = cost;
                     n->parent[next] = cur;
                     n->stamp[next] = open_mark;
-                    heap_push(&h, next, cost + octile(cx + dx, cz + dz, b.x, b.z));
+                    heap_push(&h, next, cost + k_h_weight * octile(cx + dx, cz + dz, b.x, b.z));
                 }
             }
         }

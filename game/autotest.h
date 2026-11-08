@@ -6,6 +6,9 @@
  *               then background + hard exit, like a swipe-kill
  *   continue    Main menu -> Continue; passes when back on the saved floor
  *   stickdir    stick up/right/down/left walk north/east/south/west
+ *   autonav     auto-nav across the yard and into a room, a stick cancel,
+ *               then yard -> floor 2 and floor 2 -> yard through the car
+ *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
  * timed ones with --screenshot-at S:NAME[,S:NAME...] (Documents on iOS,
@@ -32,6 +35,8 @@ typedef struct AutotestProbe {
     bool riding;
     uint32_t skin_hash; /* changes whenever the look changes */
     int route_step;    /* route test progress (-1 = not running) */
+    int nav_state;     /* AutonavState */
+    int nav_storey;    /* player's storey, -1 yard */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -39,6 +44,9 @@ typedef struct AutotestOut {
     bool start_route; /* save: start walking the route test */
     bool kill;        /* save: background (saves) and exit at once */
     char screenshot[48]; /* save this frame as <name>.png ("" = none) */
+    bool nav_go;      /* start auto-nav to nav_pos / nav_to */
+    HMM_Vec3 nav_pos;
+    int nav_to;
 } AutotestOut;
 
 typedef struct Autotest {

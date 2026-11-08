@@ -43,6 +43,7 @@
 #include "gfx/mesh.h"
 #include "net_session.h"
 #include "player.h"
+#include "autonav.h"
 #include "nav_debug.h"
 #include "route_test.h"
 #include "scene.h"
@@ -66,6 +67,8 @@ typedef struct Game {
     uint32_t shots_taken;  /* --screenshot-at entries done (bit per entry) */
     uint32_t occl_frames, occl_hidden, occl_lost; /* route test: indoor frames / behind a wall / ... with no x-ray */
     struct NavWorld *nav;  /* pathfinding grids, NULL if the scene has none */
+    Autonav autonav;
+    float auto_x, auto_z;  /* this frame's synthetic stick */
     NavPath nav_path;      /* last path found */
     bool nav_path_ok;
     NavDebug nav_debug;
@@ -478,6 +481,15 @@ static void update_player_input(Game *g, MgApp *app)
         mx /= len;
         mz /= len;
     }
+    /* real input wins at once; otherwise auto-nav's synthetic stick */
+    if (autonav_active(&g->autonav)) {
+        if (mx != 0.0f || mz != 0.0f) {
+            autonav_cancel(&g->autonav);
+        } else {
+            mx = g->auto_x;
+            mz = g->auto_z;
+        }
+    }
     bool sprint = g->touch.sprint || k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
     bool jump = g->touch.jump_held || k[SDL_SCANCODE_SPACE];
     if (g->demo_walk) { /* desktop test: walk circles and hop every few seconds */
@@ -535,6 +547,7 @@ static void leave_play(Game *g, MgApp *app)
     session_stop(&g->session);
     g->playing = false;
     g->offline_play = false;
+    autonav_clear(&g->autonav);
     net_set_quiet(g->net, false);
     g->play_paused = false;
     g->menu.open = false;
@@ -840,6 +853,7 @@ static void load_step(Game *g, MgApp *app)
             g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
         }
         g->next_save = app->time + 30.0;
+        autonav_clear(&g->autonav);
         g->cam.initialized = g->td.initialized = false;
         g->fade_snap = true;
         touch_controls_reset(&g->touch);
@@ -1002,7 +1016,11 @@ void game_frame(MgApp *app, float alpha)
                            g->playing ? scene_floor_of(g->scene, g->player.kin.pos) : 0,
                            probe_el && elevator_busy(probe_el),
                            SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
-                           g->route.active && !g->route.done ? g->route.step : -1};
+                           g->route.active && !g->route.done ? g->route.step : -1,
+                           (int)g->autonav.state,
+                           g->playing && scene_indoors(g->scene, g->player.kin.pos)
+                               ? scene_floor_of(g->scene, g->player.kin.pos)
+                               : -1};
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
@@ -1037,6 +1055,12 @@ void game_frame(MgApp *app, float alpha)
         SDL_free(dir);
 #endif
         gfx_request_screenshot(app->gfx, path);
+    }
+    if (ato.nav_go && g->nav) {
+        AutonavCtx ac = {g->player.kin.pos, probe.nav_storey, app->time, false, false, 0};
+        autonav_go(&g->autonav, g->nav, &ac, ato.nav_pos, ato.nav_to, 0);
+        g->nav_path = g->autonav.path;
+        g->nav_path_ok = true;
     }
     if (ato.start_route) {
         route_test_start(&g->route);
@@ -1185,7 +1209,9 @@ void game_frame(MgApp *app, float alpha)
     Elevator *el = scene_elevator(g->scene);
     const bool riding = el && elevator_busy(el);
     bool menu_shown = false;
-    if (el && !riding && !g->menu.open && elevator_contains(el, g->player.kin.pos, g->kparams.radius)) {
+    /* auto-nav rides on its own: no floor menu unless the player cancels */
+    if (el && !riding && !g->menu.open && !autonav_active(&g->autonav) &&
+        elevator_contains(el, g->player.kin.pos, g->kparams.radius)) {
         menu_shown = true;
         int pick = floor_menu(&g->ui, app->width_pt, app->safe_top, app->safe_right, el->floors, el->car_floor,
                               scene_floor_name);
@@ -1274,6 +1300,22 @@ void game_frame(MgApp *app, float alpha)
         if (g->route.done) {
             app->quit_requested = true;
         }
+        if (g->nav && autonav_active(&g->autonav)) {
+            if (g->menu.open) {
+                autonav_cancel(&g->autonav);
+            }
+            AutonavCtx ac = {feet, scene_indoors(g->scene, feet) ? scene_floor_of(g->scene, feet) : -1, app->time,
+                             el && elevator_contains(el, g->player.kin.pos, g->kparams.radius),
+                             el && elevator_busy(el), el ? el->car_floor : 0};
+            AutonavOut ao;
+            autonav_update(&g->autonav, g->nav, &ac, &ao);
+            g->auto_x = ao.move_x;
+            g->auto_z = ao.move_z;
+            if (ao.ride_to >= 0 && el) {
+                elevator_request(el, ao.ride_to);
+            }
+        }
+        g->touch.auto_dot = g->autonav.state == AUTONAV_WALKING;
         if (riding || g->menu.open) {
             player_set_input(&g->player, 0, 0, false, false); /* locked for the ride / behind the menu */
         } else if (route) {
@@ -1351,8 +1393,11 @@ void game_frame(MgApp *app, float alpha)
             if (screen_to_floor(g, app, app->input.right_click_x, app->input.right_click_y,
                                 scene_floor_y(g->scene, floor), &hit)) {
                 int from = scene_indoors(g->scene, feet) ? player_floor : -1;
-                g->nav_path_ok = nav_find_path(g->nav, feet, from, hit, floor, &g->nav_path) == 0;
-                mg_log_info("nav: path to (%.1f, %.1f) floor %d: %s, %d points, %.1f m, %.2f ms", (double)hit.X,
+                AutonavCtx ac = {feet, from, app->time, false, false, 0};
+                int to = floor == 0 && !(nav_flags_at(g->nav, 0, hit.X, hit.Z) & NAV_OUTDOOR) ? 0 : floor;
+                g->nav_path_ok = autonav_go(&g->autonav, g->nav, &ac, hit, to, 0);
+                g->nav_path = g->autonav.path;
+                mg_log_info("nav: walk to (%.1f, %.1f) floor %d: %s, %d points, %.1f m, %.2f ms", (double)hit.X,
                             (double)hit.Z, floor, g->nav_path_ok ? "ok" : "unreachable", g->nav_path.count,
                             (double)g->nav_path.length, (double)nav_path_ms(g->nav));
             }
