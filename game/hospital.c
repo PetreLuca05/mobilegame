@@ -1128,7 +1128,7 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
         }
         /* only the view floor reflects; with the ceiling faded away the
          * mirror mostly shows sky, so it stays subtle */
-        GfxMaterial inside = tinted(mat_floor_plain(HMM_V4(1, 1, 1, 1), f == floor ? 0.25f : 0.0f), v, f);
+        GfxMaterial inside = tinted(mat_floor_tiles(HMM_V4(1, 1, 1, 1), 0.6f), v, f); /* 60 cm vinyl tiles */
         GfxMaterial mt = tinted(matte, v, f), gl = tinted(glossy, v, f);
         inside.hide = mt.hide = gl.hide = floorfade_hide(vis);
         for (int c = 0; c < HOSP_CELLS; c++) {

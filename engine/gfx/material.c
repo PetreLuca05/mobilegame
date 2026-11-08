@@ -7,7 +7,7 @@ static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_FLOOR] = {"mesh.vert", "floor.frag", 2, 3, 4, false, true, true},
 #else /* minimal: one directional light, no shadow maps, no reflection */
     [GFX_MAT_TOON] = {"mesh.vert", "toon_flat.frag", 2, 2, 0, false, true, true},
-    [GFX_MAT_FLOOR] = {"mesh.vert", "toon_flat.frag", 2, 2, 0, false, true, true},
+    [GFX_MAT_FLOOR] = {"mesh.vert", "floor_flat.frag", 2, 2, 0, false, true, true},
 #endif
     [GFX_MAT_OUTLINE] = {"outline.vert", "unlit.frag", 2, 1, 0, false, true, false, true},
     [GFX_MAT_TEXT] = {"mesh.vert", "text.frag", 2, 1, 1, true, false, false},
@@ -56,15 +56,36 @@ GfxMaterial mat_outline(HMM_Vec4 color)
 
 GfxMaterial mat_floor(HMM_Vec4 color)
 {
+#ifdef MG_RENDER_FULL
     /* x major line width, y minor line width, z minor alpha, w reflection mix */
     GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(0.07f, 0.012f, 0.5f, 0.4f)};
+#else /* 1 m grid as tiles */
+    GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(1.0f, 0.25f, 0.0f, 0.0f)};
+#endif
     return m;
 }
 
 GfxMaterial mat_floor_plain(HMM_Vec4 color, float reflection)
 {
+#ifdef MG_RENDER_FULL
     GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(0.0f, 0.0f, 0.0f, reflection)};
+#else
+    (void)reflection;
+    GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(0.0f, 0.0f, 0.0f, 0.0f)};
+#endif
     return m;
+}
+
+GfxMaterial mat_floor_tiles(HMM_Vec4 color, float tile_m)
+{
+#ifdef MG_RENDER_FULL
+    (void)tile_m;
+    return mat_floor_plain(color, 0.25f);
+#else
+    /* subtle but visible: 14 % darker grout, 3 % checker */
+    GfxMaterial m = {GFX_MAT_FLOOR, color, HMM_V4(tile_m, 0.14f, 0.03f, 0.0f)};
+    return m;
+#endif
 }
 
 GfxMaterial mat_text(HMM_Vec4 color)
