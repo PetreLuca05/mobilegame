@@ -130,7 +130,7 @@ Inside the arena: nav grids 7.6 MB, NPC storage 0.9 MB; audio is in the arena an
 | npc.cull | 0.02 | 0.05 | 0.54 |
 | render.cull | 0.01 | 0.05 | 0.58 |
 
-`render` contains `render.sort` and `render.encode`; `frame` and `tick` contain their nested scopes. The largest single item left is CPU command encoding inside the render scope.
+`render` contains `render.sort` and `render.encode`; `frame` and `tick` contain their nested scopes. About 0.7 ms of `render` is outside those two scopes (instance building and upload, UI encoding, submit); it is the largest item left and is not broken down yet.
 
 ## Audit status and deferred work
 
