@@ -37,6 +37,8 @@ typedef enum NetCmdType {
     CMD_ACCOUNT,
     CMD_PROFILE_SAVE,
     CMD_STATS_SAVE,
+    CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
+    CMD_SIGN_OUT,
 } NetCmdType;
 
 typedef struct NetCmd {
@@ -110,6 +112,11 @@ struct NetTransport {
     bool stats_pending;
     NetStats stats_save;
     char rest_body[1024];
+    /* Google link handoff (under lock) */
+    char link_token[2048];
+    char link_nonce[96];
+    bool link_pending; /* network thread: waiting for the guest session */
+    char joined_uid[NET_ID_LEN]; /* identity our room presence uses */
 };
 
 const char *net_status_name(NetStatus s)
@@ -207,6 +214,7 @@ static void send_join(NetTransport *n)
                        n->topic, n->auth.user_id, n->auth.access_token, n->join_ref, n->join_ref);
     send_line(n, len);
     n->sent_token_version = n->auth.token_version;
+    snprintf(n->joined_uid, sizeof(n->joined_uid), "%s", n->auth.user_id);
 }
 
 /* JSON string body (no quotes): escapes quotes, backslashes and controls. */
@@ -649,6 +657,13 @@ static void process_commands(NetTransport *n)
             n->stats_save = c.stats;
             n->stats_pending = true;
             break;
+        case CMD_LINK_GOOGLE:
+            n->link_pending = true;
+            n->want_account = true;
+            break;
+        case CMD_SIGN_OUT:
+            supa_auth_sign_out(&n->auth);
+            break;
         }
     }
 }
@@ -715,6 +730,7 @@ static void profile_loaded(void *user, int status, const char *body, size_t len)
     p->skin = (NetSkin){0, 1, 3};
     p->guest = n->auth.is_anonymous;
     snprintf(p->email, sizeof(p->email), "%s", n->auth.email);
+    snprintf(p->google_name, sizeof(p->google_name), "%s", n->auth.name);
     cJSON *j = cJSON_ParseWithLength(body, len);
     const cJSON *row = cJSON_IsArray(j) ? cJSON_GetArrayItem(j, 0) : NULL;
     if (row) {
@@ -765,9 +781,45 @@ static void stats_saved(void *user, int status, const char *body, size_t len)
     }
 }
 
+static void guest_deleted(void *user, int status, const char *body, size_t len)
+{
+    (void)body;
+    (void)len;
+    mg_log_info("account: old guest removed (HTTP %d)", status);
+    (void)user;
+}
+
 static void drive_account(NetTransport *n)
 {
+    if (n->auth.link_error[0]) {
+        account_error(n, n->auth.link_error, 0);
+        n->auth.link_error[0] = 0;
+    }
+    if (n->auth.account_changed) { /* linked, switched or signed out */
+        n->auth.account_changed = false;
+        n->loaded_uid[0] = 0;
+        n->want_account = true;
+        if (n->ws.c && strcmp(n->joined_uid, n->auth.user_id) != 0) {
+            ws_close(&n->ws); /* rejoin the room under the new identity */
+        }
+    }
     if (!n->want_account || n->cfg.public_test || !ensure_auth(n, n->want_room) || n->rest.busy) {
+        return;
+    }
+    if (n->link_pending) {
+        n->link_pending = false;
+        SDL_LockMutex(n->lock);
+        bool ok = supa_auth_link_google(&n->auth, &n->mgr, n->link_token, n->link_nonce);
+        memset(n->link_token, 0, sizeof(n->link_token));
+        SDL_UnlockMutex(n->lock);
+        if (!ok) {
+            account_error(n, "Google sign-in: not signed in yet", 0);
+        }
+        return;
+    }
+    if (n->auth.delete_guest) {
+        n->auth.delete_guest = false;
+        rest_call(&n->rest, &n->mgr, n->auth.guest_token, "POST", "rpc/delete_anonymous_self", "{}", guest_deleted, n);
         return;
     }
     char path[160];
@@ -1060,5 +1112,31 @@ void net_save_stats(NetTransport *n, const NetStats *totals)
     memset(&c, 0, sizeof(c));
     c.type = CMD_STATS_SAVE;
     c.stats = *totals;
+    push_cmd(n, &c);
+}
+
+void net_link_google(NetTransport *n, const char *id_token, const char *nonce)
+{
+    if (!n) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    snprintf(n->link_token, sizeof(n->link_token), "%s", id_token);
+    snprintf(n->link_nonce, sizeof(n->link_nonce), "%s", nonce ? nonce : "");
+    SDL_UnlockMutex(n->lock);
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_LINK_GOOGLE;
+    push_cmd(n, &c);
+}
+
+void net_sign_out(NetTransport *n)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_SIGN_OUT;
     push_cmd(n, &c);
 }

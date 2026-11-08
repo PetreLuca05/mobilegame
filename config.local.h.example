@@ -9,4 +9,11 @@
 /* Publishable key (sb_publishable_...) or legacy anon JWT */
 #define MG_SUPABASE_ANON_KEY ""
 
+/* Google sign-in (Google Cloud Console OAuth clients, see CLAUDE.md).
+ * Web client id: the one Supabase's Google provider uses; Android passes it
+ * as serverClientId. iOS client id: for the iOS app. Leave "" to hide the
+ * button. The Web client SECRET never goes in the app. */
+#define MG_GOOGLE_WEB_CLIENT_ID ""
+#define MG_GOOGLE_IOS_CLIENT_ID ""
+
 #endif

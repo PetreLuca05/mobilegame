@@ -4,10 +4,17 @@
 #include "game.h"
 
 #include "audio/audio.h"
+#include "platform/google_auth.h"
 #include "autotest.h"
 #include "avatar.h"
 #include "camera_tp.h"
 #include "config.local.h"
+#ifndef MG_GOOGLE_WEB_CLIENT_ID /* older config.local.h */
+#define MG_GOOGLE_WEB_CLIENT_ID ""
+#endif
+#ifndef MG_GOOGLE_IOS_CLIENT_ID
+#define MG_GOOGLE_IOS_CLIENT_ID ""
+#endif
 #include "elevator.h"
 #include "floor_menu.h"
 #include "launch_screen.h"
@@ -57,6 +64,8 @@ typedef struct Game {
     Stats stats;
     NetProfile profile;    /* our account (name, skin, guest/Google) */
     bool profile_loaded;
+    GoogleAuth *google;
+    bool google_busy;      /* sign-in sheet open or link request in flight */
     bool skin_override;    /* desktop --skin P,H,A: local only, never saved */
     NetSkin override_skin;
     int last_ride_count; /* elevator rides already counted */
@@ -188,6 +197,7 @@ bool game_init(MgApp *app)
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     g->audio = audio_create(&app->perm);
+    g->google = google_auth_create(&app->perm, MG_GOOGLE_WEB_CLIENT_ID, MG_GOOGLE_IOS_CLIENT_ID);
     route_test_init(&g->route, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
     return g->unit_box != GFX_MESH_NONE;
@@ -278,7 +288,7 @@ static void update_player_input(Game *g, MgApp *app)
     player_set_input(&g->player, mx, mz, sprint, jump);
 }
 
-static void handle_menu_action(Game *g, MenuAction a)
+static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
 {
     switch (a) {
     case MENU_SKIN:
@@ -291,8 +301,13 @@ static void handle_menu_action(Game *g, MenuAction a)
         net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
         break;
     case MENU_GOOGLE:
+        g->account_msg[0] = 0;
+        g->session.account_error[0] = 0;
+        g->google_busy = google_auth_start(g->google, app->window);
+        break;
     case MENU_SIGN_OUT:
-        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Google sign-in arrives in the next step");
+        net_sign_out(g->net);
+        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Signed out - playing as a new guest");
         break;
     case MENU_DISCONNECT:
         session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
@@ -469,6 +484,22 @@ void game_frame(MgApp *app, float alpha)
             g->session.profile_new = false;
             g->profile = g->session.profile;
             g->profile_loaded = true;
+            g->google_busy = false;
+            if (!g->profile.guest && SDL_strcmp(g->profile.display_name, "Player") == 0 && g->profile.google_name[0]) {
+                /* first link: take the first name from the Google account (2-16 safe chars) */
+                char name[NET_NAME_LEN];
+                int n = 0;
+                for (const char *c = g->profile.google_name; *c && *c != ' ' && n < 16; c++) {
+                    if (SDL_isalnum((unsigned char)*c) || *c == '_' || *c == '-' || *c == '.') {
+                        name[n++] = *c;
+                    }
+                }
+                name[n] = 0;
+                if (n >= 2) {
+                    SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", name);
+                    net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
+                }
+            }
             if (g->skin_override) {
                 g->profile.skin = g->override_skin;
             }
@@ -498,10 +529,27 @@ void game_frame(MgApp *app, float alpha)
         return;
     }
     SettingsAccount acct = {g->profile.display_name, g->profile.email, g->profile.guest || !g->profile_loaded,
-                            false, false, g->session.account_error[0] ? g->session.account_error : g->account_msg};
+                            g->net && google_auth_available(g->google), g->google_busy,
+                            g->session.account_error[0] ? g->session.account_error : g->account_msg};
     MenuAction action = settings_menu(&g->menu, &g->ui, s, &g->profile.skin, &acct, app->width_pt, app->height_pt,
                                       app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, g->status);
-    handle_menu_action(g, action);
+    handle_menu_action(g, app, action);
+    {
+        /* native Google sign-in finished: hand the token to Supabase */
+        char token[4096], nonce[96], err[160];
+        GoogleAuthState gs = google_auth_poll(g->google, token, sizeof(token), nonce, sizeof(nonce), err, sizeof(err));
+        if (gs == GOOGLE_DONE) {
+            net_link_google(g->net, token, nonce);
+            SDL_memset(token, 0, sizeof(token));
+        } else if (gs == GOOGLE_FAILED) {
+            g->google_busy = false;
+            SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s",
+                         SDL_strcmp(err, "cancelled") == 0 ? "Sign-in cancelled" : err);
+        }
+        if (g->session.account_error[0]) {
+            g->google_busy = false;
+        }
+    }
     app_text_input(app, g->menu.open && g->menu.editing_name);
     if (g->menu.preview_visible) { /* the avatar turning slowly in the Skin tab */
         GfxSceneParams pc = {0};

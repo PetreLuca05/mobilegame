@@ -61,6 +61,7 @@ typedef struct NetProfile {
     NetStats stats;
     bool guest;            /* anonymous user, not linked to Google yet */
     char email[64];        /* Google account, "" for guests */
+    char google_name[NET_NAME_LEN]; /* name on the Google account ("" for guests) */
 } NetProfile;
 
 typedef enum NetEventType {
@@ -125,5 +126,11 @@ void net_account_start(NetTransport *n);
 void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *skin);
 /* Store stats totals (coalesced; one PATCH in flight). */
 void net_save_stats(NetTransport *n, const NetStats *totals);
+/* Link the guest to Google with a native-sign-in ID token (+ raw nonce).
+ * Success arrives as NET_EV_PROFILE (guest = false), failure as
+ * NET_EV_ACCOUNT_ERROR. */
+void net_link_google(NetTransport *n, const char *id_token, const char *nonce);
+/* Drop the session; a fresh guest (new profile) signs in. */
+void net_sign_out(NetTransport *n);
 
 #endif
