@@ -35,7 +35,8 @@ typedef struct GfxUiVertex {
 
 typedef enum GfxMaterialKind {
     GFX_MAT_UNLIT,  /* vertex colour x tint */
-    GFX_MAT_TOON,   /* 2-step ramp + rim + flat ambient */
+    GFX_MAT_TOON,   /* 3-band cel ramp + hard rim (+ specular spot when glossy) + flat ambient */
+    GFX_MAT_OUTLINE, /* inverted-hull toon outline: flat colour, mesh pushed out, front faces culled */
     GFX_MAT_FLOOR,  /* grid slab with planar reflection */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */

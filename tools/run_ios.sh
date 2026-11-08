@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Generate the Xcode project, build, install and launch on a connected iPhone.
+# Generate the Xcode project, build, install and launch on a connected iPhone/iPad.
 #   MG_IOS_TEAM_ID=ABCDE12345 tools/run_ios.sh          build + install + launch
 #   MG_IOS_TEAM_ID=ABCDE12345 tools/run_ios.sh --open   just generate and open Xcode
+#   MG_IOS_DEVICE=ipad ...                              only that device: iphone, ipad, or a
+#                                                       devicectl identifier (default: prefer an iPhone)
 # Needs Xcode 15+ (xcrun devicectl) and a device with Developer Mode enabled.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,19 +31,27 @@ APP=$(find "$BUILD" -path "*${CONFIG}-iphoneos/Mobilegame.app" -maxdepth 3 | hea
 
 JSON=$(mktemp)
 xcrun devicectl list devices --json-output "$JSON" >/dev/null
-DEVICE=$(python3 - "$JSON" <<'PY'
+DEVICE=$(python3 - "$JSON" "${MG_IOS_DEVICE:-}" <<'PY'
 import json, sys
 devs = json.load(open(sys.argv[1]))["result"]["devices"]
-for d in devs:
-    hw = d.get("hardwareProperties", {})
-    conn = d.get("connectionProperties", {})
-    if hw.get("platform") == "iOS" and conn.get("tunnelState") != "unavailable":
-        print(d["identifier"]); break
+want = sys.argv[2]
+ok = [d for d in devs
+      if d.get("hardwareProperties", {}).get("platform") == "iOS"
+      and d.get("connectionProperties", {}).get("tunnelState") != "unavailable"]
+kind = lambda d: d.get("hardwareProperties", {}).get("deviceType", "").lower()
+if not want:  # the game targets phones: prefer an iPhone, else any device
+    ok.sort(key=lambda d: kind(d) != "iphone")
+elif want.lower() in ("iphone", "ipad"):
+    ok = [d for d in ok if kind(d) == want.lower()]
+else:
+    ok = [d for d in ok if d["identifier"] == want]
+if ok:
+    print(ok[0]["identifier"])
 PY
 )
 rm -f "$JSON"
 if [[ -z "$DEVICE" ]]; then
-    echo "No connected iPhone found. Built: $APP" >&2
+    echo "No connected device found (MG_IOS_DEVICE=${MG_IOS_DEVICE:-any}). Built: $APP" >&2
     exit 2
 fi
 xcrun devicectl device install app --device "$DEVICE" "$APP"

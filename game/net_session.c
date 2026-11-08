@@ -28,7 +28,7 @@ void session_random_code(char out[5])
 
 static void fill_meta(NetSession *s)
 {
-    AvatarLook look = avatar_look_for_slot(s->slot < 0 ? 0 : s->slot);
+    AvatarLook look = avatar_look_doctor(avatar_look_for_slot(s->slot < 0 ? 0 : s->slot));
     char tail[5] = "----";
     size_t n = strlen(s->self_id);
     if (n >= 4) {
@@ -43,7 +43,10 @@ static void fill_meta(NetSession *s)
     s->me.slot = s->slot;
 }
 
-AvatarLook session_my_look(const NetSession *s) { return avatar_look_for_slot(s->slot < 0 ? 0 : s->slot); }
+AvatarLook session_my_look(const NetSession *s)
+{
+    return avatar_look_doctor(avatar_look_for_slot(s->slot < 0 ? 0 : s->slot));
+}
 
 static void clear_remotes(NetSession *s) { memset(s->remotes, 0, sizeof(s->remotes)); }
 

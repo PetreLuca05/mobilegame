@@ -3,6 +3,7 @@
 static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_UNLIT] = {"mesh.vert", "unlit.frag", 2, 1, 0, false, true, true},
     [GFX_MAT_TOON] = {"mesh.vert", "toon.frag", 2, 2, 0, false, true, true},
+    [GFX_MAT_OUTLINE] = {"outline.vert", "unlit.frag", 2, 1, 0, false, true, false, true},
     [GFX_MAT_FLOOR] = {"mesh.vert", "floor.frag", 2, 2, 1, false, true, true},
     [GFX_MAT_SPRITE] = {"mesh.vert", "sprite.frag", 2, 1, 0, true, false, false},
     [GFX_MAT_GHOST] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, false},
@@ -22,9 +23,21 @@ GfxMaterial mat_toon(HMM_Vec4 color, float rim)
     return m;
 }
 
+GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss)
+{
+    GfxMaterial m = {GFX_MAT_TOON, color, HMM_V4(rim, 0, 0, gloss)};
+    return m;
+}
+
 GfxMaterial mat_toon_flat(HMM_Vec4 color)
 {
     GfxMaterial m = {GFX_MAT_TOON, color, HMM_V4(0, 1, 0, 0)};
+    return m;
+}
+
+GfxMaterial mat_outline(HMM_Vec4 color)
+{
+    GfxMaterial m = {GFX_MAT_OUTLINE, color, HMM_V4(0, 0, 0, 0)};
     return m;
 }
 

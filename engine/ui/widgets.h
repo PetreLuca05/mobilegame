@@ -8,6 +8,7 @@
 #include "text.h"
 
 #define UI_TOUCH_OWNER 100
+#define UI_BLOCK_OWNER 101 /* swallowed by a backdrop; widgets drawn on top may still take it */
 
 typedef struct Ui {
     GfxContext *gfx;

@@ -284,7 +284,9 @@ static bool create_pipelines(GfxContext *g)
                 .blend = mp->blend,
                 .depth_test = true,
                 .depth_write = mp->depth_write,
-                .cull = mp->cull_back ? SDL_GPU_CULLMODE_BACK : SDL_GPU_CULLMODE_NONE,
+                .cull = mp->cull_front  ? SDL_GPU_CULLMODE_FRONT
+                        : mp->cull_back ? SDL_GPU_CULLMODE_BACK
+                                        : SDL_GPU_CULLMODE_NONE,
                 .front = front,
                 .color_fmt = fmt,
                 .samples = samples,

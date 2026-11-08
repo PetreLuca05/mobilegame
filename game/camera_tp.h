@@ -1,6 +1,6 @@
 /* Third-person orbit camera: pivot 1.5 m above the feet, 3.2 m away,
  * critically damped spring follow (no overshoot), lens shift so the player
- * sits in the lower third of the portrait screen. No wall collision (M1). */
+ * sits in the lower third of the screen. No wall collision (M1). */
 #ifndef MG_CAMERA_TP_H
 #define MG_CAMERA_TP_H
 

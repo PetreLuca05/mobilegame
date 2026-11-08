@@ -19,7 +19,7 @@ typedef struct LaunchScreen {
     char code[5];
 } LaunchScreen;
 
-LaunchChoice launch_screen(LaunchScreen *ls, Ui *ui, float w_pt, float h_pt, float safe_t, float safe_b,
-                           bool online_available);
+LaunchChoice launch_screen(LaunchScreen *ls, Ui *ui, float w_pt, float h_pt, float safe_l, float safe_t,
+                           float safe_r, float safe_b, bool online_available);
 
 #endif

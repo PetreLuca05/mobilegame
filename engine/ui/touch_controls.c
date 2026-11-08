@@ -7,7 +7,7 @@ void touch_controls_default_config(TouchControlsConfig *c)
     c->dead_zone_pt = 60.0f;
     c->radius_pt = 120.0f;
     c->sprint_at = 0.95f;
-    c->stick_zone_y = 0.55f;
+    c->stick_zone_y = 0.35f;
     c->jump_size_pt = 72.0f;
 }
 

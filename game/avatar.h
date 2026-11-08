@@ -1,6 +1,6 @@
 /* Limbless toon avatar, no skeleton: floating tapered body, sphere head with
- * a flat face and hair cap, two floating hands (one holding a ball),
- * optional accessories, and a contact shadow. One toon material, tinted per
+ * a flat face and hair cap, two floating hands,
+ * optional accessories (incl. a doctor outfit), and a contact shadow. One toon material, tinted per
  * part from a 4-colour palette (skin, outfit, hair, accent). */
 #ifndef MG_AVATAR_H
 #define MG_AVATAR_H
@@ -11,6 +11,7 @@
 enum {
     AVATAR_SUNGLASSES = 1u << 0,
     AVATAR_CAT_EARS = 1u << 1,
+    AVATAR_DOCTOR = 1u << 2, /* surgical mask, stethoscope, scrubs V-neck, red cross */
 };
 
 typedef struct AvatarLook {
@@ -19,7 +20,8 @@ typedef struct AvatarLook {
 } AvatarLook;
 
 typedef struct AvatarMeshes {
-    GfxMeshId body, head, hair, eye, nose, mouth, hand, ball, decal, glasses, ear, shadow;
+    GfxMeshId body, head, hair, eye, nose, mouth, hand, decal, glasses, ear, shadow;
+    GfxMeshId mask, scope, vneck, cross;
 } AvatarMeshes;
 
 /* Animation state, advanced once per rendered frame. */
@@ -42,6 +44,8 @@ typedef struct AvatarPose {
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);
 AvatarLook avatar_look_for_slot(int slot);
+/* The player's own character: `base` keeps its skin tone, dressed as a doctor. */
+AvatarLook avatar_look_doctor(AvatarLook base);
 void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt);
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                  const AvatarAnim *a, const ColWorld *world);

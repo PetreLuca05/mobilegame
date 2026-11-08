@@ -53,20 +53,25 @@ void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
     }
 }
 
-/* Claim a touch that just began inside the rect; returns its slot or -1. */
-static int claim(Ui *ui, float x, float y, float w, float h)
+/* Claim a touch that just began inside the rect; returns its slot or -1.
+ * Backdrops (ui_block) run before the widgets on top of them, so a widget
+ * may take over a touch a backdrop swallowed. */
+static int claim_as(Ui *ui, float x, float y, float w, float h, int owner)
 {
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
         MgTouch *t = &ui->in->touches[i];
-        if (t->began && t->owner == MG_TOUCH_FREE && inside(t, x, y, w, h, true)) {
-            t->owner = UI_TOUCH_OWNER;
+        bool free = t->owner == MG_TOUCH_FREE || (owner == UI_TOUCH_OWNER && t->owner == UI_BLOCK_OWNER);
+        if (t->began && free && inside(t, x, y, w, h, true)) {
+            t->owner = owner;
             return i;
         }
     }
     return -1;
 }
 
-bool ui_block(Ui *ui, float x, float y, float w, float h) { return claim(ui, x, y, w, h) >= 0; }
+static int claim(Ui *ui, float x, float y, float w, float h) { return claim_as(ui, x, y, w, h, UI_TOUCH_OWNER); }
+
+bool ui_block(Ui *ui, float x, float y, float w, float h) { return claim_as(ui, x, y, w, h, UI_BLOCK_OWNER) >= 0; }
 
 void ui_panel(Ui *ui, float x, float y, float w, float h)
 {

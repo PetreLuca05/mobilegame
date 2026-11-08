@@ -1,6 +1,6 @@
 # Mobilegame — engine + M1 Dev Room
 
-C11 engine for iOS / Android phones (portrait only) on SDL3 + SDL3 GPU, with a
+C11 engine for iOS / Android phones (landscape only) on SDL3 + SDL3 GPU, with a
 desktop target for fast iteration. Multiplayer over Supabase Realtime.
 
 ## Layout

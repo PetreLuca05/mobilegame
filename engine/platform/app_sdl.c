@@ -47,7 +47,7 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     }
 
     SDL_SetAppMetadata(cb->title, "0.1.0", "ro.docvex.mobilegame");
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait");
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #if defined(MG_PLATFORM_DESKTOP)
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1"); /* left mouse acts as a finger */
@@ -75,7 +75,7 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if defined(MG_PLATFORM_DESKTOP)
     flags |= SDL_WINDOW_RESIZABLE;
-    app->window = SDL_CreateWindow(cb->title, 390, 844, flags);
+    app->window = SDL_CreateWindow(cb->title, 844, 390, flags);
     for (int i = 1; app->window && i + 1 < argc; i++) {
         int wx, wy;
         if (SDL_strcmp(argv[i], "--window-pos") == 0 && SDL_sscanf(argv[i + 1], "%d,%d", &wx, &wy) == 2) {

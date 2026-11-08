@@ -2,7 +2,7 @@
 
 // Procedural alpha sprites, premultiplied alpha output.
 // Quad UV (-1..1) arrives in nrm.xy (normal matrix is identity for sprites).
-// u_params.x: 0 soft disc (contact shadow), 1 cloud, 2 additive glow
+// u_params.x: 0 hard-edged disc (cel contact shadow), 1 cloud, 2 additive glow
 float blob(float2 uv, float2 c, float r)
 {
     return 1.0 - smoothstep(r * 0.25, r, length(uv - c));
@@ -15,7 +15,8 @@ float4 PSMain(VSOut i) : SV_Target0
     float a;
     float3 c = u_tint.rgb;
     if (u_params.x < 0.5) {
-        a = 1.0 - smoothstep(0.35, 1.0, r);
+        float fw = max(fwidth(r), 1e-4);
+        a = 1.0 - smoothstep(0.8 - fw, 0.8 + fw, r);
     } else if (u_params.x < 1.5) {
         float b = blob(uv, float2(-0.45, -0.15), 0.55) + blob(uv, float2(0.0, 0.05), 0.7)
                 + blob(uv, float2(0.45, -0.1), 0.55) + blob(uv, float2(0.15, 0.3), 0.45)

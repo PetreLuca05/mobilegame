@@ -1,5 +1,5 @@
-/* Portrait gameplay touch controls:
- *  - floating virtual stick: touch-down on the left half below 55% height,
+/* Landscape gameplay touch controls:
+ *  - floating virtual stick: touch-down on the left half below 35% height,
  *    dead zone + radius in pt, magnitude = speed, pushed to the rim = sprint
  *  - camera drag: any other free touch (right half and the upper left)
  *  - jump button: 72 pt circle bottom-right
@@ -18,7 +18,7 @@ typedef struct TouchControlsConfig {
     float dead_zone_pt;   /* 60 */
     float radius_pt;      /* 120 */
     float sprint_at;      /* fraction of radius that counts as "rim" */
-    float stick_zone_y;   /* stick starts below this fraction of height (0.55) */
+    float stick_zone_y;   /* stick starts below this fraction of height (0.35) */
     float jump_size_pt;   /* 72 */
 } TouchControlsConfig;
 

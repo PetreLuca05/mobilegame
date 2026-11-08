@@ -454,6 +454,42 @@ void ws_close(WsClient *ws)
 
 /* ---------------------------------------------------------------- HTTPS */
 
+/* Walk a chunked body: returns true once the terminating 0-size chunk is
+ * there. With `out` set, also decodes in place into `b` (only do that once
+ * the body is complete: a response arriving over several reads is parsed
+ * again from the raw buffer each time). */
+static bool chunked_walk(char *b, size_t avail, size_t *out)
+{
+    char *src = b, *dst = b;
+    char *lim = b + avail;
+    for (;;) {
+        char *nl = memchr(src, '\n', (size_t)(lim - src));
+        if (!nl) {
+            break;
+        }
+        long sz = strtol(src, NULL, 16);
+        src = nl + 1;
+        if (sz == 0) {
+            if (out) {
+                *out = (size_t)(dst - b);
+            }
+            return true;
+        }
+        if (sz < 0 || src + sz + 2 > lim) {
+            break;
+        }
+        if (out) {
+            memmove(dst, src, (size_t)sz);
+        }
+        dst += sz;
+        src += sz + 2;
+    }
+    if (out) {
+        *out = (size_t)(dst - b);
+    }
+    return false;
+}
+
 /* Parse a complete HTTP/1.1 response; returns false if more data needed. */
 static bool http_parse(char *buf, size_t n, bool at_close, int *status, char **body, size_t *body_len)
 {
@@ -488,28 +524,12 @@ static bool http_parse(char *buf, size_t n, bool at_close, int *status, char **b
     char *b = end;
     size_t avail = n - hlen;
     if (chunked) {
-        /* decode in place */
-        char *src = b, *dst = b;
-        char *lim = b + avail;
-        for (;;) {
-            char *nl = memchr(src, '\n', (size_t)(lim - src));
-            if (!nl) {
-                return at_close ? (*body = b, *body_len = (size_t)(dst - b), true) : false;
-            }
-            long sz = strtol(src, NULL, 16);
-            src = nl + 1;
-            if (sz == 0) {
-                *body = b;
-                *body_len = (size_t)(dst - b);
-                return true;
-            }
-            if (src + sz + 2 > lim) {
-                return at_close ? (*body = b, *body_len = (size_t)(dst - b), true) : false;
-            }
-            memmove(dst, src, (size_t)sz);
-            dst += sz;
-            src += sz + 2;
+        if (!at_close && !chunked_walk(b, avail, NULL)) {
+            return false; /* buffer left untouched until the body is complete */
         }
+        chunked_walk(b, avail, body_len);
+        *body = b;
+        return true;
     }
     if (content_length >= 0) {
         if ((long)avail < content_length) {

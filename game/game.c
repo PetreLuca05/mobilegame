@@ -1,4 +1,4 @@
-/* Step 4: dev room, kinematic player, portrait touch controls, third-person
+/* Step 4: dev room, kinematic player, landscape touch controls, third-person
  * camera, debug HUD and gear menu. Keyboard/mouse also work on desktop. */
 #include "game.h"
 
@@ -128,7 +128,7 @@ bool game_init(MgApp *app)
         !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
         return false;
     }
-    g->local_look = avatar_look_for_slot(0);
+    g->local_look = avatar_look_doctor(avatar_look_for_slot(0));
 
     const char *profile = arg_value(app->argc, app->argv, "--profile");
     NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
@@ -288,15 +288,15 @@ static void game_frame_launch(Game *g, MgApp *app)
     devroom_draw(&g->room, app->gfx, false);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     for (int i = 0; i < DEVROOM_SPAWNS; i++) { /* the cast, idling on their discs */
-        AvatarLook look = avatar_look_for_slot(i);
+        AvatarLook look = i == 0 ? avatar_look_doctor(avatar_look_for_slot(0)) : avatar_look_for_slot(i);
         AvatarPose pose = {g->room.spawns[i], HMM_PI32 + 0.3f * (float)(i - 1), HMM_V3(0, 0, 0), true, false};
         avatar_draw(app->gfx, &g->avatar_meshes, &look, &pose, &g->local_anim, &g->world);
     }
     avatar_animate(&g->local_anim, &(AvatarPose){HMM_V3(0, 0, 0), 0, HMM_V3(0, 0, 0), true, false},
                    mg_minf(app->frame_dt, 0.1f));
 
-    LaunchChoice c = launch_screen(&g->launch, &g->ui, app->width_pt, app->height_pt, app->safe_top,
-                                   app->safe_bottom, g->net != NULL);
+    LaunchChoice c = launch_screen(&g->launch, &g->ui, app->width_pt, app->height_pt, app->safe_left,
+                                   app->safe_top, app->safe_right, app->safe_bottom, g->net != NULL);
     switch (c) {
     case LAUNCH_OFFLINE:
         session_stop(&g->session);
