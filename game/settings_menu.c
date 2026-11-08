@@ -54,6 +54,16 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step;
     ui_toggle(ui, str("show_stats"), cx, cy, cw, &s->show_stats);
     cy += 44.0f;
+    ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, str("chat_bubbles"));
+    cy += 22.0f;
+    static const char *const bubble_keys[3] = {"npc_off##bub", "bubble_active##bub", "npc_all##bub"};
+    const float bub_w = (cw - 16.0f) / 3.0f;
+    for (int i = 0; i < 3; i++) {
+        if (ui_button(ui, str(bubble_keys[i]), cx + (float)i * (bub_w + 8.0f), cy, bub_w, 40.0f, s->chat_bubbles == i)) {
+            s->chat_bubbles = i;
+        }
+    }
+    cy += 52.0f;
     ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, str("npc_density"));
     cy += 22.0f;
     static const float npc_d[3] = {0.0f, 0.5f, 1.0f};

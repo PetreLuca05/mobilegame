@@ -88,6 +88,7 @@ void prefs_load(Prefs *p, const char *profile)
         g->dead_zone_pt = mg_clampf(num(s, "stick_dead_zone", g->dead_zone_pt), 0.0f, 50.0f); /* "dead_zone" was for the 120 pt stick */
         g->show_stats = flag(s, "perf_hud", g->show_stats);
         g->npc_density = mg_clampf(num(s, "npc_density", g->npc_density), 0.0f, 1.0f);
+        g->chat_bubbles = (int)mg_clampf(num(s, "chat_bubbles", (float)g->chat_bubbles), 0.0f, 2.0f);
         g->render_scale = num(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
         g->tier_override = (int)num(s, "tier", (float)g->tier_override);
@@ -159,6 +160,7 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddNumberToObject(s, "stick_dead_zone", g->dead_zone_pt);
     cJSON_AddBoolToObject(s, "perf_hud", g->show_stats);
     cJSON_AddNumberToObject(s, "npc_density", g->npc_density);
+    cJSON_AddNumberToObject(s, "chat_bubbles", g->chat_bubbles);
     cJSON_AddNumberToObject(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
     cJSON_AddNumberToObject(s, "tier", g->tier_override);

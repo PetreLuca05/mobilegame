@@ -27,6 +27,7 @@ typedef struct GameSettings {
     bool freeze_npcs;       /* debug */
     bool respawn_npcs;      /* debug: one shot */
     float npc_density;      /* 0 off, 0.5 low, 1 normal */
+    int chat_bubbles;       /* 0 off, 1 the active NPC, 2 nearby ones too */
     float stress_count;     /* debug: wandering dummy avatars, 0..400 */
     bool haptics;           /* marker taps (iOS) */
     bool marker_sounds;
@@ -65,6 +66,7 @@ static inline void settings_default(GameSettings *s)
     s->show_storeys = false;
     s->show_stats = true;
     s->npc_density = 1.0f;
+    s->chat_bubbles = 2;
     s->td_fov_deg = CAM_FOV_DEG;
     s->td_distance = CAM_DISTANCE;
     s->td_pitch_deg = CAM_PITCH_DEG;

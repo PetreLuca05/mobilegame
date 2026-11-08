@@ -518,7 +518,7 @@ static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const Avat
                             HMM_Mat4 body, HMM_Mat4 body_s, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
 {
     const int l = p->lod >= 2 ? 1 : 0;
-    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y, 0)), HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
+    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y + p->head_lift, 0)), HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
     head = HMM_MulM4(HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0))), HMM_Scale(HMM_V3(hs, hs, hs)));
     if (l == 0) {
         outlined(dc, m->lod_body[0], body_s, look->outfit);
@@ -618,7 +618,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     /* head rides on the body top, bobbing in opposite phase; smaller on the female body */
     const float body_h = (female ? BODY_H * 0.955f : BODY_H) * sh;
     const float hs = (female ? 0.956f : 1.0f) * head_k; /* 0.43 m head */
-    HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob, 0));
+    HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob + p->head_lift, 0));
     head = HMM_MulM4(head, HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0)));
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));

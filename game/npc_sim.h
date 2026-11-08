@@ -33,6 +33,7 @@ typedef struct NpcWorld {
     NpcStats stats;
     void (*on_spawned)(int index, void *user);
     void (*on_despawned)(int index, void *user);
+    void (*on_interact)(uint32_t id, void *user); /* the player tapped "Talk" */
     void (*on_arrived)(uint32_t id, uint32_t slot, void *user);
     void (*on_package_changed)(uint32_t id, void *user);
     void *callback_user;

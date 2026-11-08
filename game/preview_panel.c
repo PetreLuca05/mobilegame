@@ -90,7 +90,7 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
     const preview_desc_t *d = &ia->cold[p->shown].preview;
     const bool avatar = d->look != NULL;
     const float cy = avatar ? 0.72f : 0.0f, dist = avatar ? 5.6f : 2.2f; /* framed high: the label covers the bottom */
-    const HMM_Vec3 eye = HMM_V3(0.0f, cy, -dist);
+    const HMM_Vec3 eye = HMM_V3(0.0f, cy, dist); /* the sun side: faces towards +Z are the lit ones */
     const HMM_Mat4 view = HMM_LookAt_RH(eye, HMM_V3(0.0f, cy, 0.0f), HMM_V3(0, 1, 0));
     const HMM_Mat4 proj = HMM_Perspective_RH_ZO(HMM_AngleDeg(28.0f), 1.0f, 0.2f, 12.0f);
     const HMM_Mat4 vp = HMM_MulM4(proj, view);
@@ -100,7 +100,7 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
         AvatarPose pose;
         SDL_zero(pose);
         pose.feet = HMM_V3(0.0f, d->y_offset, 0.0f);
-        pose.yaw = yaw;
+        pose.yaw = yaw + HMM_PI32; /* avatars look along -Z: turn them to the camera */
         pose.grounded = true;
         pose.hide = p->crossfade;
         avatar_animate(&p->anim, &pose, 1.0f / 60.0f);

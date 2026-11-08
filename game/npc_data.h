@@ -10,6 +10,7 @@
 #define NPC_PACKAGES 3
 #define NPC_STEPS 8
 #define NPC_NAME_POOL 64
+#define NPC_GREETINGS 8
 
 typedef enum NpcType { NPC_STAFF, NPC_OUTPATIENT, NPC_INPATIENT, NPC_VISITOR, NPC_PEDESTRIAN, NPC_BENCH } NpcType;
 typedef enum NpcAge { AGE_CHILD, AGE_ADULT, AGE_ELDER } NpcAge;
@@ -52,6 +53,8 @@ typedef struct NpcData {
     int waiting_families;
     const char *first_adult[NPC_NAME_POOL], *first_child[NPC_NAME_POOL], *surname[NPC_NAME_POOL];
     int n_adult, n_child, n_surname;
+    const char *greetings[NPC_ARCHETYPES][NPC_GREETINGS]; /* by archetype */
+    int n_greetings[NPC_ARCHETYPES];
 } NpcData;
 
 bool npc_data_load(NpcData *d, Arena *perm);

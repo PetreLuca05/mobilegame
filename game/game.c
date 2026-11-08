@@ -138,6 +138,9 @@ typedef struct Game {
     bool lift_panel_ok;
     bool ia_ok, ia_log;
     MgApp *ia_app;  /* for the interact callbacks */
+    char greet_name[32], greet_line[96];
+    float greet_t;
+    uint32_t greet_count;
     uint16_t marker_ia[MARKER_MAX];
     uint32_t marker_ia_id[MARKER_MAX];
     NpcWorld npcs;
@@ -1351,6 +1354,22 @@ static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc
             }
         }
     }
+    /* the active NPC who wants to talk lifts its head and looks at the player */
+    const bool chatting = g->ia_ok && g->ia.active == c->ia_slot && c->wants_chat;
+    if (chatting) {
+        const float px = g->player.kin.pos.X - h->x, pz = g->player.kin.pos.Z - h->z;
+        const float rel = fmodf(atan2f(-px, -pz) - pose->yaw + 3.0f * HMM_PI32, 2.0f * HMM_PI32) - HMM_PI32;
+        head_target = mg_clampf(rel, -HMM_AngleDeg(70.0f), HMM_AngleDeg(70.0f));
+    }
+    c->vis_pop += ((chatting ? 1.0f : 0.0f) - c->vis_pop) * mg_minf(dt / 0.25f * 3.0f, 1.0f);
+    pose->head_lift = 0.12f * c->vis_pop;
+    if (c->talk_t > 0.0f) {
+        c->talk_t = mg_maxf(c->talk_t - dt, 0.0f);
+        const float since = 3.0f - c->talk_t;
+        if (since < 0.6f) { /* nods once */
+            pose->head_pitch = HMM_AngleDeg(14.0f) * HMM_SinF(since / 0.6f * HMM_PI32);
+        }
+    }
     c->vis_head += (head_target - c->vis_head) * mg_minf(dt * 5.0f, 1.0f);
     pose->head_yaw = c->vis_head;
 }
@@ -1403,10 +1422,26 @@ static void on_marker_interact(uint16_t ref, void *user)
     }
 }
 
+/* "Talk": a one-line greeting for 2.5 s, the NPC faces the player and nods */
 static void on_npc_interact(uint16_t ref, void *user)
 {
-    (void)user;
-    mg_log_info("interact: npc %u", ref);
+    Game *g = (Game *)user;
+    NpcPool *p = &g->npcs.pool;
+    for (int i = 0; i < p->count; i++) {
+        npc_cold_t *c = &p->cold[i];
+        if ((uint16_t)c->id == ref) {
+            const int n = g->npcs.data.n_greetings[c->archetype];
+            const char *line = n ? g->npcs.data.greetings[c->archetype][(g->greet_count++ + c->id) % (uint32_t)n] : "";
+            SDL_snprintf(g->greet_name, sizeof(g->greet_name), "%s", c->name);
+            SDL_snprintf(g->greet_line, sizeof(g->greet_line), "%s", line);
+            g->greet_t = 2.5f;
+            c->talk_t = 3.0f;
+            if (g->npcs.on_interact) {
+                g->npcs.on_interact(c->id, g->npcs.callback_user);
+            }
+            return;
+        }
+    }
 }
 
 static void npc_registered(int index, void *user)
@@ -1460,8 +1495,17 @@ static void interact_tick(Game *g, MgApp *app)
     PROF_SCOPE("interact");
     NpcPool *p = &g->npcs.pool;
     const npc_hot_t *hot = p->hot[p->read];
+    const bool chat_eval = app->clock.tick % 30u == 0u; /* twice a second */
     for (int i = 0; i < p->count && g->npcs_on; i++) {
         npc_cold_t *c = &p->cold[i];
+        if (chat_eval) {
+            const char *arch = g->npcs.data.archetypes[c->archetype].name;
+            const uint32_t tags = c->slot != SLOT_NONE ? g->rooms.slots[c->slot].tags : 0u;
+            const bool posted = c->phase == NPC_PHASE_HOLD;
+            c->wants_chat = posted && (SDL_strcmp(arch, "receptionist") == 0 || (SDL_strcmp(arch, "doctor") == 0 && (tags & (SLOT_OFFICE_DESK | SLOT_EXAM_DOCTOR))) ||
+                                       (SDL_strcmp(arch, "nurse") == 0 && (tags & SLOT_NURSE_STATION)) || c->pose == POSE_SIT);
+            ia_set_flags(&g->ia, c->ia_slot, c->wants_chat ? IA_WANTS_CHAT : IA_DISABLED);
+        }
         ia_set_pos(&g->ia, c->ia_slot, HMM_V3(hot[i].x, hot[i].y, hot[i].z), hot[i].storey);
         g->ia.cold[c->ia_slot].label = c->name; /* despawning moves NPCs in the array */
         g->ia.cold[c->ia_slot].preview.look = &c->look;
@@ -1487,6 +1531,57 @@ static void interact_tick(Game *g, MgApp *app)
     ia_tick(&g->ia, &app->frame, app->clock.tick, pos, storey, g->player.yaw);
     if (g->ia_log && g->ia.active != before) {
         mg_log_info("interact: active %s", g->ia.active == IA_NONE ? "none" : g->ia.cold[g->ia.active].label);
+    }
+}
+
+/* "..." clouds over those who want to talk: the active NPC, plus up to six faint ones nearby */
+static void draw_one_cloud(Game *g, MgApp *app, HMM_Vec3 at, bool active, float vis)
+{
+    HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(at, 1.0f));
+    if (c.W <= 0.01f) {
+        return;
+    }
+    const float t = (float)app->time;
+    const float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt;
+    const float y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt + (active ? 3.0f * HMM_SinF(t * 2.0f * HMM_PI32) : 0.0f);
+    const uint8_t alpha = (uint8_t)((active ? 235.0f : 95.0f) * vis);
+    const UiColor white = {255, 255, 255, alpha};
+    ui_circle(app->gfx, &app->font, x - 7.0f, y, 12.0f, white);
+    ui_circle(app->gfx, &app->font, x + 7.0f, y - 1.0f, 11.0f, white);
+    ui_circle(app->gfx, &app->font, x + 1.0f, y + 12.0f, 3.0f, white); /* tail */
+    for (int d = 0; d < 3; d++) {
+        const float phase = active ? fmodf(t / 0.9f + (float)d / 3.0f, 1.0f) : 0.0f; /* in sequence */
+        const float r = active ? 1.8f + 1.4f * HMM_SinF(phase * HMM_PI32) : 2.0f;
+        const UiColor dot = {40, 44, 54, alpha};
+        ui_circle(app->gfx, &app->font, x - 7.0f + (float)d * 7.0f, y, r, dot);
+    }
+}
+
+static void draw_chat_bubbles(Game *g, MgApp *app, int floor)
+{
+    const int mode = g->settings.chat_bubbles;
+    if (mode == 0 || !g->npcs_on || !g->ia_ok || g->npc_catching_up) {
+        return;
+    }
+    const NpcPool *p = &g->npcs.pool;
+    const npc_hot_t *hot = p->hot[p->read];
+    const HMM_Vec3 me = g->player.kin.pos;
+    int faint = 0;
+    for (int i = 0; i < p->count; i++) {
+        const npc_hot_t *h = &hot[i];
+        const npc_cold_t *c = &p->cold[i];
+        if (!c->wants_chat || (h->storey < 0 ? 0 : (int)h->storey) != floor) {
+            continue;
+        }
+        const bool active = g->ia.active == c->ia_slot;
+        const float dx = h->x - me.X, dz = h->z - me.Z;
+        if (!active && (mode < 2 || faint >= 6 || dx * dx + dz * dz > 4.0f * 4.0f)) {
+            continue;
+        }
+        faint += !active;
+        const float top = c->pose == POSE_BED ? 1.1f : (c->pose == POSE_SIT ? 1.85f : 2.1f);
+        const float sx = c->pose == POSE_SIT ? c->seat_x : h->x, sz = c->pose == POSE_SIT ? c->seat_z : h->z;
+        draw_one_cloud(g, app, HMM_V3(sx, h->y + top + 0.35f, sz), active, g->fade.vis[h->storey < 0 ? 0 : h->storey]);
     }
 }
 
@@ -2251,6 +2346,15 @@ void game_frame(MgApp *app, float alpha)
         text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
     }
     layout_autotest(g, app);
+    draw_chat_bubbles(g, app, floor);
+    if (g->greet_t > 0.0f) { /* bottom centre of the safe rect */
+        g->greet_t = mg_maxf(g->greet_t - mg_minf(app->frame_dt, 0.1f), 0.0f);
+        const ui_frame_t cf = frame_of(app);
+        const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f, cx = ui_safe_left(&cf) + (ui_safe_w(&cf) - cw) * 0.5f, cy = ui_safe_bottom(&cf) - UI_MARGIN - ch;
+        ui_round_rect(app->gfx, &app->font, cx, cy, cw, ch, 12.0f, ui_rgba(0x101218E8));
+        text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 18.0f, 13.0f, ui_rgba(0xFFD166FF), g->greet_name);
+        text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(0xFFFFFFFF), g->greet_line);
+    }
     if (g->lift_panel_ok && el) {
         elevator_panel_draw_3d(&g->lift_panel, app->gfx, el->car_floor);
         elevator_panel_draw_ui(&g->lift_panel, app->gfx, &app->font, el->car_floor, scene_floor_name);

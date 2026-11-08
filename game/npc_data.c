@@ -218,6 +218,22 @@ bool npc_data_load(NpcData *d, Arena *perm)
     d->n_adult = load_names(names, "adult", d->first_adult, perm);
     d->n_child = load_names(names, "child", d->first_child, perm);
     d->n_surname = load_names(names, "surname", d->surname, perm);
+    const cJSON *greetings = cJSON_GetObjectItemCaseSensitive(names, "greetings");
+    for (int i = 0; i < d->archetype_count; i++) {
+        const cJSON *lines = cJSON_GetObjectItemCaseSensitive(greetings, d->archetypes[i].name);
+        const cJSON *it;
+        cJSON_ArrayForEach(it, lines)
+        {
+            if (cJSON_IsString(it) && d->n_greetings[i] < NPC_GREETINGS) {
+                size_t len = SDL_strlen(it->valuestring) + 1;
+                char *copy = ARENA_PUSH(perm, char, len);
+                if (copy) {
+                    memcpy(copy, it->valuestring, len);
+                    d->greetings[i][d->n_greetings[i]++] = copy;
+                }
+            }
+        }
+    }
     cJSON_Delete(root);
     cJSON_Delete(names);
     mg_log_info("npc: %d archetypes, %d/%d/%d names", d->archetype_count, d->n_adult, d->n_child, d->n_surname);

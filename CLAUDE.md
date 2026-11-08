@@ -395,6 +395,7 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 ## Interaction (M8)
 
 - `game/interact.h`: `ia_add` / `ia_remove` / `ia_set_pos` / `ia_set_flags` (NPCs, wall buttons, markers, the lift). A 10 Hz scan through the spatial hash picks one active target (enter 2.0 m, exit 2.5 m, in front of the player unless `IA_FACING_FREE`).
+- NPCs that want to talk (`wants_chat`, re-evaluated at 2 Hz: receptionist, doctor at a desk, nurse at the station, anyone seated): the head lifts and a "..." cloud shows; up to 6 faint clouds within 4 m (`chat_bubbles`: off / active / all). Tap "Talk": a greeting card for 2.5 s (`assets/npc_names.json` greetings), `on_interact`, a nod. All of it is drawn, never simulated.
 - `game/elevator_panel.c`: the 3D lift buttons down the left of the safe area while standing in the car (22 % of the safe width, an inset drawn before the world). The button column comes from the lift's floor count; a tap lights the button and dings, the ride starts 0.4 s later. Desktop: keys 0-9. Developer -> Force elevator panel. Auto-ride shows no panel; cancelling in the car does.
 - `game/preview_panel.c`: the bottom-right card. `gfx_inset_begin` / `gfx_inset_end` draw a small 3D picture inside the main pass with its own viewport, camera and depth range (no render target). Tap-only through `TouchControls.targets`. Desktop: E.
 
