@@ -75,7 +75,10 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if defined(MG_PLATFORM_DESKTOP)
     flags |= SDL_WINDOW_RESIZABLE;
-    app->window = SDL_CreateWindow(cb->title, 844, 390, flags);
+    /* landscape phone (iPhone 12-ish) or, with MG_WINDOW=ipad, the iPad aspect */
+    const char *win = SDL_getenv("MG_WINDOW");
+    bool ipad = win && SDL_strcmp(win, "ipad") == 0;
+    app->window = SDL_CreateWindow(cb->title, ipad ? 1180 : 844, ipad ? 820 : 390, flags);
     for (int i = 1; app->window && i + 1 < argc; i++) {
         int wx, wy;
         if (SDL_strcmp(argv[i], "--window-pos") == 0 && SDL_sscanf(argv[i + 1], "%d,%d", &wx, &wy) == 2) {
