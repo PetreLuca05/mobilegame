@@ -1,6 +1,13 @@
 #include "common.hlsli"
 #include "cel.hlsli"
 #include "lighting.hlsli"
+Texture2D u_csm0 : register(t1, space2);
+SamplerState u_csm0_s : register(s1, space2);
+Texture2D u_csm1 : register(t2, space2);
+SamplerState u_csm1_s : register(s2, space2);
+Texture2D u_atlas : register(t3, space2);
+SamplerState u_atlas_s : register(s3, space2);
+#include "shadows.hlsli"
 
 // Glossy grid floor: light blue-grey slab, thick black 1 m lines, faint 10 cm
 // lines, planar reflection blended with Fresnel.
@@ -26,7 +33,11 @@ float4 PSMain(VSOut i) : SV_Target0
     float3 base = i.col.rgb * u_tint.rgb;
     float3 n = normalize(i.nrm);
     float3 v = normalize(u_eye.xyz - i.wpos);
-    float3 c = base * (cel_light(n, saturate(i.col.a * u_tint.a)) + local_lights(i.wpos, n));
+    float outdoor = saturate(i.col.a * u_tint.a);
+    float shadow = outdoor > 0.0 ? sun_shadow(i.wpos, n) : 1.0;
+    float3 c = base * (cel_light(n, outdoor, shadow) + local_lights(i.wpos, n));
+    if (u_csm_fwd.w > 0.5)
+        c *= cascade_tint(i.wpos);
     if (u_misc.y > 0.0 && n.y > 0.9) {
         float2 uv = i.pos.xy * u_misc.zw;
         float3 refl = u_reflection.Sample(u_reflection_sampler, uv).rgb;

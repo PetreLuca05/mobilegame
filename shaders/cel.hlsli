@@ -23,9 +23,12 @@ float3 apply_fog(float3 c, float3 wpos)
 // Banded light for a surface. `outdoor` 1 = sun + sky; 0 = indoors: no sun,
 // a bit less sky and a warm overhead fill instead (the per-vertex indoor
 // factor baked into building meshes is vertex alpha x tint alpha).
-float3 cel_light(float3 n, float outdoor)
+float3 cel_light(float3 n, float outdoor, float shadow)
 {
-    float3 sun = u_ambient.rgb + u_sun_color.rgb * cel_lit(dot(n, u_sun_dir.xyz));
+    // a shadow drops the sun term exactly one toon step
+    float ndl = dot(n, u_sun_dir.xyz);
+    float lit = lerp(0.55 * cel_step(ndl, 0.45), cel_lit(ndl), cel_step(shadow, 0.5));
+    float3 sun = u_ambient.rgb + u_sun_color.rgb * lit;
     float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * cel_lit(dot(n, normalize(float3(0.25, 1.0, 0.35))));
     return lerp(inside, sun, outdoor);
 }

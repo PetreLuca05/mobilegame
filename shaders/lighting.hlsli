@@ -10,7 +10,13 @@ cbuffer LightsFS : register(b2, space3)
     float4 u_light_pos_range[MAX_LIGHTS];  // xyz position, w range
     float4 u_light_color_type[MAX_LIGHTS]; // rgb * intensity, w 0 point / 1 spot
     float4 u_light_dir_cone[MAX_LIGHTS];   // xyz spot direction, w cos outer
-    float4 u_light_extra[MAX_LIGHTS];      // x cos inner, y shadow slot
+    float4 u_light_extra[MAX_LIGHTS];      // x cos inner, y shadow slot (-1), z 1 = point (6 slots)
+    float4x4 u_csm_vp[2];
+    float4 u_csm_params;                   // x cascade 0 far, y cascade 1 far, z 1/size, w enabled
+    float4 u_csm_fwd;                      // xyz camera forward, w show cascades
+    float4x4 u_shadow_vp[20];              // atlas tiles: spots, then 6 per point light
+    float4 u_shadow_rect[20];              // uv offset xy, scale zw
+    float4 u_atlas_params;                 // xy 1/atlas size
 };
 
 // windowed inverse square: 1 at the light, 0 at the range

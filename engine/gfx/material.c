@@ -2,9 +2,9 @@
 
 static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_UNLIT] = {"mesh.vert", "unlit.frag", 2, 1, 0, false, true, true},
-    [GFX_MAT_TOON] = {"mesh.vert", "toon.frag", 2, 3, 0, false, true, true},
+    [GFX_MAT_TOON] = {"mesh.vert", "toon.frag", 2, 3, 3, false, true, true},
     [GFX_MAT_OUTLINE] = {"outline.vert", "unlit.frag", 2, 1, 0, false, true, false, true},
-    [GFX_MAT_FLOOR] = {"mesh.vert", "floor.frag", 2, 3, 1, false, true, true},
+    [GFX_MAT_FLOOR] = {"mesh.vert", "floor.frag", 2, 3, 4, false, true, true},
     [GFX_MAT_TEXT] = {"mesh.vert", "text.frag", 2, 1, 1, true, false, false},
     [GFX_MAT_SPRITE] = {"mesh.vert", "sprite.frag", 2, 1, 0, true, false, false},
     [GFX_MAT_GHOST] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, false},

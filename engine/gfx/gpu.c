@@ -11,8 +11,10 @@
 
 #include "core/assets.h"
 #include "core/log.h"
+#include "core/time.h"
 #include "gfx.h"
 #include "material.h"
+#include "shadows.h"
 #include "reflection.h"
 
 #define GFX_MAX_MESHES 256
@@ -33,6 +35,9 @@ typedef struct GfxMeshRec {
 } GfxMeshRec;
 
 #define GFX_LIGHTS_PER_DRAW 8
+#define GFX_SHADOW_SLOTS 20 /* atlas tiles: spots, then 6 per point light */
+#define CSM_SPLIT0 12.0f
+#define CSM_SPLIT1 45.0f
 
 typedef struct DrawItem {
     HMM_Mat4 model;
@@ -63,7 +68,13 @@ typedef struct LightsFSUniforms {
     HMM_Vec4 pos_range[GFX_MAX_LIGHTS]; /* xyz position, w range */
     HMM_Vec4 color_type[GFX_MAX_LIGHTS];/* rgb * intensity, w 0 point / 1 spot */
     HMM_Vec4 dir_cone[GFX_MAX_LIGHTS];  /* xyz spot direction, w cos outer */
-    HMM_Vec4 extra[GFX_MAX_LIGHTS];     /* x cos inner, y shadow slot (-1) */
+    HMM_Vec4 extra[GFX_MAX_LIGHTS];     /* x cos inner, y shadow slot (-1), z 1 = point (6 slots) */
+    HMM_Mat4 csm_vp[2];
+    HMM_Vec4 csm_params;                /* x cascade 0 far, y cascade 1 far, z 1/size, w enabled */
+    HMM_Vec4 csm_fwd;                   /* xyz camera forward, w show cascades */
+    HMM_Mat4 shadow_vp[GFX_SHADOW_SLOTS];
+    HMM_Vec4 shadow_rect[GFX_SHADOW_SLOTS]; /* atlas uv offset xy, scale zw */
+    HMM_Vec4 atlas_params;              /* xy 1/atlas size */
 } LightsFSUniforms;
 
 typedef struct FrameFSUniforms {
@@ -130,6 +141,7 @@ struct GfxContext {
     uint32_t ui_batch_count;
     /* settings preview: second camera into an offscreen square */
     bool preview_on;
+    bool preview_lit; /* false: preview pass gets no scene lights/shadows */
     GfxSceneParams preview_scene;
     float preview_rect[4]; /* x, y, size, corner radius (pt) */
     HMM_Vec4 preview_bg;
@@ -172,6 +184,17 @@ struct GfxContext {
     bool paused;
     GfxSceneParams scene;
 
+    /* shadows */
+    GfxShadowConfig shadow_cfg;
+    SDL_GPUTextureFormat shadow_fmt;
+    SDL_GPUTexture *csm[2];
+    SDL_GPUTexture *atlas;
+    SDL_GPUGraphicsPipeline *shadow_pipe;
+    SDL_GPUSampler *point_clamp;
+    HMM_Mat4 csm_vp[2]; /* as last rendered: sampled with the matrix it was made with */
+    bool csm_valid[2];
+    bool atlas_valid;
+    uint32_t frame_no;
     GfxLight lights[GFX_MAX_LIGHTS];
     uint32_t light_count;
     int lights_per_draw;
@@ -181,6 +204,8 @@ struct GfxContext {
     uint32_t draw_count;
     GfxStats stats;
 };
+
+static void release_shadow_maps(GfxContext *g);
 
 /* ---------------------------------------------------------------- shaders */
 
@@ -245,6 +270,9 @@ typedef struct PipeDesc {
     SDL_GPUTextureFormat color_fmt;
     SDL_GPUSampleCount samples;
     bool no_depth;
+    bool depth_only;       /* shadow maps: no colour target */
+    SDL_GPUTextureFormat depth_override;
+    bool depth_bias;
 } PipeDesc;
 
 static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
@@ -304,9 +332,16 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     ci.depth_stencil_state.enable_depth_test = d->depth_test;
     ci.depth_stencil_state.enable_depth_write = d->depth_write;
     ci.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
-    ci.target_info.color_target_descriptions = &ctd;
-    ci.target_info.num_color_targets = 1;
-    ci.target_info.depth_stencil_format = d->no_depth ? SDL_GPU_TEXTUREFORMAT_INVALID : g->depth_fmt;
+    ci.target_info.color_target_descriptions = d->depth_only ? NULL : &ctd;
+    ci.target_info.num_color_targets = d->depth_only ? 0 : 1;
+    ci.target_info.depth_stencil_format = d->no_depth          ? SDL_GPU_TEXTUREFORMAT_INVALID
+                                          : d->depth_override ? d->depth_override
+                                                              : g->depth_fmt;
+    if (d->depth_bias) { /* slope-scaled: against acne on surfaces facing away from the light */
+        ci.rasterizer_state.enable_depth_bias = true;
+        ci.rasterizer_state.depth_bias_constant_factor = 1.5f;
+        ci.rasterizer_state.depth_bias_slope_factor = 2.0f;
+    }
     ci.target_info.has_depth_stencil_target = !d->no_depth;
 
     SDL_GPUGraphicsPipeline *p = SDL_CreateGPUGraphicsPipeline(g->dev, &ci);
@@ -390,8 +425,23 @@ static bool create_pipelines(GfxContext *g)
     panel.fs = load_shader(g, "panel.frag", 1, 1);
     panel.blend = true;
     g->panel_pipe = make_pipeline(g, &panel);
+    PipeDesc sh = {
+        .vs = load_shader(g, "mesh.vert", 2, 0),
+        .fs = load_shader(g, "shadow.frag", 0, 0),
+        .layout = LAYOUT_MESH,
+        .depth_test = true,
+        .depth_write = true,
+        .cull = SDL_GPU_CULLMODE_FRONT, /* back faces into the map: less acne */
+        .front = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .samples = SDL_GPU_SAMPLECOUNT_1,
+        .depth_only = true,
+        .depth_override = g->shadow_fmt,
+        .depth_bias = true,
+    };
+    g->shadow_pipe = make_pipeline(g, &sh);
     release_shaders(g);
-    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL;
+    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL &&
+           g->shadow_pipe != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -560,6 +610,12 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->color_fmt = SDL_GetGPUSwapchainTextureFormat(g->dev, window);
     g->refl_fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     g->depth_fmt = pick_depth_format(g->dev);
+    /* shadow maps: sampled depth, D16 where it can be a sampled target */
+    g->shadow_fmt = SDL_GPUTextureSupportsFormat(g->dev, SDL_GPU_TEXTUREFORMAT_D16_UNORM, SDL_GPU_TEXTURETYPE_2D,
+                                                 SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET |
+                                                     SDL_GPU_TEXTUREUSAGE_SAMPLER)
+                        ? SDL_GPU_TEXTUREFORMAT_D16_UNORM
+                        : SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     g->msaa = SDL_GPU_SAMPLECOUNT_1;
     if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, SDL_GPU_SAMPLECOUNT_4) &&
         SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, SDL_GPU_SAMPLECOUNT_4)) {
@@ -615,11 +671,18 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     sci.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     sci.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     g->linear_clamp = SDL_CreateGPUSampler(g->dev, &sci);
+    sci.min_filter = SDL_GPU_FILTER_NEAREST;
+    sci.mag_filter = SDL_GPU_FILTER_NEAREST;
+    g->point_clamp = SDL_CreateGPUSampler(g->dev, &sci);
     g->ui_sampler = g->linear_clamp;
 
     const uint32_t white = 0xFFFFFFFFu;
     g->dummy_tex = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 1, 1, SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                 SDL_GPU_SAMPLECOUNT_1);
+    GfxShadowConfig shadows = {true, 2048, 4096, 2048, 8, 2, false, false};
+    if (!g->point_clamp || !gfx_set_shadows(g, &shadows)) {
+        return false;
+    }
     if (!g->linear_clamp || !g->dummy_tex) {
         return false;
     }
@@ -638,6 +701,13 @@ void gfx_shutdown(GfxContext *g)
     }
     SDL_WaitForGPUIdle(g->dev);
     release_targets(g);
+    release_shadow_maps(g);
+    if (g->shadow_pipe) {
+        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->shadow_pipe);
+    }
+    if (g->point_clamp) {
+        SDL_ReleaseGPUSampler(g->dev, g->point_clamp);
+    }
     SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth};
     for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
         if (pv[i]) {
@@ -877,6 +947,16 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
     f.fog = HMM_V4V(g->scene.fog_color, g->scene.fog_density);
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
+    if (target_w == (float)GFX_PREVIEW_PX && reflection == 0.0f && g->preview_on && g->preview_lit == false) {
+        /* settings preview: the avatar alone, no scene lights or shadows */
+        float saved_count = g->light_ubo.count.X, saved_csm = g->light_ubo.csm_params.W;
+        g->light_ubo.count.X = 0.0f;
+        g->light_ubo.csm_params.W = 0.0f;
+        SDL_PushGPUFragmentUniformData(g->cmd, 2, &g->light_ubo, sizeof(g->light_ubo));
+        g->light_ubo.count.X = saved_count;
+        g->light_ubo.csm_params.W = saved_csm;
+        return;
+    }
     SDL_PushGPUFragmentUniformData(g->cmd, 2, &g->light_ubo, sizeof(g->light_ubo));
 }
 
@@ -919,10 +999,15 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         if (bound != d->kind) {
             SDL_BindGPUGraphicsPipeline(pass, g->pipes[target].mat[d->kind]);
             bound = d->kind;
+            SDL_GPUTextureSamplerBinding shadow_maps[3] = {
+                {g->csm[0], g->point_clamp}, {g->csm[1], g->point_clamp}, {g->atlas, g->point_clamp}};
             if (d->kind == GFX_MAT_FLOOR) {
-                SDL_GPUTextureSamplerBinding tsb = {
-                    g->scene.reflection_strength > 0.0f ? g->refl_color : g->dummy_tex, g->linear_clamp};
-                SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+                SDL_GPUTextureSamplerBinding tsb[4] = {
+                    {g->scene.reflection_strength > 0.0f ? g->refl_color : g->dummy_tex, g->linear_clamp},
+                    shadow_maps[0], shadow_maps[1], shadow_maps[2]};
+                SDL_BindGPUFragmentSamplers(pass, 0, tsb, 4);
+            } else if (d->kind == GFX_MAT_TOON) {
+                SDL_BindGPUFragmentSamplers(pass, 0, shadow_maps, 3);
             } else if (d->kind == GFX_MAT_TEXT) {
                 SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas ? g->ui_atlas : g->dummy_tex, g->ui_sampler};
                 SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
@@ -1031,6 +1116,115 @@ static void select_lights(GfxContext *g)
             d->lights[slot] = (int8_t)li;
         }
     }
+}
+
+static void release_shadow_maps(GfxContext *g)
+{
+    SDL_GPUTexture **ts[] = {&g->csm[0], &g->csm[1], &g->atlas};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(ts); i++) {
+        if (*ts[i]) {
+            SDL_ReleaseGPUTexture(g->dev, *ts[i]);
+            *ts[i] = NULL;
+        }
+    }
+}
+
+bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg)
+{
+    bool realloc = !g->csm[0] || cfg->csm_size != g->shadow_cfg.csm_size || cfg->atlas_w != g->shadow_cfg.atlas_w ||
+                   cfg->atlas_h != g->shadow_cfg.atlas_h;
+    g->shadow_cfg = *cfg;
+    if (!realloc) {
+        return true;
+    }
+    SDL_WaitForGPUIdle(g->dev);
+    release_shadow_maps(g);
+    const SDL_GPUTextureUsageFlags u = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    for (int i = 0; i < 2; i++) {
+        g->csm[i] = make_texture(g, g->shadow_fmt, (uint32_t)cfg->csm_size, (uint32_t)cfg->csm_size, u,
+                                 SDL_GPU_SAMPLECOUNT_1);
+        g->csm_valid[i] = false;
+    }
+    g->atlas = make_texture(g, g->shadow_fmt, (uint32_t)cfg->atlas_w, (uint32_t)cfg->atlas_h, u, SDL_GPU_SAMPLECOUNT_1);
+    g->atlas_valid = false;
+    int bpp = g->shadow_fmt == SDL_GPU_TEXTUREFORMAT_D16_UNORM ? 2 : 4;
+    mg_log_info("gfx: shadow maps %dx%d x2 + atlas %dx%d, %d MB", cfg->csm_size, cfg->csm_size, cfg->atlas_w,
+                cfg->atlas_h, (2 * cfg->csm_size * cfg->csm_size + cfg->atlas_w * cfg->atlas_h) * bpp >> 20);
+    return g->csm[0] && g->csm[1] && g->atlas;
+}
+
+static bool casts_shadow(const DrawItem *d)
+{
+    return (d->kind == GFX_MAT_TOON || d->kind == GFX_MAT_UNLIT) &&
+           !(d->flags & (GFX_DRAW_NO_SHADOW | GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN));
+}
+
+/* Depth of every caster from `vp` into the current pass/viewport. */
+static uint32_t draw_casters(GfxContext *g, SDL_GPURenderPass *pass, const HMM_Mat4 *vp, bool dynamic_only)
+{
+    SDL_GPUBufferBinding vbb = {g->vb, 0};
+    SDL_GPUBufferBinding ibb = {g->ib, 0};
+    SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
+    SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    SDL_BindGPUGraphicsPipeline(pass, g->shadow_pipe);
+    SDL_PushGPUVertexUniformData(g->cmd, 1, vp, sizeof(HMM_Mat4));
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < g->draw_count; i++) {
+        const DrawItem *d = &g->draws[i];
+        if (!casts_shadow(d) || (dynamic_only && !(d->flags & GFX_DRAW_DYNAMIC))) {
+            continue;
+        }
+        DrawVSUniforms vu = {d->model, d->normal};
+        SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
+        const GfxMeshRec *m = &g->meshes[d->mesh];
+        SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);
+        n++;
+    }
+    return n;
+}
+
+static void depth_pass(GfxContext *g, SDL_GPUTexture *tex, const HMM_Mat4 *vp)
+{
+    SDL_GPUDepthStencilTargetInfo dti;
+    SDL_zero(dti);
+    dti.texture = tex;
+    dti.clear_depth = 1.0f;
+    dti.load_op = SDL_GPU_LOADOP_CLEAR;
+    dti.store_op = SDL_GPU_STOREOP_STORE;
+    dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, NULL, 0, &dti);
+    draw_casters(g, rp, vp, false);
+    SDL_EndGPURenderPass(rp);
+}
+
+/* Sun/moon cascades: 0 every frame, 1 every 4th frame (it covers far
+ * ground where a few frames of lag do not show). */
+static void render_cascades(GfxContext *g)
+{
+    LightsFSUniforms *u = &g->light_ubo;
+    const GfxShadowConfig *c = &g->shadow_cfg;
+    bool sun_up = HMM_LenV3(g->scene.sun_color) > 0.01f;
+    u->csm_params = HMM_V4(CSM_SPLIT0, CSM_SPLIT1, 1.0f / (float)c->csm_size, c->enabled && sun_up ? 1.0f : 0.0f);
+    ShadowCamera cam = shadow_camera(&g->scene);
+    u->csm_fwd = HMM_V4V(cam.fwd, c->show_cascades ? 1.0f : 0.0f);
+    if (!c->enabled || !sun_up) {
+        return;
+    }
+    const float splits[3] = {0.05f, CSM_SPLIT0, CSM_SPLIT1};
+    for (int i = 0; i < 2; i++) {
+        bool due = i == 0 || (g->frame_no % 4) == 0 || !g->csm_valid[i];
+        if (!due || (c->freeze && g->csm_valid[i])) {
+            continue;
+        }
+        g->csm_vp[i] = shadow_fit_cascade(&cam, splits[i], splits[i + 1] * (i == 0 ? 1.1f : 1.0f), g->scene.sun_dir,
+                                          c->csm_size, 60.0f);
+        depth_pass(g, g->csm[i], &g->csm_vp[i]);
+        g->csm_valid[i] = true;
+        g->stats.shadow_views++;
+    }
+    u->csm_vp[0] = g->csm_vp[0];
+    u->csm_vp[1] = g->csm_vp[1];
 }
 
 /* Quarter-res copy of the finished 3D image, blurred H then V (blur_a). */
@@ -1204,6 +1398,12 @@ void gfx_frame_end(GfxContext *g)
     sort_draws(g);
     pack_lights(g);
     select_lights(g);
+    g->frame_no++;
+    g->stats.shadow_views = 0;
+    double sh0 = mg_time_now();
+    render_cascades(g);
+    g->stats.shadow_cpu_ms = (float)((mg_time_now() - sh0) * 1000.0);
+    double main0 = mg_time_now();
     const GfxSceneParams *s = &g->scene;
     HMM_Mat4 view_proj = HMM_MulM4(s->proj, s->view);
     HMM_Mat4 inv_vp = HMM_InvGeneralM4(view_proj);
@@ -1333,6 +1533,7 @@ void gfx_frame_end(GfxContext *g)
         draw_preview_image(g, pass);
     }
     SDL_EndGPURenderPass(pass);
+    g->stats.main_cpu_ms = (float)((mg_time_now() - main0) * 1000.0);
     SDL_SubmitGPUCommandBuffer(g->cmd);
     g->cmd = NULL;
 }

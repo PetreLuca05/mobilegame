@@ -65,6 +65,18 @@ enum {
     GFX_DRAW_DYNAMIC = 1u << 4,   /* moves (avatars): dirties cached shadow tiles it touches */
 };
 
+/* Shadow maps (M3). Sun/moon: 2 cascades (0-12 m, 12-45 m). Spot and
+ * point lights with cast_shadow: tiles of one atlas (6 per point light). */
+typedef struct GfxShadowConfig {
+    bool enabled;
+    int csm_size;          /* 1024 low tier, 2048 high */
+    int atlas_w, atlas_h;  /* 2048x1024 low, 4096x2048 high */
+    int max_spots;         /* shadowed spot lights per frame: 4 / 8 */
+    int max_points;        /* shadowed point lights per frame: 1 / 2 */
+    bool show_cascades;    /* debug tint per cascade */
+    bool freeze;           /* debug: stop re-rendering shadow maps */
+} GfxShadowConfig;
+
 /* Point / spot light, added every frame with gfx_add_light (max
  * GFX_MAX_LIGHTS). Each draw gets the few lights that overlap its bounds
  * (gfx_set_lights_per_draw); their sum goes through the toon ramp. */
@@ -106,6 +118,10 @@ typedef struct GfxStats {
     uint32_t reflect_draws;
     uint32_t ui_quads;
     uint32_t lights;
+    uint32_t shadow_views;   /* depth views rendered this frame (cascades + tiles) */
+    float shadow_cpu_ms;     /* CPU time encoding them (SDL GPU has no timestamps) */
+    float main_cpu_ms;       /* CPU time encoding the main + reflection passes */
+    int shadowed_lights;     /* spot/point lights with a shadow tile this frame */
     uint32_t width_px, height_px;
     int msaa;
     const char *backend; /* "metal", "vulkan", ... */
@@ -130,6 +146,8 @@ void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
 bool gfx_add_light(GfxContext *g, const GfxLight *light);
 /* 4 on low-tier GPUs, 8 on high (default 8). */
 void gfx_set_lights_per_draw(GfxContext *g, int n);
+/* (Re)allocates shadow textures when sizes change; call outside a frame. */
+bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg);
 /* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
 /* Frosted panel behind this frame's UI: the 3D image under it, blurred at

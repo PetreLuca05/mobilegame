@@ -112,6 +112,7 @@ add_library(mg_engine STATIC
   engine/gfx/material.c
   engine/gfx/mesh.c
   engine/gfx/reflection.c
+  engine/gfx/shadows.c
   engine/ui/text.c
   engine/ui/widgets.c
   engine/ui/touch_controls.c
