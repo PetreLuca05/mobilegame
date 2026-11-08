@@ -1008,7 +1008,9 @@ void game_frame(MgApp *app, float alpha)
         if (g->session.spawn_pending && g->playing) {
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
-            player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
+            HMM_Vec3 at = scene_spawn(g->scene, slot);
+            parse_vec3_arg(app->argc, app->argv, "--spawn", &at); /* desktop tests: --spawn wins */
+            player_init(&g->player, at, scene_spawn_yaw(g->scene));
             g->cam.initialized = g->td.initialized = false;
             g->fade_snap = true;
         }

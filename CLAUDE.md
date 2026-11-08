@@ -192,6 +192,19 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   front wall, nothing else. No half-height walls. `--autotest route` logs
   "occlusion: player hidden behind walls in N %" (11 %: elevator front
   wall, door frames - the x-ray covers those).
+- X-ray silhouettes (M5-X, `shaders/xray*.hlsl`, `GFX_MAT_XRAY_RIM` /
+  `GFX_MAT_XRAY`, `mat_xray`): the parts of an avatar hidden behind
+  geometry show as the real model in its accent colour (full saturation
+  x 0.85), dithered 60 %, with a 2 px pure-black rim (mesh pushed out along
+  its normals, drawn first). Depth GREATER, no depth write. Draw order
+  (`sort_draws` buckets): world -> x-ray -> avatars (`GFX_DRAW_DYNAMIC`), so
+  the x-ray only tests the world's depth and the visible avatar paints over
+  it - an avatar's own parts never show through each other. Eligible: the
+  local player and remote players on the view floor; the floor-peek ghost
+  is the same pass with depth ignored. Only meshes drawn with
+  `avatar_draw_with(..., mat_xray(...))` are x-rayed: to keep a mesh out,
+  just don't draw it with that material. Settings -> "Show players through
+  walls"; Developer -> "X-ray always". Toon outlines are pure black.
 - Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
   edge; holding a row views that storey, a tap keeps it for the hold time
   (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the
@@ -298,6 +311,10 @@ Game, route walk + ride to floor 2, background + hard exit) then
 `--autotest continue` (back on floor 2). Logs carry `frontend: <SCREEN>`,
 `session: ... joined/left` and every connection as `net: attempt ...`.
 
+GPU measurement rule: iOS clocks the GPU down when frames are light, so
+raw ms is meaningless on its own. Per scene and device report GPU frame ms,
+GPU-busy % and effective ms = ms x busy %, compare effective ms with the
+budget and name the dominant clock state (`gpu-performance-state-intervals`).
 GPU time on a phone: `--metal-capture` writes a .gputrace, but `devicectl
 device copy from` fails on its symlinks; use Instruments instead:
 `xcrun xctrace record --template 'Metal System Trace' --device <UDID from
