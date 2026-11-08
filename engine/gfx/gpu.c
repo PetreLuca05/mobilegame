@@ -29,7 +29,10 @@ typedef struct GfxMeshRec {
     uint32_t first_index;
     uint32_t index_count;
     int32_t vertex_offset;
+    HMM_Vec3 bmin, bmax; /* model-space bounds, for light selection */
 } GfxMeshRec;
+
+#define GFX_LIGHTS_PER_DRAW 8
 
 typedef struct DrawItem {
     HMM_Mat4 model;
@@ -40,6 +43,7 @@ typedef struct DrawItem {
     GfxMeshId mesh;
     uint8_t kind;
     uint8_t flags;
+    int8_t lights[GFX_LIGHTS_PER_DRAW]; /* indices into the frame's light list, -1 = none */
 } DrawItem;
 
 typedef struct DrawVSUniforms {
@@ -50,7 +54,17 @@ typedef struct DrawVSUniforms {
 typedef struct DrawFSUniforms {
     HMM_Vec4 tint;
     HMM_Vec4 params;
+    HMM_Vec4 lights[2]; /* 8 light indices as floats, -1 = none */
 } DrawFSUniforms;
+
+/* fragment b2: the frame's light list (see shaders/lighting.hlsli) */
+typedef struct LightsFSUniforms {
+    HMM_Vec4 count;                     /* x = lights */
+    HMM_Vec4 pos_range[GFX_MAX_LIGHTS]; /* xyz position, w range */
+    HMM_Vec4 color_type[GFX_MAX_LIGHTS];/* rgb * intensity, w 0 point / 1 spot */
+    HMM_Vec4 dir_cone[GFX_MAX_LIGHTS];  /* xyz spot direction, w cos outer */
+    HMM_Vec4 extra[GFX_MAX_LIGHTS];     /* x cos inner, y shadow slot (-1) */
+} LightsFSUniforms;
 
 typedef struct FrameFSUniforms {
     HMM_Vec4 sun_dir;
@@ -156,6 +170,10 @@ struct GfxContext {
     bool paused;
     GfxSceneParams scene;
 
+    GfxLight lights[GFX_MAX_LIGHTS];
+    uint32_t light_count;
+    int lights_per_draw;
+    LightsFSUniforms light_ubo;
     DrawItem *draws;
     uint16_t *order;
     uint32_t draw_count;
@@ -606,6 +624,7 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     upload_texture(g, g->dummy_tex, &white, 1, 1, 4);
     g->stats.backend = g->backend;
     g->render_scale = 1.0f;
+    g->lights_per_draw = GFX_LIGHTS_PER_DRAW;
     *out = g;
     return true;
 }
@@ -674,6 +693,15 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
         return GFX_MESH_NONE;
     }
     GfxMeshRec *m = &g->meshes[g->mesh_count];
+    m->bmin = HMM_V3(1e9f, 1e9f, 1e9f);
+    m->bmax = HMM_V3(-1e9f, -1e9f, -1e9f);
+    for (uint32_t i = 0; i < vert_count; i++) {
+        HMM_Vec3 p = HMM_V3(verts[i].px, verts[i].py, verts[i].pz);
+        for (int k = 0; k < 3; k++) {
+            m->bmin.Elements[k] = mg_minf(m->bmin.Elements[k], p.Elements[k]);
+            m->bmax.Elements[k] = mg_maxf(m->bmax.Elements[k], p.Elements[k]);
+        }
+    }
     m->vertex_offset = (int32_t)(g->vb_used / sizeof(GfxVertex));
     m->first_index = g->ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = index_count;
@@ -715,6 +743,7 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_batch_count = 1;
     g->ui_batches[0] = (UiBatch){0, 0, false, {0, 0, 0, 0}};
     g->preview_on = false;
+    g->light_count = 0;
     g->in_frame = false;
     if (g->paused) {
         return false;
@@ -845,6 +874,7 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     f.eye = HMM_V4V(eye, 1.0f);
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
+    SDL_PushGPUFragmentUniformData(g->cmd, 2, &g->light_ubo, sizeof(g->light_ubo));
 }
 
 static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipeline *pipe,
@@ -893,7 +923,10 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             }
         }
         DrawVSUniforms vu = {d->model, d->normal};
-        DrawFSUniforms fu = {d->tint, d->params};
+        DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}};
+        for (int k = 0; k < GFX_LIGHTS_PER_DRAW; k++) {
+            fu.lights[k / 4].Elements[k % 4] = (float)d->lights[k];
+        }
         SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
         SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
         const GfxMeshRec *m = &g->meshes[d->mesh];
@@ -901,6 +934,97 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         count++;
     }
     return count;
+}
+
+bool gfx_add_light(GfxContext *g, const GfxLight *light)
+{
+    if (!g->in_frame || g->light_count >= GFX_MAX_LIGHTS) {
+        return false;
+    }
+    g->lights[g->light_count++] = *light;
+    return true;
+}
+
+void gfx_set_lights_per_draw(GfxContext *g, int n)
+{
+    g->lights_per_draw = n < 1 ? 1 : (n > GFX_LIGHTS_PER_DRAW ? GFX_LIGHTS_PER_DRAW : n);
+}
+
+static void pack_lights(GfxContext *g)
+{
+    LightsFSUniforms *u = &g->light_ubo;
+    u->count = HMM_V4((float)g->light_count, 0, 0, 0);
+    for (uint32_t i = 0; i < g->light_count; i++) {
+        const GfxLight *l = &g->lights[i];
+        u->pos_range[i] = HMM_V4V(l->pos, l->range);
+        u->color_type[i] = HMM_V4V(HMM_MulV3F(l->color, l->intensity), l->type == GFX_LIGHT_SPOT ? 1.0f : 0.0f);
+        u->dir_cone[i] = HMM_V4V(l->dir, l->cos_outer);
+        u->extra[i] = HMM_V4(l->cos_inner, -1.0f, 0, 0);
+    }
+}
+
+/* World bounds of a draw: model-space box through the model matrix. */
+static void draw_bounds(const GfxContext *g, const DrawItem *d, HMM_Vec3 *mn, HMM_Vec3 *mx)
+{
+    const GfxMeshRec *m = &g->meshes[d->mesh];
+    HMM_Vec3 c = HMM_MulV3F(HMM_AddV3(m->bmin, m->bmax), 0.5f);
+    HMM_Vec3 e = HMM_MulV3F(HMM_SubV3(m->bmax, m->bmin), 0.5f);
+    HMM_Vec3 wc = HMM_MulM4V4(d->model, HMM_V4V(c, 1.0f)).XYZ;
+    HMM_Vec3 we;
+    for (int i = 0; i < 3; i++) {
+        we.Elements[i] = 0.0f;
+        for (int k = 0; k < 3; k++) {
+            we.Elements[i] += mg_absf(d->model.Elements[k][i]) * e.Elements[k];
+        }
+    }
+    *mn = HMM_SubV3(wc, we);
+    *mx = HMM_AddV3(wc, we);
+}
+
+/* Up to lights_per_draw lights whose sphere touches the draw's bounds,
+ * nearest (relative to range) first. Only lit materials need them. */
+static void select_lights(GfxContext *g)
+{
+    for (uint32_t i = 0; i < g->draw_count; i++) {
+        DrawItem *d = &g->draws[i];
+        memset(d->lights, -1, sizeof(d->lights));
+        if (g->light_count == 0 || (d->kind != GFX_MAT_TOON && d->kind != GFX_MAT_FLOOR)) {
+            continue;
+        }
+        HMM_Vec3 mn, mx;
+        draw_bounds(g, d, &mn, &mx);
+        float best[GFX_LIGHTS_PER_DRAW];
+        int n = 0;
+        for (uint32_t li = 0; li < g->light_count; li++) {
+            const GfxLight *l = &g->lights[li];
+            float d2 = 0.0f;
+            for (int k = 0; k < 3; k++) {
+                float v = l->pos.Elements[k];
+                float q = v < mn.Elements[k] ? mn.Elements[k] - v : (v > mx.Elements[k] ? v - mx.Elements[k] : 0.0f);
+                d2 += q * q;
+            }
+            if (d2 > l->range * l->range) {
+                continue;
+            }
+            /* rank by distance to the draw's centre: the light dropped when
+             * the list is full is the one that reaches least of it */
+            HMM_Vec3 dc = HMM_SubV3(l->pos, HMM_MulV3F(HMM_AddV3(mn, mx), 0.5f));
+            float score = HMM_DotV3(dc, dc) / (l->range * l->range);
+            int slot = n < g->lights_per_draw ? n++ : -1;
+            if (slot < 0) { /* full: replace the worst if this one is better */
+                int worst = 0;
+                for (int k = 1; k < n; k++) {
+                    worst = best[k] > best[worst] ? k : worst;
+                }
+                if (score >= best[worst]) {
+                    continue;
+                }
+                slot = worst;
+            }
+            best[slot] = score;
+            d->lights[slot] = (int8_t)li;
+        }
+    }
 }
 
 /* Quarter-res copy of the finished 3D image, blurred H then V (blur_a). */
@@ -1041,6 +1165,7 @@ void gfx_frame_end(GfxContext *g)
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_quads;
+    g->stats.lights = g->light_count;
     uint32_t rw = (uint32_t)((float)g->swap_w * g->render_scale + 0.5f);
     uint32_t rh = (uint32_t)((float)g->swap_h * g->render_scale + 0.5f);
     rw = rw > 0 ? rw : 1;
@@ -1071,6 +1196,8 @@ void gfx_frame_end(GfxContext *g)
     }
 
     sort_draws(g);
+    pack_lights(g);
+    select_lights(g);
     const GfxSceneParams *s = &g->scene;
     HMM_Mat4 view_proj = HMM_MulM4(s->proj, s->view);
     HMM_Mat4 inv_vp = HMM_InvGeneralM4(view_proj);

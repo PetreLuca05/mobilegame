@@ -70,6 +70,14 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
     devroom_draw(&s->room, g, false);
 }
 
+int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
+{
+    (void)s;
+    (void)g;
+    (void)v;
+    return 0;
+}
+
 void scene_tick(Scene *s, ColWorld *world, float dt)
 {
     (void)s;

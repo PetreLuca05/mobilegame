@@ -16,6 +16,7 @@ struct DrawFS
 {
     float4 u_tint;
     float4 u_params;
+    float4 u_light_index[2];
 };
 
 struct PSMain_out
@@ -29,11 +30,11 @@ struct PSMain_in
     float3 i_nrm [[user(locn1)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _49 [[buffer(0)]], constant FrameFS& _25 [[buffer(1)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _52 [[buffer(0)]], constant FrameFS& _25 [[buffer(1)]])
 {
     PSMain_out out = {};
-    float _129 = _49.u_tint.w * (0.300000011920928955078125 + (0.699999988079071044921875 * pow(1.0 - abs(dot(fast::normalize(in.i_nrm), fast::normalize(_25.u_eye.xyz - in.i_wpos))), 2.0)));
-    out._entryPointOutput = float4(_49.u_tint.xyz * _129, _129);
+    float _131 = _52.u_tint.w * (0.300000011920928955078125 + (0.699999988079071044921875 * powr(1.0 - abs(dot(fast::normalize(in.i_nrm), fast::normalize(_25.u_eye.xyz - in.i_wpos))), 2.0)));
+    out._entryPointOutput = float4(_52.u_tint.xyz * _131, _131);
     return out;
 }
 

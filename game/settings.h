@@ -15,6 +15,7 @@ typedef struct GameSettings {
     float dead_zone_pt;     /* 60 */
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
+    bool show_lights;       /* light gizmos + light counts */
     int teleport_floor;     /* MENU_TELEPORT target */
     float render_scale;     /* 3D resolution vs native (UI stays native) */
     char room_code[5];      /* last entered party code */

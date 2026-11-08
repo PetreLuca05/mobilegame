@@ -65,7 +65,18 @@ void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
     *target = HMM_V3(0.0f, 4.0f, -4.0f);
 }
 
-void scene_draw(Scene *s, GfxContext *g, const SceneView *v) { hospital_draw(&s->h, g, v->floor, v->show_triggers); }
+void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
+{
+    hospital_draw(&s->h, g, v->floor, v->show_triggers, v->lamp_on);
+    if (v->show_lights) {
+        hospital_draw_light_gizmos(&s->h, g, v->floor);
+    }
+}
+
+int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
+{
+    return hospital_lights(&s->h, g, v->floor, v->eye, v->lamp_on);
+}
 
 void scene_tick(Scene *s, ColWorld *world, float dt)
 {

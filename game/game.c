@@ -62,6 +62,8 @@ typedef struct Game {
     Audio *audio;
     RouteTest route;
     Stats stats;
+    float lamp_on;        /* exterior lamps, from the day cycle */
+    int shadowed_lights;  /* shadow-casting lights this frame */
     NetProfile profile;    /* our account (name, skin, guest/Google) */
     bool profile_loaded;
     GoogleAuth *google;
@@ -145,6 +147,7 @@ bool game_init(MgApp *app)
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
+    g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
     const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
     g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
@@ -197,6 +200,7 @@ bool game_init(MgApp *app)
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     g->audio = audio_create(&app->perm);
+    g->lamp_on = 1.0f;
     g->google = google_auth_create(&app->perm, MG_GOOGLE_WEB_CLIENT_ID, MG_GOOGLE_IOS_CLIENT_ID);
     route_test_init(&g->route, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
@@ -376,7 +380,8 @@ static void game_frame_launch(Game *g, MgApp *app)
     sp.proj = camera_projection(HMM_AngleDeg(62.0f), app->width_pt / app->height_pt, 0.05f, 400.0f, -0.25f);
     scene_defaults(&sp, (float)app->time);
     gfx_set_scene(app->gfx, &sp);
-    SceneView view = {sp.eye, 0, (float)app->time, false};
+    SceneView view = {sp.eye, 0, (float)app->time, false, false, g->lamp_on};
+    scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     for (int i = 0; i < SCENE_SPAWNS; i++) { /* the cast, idling on their discs */
@@ -617,7 +622,8 @@ void game_frame(MgApp *app, float alpha)
     sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
-    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers};
+    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on};
+    g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
@@ -661,6 +667,12 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+    if (s->show_lights) {
+        char line[96];
+        SDL_snprintf(line, sizeof(line), "lights %u (shadowed %d)", gs.lights, g->shadowed_lights);
+        text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 150.0f, 14.0f,
+                         ui_rgba(0xFFFFFFFF), line);
+    }
     draw_room_badge(g, app);
     float fade = el ? elevator_fade(el) : 0.0f;
     if (fade > 0.0f) {

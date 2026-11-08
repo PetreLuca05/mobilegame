@@ -1,5 +1,6 @@
 #include "hospital.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,9 +41,30 @@ static const char *const k_floor_names[HOSP_FLOORS] = {"G " "\x02" " Reception",
 
 typedef struct Build {
     MeshBuilder mb[HM_COUNT];
+    MeshBuilder cell[HOSP_FLOORS][3][HOSP_CELLS];
     ColWorld *world;
     const TextFont *font;
+    Hospital *h;
 } Build;
+
+static int cell_of(float x, float z)
+{
+    int col = (int)((x - HOSP_X0) / 3.75f);
+    col = col < 0 ? 0 : (col > 7 ? 7 : col);
+    return col + (z > -9.4f ? 8 : 0);
+}
+
+/* Builder for group `grp` at (x, z): interior groups go to their chunk. */
+static MeshBuilder *mbg(Build *b, int grp, float x, float z)
+{
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        if (grp == HM_INT0 + f || grp == HM_GLOSS0 + f || grp == HM_FLOOR0 + f) {
+            int kind = grp == HM_INT0 + f ? 0 : (grp == HM_GLOSS0 + f ? 1 : 2);
+            return &b->cell[f][kind][cell_of(x, z)];
+        }
+    }
+    return &b->mb[grp];
+}
 
 static HMM_Vec4 colour(uint32_t hex, float outdoor)
 {
@@ -87,7 +109,7 @@ static void box(Build *b, int grp, float x0, float y0, float z0, float x1, float
     HMM_Vec3 mn = HMM_V3(mg_minf(x0, x1), mg_minf(y0, y1), mg_minf(z0, z1));
     HMM_Vec3 mx = HMM_V3(mg_maxf(x0, x1), mg_maxf(y0, y1), mg_maxf(z0, z1));
     if (grp >= 0) {
-        hbox(&b->mb[grp], mn, mx, hex, outdoor);
+        hbox(mbg(b, grp, (mn.X + mx.X) * 0.5f, (mn.Z + mx.Z) * 0.5f), mn, mx, hex, outdoor);
     }
     if (collide) {
         colworld_add_box(b->world, HMM_MulV3F(HMM_AddV3(mn, mx), 0.5f), HMM_MulV3F(HMM_SubV3(mx, mn), 0.5f), 0.0f);
@@ -191,9 +213,9 @@ static void sign(Build *b, int board_grp, int text_grp, HMM_Vec3 p, int facing, 
     HMM_Vec3 n = nrm[facing];
     HMM_Vec3 c = HMM_AddV3(p, HMM_MulV3F(n, 0.015f));
     HMM_Vec3 half = facing <= FACE_NZ ? HMM_V3(w * 0.5f, h * 0.5f, 0.015f) : HMM_V3(0.015f, h * 0.5f, w * 0.5f);
-    hbox(&b->mb[board_grp], HMM_SubV3(c, half), HMM_AddV3(c, half), C_DOOR, outdoor ? F_ALL : 0);
+    hbox(mbg(b, board_grp, p.X, p.Z), HMM_SubV3(c, half), HMM_AddV3(c, half), C_DOOR, outdoor ? F_ALL : 0);
     HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_AddV3(p, HMM_MulV3F(n, 0.034f))), HMM_Rotate_RH(yaw[facing], HMM_V3(0, 1, 0)));
-    text_mesh(&b->mb[text_grp], b->font, m, th, HMM_V4(1, 1, 1, 1), text);
+    text_mesh(mbg(b, text_grp, p.X, p.Z), b->font, m, th, HMM_V4(1, 1, 1, 1), text);
 }
 
 /* sign above a door in a corridor wall; facing tells which side */
@@ -207,12 +229,12 @@ static void door_sign(Build *b, int f, float x, float wall_z, int facing, const 
 
 static void cyl(Build *b, int grp, float x, float y, float z, float r, float h, uint32_t hex, float outdoor)
 {
-    mb_cylinder(&b->mb[grp], HMM_Translate(HMM_V3(x, y, z)), r, h, 16, colour(hex, outdoor));
+    mb_cylinder(mbg(b, grp, x, z), HMM_Translate(HMM_V3(x, y, z)), r, h, 16, colour(hex, outdoor));
 }
 
 static void sphere(Build *b, int grp, float x, float y, float z, float r, uint32_t hex, float outdoor)
 {
-    mb_sphere(&b->mb[grp], HMM_Translate(HMM_V3(x, y, z)), r, 8, 12, colour(hex, outdoor), NULL, NULL);
+    mb_sphere(mbg(b, grp, x, z), HMM_Translate(HMM_V3(x, y, z)), r, 8, 12, colour(hex, outdoor), NULL, NULL);
 }
 
 /* chair facing `dir` (0 +Z, 1 -Z, 2 +X, 3 -X): seat, legs block, back */
@@ -253,7 +275,7 @@ static void bed(Build *b, int f, float x, float z_head, float dz, uint32_t blank
     box(b, g, x - 0.46f, y + 0.6f, z0 + dz * 0.6f, x + 0.46f, y + 0.66f, z1 - dz * 0.02f, blanket, 0, false);
     box(b, g, x - 0.3f, y + 0.6f, z0 + dz * 0.1f, x + 0.3f, y + 0.72f, z0 + dz * 0.45f, C_WALL, 0, false);
     box(b, g, x - 0.48f, y, z0, x + 0.48f, y + 1.0f, z0 + dz * 0.06f, C_DOOR, 0, false); /* headboard */
-    hbox(&b->mb[HM_GLOSS0 + f], HMM_V3(x - 0.5f, y + 0.62f, mg_minf(z0 + dz * 0.9f, z1 - dz * 0.2f)),
+    hbox(mbg(b, HM_GLOSS0 + f, x, z0), HMM_V3(x - 0.5f, y + 0.62f, mg_minf(z0 + dz * 0.9f, z1 - dz * 0.2f)),
          HMM_V3(x - 0.47f, y + 0.66f, mg_maxf(z0 + dz * 0.9f, z1 - dz * 0.2f)), C_STEEL, 0); /* rail */
 }
 
@@ -353,7 +375,7 @@ static void build_yard(Build *b, Hospital *h)
     for (int i = 0; i < 2; i++) {
         float x = lamps[i][0], z = lamps[i][1];
         cyl(b, HM_YARD, x, 0.0f, z, 0.08f, 3.8f, C_DARK, 1.0f);
-        sphere(b, HM_GLOSS_OUT, x, 3.95f, z, 0.22f, 0xFFF4C8, 1.0f);
+        sphere(b, HM_LAMPS, x, 3.95f, z, 0.22f, 0xFFF4C8, 1.0f);
         blocker(b, x - 0.12f, 0.0f, z - 0.12f, x + 0.12f, 3.8f, z + 0.12f);
     }
 
@@ -430,9 +452,17 @@ static void build_shell(Build *b)
         /* slab under the storey (ceiling of the one below) */
         box(b, HM_SHELL, HOSP_X0 + WALL_T, y - 0.3f, HOSP_Z0 + WALL_T, HOSP_X1 - WALL_T, y, HOSP_Z1 - WALL_T, C_WALL, 0,
             true);
-        /* floor finish, drawn with the floor material */
-        box(b, HM_FLOOR0 + f, HOSP_X0 + WALL_T, y - 0.02f, HOSP_Z0 + WALL_T, HOSP_X1 - WALL_T, y + 0.004f,
-            HOSP_Z1 - WALL_T, C_FLOOR, 0, false);
+        /* floor finish, drawn with the floor material, one piece per chunk */
+        const float cz[3] = {HOSP_Z0 + WALL_T, -9.4f, HOSP_Z1 - WALL_T};
+        float cx[9];
+        for (int i = 0; i <= 8; i++) {
+            cx[i] = i == 0 ? HOSP_X0 + WALL_T : (i == 8 ? HOSP_X1 - WALL_T : HOSP_X0 + 3.75f * (float)i);
+        }
+        for (int iz = 0; iz < 2; iz++) {
+            for (int ix = 0; ix < 8; ix++) {
+                box(b, HM_FLOOR0 + f, cx[ix], y - 0.02f, cz[iz], cx[ix + 1], y + 0.004f, cz[iz + 1], C_FLOOR, 0, false);
+            }
+        }
     }
     /* roof slab + parapet */
     float r = HOSP_FLOORS * HOSP_STOREY;
@@ -512,8 +542,8 @@ static void build_stairs(Build *b, int f)
     /* rope barrier across the doorway: brass posts, red rope, invisible wall */
     for (int s = 0; s < 2; s++) {
         float x = s == 0 ? -4.95f : -3.55f;
-        mb_cylinder(&b->mb[HM_GLOSS0 + f], HMM_Translate(HMM_V3(x, y, -10.35f)), 0.05f, 0.95f, 12, colour(0xC9A227, 0));
-        mb_sphere(&b->mb[HM_GLOSS0 + f], HMM_Translate(HMM_V3(x, y + 0.98f, -10.35f)), 0.07f, 6, 10,
+        mb_cylinder(mbg(b, HM_GLOSS0 + f, x, -10.35f), HMM_Translate(HMM_V3(x, y, -10.35f)), 0.05f, 0.95f, 12, colour(0xC9A227, 0));
+        mb_sphere(mbg(b, HM_GLOSS0 + f, x, -10.35f), HMM_Translate(HMM_V3(x, y + 0.98f, -10.35f)), 0.07f, 6, 10,
                   colour(0xC9A227, 0), NULL, NULL);
     }
     box(b, g, -4.95f, y + 0.78f, -10.37f, -3.55f, y + 0.84f, -10.33f, 0xC0392B, 0, false);
@@ -652,8 +682,8 @@ static void build_floor_2(Build *b)
         box(b, g, cx - 0.2f, y, -4.0f, cx + 0.2f, y + 0.7f, -2.1f, C_STEEL, 0, false);
         box(b, g, cx - 0.32f, y + 0.7f, -4.1f, cx + 0.32f, y + 0.9f, -2.0f, 0x4A7FB5, 0, false);
         blocker(b, cx - 0.32f, y, -4.1f, cx + 0.32f, y + 0.9f, -2.0f);
-        mb_cylinder(&b->mb[gl], HMM_Translate(HMM_V3(cx, y + 2.6f, -3.0f)), 0.04f, 1.1f, 8, colour(C_STEEL, 0));
-        mb_cylinder(&b->mb[gl], HMM_Translate(HMM_V3(cx, y + 2.5f, -3.0f)), 0.45f, 0.12f, 24, colour(0xE8EEF4, 0));
+        mb_cylinder(mbg(b, gl, cx, -3.0f), HMM_Translate(HMM_V3(cx, y + 2.6f, -3.0f)), 0.04f, 1.1f, 8, colour(C_STEEL, 0));
+        mb_cylinder(mbg(b, gl, cx, -3.0f), HMM_Translate(HMM_V3(cx, y + 2.5f, -3.0f)), 0.45f, 0.12f, 24, colour(0xE8EEF4, 0));
         box(b, gl, cx + (float)s * 2.4f - 0.3f, y, -1.5f, cx + (float)s * 2.4f + 0.3f, y + 0.9f, -1.0f, C_STEEL, 0,
             true);
     }
@@ -678,14 +708,114 @@ static void build_floor_2(Build *b)
 
 /* ------------------------------------------------------------------ init/draw */
 
-static const uint32_t k_caps[HM_COUNT][2] = {
-    [HM_SHELL] = {32768, 65536},      [HM_YARD] = {32768, 65536},       [HM_GLOSS_OUT] = {8192, 16384},
-    [HM_GROUND] = {1024, 2048},       [HM_INT0] = {32768, 65536},       [HM_INT0 + 1] = {32768, 65536},
-    [HM_INT0 + 2] = {32768, 65536},   [HM_GLOSS0] = {8192, 16384},      [HM_GLOSS0 + 1] = {8192, 16384},
-    [HM_GLOSS0 + 2] = {8192, 16384},  [HM_FLOOR0] = {256, 512},         [HM_FLOOR0 + 1] = {256, 512},
-    [HM_FLOOR0 + 2] = {256, 512},     [HM_TEXT_OUT] = {4096, 8192},     [HM_TEXT0] = {4096, 8192},
-    [HM_TEXT0 + 1] = {4096, 8192},    [HM_TEXT0 + 2] = {4096, 8192},
-};
+/* ------------------------------------------------------------------ lights */
+
+static void light(Build *b, int floor, bool exterior, GfxLightType type, HMM_Vec3 pos, float range, uint32_t hex,
+                  float intensity, float half_angle_deg, bool shadow)
+{
+    Hospital *h = b->h;
+    if (h->light_count >= HOSP_MAX_LIGHTS) {
+        return;
+    }
+    HospLight *hl = &h->lights[h->light_count];
+    HMM_Vec4 c = mg_rgb(hex);
+    float half = HMM_AngleDeg(half_angle_deg);
+    hl->light = (GfxLight){type,
+                           pos,
+                           HMM_V3(0, -1, 0),
+                           range,
+                           c.XYZ,
+                           intensity,
+                           HMM_CosF(half * 0.7f),
+                           HMM_CosF(half),
+                           shadow,
+                           (uint32_t)h->light_count + 1};
+    hl->floor = floor;
+    hl->exterior = exterior;
+    h->light_count++;
+    if (!exterior && floor >= 0) { /* a glowing panel on the ceiling above it */
+        float y = (float)floor * HOSP_STOREY + INT_H;
+        box(b, HM_FIX0 + floor, pos.X - 0.35f, y - 0.05f, pos.Z - 0.35f, pos.X + 0.35f, y - 0.005f, pos.Z + 0.35f,
+            0xFFFFFF, 0, false);
+    }
+}
+
+#define CEIL(f) ((float)(f) * HOSP_STOREY + 3.55f)
+#define C_COOL 0xEAF2FF
+#define C_WARM 0xFFE6C8
+#define C_LAMP 0xFFD9A0
+
+static void place_lights(Build *b)
+{
+    /* yard: lamp posts (spots down), entrance canopy, gate sign */
+    light(b, -1, true, GFX_LIGHT_SPOT, HMM_V3(-2.3f, 3.9f, 10.0f), 12.0f, C_LAMP, 2.0f, 50.0f, true);
+    light(b, -1, true, GFX_LIGHT_SPOT, HMM_V3(-2.3f, 3.9f, 3.5f), 12.0f, C_LAMP, 2.0f, 50.0f, true);
+    light(b, -1, true, GFX_LIGHT_SPOT, HMM_V3(0.0f, 2.85f, HOSP_Z1 + 1.4f), 8.0f, C_LAMP, 1.6f, 55.0f, true);
+    light(b, -1, true, GFX_LIGHT_POINT, HMM_V3(-4.7f, 2.4f, 18.9f), 3.0f, C_LAMP, 0.8f, 0.0f, false);
+
+    /* G: corridors, lobby + reception (shadowed), waiting, elevator lobby; rooms */
+    const float gx[4] = {-11.0f, -4.5f, 4.5f, 11.0f};
+    for (int i = 0; i < 4; i++) {
+        light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(gx[i], CEIL(0), -9.4f), 6.0f, C_COOL, 1.0f, 0.0f, false);
+    }
+    light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(0.0f, CEIL(0), -2.0f), 6.0f, C_COOL, 1.0f, 0.0f, true);
+    light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(-3.5f, CEIL(0), -5.2f), 6.0f, C_COOL, 1.0f, 0.0f, true);
+    light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(3.6f, CEIL(0), -2.0f), 6.0f, C_COOL, 0.9f, 0.0f, false);
+    light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(0.0f, CEIL(0), -11.6f), 5.0f, C_COOL, 0.9f, 0.0f, false);
+    const float rx[2] = {-10.4f, 10.4f};
+    for (int s = 0; s < 2; s++) {
+        light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(rx[s], CEIL(0), -3.6f), 6.0f, C_COOL, 0.9f, 0.0f, false);
+        light(b, 0, false, GFX_LIGHT_POINT, HMM_V3(rx[s], CEIL(0), -13.8f), 6.0f, C_COOL, 0.9f, 0.0f, false);
+    }
+
+    /* 1: corridor (2 shadowed), warm patient rooms, nurses' station spot */
+    const float c1[6] = {-12.0f, -7.0f, -2.0f, 2.0f, 7.0f, 12.0f};
+    for (int i = 0; i < 6; i++) {
+        light(b, 1, false, GFX_LIGHT_POINT, HMM_V3(c1[i], CEIL(1), -9.4f), 6.0f, C_COOL, 1.0f, 0.0f, i == 2 || i == 3);
+    }
+    const float sx[4] = {-10.4f, -3.0f, 3.0f, 10.4f};
+    for (int i = 0; i < 4; i++) {
+        light(b, 1, false, GFX_LIGHT_POINT, HMM_V3(sx[i], CEIL(1), -3.4f), 5.0f, C_WARM, 0.9f, 0.0f, false);
+    }
+    light(b, 1, false, GFX_LIGHT_POINT, HMM_V3(-10.0f, CEIL(1), -13.6f), 5.0f, C_WARM, 0.9f, 0.0f, false);
+    light(b, 1, false, GFX_LIGHT_POINT, HMM_V3(10.0f, CEIL(1), -13.6f), 5.0f, C_WARM, 0.9f, 0.0f, false);
+    light(b, 1, false, GFX_LIGHT_SPOT, HMM_V3(4.25f, CEIL(1), -12.5f), 5.0f, C_COOL, 1.2f, 45.0f, false);
+
+    /* 2: surgical lamps (bright, shadowed), offices, cafeteria */
+    for (int s = 0; s < 2; s++) {
+        light(b, 2, false, GFX_LIGHT_SPOT, HMM_V3(rx[s], 2.0f * HOSP_STOREY + 2.45f, -3.0f), 4.5f, 0xFFFFFF, 3.0f, 30.0f,
+              true);
+        light(b, 2, false, GFX_LIGHT_POINT, HMM_V3(rx[s], CEIL(2), -13.8f), 6.0f, C_WARM, 0.9f, 0.0f, false);
+        light(b, 2, false, GFX_LIGHT_POINT, HMM_V3((float)(s * 2 - 1) * 9.0f, CEIL(2), -9.4f), 6.0f, C_COOL, 1.0f,
+              0.0f, false);
+    }
+    const float cx[3] = {-3.5f, 0.5f, 4.0f};
+    for (int i = 0; i < 3; i++) {
+        light(b, 2, false, GFX_LIGHT_POINT, HMM_V3(cx[i], CEIL(2), -3.6f), 6.0f, C_WARM, 1.0f, 0.0f, false);
+    }
+    light(b, 2, false, GFX_LIGHT_POINT, HMM_V3(0.0f, CEIL(2), -9.4f), 6.0f, C_COOL, 1.0f, 0.0f, false);
+
+    /* elevator car, every storey */
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        light(b, f, false, GFX_LIGHT_POINT, HMM_V3(0.0f, (float)f * HOSP_STOREY + 2.3f, -13.8f), 3.0f, C_COOL, 0.8f,
+              0.0f, false);
+    }
+}
+
+/* ------------------------------------------------------------------ init/draw */
+
+static uint32_t group_caps(int grp, bool indices)
+{
+    uint32_t v = 4096;
+    if (grp == HM_SHELL || grp == HM_YARD) {
+        v = 32768;
+    } else if (grp == HM_GLOSS_OUT || (grp >= HM_TEXT_OUT && grp < HM_TEXT0 + HOSP_FLOORS)) {
+        v = 8192;
+    } else if (grp == HM_GROUND || grp == HM_LAMPS || (grp >= HM_FIX0 && grp < HM_FIX0 + HOSP_FLOORS)) {
+        v = 1024;
+    }
+    return indices ? v * 2 : v;
+}
 
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font)
 {
@@ -697,11 +827,21 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
     }
     b->world = world;
     b->font = font;
+    b->h = h;
+    bool ok = true;
     for (int i = 0; i < HM_COUNT; i++) {
-        if (!mb_init(&b->mb[i], scratch, k_caps[i][0], k_caps[i][1])) {
-            arena_reset_to(scratch, mark);
-            return false;
+        ok = ok && mb_init(&b->mb[i], scratch, group_caps(i, false), group_caps(i, true));
+    }
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        for (int k = 0; k < 3; k++) {
+            for (int c = 0; c < HOSP_CELLS; c++) {
+                ok = ok && mb_init(&b->cell[f][k][c], scratch, k == 2 ? 64 : 6144, k == 2 ? 128 : 12288);
+            }
         }
+    }
+    if (!ok) {
+        arena_reset_to(scratch, mark);
+        return false;
     }
     colworld_clear(world);
     build_yard(b, h);
@@ -713,23 +853,43 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
     build_floor_g(b);
     build_floor_1(b);
     build_floor_2(b);
+    place_lights(b);
 
-    bool ok = true;
     for (int i = 0; i < HM_COUNT; i++) {
+        bool chunked = (i >= HM_INT0 && i < HM_INT0 + HOSP_FLOORS) || (i >= HM_GLOSS0 && i < HM_GLOSS0 + HOSP_FLOORS) ||
+                       (i >= HM_FLOOR0 && i < HM_FLOOR0 + HOSP_FLOORS);
         if (b->mb[i].overflow) {
             mg_log_error("hospital: mesh group %d overflowed", i);
             ok = false;
         }
-        h->mesh[i] = b->mb[i].ni > 0 ? mb_upload(&b->mb[i], g) : GFX_MESH_NONE;
+        h->mesh[i] = !chunked && b->mb[i].ni > 0 ? mb_upload(&b->mb[i], g) : GFX_MESH_NONE;
+    }
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        for (int k = 0; k < 3; k++) {
+            for (int c = 0; c < HOSP_CELLS; c++) {
+                MeshBuilder *m = &b->cell[f][k][c];
+                if (m->overflow) {
+                    mg_log_error("hospital: chunk %d/%d/%d overflowed", f, k, c);
+                    ok = false;
+                }
+                h->cell[f][k][c] = m->ni > 0 ? mb_upload(m, g) : GFX_MESH_NONE;
+            }
+        }
     }
     MeshBuilder mb;
-    mb_init(&mb, scratch, 64, 64);
+    mb_init(&mb, scratch, 2048, 8192);
     hbox(&mb, HMM_V3(-0.5f, -HOSP_CAR_H * 0.5f, -0.03f), HMM_V3(0.5f, HOSP_CAR_H * 0.5f, 0.03f), C_STEEL, 0);
     h->door_panel = mb_upload(&mb, g);
     mb_reset(&mb);
     mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.5f, 0.5f, 0.5f), HMM_V4(1, 1, 1, 1));
     h->trigger = mb_upload(&mb, g);
-    mg_log_info("hospital: %d colliders", world->count);
+    mb_reset(&mb);
+    mb_sphere(&mb, HMM_M4D(1.0f), 1.0f, 10, 16, HMM_V4(1, 1, 1, 1), NULL, NULL);
+    h->gizmo_sphere = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_cone(&mb, HMM_M4D(1.0f), 1.0f, 1.0f, 20, HMM_V4(1, 1, 1, 1));
+    h->gizmo_cone = mb_upload(&mb, g);
+    mg_log_info("hospital: %d colliders, %d lights", world->count, h->light_count);
     arena_reset_to(scratch, mark);
     h->door_open[0] = 1.0f; /* the car waits on G */
     hospital_apply_doors(h, world);
@@ -756,7 +916,7 @@ static void draw_mesh(GfxContext *g, GfxMeshId m, const GfxMaterial *mat, uint32
     }
 }
 
-void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers)
+void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers, float lamp_on)
 {
     floor = floor < 0 ? 0 : (floor >= HOSP_FLOORS ? HOSP_FLOORS - 1 : floor);
     GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.2f);
@@ -764,15 +924,21 @@ void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_trigge
     GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), floor == 0 ? 0.25f : 0.0f);
     GfxMaterial inside = mat_floor_plain(HMM_V4(1, 1, 1, 1), 0.35f);
     GfxMaterial text = mat_text(HMM_V4(1, 1, 1, 1));
+    GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * lamp_on);
+    GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), 1.4f);
     draw_mesh(g, h->mesh[HM_SHELL], &matte, GFX_DRAW_REFLECT);
     draw_mesh(g, h->mesh[HM_YARD], &matte, GFX_DRAW_REFLECT);
     draw_mesh(g, h->mesh[HM_GLOSS_OUT], &glossy, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_GROUND], &ground, 0);
-    draw_mesh(g, h->mesh[HM_TEXT_OUT], &text, 0);
-    draw_mesh(g, h->mesh[HM_INT0 + floor], &matte, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_GLOSS0 + floor], &glossy, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_FLOOR0 + floor], &inside, 0);
-    draw_mesh(g, h->mesh[HM_TEXT0 + floor], &text, 0);
+    draw_mesh(g, h->mesh[HM_LAMPS], &lamps, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
+    draw_mesh(g, h->mesh[HM_GROUND], &ground, GFX_DRAW_NO_SHADOW);
+    draw_mesh(g, h->mesh[HM_TEXT_OUT], &text, GFX_DRAW_NO_SHADOW);
+    for (int c = 0; c < HOSP_CELLS; c++) {
+        draw_mesh(g, h->cell[floor][0][c], &matte, GFX_DRAW_REFLECT);
+        draw_mesh(g, h->cell[floor][1][c], &glossy, GFX_DRAW_REFLECT);
+        draw_mesh(g, h->cell[floor][2][c], &inside, GFX_DRAW_NO_SHADOW);
+    }
+    draw_mesh(g, h->mesh[HM_FIX0 + floor], &panels, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
+    draw_mesh(g, h->mesh[HM_TEXT0 + floor], &text, GFX_DRAW_NO_SHADOW);
     for (int s = 0; s < 2; s++) {
         HMM_Mat4 m = HMM_Translate(
             HMM_V3(leaf_x(s, h->door_open[floor]), (float)floor * HOSP_STOREY + HOSP_CAR_H * 0.5f, HOSP_DOOR_Z));
@@ -783,6 +949,71 @@ void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_trigge
                                                      (HOSP_CAR_Z0 + HOSP_CAR_Z1) * 0.5f)),
                                HMM_Scale(HMM_V3(HOSP_CAR_X1 - HOSP_CAR_X0, HOSP_CAR_H, HOSP_CAR_Z1 - HOSP_CAR_Z0)));
         GfxMaterial ghost = mat_ghost(HMM_V4(1.0f, 0.6f, 0.1f, 0.3f));
-        gfx_draw(g, h->trigger, &m, &ghost, 0);
+        gfx_draw(g, h->trigger, &m, &ghost, GFX_DRAW_NO_SHADOW);
+    }
+}
+
+static bool light_relevant(const HospLight *hl, int floor, HMM_Vec3 eye)
+{
+    if (!hl->exterior && hl->floor != floor) {
+        return false; /* indoor lights: the camera's storey only */
+    }
+    HMM_Vec3 d = HMM_SubV3(hl->light.pos, eye);
+    return HMM_DotV3(d, d) < 40.0f * 40.0f;
+}
+
+int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 eye, float lamp_on)
+{
+    int shadowed = 0;
+    for (int i = 0; i < h->light_count; i++) {
+        const HospLight *hl = &h->lights[i];
+        if (!light_relevant(hl, floor, eye) || (hl->exterior && lamp_on < 0.01f)) {
+            continue;
+        }
+        GfxLight l = hl->light;
+        l.intensity *= hl->exterior ? lamp_on : 1.0f;
+        if (gfx_add_light(g, &l) && l.cast_shadow) {
+            shadowed++;
+        }
+    }
+    return shadowed;
+}
+
+/* Rotation taking +Y onto the unit vector `d`. */
+static HMM_Mat4 align_y(HMM_Vec3 d)
+{
+    HMM_Vec3 axis = HMM_Cross(HMM_V3(0, 1, 0), d);
+    float s = HMM_LenV3(axis);
+    return s > 1e-5f ? HMM_Rotate_RH(atan2f(s, d.Y), HMM_DivV3F(axis, s))
+                     : HMM_Rotate_RH(d.Y > 0.0f ? 0.0f : HMM_PI32, HMM_V3(1, 0, 0));
+}
+
+void hospital_draw_light_gizmos(const Hospital *h, GfxContext *g, int floor)
+{
+    for (int i = 0; i < h->light_count; i++) {
+        const HospLight *hl = &h->lights[i];
+        if (!hl->exterior && hl->floor != floor) {
+            continue;
+        }
+        const GfxLight *l = &hl->light;
+        HMM_Vec4 c = HMM_V4V(l->color, 0.9f);
+        if (l->cast_shadow) {
+            c = HMM_V4(1.0f, 0.3f, 0.3f, 0.9f); /* shadow casters in red */
+        }
+        GfxMaterial core = mat_ghost(c);
+        HMM_Mat4 m = HMM_MulM4(HMM_Translate(l->pos), HMM_Scale(HMM_V3(0.15f, 0.15f, 0.15f)));
+        gfx_draw(g, h->gizmo_sphere, &m, &core, GFX_DRAW_NO_SHADOW);
+        if (l->type == GFX_LIGHT_SPOT) { /* cone, apex at the lamp, 3 m long */
+            float len = mg_minf(l->range, 3.0f);
+            float r = len * HMM_TanF(acosf(l->cos_outer));
+            HMM_Mat4 cm = HMM_MulM4(HMM_Translate(HMM_AddV3(l->pos, HMM_MulV3F(l->dir, len))),
+                                    HMM_MulM4(align_y(HMM_MulV3F(l->dir, -1.0f)), HMM_Scale(HMM_V3(r, len, r))));
+            GfxMaterial cone = mat_ghost(HMM_V4(c.X, c.Y, c.Z, 0.18f));
+            gfx_draw(g, h->gizmo_cone, &cm, &cone, GFX_DRAW_NO_SHADOW);
+        } else {
+            HMM_Mat4 rm = HMM_MulM4(HMM_Translate(l->pos), HMM_Scale(HMM_V3(l->range, l->range, l->range)));
+            GfxMaterial reach = mat_ghost(HMM_V4(c.X, c.Y, c.Z, 0.05f));
+            gfx_draw(g, h->gizmo_sphere, &rm, &reach, GFX_DRAW_NO_SHADOW);
+        }
     }
 }

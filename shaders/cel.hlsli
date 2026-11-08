@@ -19,6 +19,6 @@ float cel_lit(float ndl)
 float3 cel_light(float3 n, float outdoor)
 {
     float3 sun = u_ambient.rgb + u_sun_color.rgb * cel_lit(dot(n, u_sun_dir.xyz));
-    float3 inside = float3(0.66, 0.66, 0.68) + float3(0.30, 0.29, 0.26) * cel_lit(dot(n, normalize(float3(0.25, 1.0, 0.35))));
+    float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * cel_lit(dot(n, normalize(float3(0.25, 1.0, 0.35))));
     return lerp(inside, sun, outdoor);
 }

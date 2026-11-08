@@ -32,16 +32,16 @@ struct VSMain_in
 vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant DrawVS& _31 [[buffer(0)]], constant FrameVS& _57 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float4 _154 = _31.u_model * float4(in.i_pos, 1.0);
-    float4 _140 = _154;
-    float3 _167 = fast::normalize(in.i_nrm * float3x3(float4(_31.u_normal[0][0], _31.u_normal[1][0], _31.u_normal[2][0], _31.u_normal[3][0]).xyz, float4(_31.u_normal[0][1], _31.u_normal[1][1], _31.u_normal[2][1], _31.u_normal[3][1]).xyz, float4(_31.u_normal[0][2], _31.u_normal[1][2], _31.u_normal[2][2], _31.u_normal[3][2]).xyz));
-    float3 _180 = _154.xyz + (_167 * fast::clamp((_57.u_view_proj * _154).w * 0.004999999888241291046142578125, 0.0089999996125698089599609375, 0.039999999105930328369140625));
-    _140.x = _180.x;
-    _140.y = _180.y;
-    _140.z = _180.z;
-    out.gl_Position = _57.u_view_proj * _140;
-    out._entryPointOutput_wpos = _140.xyz;
-    out._entryPointOutput_nrm = _167;
+    float4 _155 = _31.u_model * float4(in.i_pos, 1.0);
+    float4 _141 = _155;
+    float3 _168 = fast::normalize(in.i_nrm * float3x3(float4(_31.u_normal[0][0], _31.u_normal[1][0], _31.u_normal[2][0], _31.u_normal[3][0]).xyz, float4(_31.u_normal[0][1], _31.u_normal[1][1], _31.u_normal[2][1], _31.u_normal[3][1]).xyz, float4(_31.u_normal[0][2], _31.u_normal[1][2], _31.u_normal[2][2], _31.u_normal[3][2]).xyz));
+    float3 _181 = _155.xyz + (_168 * fast::clamp((_57.u_view_proj * _155).w * 0.004999999888241291046142578125, 0.0089999996125698089599609375, 0.039999999105930328369140625));
+    _141.x = _181.x;
+    _141.y = _181.y;
+    _141.z = _181.z;
+    out.gl_Position = _57.u_view_proj * _141;
+    out._entryPointOutput_wpos = _141.xyz;
+    out._entryPointOutput_nrm = _168;
     out._entryPointOutput_col = in.i_col;
     return out;
 }

@@ -61,7 +61,26 @@ enum {
     GFX_DRAW_REFLECT = 1u << 0, /* also render into the planar reflection */
     GFX_DRAW_NO_MAIN = 1u << 1, /* reflection only */
     GFX_DRAW_PREVIEW = 1u << 2, /* settings preview camera only (see gfx_preview) */
+    GFX_DRAW_NO_SHADOW = 1u << 3, /* never drawn into shadow maps */
+    GFX_DRAW_DYNAMIC = 1u << 4,   /* moves (avatars): dirties cached shadow tiles it touches */
 };
+
+/* Point / spot light, added every frame with gfx_add_light (max
+ * GFX_MAX_LIGHTS). Each draw gets the few lights that overlap its bounds
+ * (gfx_set_lights_per_draw); their sum goes through the toon ramp. */
+#define GFX_MAX_LIGHTS 64
+typedef enum GfxLightType { GFX_LIGHT_POINT, GFX_LIGHT_SPOT } GfxLightType;
+typedef struct GfxLight {
+    GfxLightType type;
+    HMM_Vec3 pos;
+    HMM_Vec3 dir;          /* spot: unit, pointing out of the lamp */
+    float range;           /* metres; contribution is 0 beyond */
+    HMM_Vec3 color;        /* linear-ish 0..1 */
+    float intensity;
+    float cos_inner, cos_outer; /* spot cone (cosines of half-angles) */
+    bool cast_shadow;
+    uint32_t id;           /* stable per light (shadow caching) */
+} GfxLight;
 
 typedef struct GfxSceneParams {
     HMM_Mat4 view;
@@ -81,6 +100,7 @@ typedef struct GfxStats {
     uint32_t draws;
     uint32_t reflect_draws;
     uint32_t ui_quads;
+    uint32_t lights;
     uint32_t width_px, height_px;
     int msaa;
     const char *backend; /* "metal", "vulkan", ... */
@@ -101,6 +121,10 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
               uint32_t flags);
 /* UI coordinate space size in points (window pixels / display scale). */
 void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
+/* Lights for this frame (after gfx_frame_begin). False when the list is full. */
+bool gfx_add_light(GfxContext *g, const GfxLight *light);
+/* 4 on low-tier GPUs, 8 on high (default 8). */
+void gfx_set_lights_per_draw(GfxContext *g, int n);
 /* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
 /* Frosted panel behind this frame's UI: the 3D image under it, blurred at

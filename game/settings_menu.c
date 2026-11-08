@@ -63,6 +63,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
         ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_triggers);
         y += wide ? 44.0f : 84.0f;
+        ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
+        y += 44.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Teleport to floor");
         y += 22.0f;
         static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};

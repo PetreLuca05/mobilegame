@@ -17,6 +17,7 @@ cbuffer DrawFS : register(b0, space3)
 {
     float4 u_tint;
     float4 u_params;
+    float4 u_light_index[2]; // 8 indices into LightsFS, -1 = none (lit materials)
 };
 
 cbuffer FrameFS : register(b1, space3)

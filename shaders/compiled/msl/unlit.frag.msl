@@ -7,6 +7,7 @@ struct DrawFS
 {
     float4 u_tint;
     float4 u_params;
+    float4 u_light_index[2];
 };
 
 struct PSMain_out
@@ -19,10 +20,10 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _23 [[buffer(0)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _26 [[buffer(0)]])
 {
     PSMain_out out = {};
-    out._entryPointOutput = float4(in.i_col.xyz * _23.u_tint.xyz, 1.0);
+    out._entryPointOutput = float4(in.i_col.xyz * _26.u_tint.xyz, 1.0);
     return out;
 }
 

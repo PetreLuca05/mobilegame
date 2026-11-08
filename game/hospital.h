@@ -13,6 +13,8 @@
 #define HOSP_FLOORS 3
 #define HOSP_STOREY 4.0f
 #define HOSP_SPAWNS 4
+#define HOSP_CELLS 16     /* interior chunks per storey: 8 columns x 2 bands */
+#define HOSP_MAX_LIGHTS 64
 
 /* building footprint */
 #define HOSP_X0 (-15.0f)
@@ -42,11 +44,25 @@ enum {
     HM_FLOOR0 = HM_GLOSS0 + HOSP_FLOORS,
     HM_TEXT_OUT = HM_FLOOR0 + HOSP_FLOORS,
     HM_TEXT0,
-    HM_COUNT = HM_TEXT0 + HOSP_FLOORS,
+    HM_LAMPS = HM_TEXT0 + HOSP_FLOORS, /* exterior lamp heads (emissive with lamp-on) */
+    HM_FIX0,                           /* ceiling light panels per storey (emissive) */
+    HM_COUNT = HM_FIX0 + HOSP_FLOORS,
 };
+/* HM_INT*, HM_GLOSS* and HM_FLOOR* are split into HOSP_CELLS chunks each, so
+ * every chunk draw gets the few lights near it. */
+
+typedef struct HospLight {
+    GfxLight light;
+    int floor;     /* storey, -1 = outside */
+    bool exterior; /* follows the day cycle's lamp-on factor */
+} HospLight;
 
 typedef struct Hospital {
     GfxMeshId mesh[HM_COUNT];
+    GfxMeshId cell[HOSP_FLOORS][3][HOSP_CELLS]; /* [storey][matte, glossy, floor][chunk] */
+    GfxMeshId gizmo_sphere, gizmo_cone;
+    HospLight lights[HOSP_MAX_LIGHTS];
+    int light_count;
     GfxMeshId door_panel; /* one 1.0 x 2.4 x 0.06 m elevator door leaf */
     GfxMeshId trigger;    /* unit cube for the debug trigger view */
     HMM_Vec3 spawns[HOSP_SPAWNS];
@@ -59,6 +75,10 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
 void hospital_apply_doors(Hospital *h, ColWorld *world);
 /* `floor` = storey the viewer is on: only its interior is drawn (the
  * windows are opaque) and only its floor reflects. */
-void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers);
+void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers, float lamp_on);
+/* Add this frame's lights: exterior ones scaled by lamp_on, interior ones of
+ * `floor`, nothing beyond 40 m from the eye. Returns how many cast shadows. */
+int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 eye, float lamp_on);
+void hospital_draw_light_gizmos(const Hospital *h, GfxContext *g, int floor);
 
 #endif

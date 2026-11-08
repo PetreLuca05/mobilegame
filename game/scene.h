@@ -20,6 +20,8 @@ typedef struct SceneView {
     int floor;          /* storey the camera's player is on (reflections, culling) */
     float time;
     bool show_triggers; /* debug: draw trigger volumes */
+    bool show_lights;   /* debug: light gizmos */
+    float lamp_on;      /* day cycle: exterior lamps 0..1 */
 } SceneView;
 
 /* Builds meshes (signs use `font`) and fills `world` with the static colliders. */
@@ -37,6 +39,8 @@ bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
 void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target);
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v);
+/* Point/spot lights for this frame; returns how many cast shadows. */
+int scene_lights(Scene *s, GfxContext *g, const SceneView *v);
 /* Moving parts (elevator doors) at the fixed tick; may update colliders. */
 void scene_tick(Scene *s, ColWorld *world, float dt);
 /* The scene's elevator, or NULL. */
