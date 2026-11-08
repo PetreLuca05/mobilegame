@@ -2071,7 +2071,7 @@ static void save_screenshot(GfxContext *g, uint32_t w, uint32_t h)
     g->shot_path[0] = 0;
 }
 
-void gfx_frame_end(GfxContext *g)
+static void frame_end(GfxContext *g)
 {
     if (!g->in_frame) {
         return;
@@ -2304,9 +2304,7 @@ void gfx_frame_end(GfxContext *g)
     g->stats.main_cpu_ms = (float)((mg_time_now() - main0) * 1000.0);
     if (shot) {
         blit_scene_to_swap(g, rw, rh);
-        prof_allocs_exempt(true);
         save_screenshot(g, rw, rh);
-        prof_allocs_exempt(false);
         return;
     }
     if (swap_cmd) {
@@ -2318,6 +2316,18 @@ void gfx_frame_end(GfxContext *g)
         SDL_SubmitGPUCommandBuffer(g->cmd);
     }
     g->cmd = NULL;
+}
+
+void gfx_frame_end(GfxContext *g)
+{
+    const bool shot = g->shot_path[0] != 0; /* readback, PNG and its target texture may allocate */
+    if (shot) {
+        prof_allocs_exempt(true);
+    }
+    frame_end(g);
+    if (shot) {
+        prof_allocs_exempt(false);
+    }
 }
 
 void gfx_request_screenshot(GfxContext *g, const char *path)
