@@ -429,6 +429,7 @@ void game_frame(MgApp *app, float alpha)
     } else {
         update_player_input(g, app);
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
+        tpcam_collide(&g->cam, &g->world, scene_indoors(g->scene, feet) ? 2.4f : 100.0f, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
     }
     int floor = scene_floor_of(g->scene, g->fly_mode ? HMM_SubV3(sp.eye, HMM_V3(0, 1.5f, 0)) : feet);
