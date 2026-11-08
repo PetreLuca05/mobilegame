@@ -5,7 +5,7 @@
 
 #define SCAN_EVERY 6u
 #define FACING_DOT 0.2f
-#define SWITCH_MARGIN 0.5f /* another target must be this much closer to take over */
+#define SWITCH_MARGIN 0.1f /* the nearest wins; this only stops flicker between two at the same distance */
 
 bool ia_init(Interact *ia, Arena *perm)
 {

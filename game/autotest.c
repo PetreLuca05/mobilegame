@@ -54,6 +54,13 @@ bool autotest_starts_in_game(int argc, char **argv)
     return false;
 }
 
+#define INTERACT_FINGER 77
+static void finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
+
+/* A tap on the interact panel, in two halves so a frame passes between them */
+void autotest_tap_interact(MgApp *app, const AutotestProbe *p) { finger(app, SDL_EVENT_FINGER_DOWN, INTERACT_FINGER, p->interact_x, p->interact_y); }
+void autotest_tap_interact_up(MgApp *app, const AutotestProbe *p) { finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, p->interact_x, p->interact_y); }
+
 static void finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt)
 {
     SDL_Event e;
@@ -389,13 +396,33 @@ static bool run_markers(Autotest *t, MgApp *app, const AutotestProbe *p, double 
             t->stage = 99;
         }
         break;
-    case 8:
+    case 8: /* walked there: arriving must not fire it, the panel must offer it */
         if (p->markers_reached > t->skin_before) {
-            mg_log_info("autotest markers: reached after %.1f s", el - t->step_start);
+            return fail(t, "markers", "walking onto the marker fired it");
+        }
+        if (p->interact_visible && p->nav_state == 0 && p->interact_kind == 2 /* IA_MARKER */) {
+            mg_log_info("autotest markers: arrived after %.1f s, not fired, panel up (ok)", el - t->step_start);
+            autotest_tap_interact(app, p);
+            t->wait_until = el + 0.1;
+            t->stage = 80;
+        } else if (el - t->step_start > 75.0) {
+            return fail(t, "markers", "never arrived at the marker");
+        }
+        break;
+    case 80:
+        if (el >= t->wait_until) {
+            autotest_tap_interact_up(app, p);
+            t->wait_until = el + 0.3;
+            t->stage = 81;
+        }
+        break;
+    case 81:
+        if (p->markers_reached > t->skin_before) {
+            mg_log_info("autotest markers: reached by the panel tap, after %.1f s", el - t->step_start);
             t->wait_until = el + 1.5;
             t->stage = 9;
-        } else if (el - t->step_start > 75.0) {
-            return fail(t, "markers", "never reached the marker");
+        } else if (el >= t->wait_until) {
+            return fail(t, "markers", "the panel tap did not fire the marker");
         }
         break;
     case 9:

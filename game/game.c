@@ -137,6 +137,7 @@ typedef struct Game {
     ElevatorPanel lift_panel;
     bool lift_panel_ok;
     bool ia_ok, ia_log;
+    MgApp *ia_app;  /* for the interact callbacks */
     uint16_t marker_ia[MARKER_MAX];
     uint32_t marker_ia_id[MARKER_MAX];
     NpcWorld npcs;
@@ -197,6 +198,7 @@ static void interact_setup(Game *g, MgApp *app);
 static void interact_tick(Game *g, MgApp *app);
 static void interact_tap(Game *g, MgApp *app);
 static void lift_panel_press(Game *g, Elevator *el, int floor);
+static void marker_reached(Game *g, MgApp *app, marker_t *m);
 
 static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with nothing to show */
 
@@ -1387,8 +1389,18 @@ static void on_call_lift(uint16_t ref, void *user)
 
 static void on_marker_interact(uint16_t ref, void *user)
 {
-    (void)user;
-    mg_log_info("interact: marker %u", ref);
+    Game *g = (Game *)user;
+    for (int i = 0; i < MARKER_MAX; i++) {
+        marker_t *m = &g->markers.m[i];
+        if (m->id && (uint16_t)m->id == ref && m->state != MARKER_REACHED) {
+            if (g->active_marker == m->id) {
+                autonav_clear(&g->autonav);
+                g->active_marker = 0;
+            }
+            marker_reached(g, g->ia_app, m);
+            return;
+        }
+    }
 }
 
 static void on_npc_interact(uint16_t ref, void *user)
@@ -1415,6 +1427,7 @@ static void npc_unregistered(int index, void *user)
 /* Buttons and the lift, from the room graph */
 static void interact_setup(Game *g, MgApp *app)
 {
+    g->ia_app = app;
     g->ia_ok = ia_init(&g->ia, &app->perm) && preview_panel_init(&g->panel, app->gfx, &app->perm);
     g->npcs.on_spawned = npc_registered;
     g->npcs.on_despawned = npc_unregistered;
@@ -1680,7 +1693,11 @@ void game_frame(MgApp *app, float alpha)
                            g->playing && scene_indoors(g->scene, g->player.kin.pos)
                                ? scene_floor_of(g->scene, g->player.kin.pos)
                                : -1,
-                           g->lift_panel_ok && g->lift_panel.slide > 0.5f};
+                           g->lift_panel_ok && g->lift_panel.slide > 0.5f,
+                           g->ia_ok && g->panel.slide >= 1.0f && g->ia.active != IA_NONE,
+                           g->ia_ok && g->ia.active != IA_NONE ? (int)g->ia.hot[g->ia.active].kind : -1,
+                           g->panel.x + g->panel.size * 0.5f,
+                           g->panel.y + g->panel.size * 0.5f};
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2411,10 +2428,12 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
     marker_t *a = marker_get(ms, g->active_marker);
     if (g->autonav.marker_id == 0) {
         /* a walk without a marker (desktop click, autotest) keeps its result */
-    } else if (g->autonav.state == AUTONAV_ARRIVED) {
+    } else if (g->autonav.state == AUTONAV_ARRIVED) { /* stops at it; the panel is what fires it */
         if (a) {
-            marker_reached(g, app, a);
+            marker_set_state(a, MARKER_IDLE);
+            marker_cue(g, AUDIO_CUE_TICK);
         }
+        g->active_marker = 0;
         autonav_clear(&g->autonav);
     } else if (g->autonav.state == AUTONAV_CANCELLED) {
         if (a) {
@@ -2430,8 +2449,6 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         g->active_marker = 0;
         autonav_clear(&g->autonav);
     }
-    /* walking onto a marker counts, navigated or not */
-    int level = scene_floor_of(g->scene, feet);
     int alive_test = 0;
     for (int i = 0; i < MARKER_MAX; i++) {
         marker_t *m = &ms->m[i];
@@ -2439,11 +2456,6 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
             continue;
         }
         alive_test += m->kind == MARKER_TEST;
-        float dx = m->pos.X - feet.X, dz = m->pos.Z - feet.Z;
-        if (level_of(m->storey) == level && dx * dx + dz * dz < 0.36f) {
-            marker_reached(g, app, m);
-            alive_test -= m->kind == MARKER_TEST;
-        }
     }
     /* test flags override the setting without being saved into prefs */
     const int wanted = g->marker_override >= 0 ? g->marker_override

@@ -54,6 +54,9 @@ typedef struct AutotestProbe {
     const MarkerHudOut *hud;
     int nav_storey;    /* player's storey, -1 yard */
     bool lift_panel_open;
+    bool interact_visible;     /* the preview panel is fully in */
+    int interact_kind;         /* ia_kind_t of what it shows, -1 none */
+    float interact_x, interact_y; /* its centre, pt */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -101,5 +104,7 @@ void autotest_init(Autotest *t, int argc, char **argv);
 bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *probe, AutotestOut *out);
 /* --autotest touch|route start in the hospital; the menu scripts do not. */
 bool autotest_starts_in_game(int argc, char **argv);
+void autotest_tap_interact(MgApp *app, const AutotestProbe *p);
+void autotest_tap_interact_up(MgApp *app, const AutotestProbe *p);
 
 #endif

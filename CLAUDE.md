@@ -264,7 +264,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   point, which then cancels navigation).
 - Feedback: scale punch, ripple, flash, shake, procedural `audio_cue` (tick,
   chime, dup, buzz), `haptic_impact` on iOS. Tapping the active marker cancels;
-  tapping another re-targets. Walking onto a marker counts as reaching it.
+  tapping another re-targets. Since M8, walking to a marker only stops the walk: it fires (`on_reached`) when the player taps the interact panel.
 - Debug: Developer -> Markers (Test markers, count 1-16, show paths for all,
   respawn) - on in debug builds. Test markers: 50 % rooms, 25 % corridors,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
