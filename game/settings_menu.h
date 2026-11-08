@@ -1,4 +1,5 @@
-/* Gear-icon Settings panel with two tabs:
+/* Gear-icon Settings screen (full screen: back arrow, title and tabs in the
+ * left 35 %, the tab content in the right 65 %) with two tabs:
  *   Game  camera/control sliders, invert Y, disconnect / main menu, and a
  *         "Developer" fold (colliders, triggers, floor teleports)
  *   Account  name field, "Edit character" (opens the creator) and the

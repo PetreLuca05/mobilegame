@@ -196,54 +196,58 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
 {
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
-    /* gear button, top-right */
-    const float gs = 44.0f;
-    float gx = w_pt - safe_r - 12.0f - gs, gy = safe_t + 8.0f;
     bool held;
-    if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {
-        m->open = !m->open;
-        if (m->open) {
+    if (!m->open) { /* gear button, top-right */
+        const float gs = 44.0f;
+        float gx = w_pt - safe_r - 12.0f - gs, gy = safe_t + 8.0f;
+        if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {
+            m->open = true;
             SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
         }
-    }
-    ui_circle(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f, gs * 0.5f,
-              held ? ui_rgba(0x1E2230F0) : ui_rgba(0x1E2230A0));
-    text_draw_centered(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f + 2.0f, 26.0f, ui_rgba(0xFFFFFFFF),
-                       TEXT_GEAR);
-    if (!m->open) {
+        ui_circle(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f, gs * 0.5f,
+                  held ? ui_rgba(0x1E2230F0) : ui_rgba(0x1E2230A0));
+        text_draw_centered(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f + 2.0f, 26.0f, ui_rgba(0xFFFFFFFF),
+                           TEXT_GEAR);
         m->editing_name = false;
-        return MENU_NONE;
+        if (!m->open) {
+            return MENU_NONE;
+        }
     }
     if (!m->editing_name && strcmp(m->name, acct->name) != 0 && action == MENU_NONE) {
         /* keep in sync with the account unless the player is typing */
         SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
     }
 
+    /* full screen, two columns: back + title + tabs left (35 %), content right (65 %) */
     const float pad = 16.0f;
-    float px = safe_l + 12.0f, py = gy + gs + 10.0f;
-    float pw = w_pt - safe_l - safe_r - 24.0f;
-    float ph = h_pt - py - mg_maxf(safe_b, 12.0f) - 8.0f;
     ui_block(ui, 0, 0, w_pt, h_pt); /* modal: nothing reaches the game */
-    ui_panel(ui, px, py, pw, ph);
-    float x = px + pad, y = py + pad, w = pw - 2 * pad;
-
-    ui_label(ui, x, y, 22.0f, k_ui_theme.text, "Settings");
-    if (status && status[0]) {
-        ui_label(ui, x + 110.0f, y + 6.0f, 13.0f, k_ui_theme.text_dim, status);
-    }
-    if (ui_button(ui, "Close##menu", x + w - 84.0f, y - 4.0f, 84.0f, 34.0f, false)) {
+    gfx_ui_blur_panel(ui->gfx, 0.0f, 0.0f, w_pt, h_pt, 0.0f, HMM_V4(0.05f, 0.06f, 0.09f, 0.82f));
+    float x0 = safe_l + pad, y0 = mg_maxf(safe_t, 8.0f) + 8.0f;
+    float inner_w = w_pt - safe_l - safe_r - 2.0f * pad;
+    float bottom = h_pt - mg_maxf(safe_b, 12.0f);
+    float lw = inner_w * 0.35f - pad;
+    if (ui_hit_area(ui, "back##menu", x0 - 6.0f, y0 - 6.0f, 56.0f, 56.0f, &held)) {
         m->open = false;
     }
-    y += 40.0f;
-    float tw = (w - 8.0f) * 0.5f;
-    if (ui_button(ui, "Game##tab0", x, y, tw, 36.0f, m->tab == 0)) {
+    ui_circle(ui->gfx, ui->font, x0 + 22.0f, y0 + 22.0f, 22.0f, held ? ui_rgba(0xFFFFFF40) : ui_rgba(0xFFFFFF1A));
+    text_draw_centered(ui->gfx, ui->font, x0 + 20.0f, y0 + 22.0f, 26.0f, ui_rgba(0xFFFFFFFF), "<");
+    ui_label(ui, x0 + 58.0f, y0 + 8.0f, 22.0f, k_ui_theme.text, "Settings");
+    float y = y0 + 64.0f;
+    if (ui_button(ui, "Game##tab0", x0, y, lw, 44.0f, m->tab == 0)) {
         m->tab = 0;
     }
-    if (ui_button(ui, "Account##tab1", x + tw + 8.0f, y, tw, 36.0f, m->tab == 1)) {
+    y += 54.0f;
+    if (ui_button(ui, "Account##tab1", x0, y, lw, 44.0f, m->tab == 1)) {
         m->tab = 1;
     }
-    y += 48.0f;
-    float h = py + ph - pad - y;
+    y += 60.0f;
+    if (status && status[0]) {
+        ui_label(ui, x0, y, 13.0f, k_ui_theme.text_dim, status);
+    }
+
+    float x = x0 + inner_w * 0.35f + pad, w = inner_w * 0.65f - pad;
+    y = y0 + 4.0f;
+    float h = bottom - y;
     if (m->tab == 0) {
         m->editing_name = false;
         float off = ui_scroll_begin(ui, &m->game_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 8.0f, false);
