@@ -1,7 +1,7 @@
 /* `--autotest route` (desktop): walks the player through the hospital and
  * rides the elevator to every storey. Fails on a snag (no progress for 2 s),
  * a floor menu outside the car, a missing menu inside it, or a ride that is
- * not ~1.9 s. Logs ROUTE PASSED / ROUTE FAILED and quits. */
+ * not 0.8 s + 0.6 s per storey. Logs ROUTE PASSED / ROUTE FAILED and quits. */
 #ifndef MG_ROUTE_TEST_H
 #define MG_ROUTE_TEST_H
 
@@ -14,6 +14,7 @@ typedef struct RouteTest {
     float best_dist;
     bool requested;
     double ride_start;
+    int ride_from;
 } RouteTest;
 
 void route_test_init(RouteTest *t, int argc, char **argv);

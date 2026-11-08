@@ -1,8 +1,9 @@
 /* One elevator car serving stacked storeys, simulated locally on each client
- * (no shared car in M2). A ride: doors close 0.4 s, fade out 0.3 s, the car
- * and its rider jump to the new storey with a ding and a 0.5 s hold, fade
- * in 0.3 s, doors open 0.4 s - about 1.9 s whatever the distance. Input is
- * locked from the request until the doors are open again. */
+ * (no shared car). A ride (M5): doors close 0.4 s, the car travels 0.6 s per
+ * storey (ease in-out; the game moves the rider and the camera with it, so
+ * the floors cross-fade as it passes the slabs), ding, doors open 0.4 s -
+ * 1.4 s for one storey, 2.0 s for two. Input is locked from the request
+ * until the doors are open again. */
 #ifndef MG_ELEVATOR_H
 #define MG_ELEVATOR_H
 
@@ -13,9 +14,7 @@
 typedef enum ElevState {
     ELEV_IDLE,
     ELEV_CLOSING,
-    ELEV_FADE_OUT,
-    ELEV_HOLD,
-    ELEV_FADE_IN,
+    ELEV_MOVING,
     ELEV_OPENING,
 } ElevState;
 
@@ -30,7 +29,8 @@ struct Elevator {
     float t;                 /* seconds in the current state */
     float door_open[ELEV_MAX_FLOORS];   /* 0 shut .. 1 open, per landing */
     bool hold_shut[ELEV_MAX_FLOORS];    /* someone else is riding from here: keep shut */
-    bool arrived;            /* set on the tick the car jumps; the game moves the rider */
+    float car_y;             /* height of the car floor (moves during a ride) */
+    bool arrived;            /* set on the tick the car stops (ding, stats) */
     uint32_t rides;
 };
 typedef struct Elevator Elevator;
@@ -44,7 +44,9 @@ bool elevator_request(Elevator *e, int floor);
 void elevator_place(Elevator *e, int floor);
 void elevator_tick(Elevator *e, float dt);
 bool elevator_busy(const Elevator *e);
-/* Black overlay amount, 0..1. */
-float elevator_fade(const Elevator *e);
+/* The car is travelling between storeys (its rider follows car_y). */
+bool elevator_moving(const Elevator *e);
+/* Ride time for `floors` storeys, seconds. */
+float elevator_ride_time(int floors);
 
 #endif

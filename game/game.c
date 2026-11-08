@@ -4,6 +4,7 @@
  * Keyboard/mouse also work on desktop. */
 #include "game.h"
 
+#include <math.h>
 #include <stdlib.h> /* _Exit: autotest save */
 
 #include "audio/audio.h"
@@ -54,6 +55,8 @@ typedef struct Game {
     TpCamera cam;          /* MG_CAMERA=thirdperson only */
     TdCamera td;           /* the default camera */
     FloorFade fade;        /* storeys / wall cutaway / canopies (scene fade slots) */
+    bool riding;           /* in the moving elevator car */
+    float ride_offset;     /* feet height above the car floor */
     bool fade_snap;
     FlyCamera fly;
     bool fly_mode;
@@ -308,22 +311,29 @@ void game_tick(MgApp *app)
     }
     scene_tick(g->scene, &g->world, MG_TICK_DT);
     Elevator *el = scene_elevator(g->scene);
+    bool moving = el && elevator_moving(el);
+    if (moving && !g->riding) { /* the car leaves: is the player in it? */
+        HMM_Vec3 p = g->player.kin.pos;
+        g->riding = p.X >= el->x0 && p.X <= el->x1 && p.Z >= el->z0 && p.Z <= el->z1 &&
+                    fabsf(p.Y - (float)el->from_floor * el->storey) < 0.5f;
+        g->ride_offset = p.Y - (float)el->from_floor * el->storey;
+    }
+    if (!moving) {
+        g->riding = false;
+    }
     if (el && el->arrived) {
-        /* the car jumped storeys behind the fade: take the rider (and the
-         * camera) along, same spot inside the car */
         el->arrived = false;
-        float dy = (float)(el->car_floor - el->from_floor) * el->storey;
-        if (elevator_contains(el, HMM_AddV3(g->player.kin.pos, HMM_V3(0, dy, 0)), 0.0f)) {
-            g->player.kin.pos.Y += dy;
-            g->player.prev_pos.Y += dy;
-            g->cam.pivot.Y += dy;
-            g->td.pivot.Y += dy;
-        }
         audio_ding(g->audio);
         g->stats.rides++;
         stats_reset_position(&g->stats);
     }
-    player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
+    if (g->riding) { /* travel with the car: no physics through the slabs */
+        g->player.prev_pos = g->player.kin.pos;
+        g->player.kin.pos.Y = el->car_y + g->ride_offset;
+        g->player.kin.vel = HMM_V3(0, 0, 0);
+    } else {
+        player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
+    }
     stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
     if (g->offline_play && scene_indoors(g->scene, g->player.kin.pos)) { /* rooms visited: storey x chunk */
         HMM_Vec3 p = g->player.kin.pos;
@@ -1123,7 +1133,8 @@ void game_frame(MgApp *app, float alpha)
         tpcam_collide(&g->cam, &g->world, scene_indoors(g->scene, feet) ? 2.4f : 100.0f, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
 #else
-        float floor_y = scene_floor_y(g->scene, scene_floor_of(g->scene, feet));
+        /* riding: the pivot rides with the car, so the floors cross-fade as it passes the slabs */
+        float floor_y = g->riding ? feet.Y - g->ride_offset : scene_floor_y(g->scene, scene_floor_of(g->scene, feet));
         tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.sprint_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
         tdcam_matrices(&g->td, aspect, &sp.view, &sp.proj, &sp.eye);
 #endif
@@ -1207,11 +1218,6 @@ void game_frame(MgApp *app, float alpha)
                          ui_rgba(0xFFFFFFFF), line);
     }
     draw_room_badge(g, app);
-    float fade = el ? elevator_fade(el) : 0.0f;
-    if (fade > 0.0f) {
-        ui_rect(app->gfx, &app->font, 0.0f, 0.0f, app->width_pt, app->height_pt,
-                (UiColor){0, 0, 0, (uint8_t)(fade * 255.0f)});
-    }
 }
 
 void game_event(MgApp *app, const SDL_Event *e)

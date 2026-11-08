@@ -1,8 +1,9 @@
 #include "elevator.h"
 
+#include <math.h>
+
 #define DOOR_TIME 0.4f
-#define FADE_TIME 0.3f
-#define HOLD_TIME 0.5f
+#define STOREY_TIME 0.6f
 
 void elevator_init(Elevator *e, int floors, float storey, float x0, float x1, float z0, float z1, float height)
 {
@@ -19,7 +20,7 @@ void elevator_init(Elevator *e, int floors, float storey, float x0, float x1, fl
 
 bool elevator_contains(const Elevator *e, HMM_Vec3 feet, float radius)
 {
-    float y = (float)e->car_floor * e->storey;
+    float y = e->car_y;
     return feet.X >= e->x0 + radius && feet.X <= e->x1 - radius && feet.Z >= e->z0 + radius &&
            feet.Z <= e->z1 - radius && feet.Y > y - 0.5f && feet.Y < y + e->height;
 }
@@ -41,6 +42,7 @@ void elevator_place(Elevator *e, int floor)
         return;
     }
     e->car_floor = floor;
+    e->car_y = (float)floor * e->storey;
     e->state = ELEV_IDLE;
     e->t = 0.0f;
     for (int f = 0; f < e->floors; f++) {
@@ -70,28 +72,24 @@ void elevator_tick(Elevator *e, float dt)
     case ELEV_CLOSING:
         *car = mg_maxf(*car - speed, 0.0f);
         if (*car <= 0.0f) {
-            enter(e, ELEV_FADE_OUT);
+            e->from_floor = e->car_floor;
+            enter(e, ELEV_MOVING);
         }
         break;
-    case ELEV_FADE_OUT:
-        if (e->t >= FADE_TIME) {
-            e->from_floor = e->car_floor;
+    case ELEV_MOVING: {
+        int n = e->target > e->from_floor ? e->target - e->from_floor : e->from_floor - e->target;
+        float k = mg_saturate(e->t / ((float)n * STOREY_TIME));
+        k = k * k * (3.0f - 2.0f * k); /* ease in-out */
+        e->car_y = ((float)e->from_floor + (float)(e->target - e->from_floor) * k) * e->storey;
+        if (e->t >= (float)n * STOREY_TIME) {
             e->car_floor = e->target;
+            e->car_y = (float)e->target * e->storey;
             e->arrived = true;
             e->rides++;
-            enter(e, ELEV_HOLD);
-        }
-        break;
-    case ELEV_HOLD:
-        if (e->t >= HOLD_TIME) {
-            enter(e, ELEV_FADE_IN);
-        }
-        break;
-    case ELEV_FADE_IN:
-        if (e->t >= FADE_TIME) {
             enter(e, ELEV_OPENING);
         }
         break;
+    }
     case ELEV_OPENING:
         *car = mg_minf(*car + speed, 1.0f);
         if (*car >= 1.0f) {
@@ -103,16 +101,6 @@ void elevator_tick(Elevator *e, float dt)
 
 bool elevator_busy(const Elevator *e) { return e->state != ELEV_IDLE; }
 
-float elevator_fade(const Elevator *e)
-{
-    switch (e->state) {
-    case ELEV_FADE_OUT:
-        return mg_saturate(e->t / FADE_TIME);
-    case ELEV_HOLD:
-        return 1.0f;
-    case ELEV_FADE_IN:
-        return 1.0f - mg_saturate(e->t / FADE_TIME);
-    default:
-        return 0.0f;
-    }
-}
+bool elevator_moving(const Elevator *e) { return e->state == ELEV_MOVING; }
+
+float elevator_ride_time(int floors) { return 2.0f * DOOR_TIME + (float)floors * STOREY_TIME; }

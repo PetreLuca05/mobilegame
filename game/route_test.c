@@ -1,6 +1,7 @@
 #include "route_test.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -129,6 +130,7 @@ bool route_test_update(RouteTest *t, double now, HMM_Vec3 feet, int floor, Eleva
                     finish(t, false, "no floor menu inside the car");
                     break;
                 }
+                t->ride_from = el->car_floor;
                 t->requested = elevator_request(el, target);
                 t->ride_start = now;
                 if (!t->requested) {
@@ -139,7 +141,7 @@ bool route_test_update(RouteTest *t, double now, HMM_Vec3 feet, int floor, Eleva
             double took = now - t->ride_start;
             if (floor != target || el->car_floor != target) {
                 finish(t, false, "rider did not arrive on the chosen floor");
-            } else if (took < 1.75 || took > 2.1) {
+            } else if (fabs(took - elevator_ride_time(abs(target - t->ride_from))) > 0.12) {
                 char why[64];
                 snprintf(why, sizeof(why), "ride took %.2f s", took);
                 finish(t, false, why);

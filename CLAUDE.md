@@ -179,6 +179,12 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   while the roof is not opaque). Indoor lights: view floor and below.
   Remote avatars above the view floor are not drawn.
 
+- Elevator ride (`game/elevator.c`): doors 0.4 s, car travels 0.6 s per
+  storey (ease in-out, `car_y`), ding, doors 0.4 s = 1.4 s / 2.0 s. The
+  rider is moved with `car_y` (no physics through the slabs) and the camera
+  pivot follows, so the view floor and the fades switch as it passes each
+  slab. No fade to black; Developer -> Teleport stays instant.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
@@ -257,7 +263,7 @@ build/desktop/mobilegame --party ABCD --profile b --demo-walk --window-pos 600,9
 `ctest --test-dir build/desktop` runs the controller and replication checks.
 `build/desktop/mobilegame --autotest touch` drives multi-touch input end to end;
 `--autotest route` walks the hospital and rides the elevator to every storey
-(fails on snags, a misplaced floor menu or a ride that is not ~1.9 s).
+(fails on snags, a misplaced floor menu or a ride that is not 0.8 s + 0.6 s per storey).
 Both need a display (Xvfb on headless Linux).
 `build/desktop/mg_nettest profile PROFILE [NAME P H A]` reads/writes an account.
 Menu scripts tap real widgets by id (`ui_find`), on desktop or device:
