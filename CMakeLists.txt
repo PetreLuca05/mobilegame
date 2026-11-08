@@ -223,7 +223,7 @@ set(MG_GAME_SOURCES
   game/devroom_layout.c
   game/hospital.c
   game/elevator.c
-  game/floor_menu.c
+  game/elevator_panel.c
   game/route_test.c
   game/nav_debug.c
   game/markers.c

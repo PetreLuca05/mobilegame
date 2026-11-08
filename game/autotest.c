@@ -289,10 +289,8 @@ static bool run_autonav(Autotest *t, MgApp *app, const AutotestProbe *p, Autotes
         break;
     case 6:
         if (el >= t->wait_until) {
-            float mx, my;
-            bool menu = ui_find(p->ui, "floor1", &mx, &my) || ui_find(p->ui, "floor2", &mx, &my);
-            bool ok = p->nav_state == CANCELLED_ && menu && p->nav_storey == 0;
-            mg_log_info("autotest autonav: stick in the car cancels, floor menu up (%s)", ok ? "ok" : "FAIL");
+            bool ok = p->nav_state == CANCELLED_ && p->lift_panel_open && p->nav_storey == 0;
+            mg_log_info("autotest autonav: stick in the car cancels, lift panel up (%s)", ok ? "ok" : "FAIL");
             t->passed = t->passed && ok;
             mg_log_info("autotest autonav: stats %d elevator rides, %.0f m walked", p->rides, (double)p->distance_m);
             t->passed = t->passed && p->rides == 2 && p->distance_m > 60.0f;

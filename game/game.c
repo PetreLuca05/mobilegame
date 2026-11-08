@@ -42,7 +42,7 @@
 #define MG_GOOGLE_IOS_CLIENT_ID ""
 #endif
 #include "elevator.h"
-#include "floor_menu.h"
+#include "elevator_panel.h"
 #include "frontend.h"
 #include "modes.h"
 #include "prefs.h"
@@ -134,6 +134,8 @@ typedef struct Game {
     RoomGraph rooms;
     Interact ia;
     PreviewPanel panel;
+    ElevatorPanel lift_panel;
+    bool lift_panel_ok;
     bool ia_ok, ia_log;
     uint16_t marker_ia[MARKER_MAX];
     uint32_t marker_ia_id[MARKER_MAX];
@@ -194,6 +196,7 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
 static void interact_setup(Game *g, MgApp *app);
 static void interact_tick(Game *g, MgApp *app);
 static void interact_tap(Game *g, MgApp *app);
+static void lift_panel_press(Game *g, Elevator *el, int floor);
 
 static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with nothing to show */
 
@@ -1365,6 +1368,14 @@ static void interact_tap(Game *g, MgApp *app)
     }
 }
 
+static void lift_panel_press(Game *g, Elevator *el, int floor)
+{
+    if (floor != el->car_floor && g->lift_panel.pressed < 0) {
+        audio_ding(g->audio);
+    }
+    elevator_panel_press(&g->lift_panel, floor, el->car_floor);
+}
+
 static void on_call_lift(uint16_t ref, void *user)
 {
     Game *g = (Game *)user;
@@ -1411,6 +1422,7 @@ static void interact_setup(Game *g, MgApp *app)
     for (int i = 0; i < MARKER_MAX; i++) {
         g->marker_ia[i] = IA_NONE;
     }
+    g->lift_panel_ok = elevator_panel_init(&g->lift_panel, app->gfx, &app->perm, scene_floor_count());
     if (!g->ia_ok) {
         return;
     }
@@ -1667,7 +1679,8 @@ void game_frame(MgApp *app, float alpha)
                            g->hud_out,
                            g->playing && scene_indoors(g->scene, g->player.kin.pos)
                                ? scene_floor_of(g->scene, g->player.kin.pos)
-                               : -1};
+                               : -1,
+                           g->lift_panel_ok && g->lift_panel.slide > 0.5f};
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -1883,15 +1896,20 @@ void game_frame(MgApp *app, float alpha)
     }
     Elevator *el = scene_elevator(g->scene);
     const bool riding = el && elevator_busy(el);
-    bool menu_shown = false;
-    /* auto-nav rides on its own: no floor menu unless the player cancels */
-    if (el && !riding && !g->menu.open && !autonav_active(&g->autonav) &&
-        elevator_contains(el, g->player.kin.pos, g->kparams.radius)) {
-        menu_shown = true;
-        int pick = floor_menu(&g->ui, app->width_pt, app->safe_top, app->safe_right, el->floors, el->car_floor,
-                              scene_floor_name);
-        if (pick >= 0) {
-            elevator_request(el, pick);
+    /* auto-nav rides on its own: no panel unless the player cancels */
+    const bool menu_shown = el && !riding && !g->menu.open && !autonav_active(&g->autonav) &&
+                            (elevator_contains(el, g->player.kin.pos, g->kparams.radius) || s->force_lift_panel);
+    if (g->lift_panel_ok && el) {
+        const ui_frame_t lf = frame_of(app);
+        elevator_panel_update(&g->lift_panel, mg_minf(app->frame_dt, 0.1f), menu_shown, &lf);
+        const int due = elevator_panel_take(&g->lift_panel);
+        if (due >= 0) {
+            elevator_request(el, due);
+        }
+        for (int k = 0; menu_shown && k < 10 && k < el->floors; k++) { /* desktop: digits */
+            if (app->input.key_pressed[k == 0 ? SDL_SCANCODE_0 : SDL_SCANCODE_1 + k - 1]) {
+                lift_panel_press(g, el, k);
+            }
         }
     }
     gfx_set_render_scale(app->gfx, s->render_scale);
@@ -1911,6 +1929,10 @@ void game_frame(MgApp *app, float alpha)
                               app->safe_bottom, app->time);
         if (g->touch.tapped_id == PREVIEW_TAP_ID) {
             interact_tap(g, app);
+        } else if (g->touch.tapped_id >= LIFT_PANEL_TAP_ID && g->touch.tapped_id < LIFT_PANEL_TAP_ID + LIFT_PANEL_FLOORS) {
+            if (el) {
+                lift_panel_press(g, el, (int)(g->touch.tapped_id - LIFT_PANEL_TAP_ID));
+            }
         } else if (g->touch.tapped_id && g->nav) {
             marker_tapped(g, app, g->touch.tapped_id);
         }
@@ -2173,6 +2195,7 @@ void game_frame(MgApp *app, float alpha)
     if (g->nav) {
         markers_hud(g, app, floor, feet, menu_shown);
     }
+    g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
                         app->safe_bottom);
     frontend_toast_draw(&g->fe, &g->ui, app);
@@ -2195,7 +2218,9 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     if (s->show_stats) {
-        hud_draw(app->gfx, &app->font, app->safe_left + 10.0f + app->corner_clearance, app->safe_top + 8.0f, &hud);
+        /* beside the lift panel while it is open */
+        const float hud_x = g->lift_panel_ok && g->lift_panel.slide > 0.0f ? g->lift_panel.x + g->lift_panel.w + 10.0f : app->safe_left + 10.0f + app->corner_clearance;
+        hud_draw(app->gfx, &app->font, hud_x, app->safe_top + 8.0f, &hud);
     }
     if (s->show_safe_rect) {
         const ui_frame_t lf = frame_of(app);
@@ -2209,9 +2234,13 @@ void game_frame(MgApp *app, float alpha)
         text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
     }
     layout_autotest(g, app);
+    if (g->lift_panel_ok && el) {
+        elevator_panel_draw_3d(&g->lift_panel, app->gfx, el->car_floor);
+        elevator_panel_draw_ui(&g->lift_panel, app->gfx, &app->font, el->car_floor, scene_floor_name);
+    }
     if (g->ia_ok) {
         const ui_frame_t pf = frame_of(app);
-        const bool hide_panel = g->menu.open || riding;
+        const bool hide_panel = g->menu.open || riding || (g->lift_panel_ok && g->lift_panel.slide > 0.0f);
         preview_panel_update(&g->panel, hide_panel ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
         preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
         preview_panel_draw_ui(&g->panel, &g->ia, app->gfx, &app->font);
@@ -2469,7 +2498,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
         *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
                             scale, shake, m->ring_t, tint};
     }
-    /* panels the icons stay out of: pause button, floor menu, toast */
+    /* panels the icons stay out of: pause button, lift panel, interact card, toast */
     const float w = app->width_pt, h = app->height_pt;
     float res[16];
     int rc = 0;
@@ -2479,8 +2508,8 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
     const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
     memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
-    if (floor_menu_up) {
-        const float fm[4] = {w - app->safe_right - 192.0f, app->safe_top + 64.0f, 180.0f, 200.0f};
+    if (floor_menu_up && g->lift_panel_ok) {
+        const float fm[4] = {g->lift_panel.x, g->lift_panel.y, g->lift_panel.w, g->lift_panel.h};
         memcpy(res + rc * 4, fm, sizeof(fm));
         rc++;
     }
@@ -2506,6 +2535,17 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
             g->touch.targets[nt].x = o->x;
             g->touch.targets[nt].y = o->y;
             g->touch.targets[nt].half = 22.0f;
+            nt++;
+        }
+    }
+    if (g->lift_panel_ok && g->lift_panel.slide >= 1.0f) {
+        for (int i = 0; i < g->lift_panel.floors && nt < TOUCH_MAX_TARGETS; i++) {
+            float bx, by;
+            elevator_panel_button_pos(&g->lift_panel, i, &bx, &by);
+            g->touch.targets[nt].id = LIFT_PANEL_TAP_ID + (uint32_t)i;
+            g->touch.targets[nt].x = bx;
+            g->touch.targets[nt].y = by;
+            g->touch.targets[nt].half = 26.0f; /* 52 pt */
             nt++;
         }
     }

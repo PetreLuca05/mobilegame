@@ -134,6 +134,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
 #endif
+        ui_toggle(ui, "Force elevator panel", x, y, cw, &s->force_lift_panel);
+        y += 44.0f;
         ui_toggle(ui, "Show safe rect", x, y, cw, &s->show_safe_rect);
         y += 44.0f;
         ui_toggle(ui, "Profiler", x, y, cw, &s->show_profiler);

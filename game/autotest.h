@@ -53,6 +53,7 @@ typedef struct AutotestProbe {
     int hud_count;
     const MarkerHudOut *hud;
     int nav_storey;    /* player's storey, -1 yard */
+    bool lift_panel_open;
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
