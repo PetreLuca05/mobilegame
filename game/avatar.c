@@ -218,6 +218,13 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
     mb_reset(&mb);
     mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.035f, 0.005f, 0.005f), dark);
     m->brow = mb_upload(&mb, g);
+    mb_reset(&mb); /* a child's smile: three short strokes curving up at the ends */
+    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.016f, 0.005f, 0.005f), dark);
+    for (int side = -1; side <= 1; side += 2) {
+        HMM_Mat4 end = HMM_MulM4(HMM_Translate(HMM_V3((float)side * 0.027f, 0.006f, 0.0f)), HMM_Rotate_RH((float)side * HMM_AngleDeg(35.0f), HMM_V3(0, 0, 1)));
+        mb_box(&mb, end, HMM_V3(0.016f, 0.005f, 0.005f), dark);
+    }
+    m->smile = mb_upload(&mb, g);
     mb_reset(&mb);
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 9, 12, white);
     m->lod_body[0] = mb_upload(&mb, g);
@@ -640,7 +647,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         outlined(&dc, m->mask, head, MASK_COLOR);
     } else {
         part(&dc, m->nose, compose(head, HMM_V3(0, -0.02f, -HEAD_R * 0.99f)), look->skin, SURF_MATTE);
-        part(&dc, m->mouth, compose(head, HMM_V3(0, -0.075f, -HEAD_R * 0.955f)), 0x23222B, SURF_FLAT);
+        part(&dc, look->age == AVATAR_CHILD ? m->smile : m->mouth, compose(head, HMM_V3(0, -0.075f, -HEAD_R * 0.955f)), 0x23222B, SURF_FLAT);
     }
     if (look->accessory == ACC_CAT_EARS) {
         HMM_Mat4 el = compose(head, HMM_V3(-0.12f, HEAD_R * 0.78f, 0.02f));

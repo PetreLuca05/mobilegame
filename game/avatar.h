@@ -52,7 +52,7 @@ typedef struct AvatarMeshes {
     GfxMeshId body_female;
     /* LOD1 (~40 % of the triangles, one hair cap, no face), LOD2 (body + head) */
     GfxMeshId lod_body[2], lod_head[2], lod_hand, lod_hair;
-    GfxMeshId cane, hat, bucket, brow;
+    GfxMeshId cane, hat, bucket, brow, smile;
 } AvatarMeshes;
 
 /* Animation state, advanced once per rendered frame. */
