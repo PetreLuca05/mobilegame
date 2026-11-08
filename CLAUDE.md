@@ -1,22 +1,28 @@
-# Mobilegame — engine + M1 Dev Room
+# Mobilegame — engine + M2 Hospital & Accounts
 
-C11 engine for iOS / Android phones (landscape only) on SDL3 + SDL3 GPU, with a
-desktop target for fast iteration. Multiplayer over Supabase Realtime.
+C11 engine for iOS / Android phones and iPad (landscape only) on SDL3 + SDL3 GPU,
+with a desktop target for fast iteration. Multiplayer over Supabase Realtime;
+accounts (guest, linkable to Google), profiles and stats over Supabase.
 
 ## Layout
 
 ```
 engine/core      arena allocators, log, fixed-step clock, embedded assets
-engine/platform  SDL3 app lifecycle (app_sdl.c), touch/keyboard input, secure token store
-engine/gfx       gfx.h interface; gpu.c = SDL3 GPU backend; meshes, camera, materials, planar reflection
+engine/platform  SDL3 app lifecycle (app_sdl.c), touch/keyboard input, secure token store,
+                 native Google sign-in (google_auth*.c; iOS part in platform/ios/google_auth.m)
+engine/audio     procedural sound (elevator ding) through an SDL audio stream
+engine/gfx       gfx.h interface; gpu.c = SDL3 GPU backend; meshes, camera, materials, planar
+                 reflection, frosted UI panels, clipped UI batches, preview camera
 engine/physics   capsule-vs-OBB queries (collide.c) and the kinematic controller (kinematic.c)
-engine/net       net_transport.h interface; mongoose WebSocket + Supabase auth/Realtime; replication
+engine/net       net_transport.h interface; mongoose WebSocket + Supabase auth/Realtime/PostgREST; replication
 engine/ui        SDF text + UI shapes, HUD, touch controls
-game/            dev room, player, avatar, third-person camera, modes, main.c
+game/            scene.h (hospital.c default, devroom.c via MG_SCENE=devroom), elevator, player,
+                 avatar + skins, camera, settings menu, stats, net session, autotests, main.c
 shaders/         HLSL sources; shaders/compiled/{spv,msl} are generated AND committed
 assets/          font atlas (.mgf), CA bundle, icon — embedded into the binary at build time
-platform/ios     Info.plist template, launch storyboard, asset catalog
-platform/android Gradle project (calls the root CMakeLists.txt, SDL Java from the submodule)
+platform/ios     Info.plist template, launch storyboard, asset catalog, google_auth.m
+platform/android Gradle project (calls the root CMakeLists.txt, SDL Java from the submodule;
+                 SecureStore.java, GoogleAuth.java)
 tools/           build/run scripts and asset generators
 supabase/        SQL migrations
 ```
@@ -51,9 +57,14 @@ Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [-
 Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 
 Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
-`--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu`,
+`--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch`, `--public-test`. Any of the first group skips the launch screen.
+`--autotest touch|route`, `--public-test`, `--skin P,H,A` (local only, not saved).
+Any of the first group skips the launch screen. iOS: `MG_IOS_DEVICE=ipad|iphone|<id>`
+picks the device for `tools/run_ios.sh`.
+
+Scene: `-DMG_SCENE=hospital` (default) or `devroom` (M1 engine test room).
+`PLAYER_JUMP_ENABLED` (game/player.h, default 0) brings jumping back.
 
 ## Shaders
 
@@ -78,13 +89,20 @@ binary as C arrays; look assets up with `mg_asset_find("path/from/repo/root")`.
 Project ref `kugytvcupelitbaksotg` (eu-central-1). Client config lives in the
 git-ignored `config.local.h` (copy `config.local.h.example`): host + publishable
 key only, never the service key.
-Migrations in `supabase/migrations/`. Apply with the CLI:
+Migrations in `supabase/migrations/` (0001 realtime, 0002 world shards,
+0003 accounts: `profiles` + `stats` with RLS, sign-up trigger,
+`delete_anonymous_self()`). Apply with the CLI:
 ```
 supabase link --project-ref kugytvcupelitbaksotg
 supabase db push
 ```
-Dashboard settings that SQL cannot change: Authentication → Sign In / Providers →
-"Allow anonymous sign-ins" must be ON.
+(or paste the file into the SQL editor; the Supabase MCP `apply_migration`
+records the same names). Dashboard settings that SQL cannot change:
+Authentication → Sign In / Providers → "Allow anonymous sign-ins" ON,
+"Allow manual linking" ON, and the Google provider (client ids, nonce check
+off-switch stays OFF) — step by step in `docs/GOOGLE_SIGN_IN.md`.
+Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
+`MG_GOOGLE_IOS_CLIENT_ID`); the Web client secret only goes into Supabase.
 
 ## Networking
 
@@ -99,7 +117,13 @@ Dashboard settings that SQL cannot change: Authentication → Sign In / Provider
   desktop pref file per `--profile`.
 - Topics: party `room:ABCD` (max 4), open world `world:01`.. (cap 4 per
   shard, see `game/net_session.h`). RLS in `supabase/migrations`.
-- Replication (`engine/net/replication.c`): 33-byte state, 10 Hz (2 players)
+- Accounts: the network thread signs in as a guest at launch (no room
+  needed), loads `profiles` + `stats` in one PostgREST GET
+  (`supabase_rest.c`), writes name/skin through at once and stats totals
+  every 60 s / on background / on exit (`game/stats.c`). Google linking:
+  id_token grant with the guest JWT (`supabase_auth.c`).
+- Presence payload `{name, skin:{palette,hair,accessory}, slot}`.
+- Replication (`engine/net/replication.c`): 34-byte state (+`floor`), 10 Hz (2 players)
   / 8 Hz (3-4), 1 Hz keepalive when still, 100 ms interpolation, 200 ms
   extrapolation, correction smoothing. Peers silent for 3.5 s are dropped;
   leaving clients send a final `REP_LEAVING` packet.
@@ -117,8 +141,11 @@ build/desktop/mobilegame --party ABCD --profile b --demo-walk --window-pos 600,9
 ## Tests
 
 `ctest --test-dir build/desktop` runs the controller and replication checks.
-`build/desktop/mobilegame --autotest touch` drives multi-touch input end to end
-(needs a display; use Xvfb on headless Linux).
+`build/desktop/mobilegame --autotest touch` drives multi-touch input end to end;
+`--autotest route` walks the hospital and rides the elevator to every storey
+(fails on snags, a misplaced floor menu or a ride that is not ~1.9 s).
+Both need a display (Xvfb on headless Linux).
+`build/desktop/mg_nettest profile PROFILE [NAME P H A]` reads/writes an account.
 
 ## Conventions
 

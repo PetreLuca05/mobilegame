@@ -4,6 +4,10 @@
 # Online play needs two repository secrets (Settings > Secrets and variables >
 # Actions): MG_SUPABASE_HOST (e.g. abcd.supabase.co) and MG_SUPABASE_ANON_KEY
 # (the publishable key). Without them the APK still builds, offline only.
+# Google sign-in (optional): MG_GOOGLE_WEB_CLIENT_ID, and
+# MG_ANDROID_DEBUG_KEYSTORE_B64 (base64 of a debug.keystore) so every build
+# is signed with the same key - its SHA-1 is what the Android OAuth client
+# in Google Cloud Console is registered with.
 name: android
 on:
   push:
@@ -31,13 +35,24 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "cmake;3.31.6" "platforms;android-35" "build-tools;35.0.1" > /dev/null
 
+      - name: Stable debug signing key
+        env:
+          KEYSTORE: ${{ secrets.MG_ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            mkdir -p ~/.android && echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::MG_ANDROID_DEBUG_KEYSTORE_B64 not set - random debug key, Google sign-in will not work"
+          fi
+
       - name: config.local.h from secrets
         env:
           HOST: ${{ secrets.MG_SUPABASE_HOST }}
           KEY: ${{ secrets.MG_SUPABASE_ANON_KEY }}
+          GOOGLE_WEB: ${{ secrets.MG_GOOGLE_WEB_CLIENT_ID }}
         run: |
           if [ -n "$HOST" ] && [ -n "$KEY" ]; then
-            printf '#ifndef MG_CONFIG_LOCAL_H\n#define MG_CONFIG_LOCAL_H\n#define MG_SUPABASE_HOST "%s"\n#define MG_SUPABASE_ANON_KEY "%s"\n#endif\n' "$HOST" "$KEY" > config.local.h
+            printf '#ifndef MG_CONFIG_LOCAL_H\n#define MG_CONFIG_LOCAL_H\n#define MG_SUPABASE_HOST "%s"\n#define MG_SUPABASE_ANON_KEY "%s"\n#define MG_GOOGLE_WEB_CLIENT_ID "%s"\n#define MG_GOOGLE_IOS_CLIENT_ID ""\n#endif\n' "$HOST" "$KEY" "$GOOGLE_WEB" > config.local.h
           else
             echo "::warning::Supabase secrets not set - building an offline-only APK"
             cp config.local.h.example config.local.h
