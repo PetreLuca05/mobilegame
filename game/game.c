@@ -18,6 +18,7 @@
 #include "core/jobs.h"
 #include "core/prof.h"
 #include "npc_sim.h"
+#include "interact.h"
 #include "perf_run.h"
 #include "rooms.h"
 #include "platform/device_stats.h"
@@ -130,6 +131,10 @@ typedef struct Game {
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
     RoomGraph rooms;
+    Interact ia;
+    bool ia_ok, ia_log;
+    uint16_t marker_ia[MARKER_MAX];
+    uint32_t marker_ia_id[MARKER_MAX];
     NpcWorld npcs;
     bool npcs_ok, npcs_on;
     bool npc_catching_up, npc_sync_log;
@@ -240,6 +245,7 @@ static bool ensure_world(Game *g, MgApp *app)
             mg_log_info("rooms: %d rooms, %d doors, %d slots, %d on blocked cells", g->rooms.room_count, g->rooms.door_count,
                         g->rooms.slot_count, bad);
             g->npcs_ok = npc_world_init(&g->npcs, &app->perm, &g->rooms, g->nav);
+            interact_setup(g, app);
         }
         arena_release_unused(&app->perm); /* the mesh builders' scratch: ~30 MB of dirty pages */
     }
@@ -387,6 +393,7 @@ bool game_init(MgApp *app)
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
     g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log");
+    g->ia_log = has_flag(app->argc, app->argv, "--ia-log");
     if (atest && (SDL_strcmp(atest, "npcs-save") == 0 || SDL_strcmp(atest, "npcs-continue") == 0)) {
         g->offline_play = true;
         if (SDL_strcmp(atest, "npcs-continue") == 0 && save_read(&g->save, g->profile_name)) {
@@ -453,6 +460,7 @@ void game_tick(MgApp *app)
         PROF_SCOPE("npc.roster");
         npc_step(g, app);
     }
+    interact_tick(g, app);
     if (g->crowd_ok && g->nav) {
         PROF_SCOPE("npc");
         StressView sv = {g->player.kin.pos.X, g->player.kin.pos.Z, scene_indoors(g->scene, g->player.kin.pos) ? scene_floor_of(g->scene, g->player.kin.pos) : 0};
@@ -491,6 +499,8 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void interact_setup(Game *g, MgApp *app);
+static void interact_tick(Game *g, MgApp *app);
 static void layout_autotest(Game *g, MgApp *app);
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha);
 static void npc_autotest_check(Game *g, MgApp *app);
@@ -1332,6 +1342,106 @@ static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc
     }
     c->vis_head += (head_target - c->vis_head) * mg_minf(dt * 5.0f, 1.0f);
     pose->head_yaw = c->vis_head;
+}
+
+static void on_call_lift(uint16_t ref, void *user)
+{
+    Game *g = (Game *)user;
+    Elevator *el = scene_elevator(g->scene);
+    if (el) {
+        elevator_request(el, (int)ref);
+    }
+}
+
+static void on_marker_interact(uint16_t ref, void *user)
+{
+    (void)user;
+    mg_log_info("interact: marker %u", ref);
+}
+
+static void on_npc_interact(uint16_t ref, void *user)
+{
+    (void)user;
+    mg_log_info("interact: npc %u", ref);
+}
+
+static void npc_registered(int index, void *user)
+{
+    Game *g = (Game *)user;
+    npc_cold_t *c = &g->npcs.pool.cold[index];
+    const npc_hot_t *h = &g->npcs.pool.hot[g->npcs.pool.read][index];
+    const preview_desc_t pv = {GFX_MESH_NONE, &c->look, 1.0f, 0.0f, 0.0f, HMM_V4(1, 1, 1, 1)};
+    c->ia_slot = ia_add(&g->ia, IA_NPC, HMM_V3(h->x, h->y, h->z), IA_ENTER_RANGE, h->storey, 0, (uint16_t)c->id, c->name, on_npc_interact, g, pv);
+}
+
+static void npc_unregistered(int index, void *user)
+{
+    Game *g = (Game *)user;
+    ia_remove(&g->ia, g->npcs.pool.cold[index].ia_slot);
+}
+
+/* Buttons and the lift, from the room graph */
+static void interact_setup(Game *g, MgApp *app)
+{
+    g->ia_ok = ia_init(&g->ia, &app->perm);
+    g->npcs.on_spawned = npc_registered;
+    g->npcs.on_despawned = npc_unregistered;
+    g->npcs.callback_user = g;
+    for (int i = 0; i < MARKER_MAX; i++) {
+        g->marker_ia[i] = IA_NONE;
+    }
+    if (!g->ia_ok) {
+        return;
+    }
+    const preview_desc_t button = {g->unit_box, NULL, 0.7f, 0.0f, 0.0f, HMM_V4(0.85f, 0.25f, 0.2f, 1.0f)};
+    for (int i = 0; i < g->rooms.button_count; i++) {
+        const RoomButton *b = &g->rooms.buttons[i];
+        ia_add(&g->ia, IA_BUTTON, HMM_V3(b->x, b->y, b->z), IA_ENTER_RANGE, b->storey, IA_FACING_FREE, (uint16_t)b->storey, b->label, on_call_lift, g, button);
+    }
+    const float cx = (g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, cz = (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f;
+    const preview_desc_t lift = {g->unit_box, NULL, 1.0f, 0.0f, 0.0f, HMM_V4(0.72f, 0.75f, 0.8f, 1.0f)};
+    for (int f = 0; f < scene_floor_count(); f++) {
+        ia_add(&g->ia, IA_ELEVATOR, HMM_V3(cx, (float)f * 4.0f, cz), IA_ENTER_RANGE, f, IA_FACING_FREE, (uint16_t)f, "Lift", on_call_lift, g, lift);
+    }
+}
+
+/* Keep the registry in step with what moved, then choose the active one */
+static void interact_tick(Game *g, MgApp *app)
+{
+    if (!g->ia_ok || !g->playing) {
+        return;
+    }
+    PROF_SCOPE("interact");
+    NpcPool *p = &g->npcs.pool;
+    const npc_hot_t *hot = p->hot[p->read];
+    for (int i = 0; i < p->count && g->npcs_on; i++) {
+        npc_cold_t *c = &p->cold[i];
+        ia_set_pos(&g->ia, c->ia_slot, HMM_V3(hot[i].x, hot[i].y, hot[i].z), hot[i].storey);
+        g->ia.cold[c->ia_slot].label = c->name; /* despawning moves NPCs in the array */
+        g->ia.cold[c->ia_slot].preview.look = &c->look;
+        g->ia.hot[c->ia_slot].ref = (uint16_t)c->id;
+    }
+    const preview_desc_t diamond = {g->markers.diamond, NULL, 1.0f, 0.0f, 0.0f, HMM_V4(1.0f, 0.4f, 0.3f, 1.0f)};
+    for (int i = 0; i < MARKER_MAX; i++) {
+        const marker_t *m = &g->markers.m[i];
+        if (m->id != g->marker_ia_id[i]) {
+            if (g->marker_ia[i] != IA_NONE) {
+                ia_remove(&g->ia, g->marker_ia[i]);
+                g->marker_ia[i] = IA_NONE;
+            }
+            g->marker_ia_id[i] = m->id;
+            if (m->id) {
+                g->marker_ia[i] = ia_add(&g->ia, IA_MARKER, m->pos, 1.6f, m->storey, IA_FACING_FREE, (uint16_t)m->id, "Marker", on_marker_interact, g, diamond);
+            }
+        }
+    }
+    const HMM_Vec3 pos = g->player.kin.pos;
+    const int storey = scene_indoors(g->scene, pos) ? scene_floor_of(g->scene, pos) : -1;
+    const uint16_t before = g->ia.active;
+    ia_tick(&g->ia, &app->frame, app->clock.tick, pos, storey, g->player.yaw);
+    if (g->ia_log && g->ia.active != before) {
+        mg_log_info("interact: active %s", g->ia.active == IA_NONE ? "none" : g->ia.cold[g->ia.active].label);
+    }
 }
 
 /* M7 roster: culled and given a LOD on the job system, drawn on the main thread */

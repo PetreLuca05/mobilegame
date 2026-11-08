@@ -233,6 +233,7 @@ set(MG_GAME_SOURCES
   game/bake.c
   game/npc.c
   game/rooms.c
+  game/interact.c
   game/npc_data.c
   game/npc_sim.c
   game/npc_pkg.c

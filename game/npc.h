@@ -56,6 +56,7 @@ typedef struct npc_cold_t {
     float seat_x, seat_z, seat_yaw;
     uint8_t archetype, age, pose, package, step, phase;
     uint8_t stuck_count, flags;
+    uint16_t ia_slot;     /* interactable registry */
 } npc_cold_t;
 
 typedef struct NpcPool {

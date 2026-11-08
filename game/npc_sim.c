@@ -153,6 +153,9 @@ uint32_t npc_spawn(NpcWorld *w, int archetype, int storey, bool steady, uint32_t
     c->stuck_z = h.z;
     p->hot[p->read][i] = h;
     npc_sync_buffers(w, i);
+    if (w->on_spawned) {
+        w->on_spawned(i, w->callback_user);
+    }
     w->stats.spawned++;
     w->stats.max_alive = (uint32_t)p->count > w->stats.max_alive ? (uint32_t)p->count : w->stats.max_alive;
     return c->id;
@@ -164,6 +167,9 @@ void npc_despawn(NpcWorld *w, uint32_t id)
     int i = npc_index_by_id(w, id);
     if (i < 0) {
         return;
+    }
+    if (w->on_despawned) {
+        w->on_despawned(i, w->callback_user);
     }
     npc_release_slot(w, i);
     nav_cancel(w->nav, NAV_CLASS_NPC, p->hot[p->read][i].req);
