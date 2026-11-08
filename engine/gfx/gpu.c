@@ -830,6 +830,8 @@ static SDL_GPUTextureFormat pick_depth_format(SDL_GPUDevice *dev)
     return SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 }
 
+static void prewarm_gpu_pools(GfxContext *g);
+
 bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
 {
     GfxContext *g = ARENA_PUSH(perm, GfxContext, 1);
@@ -969,6 +971,7 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->stats.backend = g->backend;
     g->render_scale = 1.0f;
     *out = g;
+    prewarm_gpu_pools(g);
     return true;
 }
 
@@ -1007,6 +1010,36 @@ void gfx_set_gpu_timing(GfxContext *g, bool on)
     (void)g;
     (void)on;
 #endif
+}
+
+/* SDL grows its command-buffer, uniform-buffer and fence pools when a late frame
+ * needs one more: do that now, several command buffers at once, not during play. */
+static void prewarm_gpu_pools(GfxContext *g)
+{
+    enum { PREWARM_CMDS = 8 };
+    SDL_GPUCommandBuffer *cmd[PREWARM_CMDS];
+    SDL_GPUFence *fence[PREWARM_CMDS];
+    const uint8_t blank[64] = {0};
+    for (int i = 0; i < PREWARM_CMDS; i++) {
+        cmd[i] = SDL_AcquireGPUCommandBuffer(g->dev);
+        for (uint32_t slot = 0; slot < 2 && cmd[i]; slot++) {
+            SDL_PushGPUVertexUniformData(cmd[i], slot, blank, sizeof(blank));
+            SDL_PushGPUFragmentUniformData(cmd[i], slot, blank, sizeof(blank));
+        }
+    }
+    int fences = 0;
+    for (int i = 0; i < PREWARM_CMDS; i++) {
+        if (cmd[i]) {
+            fence[fences] = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd[i]);
+            fences += fence[fences] != NULL;
+        }
+    }
+    if (fences) {
+        SDL_WaitForGPUFences(g->dev, true, fence, (uint32_t)fences);
+        for (int i = 0; i < fences; i++) {
+            SDL_ReleaseGPUFence(g->dev, fence[i]);
+        }
+    }
 }
 
 void gfx_shutdown(GfxContext *g)
