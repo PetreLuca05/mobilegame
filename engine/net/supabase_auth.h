@@ -44,6 +44,7 @@ typedef struct SupaAuth {
     /* Google link */
     char link_token[2048];  /* Google ID token */
     char link_nonce[96];    /* raw nonce (the token carries its sha256) */
+    char link_provider[8];  /* "google" / "apple" */
     char guest_token[2048]; /* the guest's JWT, to delete it after an account switch */
     char guest_id[NET_ID_LEN];
     bool delete_guest;      /* -> caller: rpc/delete_anonymous_self with guest_token */
@@ -56,7 +57,8 @@ void supa_auth_start(SupaAuth *a, struct mg_mgr *mgr, double now);
 void supa_auth_update(SupaAuth *a, struct mg_mgr *mgr, double now);
 bool supa_auth_ready(const SupaAuth *a);
 /* Link the signed-in guest to Google (or switch to the existing Google user). */
-bool supa_auth_link_google(SupaAuth *a, struct mg_mgr *mgr, const char *id_token, const char *nonce);
+bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, const char *id_token,
+                        const char *nonce);
 /* Forget the session; the next start signs up a fresh guest. */
 void supa_auth_sign_out(SupaAuth *a);
 

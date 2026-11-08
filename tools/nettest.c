@@ -194,7 +194,7 @@ static int account(const char *profile, const char *name, int pal, int hair, int
                        e.profile.skin.hair, e.profile.skin.accessory, e.profile.stats.sessions,
                        (double)e.profile.stats.distance_m, e.profile.stats.elevator_rides);
                 if (name) {
-                    NetSkin skin = {(uint8_t)pal, (uint8_t)hair, (uint8_t)acc};
+                    NetSkin skin = {.palette = (uint8_t)pal, .hair = (uint8_t)hair, .accessory = (uint8_t)acc};
                     net_save_profile(n, name, &skin);
                     printf("[%s] saving \"%s\" skin %d/%d/%d\n", profile, name, pal, hair, acc);
                 }

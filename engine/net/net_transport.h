@@ -29,11 +29,18 @@ typedef enum NetStatus {
     NET_FAILED,         /* gave up (bad config, auth disabled, room refused) */
 } NetStatus;
 
-/* Avatar choice, indices into the game's tables (profiles.skin). */
+/* Avatar choice, indices into the game's tables (profiles.skin jsonb,
+ * {body, skin, hair, hair_color, suit, accessory, palette}; missing keys
+ * read as 0). `palette` is the M2 preset, kept for old clients. Always
+ * initialise with designated fields. */
 typedef struct NetSkin {
-    uint8_t palette;   /* 8 presets */
-    uint8_t hair;      /* 6 caps */
-    uint8_t accessory; /* 5 */
+    uint8_t body;       /* 0 male, 1 female */
+    uint8_t skin;       /* 8 skin colours */
+    uint8_t hair;       /* 6 caps */
+    uint8_t hair_color; /* 8 */
+    uint8_t suit;       /* 8 doctor suits */
+    uint8_t accessory;  /* 5 */
+    uint8_t palette;    /* M2 preset */
 } NetSkin;
 
 /* Presence payload {name, skin:{palette,hair,accessory}, slot}: what other
@@ -126,10 +133,11 @@ void net_account_start(NetTransport *n);
 void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *skin);
 /* Store stats totals (coalesced; one PATCH in flight). */
 void net_save_stats(NetTransport *n, const NetStats *totals);
-/* Link the guest to Google with a native-sign-in ID token (+ raw nonce).
+/* Link the guest to Google or Apple ("google" / "apple") with a
+ * native-sign-in ID token (+ raw nonce).
  * Success arrives as NET_EV_PROFILE (guest = false), failure as
  * NET_EV_ACCOUNT_ERROR. */
-void net_link_google(NetTransport *n, const char *id_token, const char *nonce);
+void net_link_idp(NetTransport *n, const char *provider, const char *id_token, const char *nonce);
 /* Drop the session; a fresh guest (new profile) signs in. */
 void net_sign_out(NetTransport *n);
 

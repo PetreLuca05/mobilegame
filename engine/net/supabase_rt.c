@@ -115,6 +115,7 @@ struct NetTransport {
     /* Google link handoff (under lock) */
     char link_token[2048];
     char link_nonce[96];
+    char link_provider[8];
     bool link_pending; /* network thread: waiting for the guest session */
     char joined_uid[NET_ID_LEN]; /* identity our room presence uses */
 };
@@ -235,14 +236,25 @@ static void json_escape(char *out, size_t cap, const char *s)
     out[o] = 0;
 }
 
+/* skin v2 object; missing keys read as 0 (old M2 rows / clients) */
 static void read_skin(const cJSON *skin, NetSkin *out)
 {
-    const cJSON *p = cJSON_GetObjectItemCaseSensitive(skin, "palette");
-    const cJSON *h = cJSON_GetObjectItemCaseSensitive(skin, "hair");
-    const cJSON *a = cJSON_GetObjectItemCaseSensitive(skin, "accessory");
-    out->palette = cJSON_IsNumber(p) ? (uint8_t)p->valuedouble : out->palette;
-    out->hair = cJSON_IsNumber(h) ? (uint8_t)h->valuedouble : out->hair;
-    out->accessory = cJSON_IsNumber(a) ? (uint8_t)a->valuedouble : out->accessory;
+    static const char *const keys[7] = {"body", "skin", "hair", "hair_color", "suit", "accessory", "palette"};
+    uint8_t *fields[7] = {&out->body, &out->skin, &out->hair, &out->hair_color, &out->suit, &out->accessory,
+                          &out->palette};
+    for (int i = 0; i < 7; i++) {
+        const cJSON *v = cJSON_GetObjectItemCaseSensitive(skin, keys[i]);
+        *fields[i] = cJSON_IsNumber(v) ? (uint8_t)v->valuedouble : 0;
+    }
+}
+
+/* {"body":..,"skin":..,...} into buf */
+static void write_skin(char *buf, size_t cap, const NetSkin *k)
+{
+    snprintf(buf, cap,
+             "{\"body\":%u,\"skin\":%u,\"hair\":%u,\"hair_color\":%u,\"suit\":%u,\"accessory\":%u,\"palette\":%u}",
+             (unsigned)k->body, (unsigned)k->skin, (unsigned)k->hair, (unsigned)k->hair_color, (unsigned)k->suit,
+             (unsigned)k->accessory, (unsigned)k->palette);
 }
 
 static void send_track(NetTransport *n)
@@ -250,13 +262,14 @@ static void send_track(NetTransport *n)
     const NetPeerMeta *m = &n->me;
     char name[NET_NAME_LEN * 2];
     json_escape(name, sizeof(name), m->name);
+    char skin[160];
+    write_skin(skin, sizeof(skin), &m->skin);
     n->ref++;
     int len = snprintf(n->line, sizeof(n->line),
                        "{\"topic\":\"realtime:%s\",\"event\":\"presence\",\"payload\":{\"type\":\"presence\","
-                       "\"event\":\"track\",\"payload\":{\"name\":\"%s\",\"skin\":{\"palette\":%u,\"hair\":%u,"
-                       "\"accessory\":%u},\"slot\":%d}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
-                       n->topic, name, (unsigned)m->skin.palette, (unsigned)m->skin.hair, (unsigned)m->skin.accessory,
-                       m->slot, n->ref, n->join_ref);
+                       "\"event\":\"track\",\"payload\":{\"name\":\"%s\",\"skin\":%s,\"slot\":%d}},"
+                       "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                       n->topic, name, skin, m->slot, n->ref, n->join_ref);
     send_line(n, len);
     n->track_sent = true;
 }
@@ -727,7 +740,7 @@ static void profile_loaded(void *user, int status, const char *body, size_t len)
     NetProfile *p = &e.profile;
     snprintf(p->user_id, sizeof(p->user_id), "%s", n->auth.user_id);
     snprintf(p->display_name, sizeof(p->display_name), "Player");
-    p->skin = (NetSkin){0, 1, 3};
+    p->skin = (NetSkin){.hair = 1, .accessory = 3};
     p->guest = n->auth.is_anonymous;
     snprintf(p->email, sizeof(p->email), "%s", n->auth.email);
     snprintf(p->google_name, sizeof(p->google_name), "%s", n->auth.name);
@@ -809,11 +822,11 @@ static void drive_account(NetTransport *n)
     if (n->link_pending) {
         n->link_pending = false;
         SDL_LockMutex(n->lock);
-        bool ok = supa_auth_link_google(&n->auth, &n->mgr, n->link_token, n->link_nonce);
+        bool ok = supa_auth_link_idp(&n->auth, &n->mgr, n->link_provider, n->link_token, n->link_nonce);
         memset(n->link_token, 0, sizeof(n->link_token));
         SDL_UnlockMutex(n->lock);
         if (!ok) {
-            account_error(n, "Google sign-in: not signed in yet", 0);
+            account_error(n, "sign-in: not signed in yet", 0);
         }
         return;
     }
@@ -830,10 +843,9 @@ static void drive_account(NetTransport *n)
     } else if (n->profile_pending) {
         char name[NET_NAME_LEN * 2];
         json_escape(name, sizeof(name), n->profile_save.name);
-        const NetSkin *k = &n->profile_save.skin;
-        snprintf(n->rest_body, sizeof(n->rest_body),
-                 "{\"display_name\":\"%s\",\"skin\":{\"palette\":%u,\"hair\":%u,\"accessory\":%u}}", name,
-                 (unsigned)k->palette, (unsigned)k->hair, (unsigned)k->accessory);
+        char skin[160];
+        write_skin(skin, sizeof(skin), &n->profile_save.skin);
+        snprintf(n->rest_body, sizeof(n->rest_body), "{\"display_name\":\"%s\",\"skin\":%s}", name, skin);
         snprintf(path, sizeof(path), "profiles?id=eq.%s", n->auth.user_id);
         n->profile_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
                                         profile_saved, n);
@@ -1115,13 +1127,14 @@ void net_save_stats(NetTransport *n, const NetStats *totals)
     push_cmd(n, &c);
 }
 
-void net_link_google(NetTransport *n, const char *id_token, const char *nonce)
+void net_link_idp(NetTransport *n, const char *provider, const char *id_token, const char *nonce)
 {
     if (!n) {
         return;
     }
     SDL_LockMutex(n->lock);
     snprintf(n->link_token, sizeof(n->link_token), "%s", id_token);
+    snprintf(n->link_provider, sizeof(n->link_provider), "%s", provider);
     snprintf(n->link_nonce, sizeof(n->link_nonce), "%s", nonce ? nonce : "");
     SDL_UnlockMutex(n->lock);
     NetCmd c;

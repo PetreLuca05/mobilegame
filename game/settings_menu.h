@@ -1,9 +1,9 @@
 /* Gear-icon Settings panel with two tabs:
  *   Game  camera/control sliders, invert Y, disconnect / main menu, and a
  *         "Developer" fold (colliders, triggers, floor teleports)
- *   Skin  live preview of the avatar, name field, palette / hair /
- *         accessory rows (56 pt tiles, scroll sideways) and the account
- *         block (guest -> Continue with Google, or signed in -> Sign out)
+ *   Account  name field, "Edit character" (opens the creator) and the
+ *            account block (guest -> Continue with Google / Apple, or
+ *            signed in -> Sign out)
  * Changes are reported as actions; the game applies and saves them. */
 #ifndef MG_SETTINGS_MENU_H
 #define MG_SETTINGS_MENU_H
@@ -23,6 +23,8 @@ typedef enum MenuAction {
     MENU_GOOGLE,       /* "Continue with Google" */
     MENU_SIGN_OUT,
     MENU_TIME,         /* time-of-day slider moved */
+    MENU_EDIT_CHARACTER, /* open the character creator */
+    MENU_APPLE,        /* "Continue with Apple" (iOS) */
 } MenuAction;
 
 typedef struct SettingsAccount {
@@ -30,6 +32,8 @@ typedef struct SettingsAccount {
     const char *email;   /* "" for guests */
     bool guest;
     bool google_ready;   /* client ids configured on this platform */
+    bool apple_ready;    /* iOS */
+    const char *provider; /* "google", "apple", "guest" */
     bool busy;           /* sign-in in progress */
     const char *message; /* last account error / hint, may be "" */
 } SettingsAccount;
@@ -47,7 +51,7 @@ typedef struct SettingsMenu {
 } SettingsMenu;
 
 /* Draw the gear button (always) and the panel (when open). */
-MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, NetSkin *skin, const SettingsAccount *acct,
+MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
                          float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
                          const char *status);
 

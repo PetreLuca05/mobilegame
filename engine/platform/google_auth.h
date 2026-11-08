@@ -27,8 +27,14 @@ GoogleAuth *google_auth_create(Arena *perm, const char *web_client_id, const cha
 /* Client ids for this platform are configured. */
 bool google_auth_available(const GoogleAuth *g);
 bool google_auth_start(GoogleAuth *g, struct SDL_Window *window);
-/* On DONE fills id_token + nonce; on FAILED fills error. */
-GoogleAuthState google_auth_poll(GoogleAuth *g, char *id_token, size_t token_cap, char *nonce, size_t nonce_cap,
-                                 char *error, size_t error_cap);
+/* Sign in with Apple (iOS only; same result path, provider "apple"). */
+bool apple_auth_available(const GoogleAuth *g);
+bool apple_auth_start(GoogleAuth *g, struct SDL_Window *window);
+/* On DONE fills provider ("google" / "apple"), id_token, raw nonce and the
+ * user's full name if the provider sent one (Apple: first sign-in only);
+ * on FAILED fills error. */
+GoogleAuthState native_auth_poll(GoogleAuth *g, char *provider, size_t provider_cap, char *id_token, size_t token_cap,
+                                 char *nonce, size_t nonce_cap, char *name, size_t name_cap, char *error,
+                                 size_t error_cap);
 
 #endif

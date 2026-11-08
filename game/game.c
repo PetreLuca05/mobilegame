@@ -10,6 +10,9 @@
 #include "avatar.h"
 #include "camera_tp.h"
 #include "config.local.h"
+#ifndef MG_VERSION
+#define MG_VERSION "0.4.0"
+#endif
 #include "core/log.h"
 #ifndef MG_GOOGLE_WEB_CLIENT_ID /* older config.local.h */
 #define MG_GOOGLE_WEB_CLIENT_ID ""
@@ -19,7 +22,10 @@
 #endif
 #include "elevator.h"
 #include "floor_menu.h"
-#include "launch_screen.h"
+#include "frontend.h"
+#include "modes.h"
+#include "prefs.h"
+#include "strings.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
@@ -58,7 +64,13 @@ typedef struct Game {
     NetTransport *net;
     NetSession session;
     bool demo_walk;
-    LaunchScreen launch;
+    Frontend fe;
+    Prefs prefs;
+    char profile_name[32]; /* desktop --profile */
+    bool playing;          /* in the hospital (else the front end) */
+    bool play_paused;      /* front end opened from the game (edit character) */
+    int load_step;
+    int pending_play;      /* what LOADING leads to: 0 offline, 1 create room, 2 join room */
     char status[96];
     Autotest autotest;
     Audio *audio;
@@ -74,7 +86,9 @@ typedef struct Game {
     bool profile_loaded;
     GoogleAuth *google;
     bool google_busy;      /* sign-in sheet open or link request in flight */
-    bool skin_override;    /* desktop --skin P,H,A: local only, never saved */
+    bool skin_override;
+    bool has_save;         /* save_slot0.bin exists (Continue) */
+    char pending_name[64]; /* Apple full name from the first sign-in */    /* desktop --skin P,H,A: local only, never saved */
     NetSkin override_skin;
     int last_ride_count; /* elevator rides already counted */
 } Game;
@@ -129,25 +143,36 @@ static bool parse_cam_arg(int argc, char **argv, FlyCamera *c)
     return false;
 }
 
+/* The hospital (+ terrain) is only built for play: the menu runs in the
+ * small locker room. Returns false if the scene cannot be built. */
+static bool ensure_world(Game *g, MgApp *app)
+{
+    if (g->scene) {
+        return true;
+    }
+    g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
+    SceneryShape shape = scene_scenery_shape();
+    return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
+}
+
 bool game_init(MgApp *app)
 {
     Game *g = ARENA_PUSH(&app->perm, Game, 1);
     app->game = g;
-    g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
-    if (!g->scene) {
+    const char *profile = arg_value(app->argc, app->argv, "--profile");
+    SDL_snprintf(g->profile_name, sizeof(g->profile_name), "%s", profile ? profile : "");
+    if (!strings_init(&app->perm) || !frontend_init(&g->fe, app->gfx, &app->perm)) {
         return false;
     }
     kinematic_default_params(&g->kparams);
-    settings_default(&g->settings);
+    prefs_load(&g->prefs, g->profile_name);
+    g->settings = g->prefs.settings; /* per device */
     touch_controls_default_config(&g->touch_cfg);
     if (!PLAYER_JUMP_ENABLED) {
         g->touch_cfg.jump_size_pt = 0.0f; /* no jump button */
     }
     touch_controls_reset(&g->touch);
 
-    HMM_Vec3 spawn = scene_spawn(g->scene, 0);
-    parse_vec3_arg(app->argc, app->argv, "--spawn", &spawn);
-    player_init(&g->player, spawn, scene_spawn_yaw(g->scene));
     tpcam_init(&g->cam);
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
@@ -171,9 +196,7 @@ bool game_init(MgApp *app)
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), 0.35f, 0.35f, 1.8f, 16, 24, HMM_V4(0.92f, 0.92f, 0.95f, 1));
     g->ref_capsule = mb_upload(&mb, app->gfx);
     arena_reset_to(&app->perm, mark);
-    SceneryShape shape = scene_scenery_shape();
-    if (!scenery_init(&g->scenery, &shape, app->gfx, &app->perm) ||
-        !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
+    if (!avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
         return false;
     }
     g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
@@ -183,12 +206,17 @@ bool game_init(MgApp *app)
     int sp_, sh_, sa_;
     if (skin_arg && SDL_sscanf(skin_arg, "%d,%d,%d", &sp_, &sh_, &sa_) == 3) {
         g->skin_override = true;
-        g->override_skin = (NetSkin){(uint8_t)sp_, (uint8_t)sh_, (uint8_t)sa_};
+        g->override_skin = (NetSkin){.palette = (uint8_t)sp_, .hair = (uint8_t)sh_, .accessory = (uint8_t)sa_};
         g->profile.skin = g->override_skin;
     }
     SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "Player");
+    if (g->prefs.has_profile_cache && !g->skin_override) { /* offline launch: last known account */
+        SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", g->prefs.cache_name);
+        g->profile.skin = g->prefs.cache_skin;
+        g->profile.guest = SDL_strcmp(g->prefs.auth_provider, "google") != 0 &&
+                           SDL_strcmp(g->prefs.auth_provider, "apple") != 0;
+    }
 
-    const char *profile = arg_value(app->argc, app->argv, "--profile");
     NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
@@ -201,11 +229,31 @@ bool game_init(MgApp *app)
     } else if (has_flag(app->argc, app->argv, "--world")) {
         session_start(&g->session, MODE_WORLD, NULL);
     }
-    /* the launch screen comes first unless a test flag already chose */
-    g->launch.active = !party && !has_flag(app->argc, app->argv, "--world") &&
-                       !has_flag(app->argc, app->argv, "--offline") && !has_flag(app->argc, app->argv, "--autotest") &&
-                       !arg_value(app->argc, app->argv, "--spawn") && !arg_value(app->argc, app->argv, "--cam") &&
-                       !has_flag(app->argc, app->argv, "--menu") && !has_flag(app->argc, app->argv, "--colliders");
+    /* the front end comes first unless a test flag already chose to play */
+    bool play_now = party || has_flag(app->argc, app->argv, "--world") || has_flag(app->argc, app->argv, "--offline") ||
+                    has_flag(app->argc, app->argv, "--autotest") || arg_value(app->argc, app->argv, "--spawn") ||
+                    arg_value(app->argc, app->argv, "--cam") || has_flag(app->argc, app->argv, "--menu") ||
+                    has_flag(app->argc, app->argv, "--colliders");
+    const char *fe_arg = arg_value(app->argc, app->argv, "--frontend"); /* desktop: start on a screen */
+    g->fe.state = g->prefs.onboarding_done ? FE_MAIN_MENU : FE_WELCOME;
+    if (fe_arg) {
+        static const char *const names[] = {"welcome", "username", "creator", "menu", "settings", "freeroam"};
+        for (int i = 0; i < 6; i++) {
+            if (SDL_strcmp(fe_arg, names[i]) == 0) {
+                g->fe.state = (FeState)i;
+            }
+        }
+    }
+    if (play_now) {
+        if (!ensure_world(g, app)) {
+            return false;
+        }
+        HMM_Vec3 spawn = scene_spawn(g->scene, 0);
+        parse_vec3_arg(app->argc, app->argv, "--spawn", &spawn);
+        player_init(&g->player, spawn, scene_spawn_yaw(g->scene));
+        g->playing = true;
+        g->fe.state = FE_PLAY;
+    }
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     g->audio = audio_create(&app->perm);
@@ -226,6 +274,9 @@ bool game_init(MgApp *app)
 void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
+    if (!g->playing) {
+        return;
+    }
     scene_tick(g->scene, &g->world, MG_TICK_DT);
     Elevator *el = scene_elevator(g->scene);
     if (el && el->arrived) {
@@ -243,9 +294,7 @@ void game_tick(MgApp *app)
         stats_reset_position(&g->stats);
     }
     player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
-    if (!g->launch.active) {
-        stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
-    }
+    stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
 }
 
 static void update_fly_camera(Game *g, MgApp *app)
@@ -308,6 +357,38 @@ static void update_player_input(Game *g, MgApp *app)
     player_set_input(&g->player, mx, mz, sprint, jump);
 }
 
+static void save_prefs(Game *g)
+{
+    g->prefs.settings = g->settings;
+    prefs_save(&g->prefs, g->profile_name);
+}
+
+/* Name/character changed: apply, write through, remember for offline launches. */
+static void profile_changed(Game *g)
+{
+    session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+    net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
+    g->prefs.has_profile_cache = true;
+    SDL_snprintf(g->prefs.cache_name, sizeof(g->prefs.cache_name), "%s", g->profile.display_name);
+    g->prefs.cache_skin = g->profile.skin;
+    g->prefs.profile_stale = !g->profile_loaded; /* offline: push it on the next sign-in */
+    save_prefs(g);
+}
+
+/* Back to the main menu from the hospital (multiplayer: leave the room). */
+static void leave_play(Game *g, MgApp *app)
+{
+    (void)app;
+    session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
+    session_stop(&g->session);
+    g->playing = false;
+    g->play_paused = false;
+    g->menu.open = false;
+    g->fe.depth = 0;
+    g->fe.state = FE_MAIN_MENU;
+    save_prefs(g);
+}
+
 static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
 {
     switch (a) {
@@ -351,10 +432,21 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         break;
     }
     case MENU_MAIN_MENU:
-        session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
-        session_stop(&g->session);
-        g->launch.active = true;
-        g->launch.page = 0;
+        leave_play(g, app);
+        break;
+    case MENU_EDIT_CHARACTER:
+        if (g->playing) { /* the world stays loaded; Done comes back here */
+            g->playing = false;
+            g->play_paused = true;
+        }
+        g->fe.depth = 0;
+        g->fe.state = g->play_paused ? FE_PLAY : FE_SETTINGS;
+        frontend_go(&g->fe, FE_CREATOR);
+        break;
+    case MENU_APPLE:
+        g->account_msg[0] = 0;
+        g->session.account_error[0] = 0;
+        g->google_busy = apple_auth_start(g->google, app->window);
         break;
     default:
         break;
@@ -394,56 +486,6 @@ static void scene_defaults(GfxSceneParams *sp, float time, const DayState *d)
     sp->reflection_y = 0.0f;
     sp->reflection_strength = 1.0f;
     sp->time = time;
-}
-
-/* Launch screen: slow orbit around the scene, menu on top. */
-static void game_frame_launch(Game *g, MgApp *app)
-{
-    GfxSceneParams sp = {0};
-    HMM_Vec3 target;
-    scene_launch_view(g->scene, (float)app->time, &sp.eye, &target);
-    sp.view = HMM_LookAt_RH(sp.eye, target, HMM_V3(0, 1, 0));
-    sp.proj = camera_projection(HMM_AngleDeg(62.0f), app->width_pt / app->height_pt, 0.05f, 400.0f, -0.25f);
-    scene_defaults(&sp, (float)app->time, &g->day_state);
-    gfx_set_scene(app->gfx, &sp);
-    SceneView view = {sp.eye, 0, (float)app->time, false, false, g->lamp_on};
-    scene_lights(g->scene, app->gfx, &view);
-    scene_draw(g->scene, app->gfx, &view);
-    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
-    for (int i = 0; i < SCENE_SPAWNS; i++) { /* the cast, idling on their discs */
-        AvatarLook look = i == 0 ? session_my_look(&g->session) : avatar_look_for_slot(i);
-        AvatarPose pose = {scene_spawn(g->scene, i), scene_spawn_yaw(g->scene) + HMM_PI32 + 0.3f * (float)(i - 1),
-                           HMM_V3(0, 0, 0), true, false};
-        avatar_draw(app->gfx, &g->avatar_meshes, &look, &pose, &g->local_anim, &g->world);
-    }
-    avatar_animate(&g->local_anim, &(AvatarPose){HMM_V3(0, 0, 0), 0, HMM_V3(0, 0, 0), true, false},
-                   mg_minf(app->frame_dt, 0.1f));
-
-    LaunchChoice c = launch_screen(&g->launch, &g->ui, app->width_pt, app->height_pt, app->safe_left,
-                                   app->safe_top, app->safe_right, app->safe_bottom, g->net != NULL);
-    switch (c) {
-    case LAUNCH_OFFLINE:
-        session_stop(&g->session);
-        player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
-        break;
-    case LAUNCH_CREATE_PARTY:
-        session_start(&g->session, MODE_PARTY, NULL);
-        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->session.room_code);
-        break;
-    case LAUNCH_JOIN_PARTY:
-        session_start(&g->session, MODE_PARTY, g->launch.code);
-        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->launch.code);
-        break;
-    case LAUNCH_WORLD:
-        session_start(&g->session, MODE_WORLD, NULL);
-        break;
-    default:
-        break;
-    }
-    if (c != LAUNCH_NONE) {
-        g->cam.initialized = false;
-        touch_controls_reset(&g->touch);
-    }
 }
 
 /* Big room badge at the top so the code can be read out to friends;
@@ -499,6 +541,230 @@ static void apply_tier(Game *g, MgApp *app)
     }
 }
 
+/* What Settings -> Account shows. */
+static SettingsAccount account_view(Game *g)
+{
+    SettingsAccount a = {g->profile.display_name,
+                         g->profile.email,
+                         g->profile.guest || !g->profile_loaded,
+                         g->net && google_auth_available(g->google),
+                         g->net && apple_auth_available(g->google),
+                         g->prefs.auth_provider,
+                         g->google_busy,
+                         g->session.account_error[0] ? g->session.account_error : g->account_msg};
+    return a;
+}
+
+/* Native sign-in sheet finished: hand the token to Supabase to link. */
+static void poll_sign_in(Game *g, MgApp *app)
+{
+    char token[4096], nonce[96], err[160], name[64];
+    char provider[12];
+    GoogleAuthState gs = native_auth_poll(g->google, provider, sizeof(provider), token, sizeof(token), nonce,
+                                          sizeof(nonce), name, sizeof(name), err, sizeof(err));
+    if (gs == GOOGLE_DONE) {
+        SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "%s", provider);
+        if (name[0]) { /* Apple sends the full name only once: keep it now */
+            SDL_snprintf(g->pending_name, sizeof(g->pending_name), "%s", name);
+        }
+        net_link_idp(g->net, provider, token, nonce);
+        SDL_memset(token, 0, sizeof(token));
+    } else if (gs == GOOGLE_FAILED) {
+        g->google_busy = false;
+        bool cancelled = SDL_strcmp(err, "cancelled") == 0;
+        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s", cancelled ? str("cancelled") : err);
+        frontend_toast(&g->fe, cancelled ? str("cancelled") : str("no_connection"), app->time);
+    }
+    if (g->session.account_error[0] && g->google_busy) {
+        g->google_busy = false;
+        frontend_toast(&g->fe, str("no_connection"), app->time);
+    }
+}
+
+/* Account (re)loaded from Supabase: cache it on the device and route the
+ * welcome screen (a linked account with a name skips onboarding). */
+static void account_loaded(Game *g, MgApp *app)
+{
+    (void)app;
+    if (!g->profile.guest && g->pending_name[0] && SDL_strcmp(g->profile.display_name, "Player") == 0) {
+        /* first link with Apple: its full name, cleaned to 2-16 safe chars */
+        char name[NET_NAME_LEN];
+        int n = 0;
+        for (const char *c = g->pending_name; *c && n < 16; c++) {
+            if (SDL_isalnum((unsigned char)*c) || *c == ' ' || *c == '_') {
+                name[n++] = *c;
+            }
+        }
+        name[n] = 0;
+        if (n >= 2) {
+            SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", name);
+            net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
+        }
+    }
+    g->pending_name[0] = 0;
+    g->prefs.has_profile_cache = true;
+    SDL_snprintf(g->prefs.cache_name, sizeof(g->prefs.cache_name), "%s", g->profile.display_name);
+    g->prefs.cache_skin = g->profile.skin;
+    if (g->profile.guest && !g->prefs.auth_provider[0]) {
+        SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "guest");
+    }
+    if (g->fe.state == FE_WELCOME && !g->profile.guest && g->google_busy) {
+        /* signed in from the welcome screen */
+        if (SDL_strcmp(g->profile.display_name, "Player") != 0) {
+            g->prefs.onboarding_done = true; /* known account: straight to the menu */
+            g->fe.depth = 0;
+            g->fe.state = FE_MAIN_MENU;
+        } else {
+            SDL_snprintf(g->fe.name, sizeof(g->fe.name), "%s", g->profile.google_name);
+            frontend_go(&g->fe, FE_USERNAME);
+        }
+    }
+    g->google_busy = false;
+    save_prefs(g);
+}
+
+/* LOADING: build the hospital over a few frames, then start playing. */
+static void load_step(Game *g, MgApp *app)
+{
+    switch (g->load_step++) {
+    case 0:
+        break; /* one frame to show the bar */
+    case 1:
+        if (!ensure_world(g, app)) {
+            frontend_toast(&g->fe, "Could not load the hospital", app->time);
+            g->fe.state = FE_MAIN_MENU;
+        }
+        break;
+    default:
+        player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
+        g->cam.initialized = false;
+        touch_controls_reset(&g->touch);
+        if (g->pending_play == 1) {
+            session_start(&g->session, MODE_PARTY, NULL);
+            SDL_snprintf(g->prefs.last_room, sizeof(g->prefs.last_room), "%s", g->session.room_code);
+        } else if (g->pending_play == 2) {
+            session_start(&g->session, MODE_PARTY, g->fe.code);
+            SDL_snprintf(g->prefs.last_room, sizeof(g->prefs.last_room), "%s", g->fe.code);
+        } else {
+            session_stop(&g->session); /* offline: nothing leaves the device */
+        }
+        g->playing = true;
+        g->fe.depth = 0;
+        g->fe.state = FE_PLAY;
+        save_prefs(g);
+        break;
+    }
+}
+
+static void start_loading(Game *g, int what)
+{
+    g->pending_play = what;
+    g->load_step = 0;
+    g->fe.state = FE_LOADING;
+}
+
+/* Everything outside PLAY: menu scene, screens, their actions. */
+static void frontend_flow(Game *g, MgApp *app, bool back)
+{
+    Frontend *f = &g->fe;
+    if (back && frontend_back(f) == FE_EXIT) {
+        app->quit_requested = true;
+    }
+    if (f->state == FE_PLAY && g->play_paused) { /* creator closed: back in the game */
+        g->playing = true;
+        g->play_paused = false;
+        return;
+    }
+    poll_sign_in(g, app);
+    FrontendCtx ctx = {g->profile.display_name,
+                       &g->profile.skin,
+                       g->profile.guest || !g->profile_loaded,
+                       g->prefs.auth_provider,
+                       g->net && google_auth_available(g->google),
+                       g->net && apple_auth_available(g->google),
+                       g->google_busy,
+                       g->has_save,
+                       g->prefs.last_mode,
+                       g->load_step / 2.0f,
+                       MG_VERSION};
+    FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
+    if (f->state == FE_SETTINGS) { /* the settings panel, full screen over the menu */
+        g->menu.open = true;
+        SettingsAccount acct = account_view(g);
+        MenuAction ma = settings_menu(&g->menu, &g->ui, &g->settings, &acct, app->width_pt, app->height_pt,
+                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, "");
+        handle_menu_action(g, app, ma);
+        app_text_input(app, g->menu.editing_name);
+        if (!g->menu.open && f->state == FE_SETTINGS) {
+            frontend_back(f);
+            save_prefs(g);
+        }
+        return;
+    }
+    if (f->clicked) {
+        audio_click(g->audio);
+    }
+    switch (a) {
+    case FE_SIGN_IN_GOOGLE:
+        g->google_busy = google_auth_start(g->google, app->window);
+        break;
+    case FE_SIGN_IN_APPLE:
+        g->google_busy = apple_auth_start(g->google, app->window);
+        break;
+    case FE_GUEST:
+        SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "guest");
+        if (SDL_strcmp(g->profile.display_name, "Player") != 0) {
+            SDL_snprintf(f->name, sizeof(f->name), "%s", g->profile.display_name);
+        } else {
+            SDL_snprintf(f->name, sizeof(f->name), "Player%04d", (int)SDL_rand(10000));
+        }
+        frontend_go(f, FE_USERNAME);
+        break;
+    case FE_NAME_DONE:
+        SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", f->name);
+        profile_changed(g);
+        frontend_go(f, FE_CREATOR);
+        break;
+    case FE_SKIN_CHANGED:
+        profile_changed(g);
+        break;
+    case FE_CREATOR_DONE:
+        g->prefs.onboarding_done = true;
+        profile_changed(g);
+        if (f->depth > 0 && (f->stack[f->depth - 1] == FE_SETTINGS || f->stack[f->depth - 1] == FE_PLAY ||
+                             f->stack[f->depth - 1] == FE_MAIN_MENU)) {
+            frontend_back(f); /* back where the creator was opened from */
+        } else {
+            f->depth = 0;
+            f->state = FE_MAIN_MENU;
+        }
+        break;
+    case FE_NEW_GAME:
+        start_loading(g, 0);
+        break;
+    case FE_CONTINUE:
+        start_loading(g, 0);
+        break;
+    case FE_ROOM_CREATE:
+        g->prefs.last_mode = mode_find("free_roam");
+        start_loading(g, 1);
+        break;
+    case FE_ROOM_JOIN:
+        g->prefs.last_mode = mode_find("free_roam");
+        start_loading(g, 2);
+        break;
+    case FE_LOAD_STEP:
+        load_step(g, app);
+        break;
+    case FE_EXIT:
+        app->quit_requested = true;
+        break;
+    default:
+        break;
+    }
+    app_text_input(app, f->editing_name);
+}
+
 void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
@@ -517,12 +783,12 @@ void game_frame(MgApp *app, float alpha)
     /* network: events, remote buffers, our state at the adaptive rate */
     {
         const KinematicState *k = &g->player.kin;
-        Elevator *el = scene_elevator(g->scene);
+        Elevator *el = g->playing ? scene_elevator(g->scene) : NULL;
         uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
                                   (g->player.sprint ? REP_SPRINTING : 0) |
                                   (el && elevator_busy(el) ? REP_RIDING : 0));
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
-                       (uint8_t)scene_floor_of(g->scene, k->pos));
+                       (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
         if (el) { /* someone riding from our landing: their doors close here too */
             for (int f = 0; f < el->floors; f++) {
                 el->hold_shut[f] = false;
@@ -534,7 +800,7 @@ void game_frame(MgApp *app, float alpha)
                 }
             }
         }
-        if (g->session.spawn_pending) {
+        if (g->session.spawn_pending && g->playing) {
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
             player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
@@ -563,8 +829,16 @@ void game_frame(MgApp *app, float alpha)
             if (g->skin_override) {
                 g->profile.skin = g->override_skin;
             }
+            if (g->prefs.profile_stale && g->prefs.has_profile_cache) {
+                /* edited while offline: ours wins over the server copy */
+                SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", g->prefs.cache_name);
+                g->profile.skin = g->prefs.cache_skin;
+                net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
+                g->prefs.profile_stale = false;
+            }
             stats_loaded(&g->stats, &g->profile.stats, app->time);
             session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+            account_loaded(g, app);
         }
         g->stats.rooms = g->session.rooms_joined;
         if (stats_flush_due(&g->stats, app->time)) {
@@ -584,32 +858,19 @@ void game_frame(MgApp *app, float alpha)
     /* UI claims touches first (gear + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
-    if (g->launch.active) {
-        game_frame_launch(g, app);
+    bool back = app->input.key_pressed[SDL_SCANCODE_AC_BACK] || app->input.key_pressed[SDL_SCANCODE_ESCAPE];
+    if (!g->playing) {
+        frontend_flow(g, app, back);
         return;
     }
-    SettingsAccount acct = {g->profile.display_name, g->profile.email, g->profile.guest || !g->profile_loaded,
-                            g->net && google_auth_available(g->google), g->google_busy,
-                            g->session.account_error[0] ? g->session.account_error : g->account_msg};
-    MenuAction action = settings_menu(&g->menu, &g->ui, s, &g->profile.skin, &acct, app->width_pt, app->height_pt,
+    if (back) { /* in game: the back key opens / closes the settings panel */
+        g->menu.open = !g->menu.open;
+    }
+    SettingsAccount acct = account_view(g);
+    MenuAction action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt,
                                       app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, app, action);
-    {
-        /* native Google sign-in finished: hand the token to Supabase */
-        char token[4096], nonce[96], err[160];
-        GoogleAuthState gs = google_auth_poll(g->google, token, sizeof(token), nonce, sizeof(nonce), err, sizeof(err));
-        if (gs == GOOGLE_DONE) {
-            net_link_google(g->net, token, nonce);
-            SDL_memset(token, 0, sizeof(token));
-        } else if (gs == GOOGLE_FAILED) {
-            g->google_busy = false;
-            SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s",
-                         SDL_strcmp(err, "cancelled") == 0 ? "Sign-in cancelled" : err);
-        }
-        if (g->session.account_error[0]) {
-            g->google_busy = false;
-        }
-    }
+    poll_sign_in(g, app);
     app_text_input(app, g->menu.open && g->menu.editing_name);
     if (g->menu.preview_visible) { /* the avatar turning slowly in the Skin tab */
         GfxSceneParams pc = {0};

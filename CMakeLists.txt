@@ -64,6 +64,7 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
   ${CMAKE_SOURCE_DIR}/assets/cacert.pem
   ${CMAKE_SOURCE_DIR}/assets/daycycle.json
+  ${CMAKE_SOURCE_DIR}/assets/strings.json
 )
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
@@ -130,8 +131,9 @@ target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physic
 # native Google sign-in, one starter per platform (engine/platform/google_auth.h)
 if(MG_PLATFORM STREQUAL "ios")
   enable_language(OBJC)
-  target_sources(mg_engine PRIVATE platform/ios/google_auth.m)
-  set_source_files_properties(platform/ios/google_auth.m PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_sources(mg_engine PRIVATE platform/ios/google_auth.m platform/ios/apple_auth.m)
+  set_source_files_properties(platform/ios/google_auth.m platform/ios/apple_auth.m PROPERTIES COMPILE_OPTIONS
+                              "-fobjc-arc")
   target_link_libraries(mg_engine PUBLIC "-framework AuthenticationServices" "-framework UIKit")
 elseif(MG_PLATFORM STREQUAL "android")
   target_sources(mg_engine PRIVATE engine/platform/google_auth_android.c)
@@ -163,7 +165,11 @@ set(MG_GAME_SOURCES
   game/avatar.c
   game/scenery.c
   game/net_session.c
-  game/launch_screen.c
+  game/frontend.c
+  game/creator.c
+  game/modes.c
+  game/prefs.c
+  game/strings.c
 )
 
 # --------------------------------------------------------------- targets

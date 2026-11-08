@@ -14,5 +14,7 @@ Audio *audio_create(Arena *perm);
 void audio_destroy(Audio *a);
 /* Soft two-note elevator "ding". Safe to call from the frame or tick. */
 void audio_ding(Audio *a);
+/* Short menu click (sine blip). */
+void audio_click(Audio *a);
 
 #endif

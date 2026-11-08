@@ -4,11 +4,10 @@
 #include <string.h>
 
 #include "avatar.h"
+#include "strings.h"
 
-#define TILE 56.0f
 #define NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-."
 
-static UiColor rgb(uint32_t hex) { return ui_rgba((hex << 8) | 0xFFu); }
 
 /* ------------------------------------------------------------------ game */
 
@@ -114,61 +113,15 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 
 /* ------------------------------------------------------------------ skin */
 
-static void tile_frame(Ui *ui, float x, float y, float w, bool selected, bool held)
+static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float x, float y, float w, float h,
+                     MenuAction *action)
 {
-    if (selected) {
-        ui_round_rect(ui->gfx, ui->font, x - 3.0f, y - 3.0f, w + 6.0f, TILE + 6.0f, 15.0f, k_ui_theme.accent);
-    }
-    ui_round_rect(ui->gfx, ui->font, x, y, w, TILE, 12.0f, held ? k_ui_theme.button_down : ui_rgba(0x2A3042FF));
-}
-
-/* One sideways-scrolling row of tiles; returns the index tapped or -1. */
-static int tile_row(SettingsMenu *m, Ui *ui, int row, const char *title, float x, float y, float w, int count,
-                    int selected, float tile_w)
-{
-    ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, title);
-    y += 22.0f;
-    float off = ui_scroll_begin(ui, &m->rows[row], x - 4.0f, y - 4.0f, w + 8.0f, TILE + 8.0f, true);
-    int picked = -1;
-    for (int i = 0; i < count; i++) {
-        float tx = x + (float)i * (tile_w + 10.0f) - off;
-        char id[24];
-        SDL_snprintf(id, sizeof(id), "tile%d_%d", row, i);
-        bool held = false;
-        if (ui_hit_area(ui, id, tx, y, tile_w, TILE, &held)) {
-            picked = i;
-        }
-        tile_frame(ui, tx, y, tile_w, i == selected, held);
-        if (row == 0) { /* palette: outfit body, skin head, hair and accent dots */
-            AvatarLook l = avatar_look_from_skin((NetSkin){(uint8_t)i, HAIR_SHORT, ACC_NONE});
-            float cx = tx + tile_w * 0.5f;
-            ui_round_rect(ui->gfx, ui->font, cx - 12.0f, y + 26.0f, 24.0f, 24.0f, 9.0f, rgb(l.outfit));
-            ui_circle(ui->gfx, ui->font, cx, y + 17.0f, 10.0f, rgb(l.skin));
-            ui_round_rect(ui->gfx, ui->font, cx - 10.0f, y + 6.0f, 20.0f, 8.0f, 4.0f, rgb(l.hair));
-            ui_circle(ui->gfx, ui->font, cx + 4.0f, y + 34.0f, 3.5f, rgb(l.accent));
-        } else {
-            const char *name = row == 1 ? avatar_hair_name(i) : avatar_accessory_name(i);
-            text_draw_centered(ui->gfx, ui->font, tx + tile_w * 0.5f, y + TILE * 0.5f, 15.0f, k_ui_theme.text, name);
-        }
-    }
-    ui_scroll_end(ui, &m->rows[row], w, (float)count * (tile_w + 10.0f));
-    return picked;
-}
-
-static void skin_tab(SettingsMenu *m, Ui *ui, NetSkin *skin, const SettingsAccount *acct, float x, float y, float w,
-                     float h, MenuAction *action)
-{
-    /* left: preview square + name (fixed); right: tile rows + account (scrolls) */
-    float left_w = mg_clampf(w * 0.3f, 120.0f, 200.0f);
-    float size = mg_minf(left_w, h - 60.0f);
-    m->preview_visible = true;
-    m->preview_x = x;
-    m->preview_y = y;
-    m->preview_size = size;
-    float ny = y + size + 10.0f;
-    ui_label(ui, x, ny, 13.0f, k_ui_theme.text_dim, "Name");
-    int ed = ui_text_field(ui, "name", x, ny + 18.0f, left_w, 40.0f, m->name, (int)sizeof(m->name),
-                           &m->editing_name, NAME_CHARS);
+    (void)h;
+    float cw = mg_minf(w, 420.0f);
+    m->preview_visible = false;
+    ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, str("username_title"));
+    int ed = ui_text_field(ui, "name", x, y + 18.0f, cw, 44.0f, m->name, (int)sizeof(m->name), &m->editing_name,
+                           NAME_CHARS);
     if (ed == UI_EDIT_DONE) {
         size_t len = strlen(m->name);
         while (len > 0 && m->name[len - 1] == ' ') {
@@ -178,63 +131,56 @@ static void skin_tab(SettingsMenu *m, Ui *ui, NetSkin *skin, const SettingsAccou
             *action = MENU_NAME;
         }
     }
-
-    float rx = x + left_w + 20.0f, rw = w - left_w - 20.0f;
-    float off = ui_scroll_begin(ui, &m->skin_scroll, rx - 4.0f, y - 4.0f, rw + 8.0f, h + 4.0f, false);
-    float ry = y - off;
-    const float row_h = 22.0f + TILE + 16.0f;
-    int p = tile_row(m, ui, 0, "Palette", rx, ry, rw, AVATAR_PALETTES, skin->palette, TILE);
-    ry += row_h;
-    int hr = tile_row(m, ui, 1, "Hair", rx, ry, rw, AVATAR_HAIRS, skin->hair, 76.0f);
-    ry += row_h;
-    int ac = tile_row(m, ui, 2, "Accessory", rx, ry, rw, AVATAR_ACCESSORIES, skin->accessory, 96.0f);
-    ry += row_h;
-    if (p >= 0 || hr >= 0 || ac >= 0) {
-        skin->palette = p >= 0 ? (uint8_t)p : skin->palette;
-        skin->hair = hr >= 0 ? (uint8_t)hr : skin->hair;
-        skin->accessory = ac >= 0 ? (uint8_t)ac : skin->accessory;
-        *action = MENU_SKIN;
+    y += 76.0f;
+    char label[64];
+    SDL_snprintf(label, sizeof(label), "%s##editchar", str("edit_character"));
+    if (ui_button(ui, label, x, y, cw, 48.0f, true)) {
+        *action = MENU_EDIT_CHARACTER;
+        m->open = false;
     }
-
-    /* account */
-    ui_label(ui, rx, ry, 15.0f, k_ui_theme.text_dim, "Account");
-    ry += 22.0f;
+    y += 64.0f;
     char line[96];
     if (acct->guest) {
-        SDL_snprintf(line, sizeof(line), "Signed in as guest");
+        SDL_snprintf(line, sizeof(line), "%s", str("guest_name"));
     } else {
-        SDL_snprintf(line, sizeof(line), "Signed in as %s", acct->name);
+        SDL_snprintf(line, sizeof(line), "%s %s " TEXT_BULLET " %s", str("signed_in_as"), acct->name,
+                     SDL_strcmp(acct->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
     }
-    ui_label(ui, rx, ry, 16.0f, k_ui_theme.text, line);
+    ui_label(ui, x, y, 16.0f, k_ui_theme.text, line);
     if (!acct->guest && acct->email[0]) {
-        ui_label(ui, rx, ry + 20.0f, 13.0f, k_ui_theme.text_dim, acct->email);
+        ui_label(ui, x, y + 20.0f, 13.0f, k_ui_theme.text_dim, acct->email);
     }
-    ry += 44.0f;
-    float bw = mg_minf(rw, 260.0f);
+    y += 44.0f;
     if (acct->guest) {
         if (acct->busy) {
-            ui_button(ui, "Signing in...##google", rx, ry, bw, 44.0f, false);
-        } else if (ui_button(ui, "Continue with Google", rx, ry, bw, 44.0f, acct->google_ready) &&
-                   acct->google_ready) {
-            *action = MENU_GOOGLE;
+            ui_button(ui, "...##google", x, y, cw, 44.0f, false);
+        } else {
+            float bw = acct->apple_ready ? (cw - 8.0f) * 0.5f : cw;
+            if (acct->google_ready) {
+                SDL_snprintf(label, sizeof(label), "%s##google", str("google"));
+                if (ui_button(ui, label, x, y, bw, 44.0f, true)) {
+                    *action = MENU_GOOGLE;
+                }
+            }
+            if (acct->apple_ready) {
+                SDL_snprintf(label, sizeof(label), "%s##apple", str("apple"));
+                if (ui_button(ui, label, acct->google_ready ? x + bw + 8.0f : x, y, bw, 44.0f, false)) {
+                    *action = MENU_APPLE;
+                }
+            }
         }
-    } else if (ui_button(ui, "Sign out", rx, ry, bw, 44.0f, false)) {
+    } else if (ui_button(ui, "Sign out", x, y, cw, 44.0f, false)) {
         *action = MENU_SIGN_OUT;
     }
-    ry += 52.0f;
-    const char *msg = acct->message && acct->message[0] ? acct->message
-                      : !acct->google_ready            ? "Google sign-in is not configured in this build"
-                                                       : "";
-    if (msg[0]) {
-        ui_label(ui, rx, ry, 13.0f, k_ui_theme.text_dim, msg);
-        ry += 22.0f;
+    y += 52.0f;
+    if (acct->message && acct->message[0]) {
+        ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, acct->message);
     }
-    ui_scroll_end(ui, &m->skin_scroll, h, ry + off - y);
 }
 
 /* ------------------------------------------------------------------ panel */
 
-MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, NetSkin *skin, const SettingsAccount *acct,
+MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
                          float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
                          const char *status)
 {
@@ -283,7 +229,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, NetSkin *skin
     if (ui_button(ui, "Game##tab0", x, y, tw, 36.0f, m->tab == 0)) {
         m->tab = 0;
     }
-    if (ui_button(ui, "Skin##tab1", x + tw + 8.0f, y, tw, 36.0f, m->tab == 1)) {
+    if (ui_button(ui, "Account##tab1", x + tw + 8.0f, y, tw, 36.0f, m->tab == 1)) {
         m->tab = 1;
     }
     y += 48.0f;
@@ -294,7 +240,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, NetSkin *skin
         float used = game_tab(m, ui, s, x, y - off, w, &action);
         ui_scroll_end(ui, &m->game_scroll, h, used);
     } else {
-        skin_tab(m, ui, skin, acct, x, y, w, h, &action);
+        skin_tab(m, ui, acct, x, y, w, h, &action);
     }
     if (!m->open) {
         m->editing_name = false;

@@ -14,6 +14,8 @@ struct Audio {
     float *ding;
     int ding_len;
     SDL_AtomicInt cursor; /* next sample to play, ding_len = idle */
+    float click[1440];    /* 30 ms */
+    SDL_AtomicInt click_cursor;
 };
 
 /* Two sine notes (E6 then C6) with soft attack, exponential decay and a
@@ -46,11 +48,13 @@ static void SDLCALL feed(void *user, SDL_AudioStream *stream, int additional, in
     int want = additional / (int)sizeof(float);
     while (want > 0) {
         int n = want < 512 ? want : 512;
-        int cur = SDL_GetAtomicInt(&a->cursor);
+        int cur = SDL_GetAtomicInt(&a->cursor), cc = SDL_GetAtomicInt(&a->click_cursor);
+        const int click_len = (int)(sizeof(a->click) / sizeof(a->click[0]));
         for (int i = 0; i < n; i++) {
-            buf[i] = cur < a->ding_len ? a->ding[cur++] : 0.0f;
+            buf[i] = (cur < a->ding_len ? a->ding[cur++] : 0.0f) + (cc < click_len ? a->click[cc++] : 0.0f);
         }
         SDL_SetAtomicInt(&a->cursor, cur);
+        SDL_SetAtomicInt(&a->click_cursor, cc);
         SDL_PutAudioStreamData(stream, buf, n * (int)sizeof(float));
         want -= n;
     }
@@ -69,6 +73,12 @@ Audio *audio_create(Arena *perm)
     }
     render_ding(a->ding, a->ding_len);
     SDL_SetAtomicInt(&a->cursor, a->ding_len);
+    const int click_len = (int)(sizeof(a->click) / sizeof(a->click[0]));
+    for (int i = 0; i < click_len; i++) { /* 1.8 kHz blip, fast decay */
+        float t = (float)i / (float)AUDIO_RATE;
+        a->click[i] = 0.12f * sinf(2.0f * (float)M_PI * 1800.0f * t) * expf(-t * 160.0f);
+    }
+    SDL_SetAtomicInt(&a->click_cursor, click_len);
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         mg_log_warn("audio: init failed: %s", SDL_GetError());
         return NULL;
@@ -95,5 +105,12 @@ void audio_ding(Audio *a)
 {
     if (a) {
         SDL_SetAtomicInt(&a->cursor, 0);
+    }
+}
+
+void audio_click(Audio *a)
+{
+    if (a) {
+        SDL_SetAtomicInt(&a->click_cursor, 0);
     }
 }

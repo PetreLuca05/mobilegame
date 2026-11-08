@@ -16,24 +16,33 @@
 #define AVATAR_PALETTES 8
 #define AVATAR_HAIRS 6
 #define AVATAR_ACCESSORIES 5
+#define AVATAR_SKIN_COLORS 8
+#define AVATAR_HAIR_COLORS 8
+#define AVATAR_SUITS 8
 
 enum { OUTFIT_PLAIN, OUTFIT_COAT, OUTFIT_SCRUBS };
 enum { HAIR_NONE, HAIR_SHORT, HAIR_BOB, HAIR_BUN, HAIR_SPIKY, HAIR_CURLY };
 enum { ACC_NONE, ACC_SUNGLASSES, ACC_CAT_EARS, ACC_MASK, ACC_STETHOSCOPE };
+enum { BODY_MALE, BODY_FEMALE };
+enum { DECAL_CROSS, DECAL_POCKET, DECAL_BADGE };
 
 typedef struct AvatarLook {
     uint32_t skin, outfit, hair, accent; /* 0xRRGGBB */
+    uint32_t trim;        /* V-neck / scrubs under a coat */
+    uint8_t body;         /* BODY_* */
+    uint8_t decal;        /* DECAL_* on the left chest */
     uint8_t outfit_style; /* OUTFIT_* */
     uint8_t hair_style;   /* HAIR_* */
     uint8_t accessory;    /* ACC_* */
 } AvatarLook;
 
-/* The default skin: doctor palette, short cap, surgical mask. */
-#define AVATAR_DEFAULT_SKIN ((NetSkin){0, HAIR_SHORT, ACC_MASK})
+/* The default character: male doctor, white coat, short dark hair, mask. */
+#define AVATAR_DEFAULT_SKIN ((NetSkin){.skin = 1, .hair = HAIR_SHORT, .hair_color = 1, .suit = 3, .accessory = ACC_MASK})
 
 typedef struct AvatarMeshes {
     GfxMeshId body, head, hair[AVATAR_HAIRS], eye, nose, mouth, hand, decal, glasses, ear, shadow;
-    GfxMeshId mask, scope, vneck, cross;
+    GfxMeshId mask, scope, vneck, cross, pocket;
+    GfxMeshId body_female;
 } AvatarMeshes;
 
 /* Animation state, advanced once per rendered frame. */
@@ -61,6 +70,10 @@ AvatarLook avatar_look_from_skin(NetSkin skin);
 /* Placeholder look for a peer whose Presence has not arrived yet. */
 AvatarLook avatar_look_for_slot(int slot);
 const char *avatar_palette_name(int i);
+const uint32_t *avatar_skin_colors(void);
+const uint32_t *avatar_hair_colors(void);
+void avatar_suit_colors(int suit, uint32_t *outfit, uint32_t *accent);
+const char *avatar_suit_name(int suit);
 const char *avatar_hair_name(int i);
 const char *avatar_accessory_name(int i);
 void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt);

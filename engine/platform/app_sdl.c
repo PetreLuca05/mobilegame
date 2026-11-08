@@ -198,11 +198,6 @@ SDL_AppResult app_event(void *appstate, SDL_Event *e)
             }
         }
         return SDL_APP_CONTINUE;
-    case SDL_EVENT_KEY_DOWN:
-        if (e->key.scancode == SDL_SCANCODE_ESCAPE) {
-            return SDL_APP_SUCCESS;
-        }
-        break;
     default:
         break;
     }

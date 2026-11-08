@@ -56,19 +56,22 @@ static bool post_link(SupaAuth *a, struct mg_mgr *mgr, bool with_guest_jwt)
     if (with_guest_jwt) {
         snprintf(headers + n, sizeof(headers) - (size_t)n, "Authorization: Bearer %s\r\n", a->guest_token);
     }
-    static const char fmt[] = "{\"provider\":\"google\",\"id_token\":\"%s\",\"nonce\":\"%s\"%s}";
+    static const char fmt[] = "{\"provider\":\"%s\",\"id_token\":\"%s\",\"nonce\":\"%s\"%s}";
     char body[2400];
-    snprintf(body, sizeof(body), fmt, a->link_token, a->link_nonce, with_guest_jwt ? ",\"link_identity\":true" : "");
+    snprintf(body, sizeof(body), fmt, a->link_provider, a->link_token, a->link_nonce,
+             with_guest_jwt ? ",\"link_identity\":true" : "");
     a->state = with_guest_jwt ? AUTH_LINKING : AUTH_LINK_SIGNIN;
     return https_request(&a->req, mgr, &a->ep, "POST", "/auth/v1/token?grant_type=id_token", headers, body,
                          request_done, a);
 }
 
-bool supa_auth_link_google(SupaAuth *a, struct mg_mgr *mgr, const char *id_token, const char *nonce)
+bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, const char *id_token,
+                        const char *nonce)
 {
     if (a->state != AUTH_OK || !a->access_token[0]) {
         return false;
     }
+    snprintf(a->link_provider, sizeof(a->link_provider), "%s", provider);
     snprintf(a->link_token, sizeof(a->link_token), "%s", id_token);
     snprintf(a->link_nonce, sizeof(a->link_nonce), "%s", nonce ? nonce : "");
     snprintf(a->guest_token, sizeof(a->guest_token), "%s", a->access_token);
@@ -180,7 +183,7 @@ static void link_done(SupaAuth *a, struct mg_mgr *mgr, int status, const char *b
         }
         /* a different user than the guest: the guest would be an orphan */
         a->delete_guest = a->guest_id[0] && strcmp(a->guest_id, a->user_id) != 0;
-        mg_log_info("auth: Google %s %.8s... (%s)", a->delete_guest ? "account, switched to" : "linked to",
+        mg_log_info("auth: %s account %s %.8s... (%s)", a->link_provider, a->delete_guest ? "switched to" : "linked to",
                     a->user_id, a->email);
         a->account_changed = true;
         a->state = AUTH_OK;
@@ -197,7 +200,7 @@ static void link_done(SupaAuth *a, struct mg_mgr *mgr, int status, const char *b
         return;
     }
     copy_error(a, status, body, len);
-    snprintf(a->link_error, sizeof(a->link_error), "Google sign-in: %s", a->error);
+    snprintf(a->link_error, sizeof(a->link_error), "sign-in: %s", a->error);
     mg_log_warn("auth: %s", a->link_error);
     a->state = AUTH_OK; /* still signed in as before */
     memset(a->link_token, 0, sizeof(a->link_token));

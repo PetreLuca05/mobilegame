@@ -202,6 +202,9 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
 
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 20, 28, white);
     m->body = mb_upload(&mb, g);
+    mb_reset(&mb); /* female: 0.86 m tall, 0.46 m wide, a slightly narrower top */
+    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB * 0.92f, BODY_RT * 0.9f, BODY_H * 0.955f, 20, 28, white);
+    m->body_female = mb_upload(&mb, g);
     mb_reset(&mb);
     mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 20, 28, white, NULL, NULL);
     m->head = mb_upload(&mb, g);
@@ -275,10 +278,18 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
     mb_box(&mb, cf, HMM_V3(0.009f, 0.028f, 0.005f), white);
     m->cross = mb_upload(&mb, g);
     mb_reset(&mb);
+    /* chest pocket: a flat panel with a darker flap */
+    HMM_Mat4 pf = body_frame(-0.13f, 0.52f, 0.003f);
+    mb_box(&mb, pf, HMM_V3(0.055f, 0.05f, 0.004f), white);
+    mb_box(&mb, HMM_MulM4(pf, HMM_Translate(HMM_V3(0, 0.04f, -0.004f))), HMM_V3(0.057f, 0.012f, 0.004f),
+           HMM_V4(0.7f, 0.7f, 0.72f, 1));
+    m->pocket = mb_upload(&mb, g);
+    mb_reset(&mb);
     mb_sprite_quad(&mb);
     m->shadow = mb_upload(&mb, g);
     arena_reset_to(scratch, mark);
-    return m->body != GFX_MESH_NONE && m->mask != GFX_MESH_NONE && m->scope != GFX_MESH_NONE &&
+    return m->body != GFX_MESH_NONE && m->body_female != GFX_MESH_NONE && m->pocket != GFX_MESH_NONE &&
+           m->mask != GFX_MESH_NONE && m->scope != GFX_MESH_NONE &&
            m->shadow != GFX_MESH_NONE;
 }
 
@@ -288,8 +299,9 @@ typedef struct PalettePreset {
     uint8_t outfit_style;
 } PalettePreset;
 
+/* M2 presets: still read for old profiles (palette key) */
 static const PalettePreset k_palettes[AVATAR_PALETTES] = {
-    {"Default", 0xFFD3B0, 0xF5F7FA, 0x3FA7A0, 0xE5403A, OUTFIT_COAT}, /* white coat, teal scrubs + cap */
+    {"Default", 0xFFD3B0, 0xF5F7FA, 0x3FA7A0, 0xE5403A, OUTFIT_COAT},
     {"Scrubs", 0xE8B48A, 0x5BB98C, 0x2F7D5B, 0xFFFFFF, OUTFIT_SCRUBS},
     {"Doctor", 0xC68A5E, 0xF5F7FA, 0x1F2A44, 0x2F6FB7, OUTFIT_COAT},
     {"Paramedic", 0x8D5A3B, 0xD83A34, 0x2B1A10, 0xFFD23F, OUTFIT_PLAIN},
@@ -298,25 +310,73 @@ static const PalettePreset k_palettes[AVATAR_PALETTES] = {
     {"Mint", 0xFFE0C2, 0x9FE3C9, 0x3E8C77, 0xFFFFFF, OUTFIT_SCRUBS},
     {"Charcoal", 0xC68A5E, 0x3A3D44, 0x1A1A1E, 0xE5E5E5, OUTFIT_PLAIN},
 };
+
+static const uint32_t k_skin_colors[AVATAR_SKIN_COLORS] = {0xFFE0C8, 0xF5C9A6, 0xE8B48C, 0xD29B72,
+                                                           0xB57A52, 0x8E5A3A, 0x6B4128, 0x4A2C1B};
+static const uint32_t k_hair_colors[AVATAR_HAIR_COLORS] = {0x1B1B1B, 0x4A3222, 0x8B5A2B, 0xC68642,
+                                                           0xE6C27A, 0xB22222, 0xD9D9D9, 0x5B7FD9};
+
+typedef struct Suit {
+    const char *name;
+    uint32_t outfit, accent, trim;
+    uint8_t style, decal;
+} Suit;
+
+static const Suit k_suits[AVATAR_SUITS] = {
+    {"Scrubs green", 0x5BB98C, 0xFFFFFF, 0x2F7D5B, OUTFIT_SCRUBS, DECAL_POCKET},
+    {"Scrubs blue", 0x4A7FC9, 0xFFFFFF, 0x2D558F, OUTFIT_SCRUBS, DECAL_POCKET},
+    {"Surgeon teal", 0x3FA7A0, 0xE8F4F2, 0x2A746F, OUTFIT_SCRUBS, DECAL_BADGE},
+    {"White coat", 0xF5F7FA, 0xE5403A, 0x1F2A44, OUTFIT_COAT, DECAL_CROSS},
+    {"Paramedic", 0xD83A34, 0xFFD23F, 0x8F201C, OUTFIT_PLAIN, DECAL_BADGE},
+    {"Nurse", 0xF7F7FA, 0xF2A0B8, 0xF2A0B8, OUTFIT_SCRUBS, DECAL_CROSS},
+    {"Night shift", 0x2A3A6B, 0x7FB2FF, 0x182447, OUTFIT_SCRUBS, DECAL_BADGE},
+    {"Lab coat", 0xF2F2F2, 0x8A929C, 0x5E6670, OUTFIT_COAT, DECAL_POCKET},
+};
+
 static const char *const k_hair_names[AVATAR_HAIRS] = {"None", "Short", "Bob", "Bun", "Spiky", "Curly"};
 static const char *const k_accessory_names[AVATAR_ACCESSORIES] = {"None", "Sunglasses", "Cat ears", "Mask",
                                                                   "Stethoscope"};
 
-AvatarLook avatar_look_from_skin(NetSkin skin)
+static uint8_t clampu(uint8_t v, int n) { return v < n ? v : 0; }
+
+AvatarLook avatar_look_from_skin(NetSkin s)
 {
-    const PalettePreset *p = &k_palettes[skin.palette < AVATAR_PALETTES ? skin.palette : 0];
-    AvatarLook l = {p->skin, p->outfit, p->hair, p->accent, p->outfit_style,
-                    (uint8_t)(skin.hair < AVATAR_HAIRS ? skin.hair : HAIR_SHORT),
-                    (uint8_t)(skin.accessory < AVATAR_ACCESSORIES ? skin.accessory : ACC_NONE)};
+    const Suit *suit = &k_suits[clampu(s.suit, AVATAR_SUITS)];
+    AvatarLook l;
+    l.skin = k_skin_colors[clampu(s.skin, AVATAR_SKIN_COLORS)];
+    l.hair = k_hair_colors[clampu(s.hair_color, AVATAR_HAIR_COLORS)];
+    l.outfit = suit->outfit;
+    l.accent = suit->accent;
+    l.trim = suit->trim;
+    l.outfit_style = suit->style;
+    l.decal = suit->decal;
+    l.body = clampu(s.body, 2);
+    l.hair_style = s.hair < AVATAR_HAIRS ? s.hair : HAIR_SHORT;
+    l.accessory = clampu(s.accessory, AVATAR_ACCESSORIES);
     return l;
 }
 
 AvatarLook avatar_look_for_slot(int slot)
 {
     static const NetSkin skins[SCENE_SPAWNS] = {
-        {0, HAIR_SHORT, ACC_MASK}, {3, HAIR_SHORT, ACC_SUNGLASSES}, {1, HAIR_BUN, ACC_NONE}, {5, HAIR_SPIKY, ACC_CAT_EARS}};
+        {.skin = 1, .hair = HAIR_SHORT, .hair_color = 1, .suit = 3, .accessory = ACC_MASK},
+        {.skin = 5, .hair = HAIR_SHORT, .suit = 4, .accessory = ACC_SUNGLASSES},
+        {.body = BODY_FEMALE, .skin = 2, .hair = HAIR_BUN, .hair_color = 3, .suit = 0},
+        {.body = BODY_FEMALE, .skin = 0, .hair = HAIR_BOB, .hair_color = 5, .suit = 5, .accessory = ACC_CAT_EARS}};
     return avatar_look_from_skin(skins[slot >= 0 && slot < SCENE_SPAWNS ? slot : 0]);
 }
+
+const uint32_t *avatar_skin_colors(void) { return k_skin_colors; }
+const uint32_t *avatar_hair_colors(void) { return k_hair_colors; }
+
+void avatar_suit_colors(int suit, uint32_t *outfit, uint32_t *accent)
+{
+    const Suit *s = &k_suits[suit >= 0 && suit < AVATAR_SUITS ? suit : 0];
+    *outfit = s->outfit;
+    *accent = s->accent;
+}
+
+const char *avatar_suit_name(int suit) { return suit >= 0 && suit < AVATAR_SUITS ? k_suits[suit].name : ""; }
 
 const char *avatar_palette_name(int i) { return i >= 0 && i < AVATAR_PALETTES ? k_palettes[i].name : ""; }
 const char *avatar_hair_name(int i) { return i >= 0 && i < AVATAR_HAIRS ? k_hair_names[i] : ""; }
@@ -387,30 +447,37 @@ void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, c
     HMM_Mat4 body = compose(root, HMM_V3(0, BODY_BASE + bob, 0));
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd, HMM_V3(1, 0, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side, HMM_V3(0, 0, 1)));
-    outlined(&dc, m->body, body, look->outfit);
+    const bool female = look->body == BODY_FEMALE;
+    outlined(&dc, female ? m->body_female : m->body, body, look->outfit);
+    /* chest details were modelled on the male body: scale them onto the female one */
+    HMM_Mat4 chest = female ? HMM_MulM4(body, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body;
     const bool coat = look->outfit_style == OUTFIT_COAT;
-    if (look->outfit_style == OUTFIT_SCRUBS) {
-        part(&dc, m->vneck, body, look->hair, SURF_MATTE);
-        if (look->accessory != ACC_STETHOSCOPE) {
-            part(&dc, m->decal, compose(body, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
-        }
+    if (look->outfit_style != OUTFIT_PLAIN) {
+        part(&dc, m->vneck, chest, look->trim, SURF_MATTE);
     }
     if (coat || look->accessory == ACC_STETHOSCOPE) {
-        part(&dc, m->scope, body, 0xFFFFFF, SURF_GLOSSY);
+        part(&dc, m->scope, chest, 0xFFFFFF, SURF_GLOSSY);
     }
     if (coat) {
-        part(&dc, m->vneck, body, look->hair, SURF_MATTE);
-        part(&dc, m->cross, body, look->accent, SURF_GLOSSY);
         for (int i = 0; i < 3; i++) {
-            part(&dc, m->nose, HMM_MulM4(body, HMM_Translate(body_surface(0.0f, 0.30f - 0.08f * (float)i, 0.004f))),
+            part(&dc, m->nose, HMM_MulM4(chest, HMM_Translate(body_surface(0.0f, 0.30f - 0.08f * (float)i, 0.004f))),
                  BUTTON_COLOR, SURF_GLOSSY);
         }
-    } else if (look->outfit_style == OUTFIT_PLAIN && look->accessory != ACC_STETHOSCOPE) {
-        part(&dc, m->decal, compose(body, HMM_V3(0, BODY_H * 0.62f, -0.218f)), look->accent, SURF_GLOSSY);
+    }
+    if (look->decal == DECAL_CROSS) {
+        part(&dc, m->cross, chest, look->accent, SURF_GLOSSY);
+    } else if (look->decal == DECAL_POCKET) {
+        part(&dc, m->pocket, chest, look->outfit == 0xF5F7FA || look->outfit == 0xF2F2F2 ? 0xE6E9EE : look->accent,
+             SURF_MATTE);
+    } else if (look->accessory != ACC_STETHOSCOPE) {
+        part(&dc, m->decal, compose(chest, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
     }
 
-    /* head rides on the body top, bobbing in opposite phase */
-    HMM_Mat4 head = compose(body, HMM_V3(0, BODY_H + HEAD_GAP + HEAD_R - 2.0f * bob, 0));
+    /* head rides on the body top, bobbing in opposite phase; smaller on the female body */
+    const float body_h = female ? BODY_H * 0.955f : BODY_H;
+    const float hs = female ? 0.956f : 1.0f; /* 0.43 m head */
+    HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob, 0));
+    head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));
     outlined(&dc, m->head, head, look->skin);
     if (look->hair_style != HAIR_NONE && look->hair_style < AVATAR_HAIRS) {
         outlined(&dc, m->hair[look->hair_style], head, look->hair);

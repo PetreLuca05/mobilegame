@@ -93,3 +93,17 @@ JNIEXPORT void JNICALL Java_ro_docvex_mobilegame_GoogleAuth_nativeResult(JNIEnv 
     copy_jstring(env, error, err, sizeof(err));
     google_auth_finish(g, tok[0] ? tok : NULL, non, err);
 }
+
+/* Sign in with Apple is iOS only. */
+bool apple_auth_platform_available(const GoogleAuth *g)
+{
+    (void)g;
+    return false;
+}
+
+bool apple_auth_platform_start(GoogleAuth *g, struct SDL_Window *window)
+{
+    (void)g;
+    (void)window;
+    return false;
+}

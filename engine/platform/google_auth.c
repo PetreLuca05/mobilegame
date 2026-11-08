@@ -19,18 +19,24 @@ GoogleAuth *google_auth_create(Arena *perm, const char *web_client_id, const cha
 
 bool google_auth_available(const GoogleAuth *g) { return g && g->lock && google_auth_platform_available(g); }
 
-bool google_auth_start(GoogleAuth *g, struct SDL_Window *window)
+bool apple_auth_available(const GoogleAuth *g) { return g && g->lock && apple_auth_platform_available(g); }
+
+static bool begin(GoogleAuth *g, const char *provider)
 {
-    if (!google_auth_available(g)) {
-        return false;
-    }
     SDL_LockMutex(g->lock);
     bool busy = g->state == GOOGLE_PENDING;
     if (!busy) {
         g->state = GOOGLE_PENDING;
+        snprintf(g->provider, sizeof(g->provider), "%s", provider);
+        g->full_name[0] = 0;
     }
     SDL_UnlockMutex(g->lock);
-    if (busy) {
+    return !busy;
+}
+
+bool google_auth_start(GoogleAuth *g, struct SDL_Window *window)
+{
+    if (!google_auth_available(g) || !begin(g, "google")) {
         return false;
     }
     if (!google_auth_platform_start(g, window)) {
@@ -38,6 +44,25 @@ bool google_auth_start(GoogleAuth *g, struct SDL_Window *window)
         return false;
     }
     return true;
+}
+
+bool apple_auth_start(GoogleAuth *g, struct SDL_Window *window)
+{
+    if (!apple_auth_available(g) || !begin(g, "apple")) {
+        return false;
+    }
+    if (!apple_auth_platform_start(g, window)) {
+        google_auth_finish(g, NULL, NULL, "could not start Sign in with Apple");
+        return false;
+    }
+    return true;
+}
+
+void native_auth_set_name(GoogleAuth *g, const char *full_name)
+{
+    SDL_LockMutex(g->lock);
+    snprintf(g->full_name, sizeof(g->full_name), "%s", full_name ? full_name : "");
+    SDL_UnlockMutex(g->lock);
 }
 
 void google_auth_finish(GoogleAuth *g, const char *token, const char *nonce, const char *error)
@@ -55,9 +80,11 @@ void google_auth_finish(GoogleAuth *g, const char *token, const char *nonce, con
     SDL_UnlockMutex(g->lock);
 }
 
-GoogleAuthState google_auth_poll(GoogleAuth *g, char *id_token, size_t token_cap, char *nonce, size_t nonce_cap,
-                                 char *error, size_t error_cap)
+GoogleAuthState native_auth_poll(GoogleAuth *g, char *provider, size_t provider_cap, char *id_token, size_t token_cap,
+                                 char *nonce, size_t nonce_cap, char *name, size_t name_cap, char *error,
+                                 size_t error_cap)
 {
+    provider[0] = name[0] = error[0] = 0;
     if (!g || !g->lock) {
         return GOOGLE_IDLE;
     }
@@ -66,6 +93,8 @@ GoogleAuthState google_auth_poll(GoogleAuth *g, char *id_token, size_t token_cap
     if (s == GOOGLE_DONE) {
         snprintf(id_token, token_cap, "%s", g->token);
         snprintf(nonce, nonce_cap, "%s", g->nonce);
+        snprintf(provider, provider_cap, "%s", g->provider);
+        snprintf(name, name_cap, "%s", g->full_name);
         memset(g->token, 0, sizeof(g->token));
         g->state = GOOGLE_IDLE;
     } else if (s == GOOGLE_FAILED) {
