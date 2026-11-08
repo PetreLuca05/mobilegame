@@ -346,6 +346,34 @@ bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Ve
            regions_connect(n, gfrom, gto, a, b, ca, cb);
 }
 
+bool nav_snap(const NavWorld *n, int storey, float *x, float *z, float radius)
+{
+    const int gi = nav_grid_index(n, storey);
+    if (gi < 0) {
+        return false;
+    }
+    const NavGrid *g = &n->grids[gi];
+    NavCell c;
+    if (!nearest_walkable(g, *x, *z, &c)) {
+        return false;
+    }
+    const float wx = g->d.x0 + ((float)c.x + 0.5f) * NAV_CELL, wz = g->d.z0 + ((float)c.z + 0.5f) * NAV_CELL;
+    const float dx = wx - *x, dz = wz - *z;
+    if (dx * dx + dz * dz > radius * radius) {
+        return false;
+    }
+    if (!(g->flags[c.z * g->d.cols + c.x] & NAV_WALKABLE)) {
+        return false;
+    }
+    /* a point already on a walkable cell stays where it was authored */
+    NavCell here = cell_at(g, *x, *z);
+    if (here.x != c.x || here.z != c.z) {
+        *x = wx;
+        *z = wz;
+    }
+    return true;
+}
+
 bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos, int *storey)
 {
     if (grid < 0 || grid >= n->grid_count) {

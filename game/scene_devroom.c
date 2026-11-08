@@ -1,4 +1,5 @@
 /* MG_SCENE=devroom: the M1 dev room behind the scene interface. */
+#include "rooms.h"
 #include "scene.h"
 
 #include "devroom.h"
@@ -74,6 +75,12 @@ int scene_area_kind(float x, float z, int storey)
 {
     (void)x, (void)z, (void)storey;
     return 0;
+}
+
+void scene_rooms_build(Scene *s, struct RoomGraph *g)
+{
+    (void)s;
+    rooms_clear(g);
 }
 
 struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world)

@@ -123,6 +123,9 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
 int hospital_group_storey(int grp);
 /* Walkability grids for pathfinding (all elevator doors count as open). */
 NavWorld *hospital_nav_bake(Hospital *h, Arena *perm, ColWorld *world);
+struct RoomGraph;
+/* The hand-built hospital as a room graph (posts, queues, spawns, routes). */
+void hospital_rooms_build(struct RoomGraph *g);
 /* Collider of a wall piece that is faded out right now (fade = vis slots). */
 bool hospital_box_cut_away(const Hospital *h, int box, const float *fade);
 /* Targets for the fade slots: storeys above the view floor and the roof go

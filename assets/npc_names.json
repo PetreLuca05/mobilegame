@@ -1,0 +1,9 @@
+{
+  "adult": ["Ana", "Mihai", "Elena", "Andrei", "Ioana", "Radu", "Maria", "Vlad", "Cristina", "Dan", "Alina", "Sorin", "Laura", "Paul",
+            "Monica", "George", "Irina", "Bogdan", "Daria", "Stefan", "Oana", "Cosmin", "Raluca", "Tudor", "Sofia", "Marius", "Adriana",
+            "Emil", "Sara", "Victor", "Nina", "Adam", "Lena", "Omar", "Mia", "Leo", "Eva", "Noah", "Zara", "Hugo"],
+  "child": ["Luca", "Matei", "Eliza", "Sonia", "Tudorel", "Mara", "Ilinca", "Rares", "Anaia", "Filip", "Ema", "Teo", "Nico", "Lili", "Toma"],
+  "surname": ["Ionescu", "Popescu", "Popa", "Radu", "Dumitru", "Stan", "Stoica", "Gheorghe", "Rusu", "Munteanu", "Matei", "Constantin",
+              "Serban", "Moldovan", "Lazar", "Dinu", "Ene", "Tudor", "Nistor", "Barbu", "Sandu", "Florea", "Dobre", "Cretu", "Voicu",
+              "Oprea", "Mihai", "Ilie", "Marin", "Nagy", "Pop", "Toma", "Petre", "Costea", "Neagu", "Vasile", "Avram", "Bucur", "Enache", "Zamfir"]
+}

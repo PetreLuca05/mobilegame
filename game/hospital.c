@@ -1,3 +1,4 @@
+#include "rooms.h"
 #ifdef MG_BAKE
 #include "bake.h"
 #include "world/lighting_day.h"
@@ -743,6 +744,7 @@ static void build_floor_1(Build *b)
     for (int i = 0; i < 4; i++) {
         bed(b, f, sx[i], SB1, -1.0f, blankets[i]);
         table(b, f, sx[i] + 1.0f, 0.2f, 0.25f, 0.25f, C_WOOD);
+        chair(b, f, sx[i] - 1.2f, -0.4f, 2, C_TEAL); /* visitor */
         snprintf(label, sizeof(label), "Room 10%d", i + 1);
         door_sign(b, f, sx[i], CORR_S, FACE_NZ, label);
     }
@@ -750,6 +752,7 @@ static void build_floor_1(Build *b)
         float cx = s == 0 ? -10.0f : 10.0f;
         bed(b, f, cx, NB0, 1.0f, blankets[4 + s]);
         table(b, f, cx + 1.0f, -16.2f, 0.25f, 0.25f, C_WOOD);
+        chair(b, f, cx - 1.2f, -15.15f, 2, C_TEAL); /* visitor */
         snprintf(label, sizeof(label), "Room 10%d", 5 + s);
         door_sign(b, f, cx, CORR_N, FACE_PZ, label);
     }
@@ -816,6 +819,161 @@ static void build_floor_2(Build *b)
         chair(b, f, tables[i][0], tables[i][1] + 0.75f, 1, 0xFFB347);
     }
     plant(b, f, -5.3f, 0.2f);
+}
+
+/* ------------------------------------------------------------------ room graph */
+
+/* facing: avatars look along -Z at yaw 0 */
+#define YAW_NZ 0.0f
+#define YAW_PZ HMM_PI32
+#define YAW_PX (-HMM_PI32 * 0.5f)
+#define YAW_NX (HMM_PI32 * 0.5f)
+
+enum { GROUP_QUEUE = 1, GROUP_EXAM1, GROUP_EXAM2, GROUP_TRIAGE, GROUP_PHARMACY, GROUP_OR1, GROUP_OR2 };
+
+static void rooms_common(RoomGraph *g, int f)
+{
+    room_add(g, "Corridor", ROOM_CORRIDOR, f, IX0, CORR_N, IX1, CORR_S);
+    room_add(g, "Lift lobby", ROOM_LIFT_LOBBY, f, -2.5f, NB1, 2.5f, CORR_N);
+    room_add(g, "Stairs", ROOM_STAIRS, f, -6.0f, NB0, -2.5f, NB1);
+    slot_add(g, SLOT_LIFT_LOBBY, f, 0.0f, -11.4f, YAW_PZ);
+    static const float mop[4] = {-12.0f, -6.0f, 6.0f, 12.0f};
+    for (int i = 0; i < 4; i++) {
+        slot_add(g, SLOT_MOP_SPOT, f, mop[i], -9.4f, i < 2 ? YAW_PX : YAW_NX);
+    }
+}
+
+void hospital_rooms_build(RoomGraph *g)
+{
+    rooms_clear(g);
+    g->lift[0] = HOSP_CAR_X0;
+    g->lift[1] = HOSP_CAR_Z0;
+    g->lift[2] = HOSP_CAR_X1;
+    g->lift[3] = HOSP_CAR_Z1;
+    /* yard: gate, entrance, paths, drop-off loop, benches, parking, flower beds */
+    room_add(g, "Yard", ROOM_YARD, -1, -HOSP_YARD_HX, -HOSP_YARD_HZ, HOSP_YARD_HX, HOSP_YARD_HZ);
+    slot_add(g, SLOT_WORLD_EXIT, -1, 0.0f, 19.4f, YAW_PZ);
+    slot_add(g, SLOT_GATE_POST, -1, 3.0f, 18.6f, YAW_NX);
+    slot_add(g, SLOT_ENTRANCE_IN, -1, -0.8f, 2.2f, YAW_NZ);
+    slot_add(g, SLOT_ENTRANCE_OUT, -1, 0.8f, 2.2f, YAW_PZ);
+    static const float path[12][2] = {{-1, 18},  {1, 15},    {-1, 12},  {1, 9},    {-1, 6},     {1, 3.5f},
+                                      {3, 13.5f}, {8, 13.5f}, {13, 13.5f}, {13, 6}, {8, 5.5f}, {3, 5.5f}};
+    for (int i = 0; i < 12; i++) {
+        slot_add(g, SLOT_PATH_NODE, -1, path[i][0], path[i][1], YAW_NZ);
+    }
+    static const float garden[6][2] = {{-20.5f, 10}, {-23.5f, -2}, {-19.8f, -13}, {20.5f, -6}, {23.5f, -14}, {-7.5f, 14}};
+    for (int i = 0; i < 6; i++) {
+        slot_add(g, SLOT_GARDEN_SPOT, -1, garden[i][0], garden[i][1], YAW_NZ);
+    }
+    static const float benches[4][3] = {{-4.0f, 12.0f, -1}, {-4.0f, 7.0f, -1}, {-22.0f, 5.0f, -1}, {22.0f, -1.0f, 1}};
+    for (int i = 0; i < 4; i++) {
+        const float x = benches[i][0], z = benches[i][1], s = benches[i][2];
+        for (int k = -1; k <= 1; k += 2) { /* faces away from its back rest */
+            slot_add_seat(g, SLOT_BENCH, -1, x - s * 0.85f, z + (float)k * 0.4f, x, z + (float)k * 0.4f, s < 0.0f ? YAW_PX : YAW_NX);
+        }
+    }
+    for (int i = 0; i < 4; i++) {
+        slot_add(g, SLOT_PARKING_BAY, -1, 16.5f, 5.3f + 2.45f * (float)i, YAW_NX);
+    }
+
+    /* G */
+    int lobby = room_add(g, "Lobby", ROOM_LOBBY, 0, -6.0f, SB0, 6.0f, SB1);
+    int pharmacy = room_add(g, "Pharmacy", ROOM_PHARMACY, 0, IX0, SB0, -6.0f, SB1);
+    int triage = room_add(g, "Triage", ROOM_TRIAGE, 0, 6.0f, SB0, IX1, SB1);
+    int exam1 = room_add(g, "Exam 1", ROOM_EXAM, 0, IX0, NB0, -6.0f, NB1);
+    int exam2 = room_add(g, "Exam 2", ROOM_EXAM, 0, 6.0f, NB0, IX1, NB1);
+    rooms_common(g, 0);
+    int corr0 = room_at(g, 0.0f, -9.4f, 0);
+    room_add_door(g, lobby, corr0, 0.0f, CORR_S);
+    room_add_door(g, pharmacy, corr0, -10.4f, CORR_S);
+    room_add_door(g, triage, corr0, 10.4f, CORR_S);
+    room_add_door(g, exam1, corr0, -10.0f, CORR_N);
+    room_add_door(g, exam2, corr0, 10.0f, CORR_N);
+    room_add_door(g, room_at(g, 0.0f, -11.5f, 0), corr0, 0.0f, CORR_N);
+    room_add_door(g, 0, lobby, 0.0f, SB1);
+    slot_add(g, SLOT_RECEPTION_DESK, 0, -2.9f, -4.5f, YAW_PZ);
+    for (int i = 0; i < 5; i++) {
+        slot_set_group(g, slot_add(g, SLOT_RECEPTION_QUEUE, 0, -3.5f + 0.7f * (float)i, -2.6f, YAW_NZ), GROUP_QUEUE, i);
+    }
+    for (int col = 0; col < 2; col++) {
+        for (int i = 0; i < 4; i++) {
+            const float x = 2.8f + 1.6f * (float)col, z = -1.0f - 0.7f * (float)i;
+            slot_add_seat(g, SLOT_WAIT_CHAIR, 0, x - 0.65f, z, x, z, YAW_NX);
+        }
+    }
+    for (int s = -1; s <= 1; s += 2) {
+        const float cx = (float)s * 10.4f;
+        const int grp = s < 0 ? GROUP_EXAM1 : GROUP_EXAM2;
+        slot_set_group(g, slot_add(g, SLOT_EXAM_DOCTOR, 0, cx + (float)s * 2.0f, -14.0f, s < 0 ? YAW_PX : YAW_NX), grp, 0);
+        slot_set_group(g, slot_add(g, SLOT_EXAM_PATIENT, 0, cx - (float)s * 2.0f, -14.25f, YAW_NZ), grp, 0);
+    }
+    slot_set_group(g, slot_add(g, SLOT_EXAM_DOCTOR, 0, 8.7f, -2.0f, YAW_PX), GROUP_TRIAGE, 0);
+    slot_set_group(g, slot_add(g, SLOT_EXAM_PATIENT, 0, 12.5f, -1.75f, YAW_PZ), GROUP_TRIAGE, 0);
+    slot_set_group(g, slot_add(g, SLOT_EXAM_DOCTOR, 0, -9.0f, -2.3f, YAW_NZ), GROUP_PHARMACY, 0);
+    slot_set_group(g, slot_add(g, SLOT_EXAM_PATIENT, 0, -9.0f, -4.1f, YAW_PZ), GROUP_PHARMACY, 0);
+
+    /* 1: wards and the nurses' station */
+    static const float sx[4] = {-10.4f, -3.0f, 3.0f, 10.4f};
+    static const char *const ward_names[6] = {"Room 101", "Room 102", "Room 103", "Room 104", "Room 105", "Room 106"};
+    static const float sx0[4] = {IX0, -6.0f, 0.0f, 6.0f}, sx1[4] = {-6.0f, 0.0f, 6.0f, IX1};
+    rooms_common(g, 1);
+    int corr1 = room_at(g, 0.0f, -9.4f, 1);
+    room_add_door(g, room_at(g, 0.0f, -11.5f, 1), corr1, 0.0f, CORR_N);
+    for (int i = 0; i < 4; i++) {
+        int w = room_add(g, ward_names[i], ROOM_WARD, 1, sx0[i], SB0, sx1[i], SB1);
+        g->rooms[w].beds = 1;
+        room_add_door(g, w, corr1, sx[i], CORR_S);
+        int bed_slot = slot_add_seat(g, SLOT_WARD_BED, 1, sx[i], SB1 - 2.5f, sx[i], SB1 - 1.0f, YAW_NZ);
+        if (i == 2) { /* with room 106: the two beds nearest the nurses' station */
+            slot_set_flags(g, bed_slot, SLOT_PAEDIATRIC);
+        }
+        slot_add_seat(g, SLOT_WARD_VISITOR_CHAIR, 1, sx[i] - 1.2f, -1.15f, sx[i] - 1.2f, -0.4f, YAW_PX);
+    }
+    for (int s = 0; s < 2; s++) {
+        const float cx = s == 0 ? -10.0f : 10.0f;
+        int w = room_add(g, ward_names[4 + s], ROOM_WARD, 1, s == 0 ? IX0 : 6.0f, NB0, s == 0 ? -6.0f : IX1, NB1);
+        g->rooms[w].beds = 1;
+        room_add_door(g, w, corr1, cx, CORR_N);
+        int bed_slot = slot_add_seat(g, SLOT_WARD_BED, 1, cx, NB0 + 2.5f, cx, NB0 + 1.0f, YAW_PZ);
+        if (s == 1) {
+            slot_set_flags(g, bed_slot, SLOT_PAEDIATRIC);
+        }
+        slot_add_seat(g, SLOT_WARD_VISITOR_CHAIR, 1, cx - 1.2f, -14.4f, cx - 1.2f, -15.15f, YAW_PX);
+    }
+    int station = room_add(g, "Nurses", ROOM_NURSE_STATION, 1, 2.5f, NB0, 6.0f, NB1);
+    room_add_door(g, station, corr1, 4.25f, CORR_N);
+    slot_add(g, SLOT_NURSE_STATION, 1, 3.6f, -11.0f, YAW_NZ);
+    slot_add(g, SLOT_NURSE_STATION, 1, 4.9f, -11.0f, YAW_NZ);
+    slot_add(g, SLOT_WINDOW, 1, -14.2f, -9.4f, YAW_PX);
+    slot_add(g, SLOT_WINDOW, 1, 12.8f, -9.4f, YAW_NX); /* short of the plant at the corridor's end */
+
+    /* 2: operating rooms, offices, cafeteria */
+    rooms_common(g, 2);
+    int corr2 = room_at(g, 0.0f, -9.4f, 2);
+    room_add_door(g, room_at(g, 0.0f, -11.5f, 2), corr2, 0.0f, CORR_N);
+    int cafe = room_add(g, "Cafeteria", ROOM_CAFETERIA, 2, -6.0f, SB0, 6.0f, SB1);
+    room_add_door(g, cafe, corr2, 0.0f, CORR_S);
+    for (int s = -1; s <= 1; s += 2) {
+        const float cx = (float)s * 10.4f;
+        int or_room = room_add(g, s < 0 ? "OR 1" : "OR 2", ROOM_OR, 2, s < 0 ? IX0 : 6.0f, SB0, s < 0 ? -6.0f : IX1, SB1);
+        room_add_door(g, or_room, corr2, cx, CORR_S);
+        const int grp = s < 0 ? GROUP_OR1 : GROUP_OR2;
+        slot_set_group(g, slot_add(g, SLOT_OR_SURGEON, 2, cx - 1.0f, -3.0f, YAW_PX), grp, 0);
+        slot_set_group(g, slot_add(g, SLOT_OR_ASSIST, 2, cx + 1.0f, -3.0f, YAW_NX), grp, 0);
+        int office = room_add(g, s < 0 ? "Office 1" : "Office 2", ROOM_OFFICE, 2, s < 0 ? IX0 : 6.0f, NB0, s < 0 ? -6.0f : IX1, NB1);
+        room_add_door(g, office, corr2, s < 0 ? -10.0f : 10.0f, CORR_N);
+        slot_add_seat(g, SLOT_OFFICE_DESK, 2, cx + 0.75f, -13.4f, cx, -13.7f, YAW_NZ);
+    }
+    static const float tables[4][2] = {{-4.0f, -5.2f}, {-4.0f, -1.8f}, {1.2f, -5.2f}, {1.2f, -1.8f}};
+    for (int i = 0; i < 4; i++) {
+        for (int k = -1; k <= 1; k += 2) {
+            const float z = tables[i][1] + (float)k * 0.75f;
+            slot_add_seat(g, SLOT_CAFE_SEAT, 2, tables[i][0] + 0.8f, z, tables[i][0], z, k < 0 ? YAW_PZ : YAW_NZ);
+        }
+    }
+    slot_add(g, SLOT_CAFE_COUNTER, 2, 3.0f, -3.8f, YAW_PX);
+    slot_add(g, SLOT_WINDOW, 2, -14.2f, -9.4f, YAW_PX);
+    slot_add(g, SLOT_WINDOW, 2, 14.2f, -9.4f, YAW_NX);
 }
 
 /* ------------------------------------------------------------------ init/draw */

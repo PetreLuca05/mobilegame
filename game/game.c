@@ -18,6 +18,7 @@
 #include "core/jobs.h"
 #include "core/prof.h"
 #include "perf_run.h"
+#include "rooms.h"
 #include "platform/device_stats.h"
 #include "stress.h"
 #include "ui/prof_hud.h"
@@ -126,6 +127,7 @@ typedef struct Game {
     PerfRun perf;
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
+    RoomGraph rooms;
     int msaa_samples;           /* what the thermal path returns to */
     int thermal, thermal_force; /* thermal_force: --force-thermal N, -1 = ask the OS */
     double next_thermal_poll;
@@ -224,6 +226,12 @@ static bool ensure_world(Game *g, MgApp *app)
         g->crowd_ok = g->nav && stress_init(&g->crowd, &app->perm);
         if (g->nav) {
             mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
+        }
+        if (g->nav) {
+            scene_rooms_build(g->scene, &g->rooms);
+            int bad = rooms_validate(&g->rooms, g->nav);
+            mg_log_info("rooms: %d rooms, %d doors, %d slots, %d on blocked cells", g->rooms.room_count, g->rooms.door_count,
+                        g->rooms.slot_count, bad);
         }
         arena_release_unused(&app->perm); /* the mesh builders' scratch: ~30 MB of dirty pages */
     }
@@ -462,6 +470,7 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
 static void run_determinism_check(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
@@ -1106,6 +1115,27 @@ static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
     g->rendered_entities += rendered;
 }
 
+/* debug: every slot of the view floor as an arrow; free green, taken red, blocked magenta;
+ * the tag name shows within 3 m of the player */
+static void draw_slots(Game *g, MgApp *app, int floor, HMM_Vec3 feet)
+{
+    for (int i = 0; i < g->rooms.slot_count; i++) {
+        const Slot *sl = &g->rooms.slots[i];
+        if ((sl->storey < 0 ? 0 : (int)sl->storey) != floor) {
+            continue;
+        }
+        const float y = scene_floor_y(g->scene, floor) + 0.08f;
+        HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_V3(sl->x, y, sl->z)), HMM_Rotate_RH(sl->yaw, HMM_V3(0, 1, 0)));
+        m = HMM_MulM4(m, HMM_Scale(HMM_V3(0.16f, 0.06f, 0.5f)));
+        GfxMaterial mat = mat_unlit(!sl->valid ? HMM_V4(1, 0, 1, 1) : sl->occupant ? HMM_V4(1, 0.15f, 0.15f, 1) : HMM_V4(0.2f, 1, 0.3f, 1));
+        gfx_draw(app->gfx, g->unit_box, &m, &mat, GFX_DRAW_NO_SHADOW);
+        const float dx = sl->x - feet.X, dz = sl->z - feet.Z;
+        if (dx * dx + dz * dz < 9.0f) {
+            name_tag(g, app, HMM_V3(sl->x, y + 0.5f, sl->z), slot_tag_name(sl->tags));
+        }
+    }
+}
+
 /* 1 Hz: at "serious" or worse, NPC detail radius halves and MSAA goes off */
 static void update_thermal(Game *g, MgApp *app)
 {
@@ -1655,6 +1685,9 @@ void game_frame(MgApp *app, float alpha)
     if (g->crowd_ok && g->crowd.pool.count > 0) {
         PROF_SCOPE("npc.draw");
         draw_crowd(g, app, floor, alpha);
+    }
+    if (s->show_slots) {
+        draw_slots(g, app, floor, feet);
     }
     if (s->show_colliders) {
         draw_colliders(g, app->gfx, feet);

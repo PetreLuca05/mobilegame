@@ -387,6 +387,15 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 `metal-gpu-intervals` table. Check `gpu-performance-state-intervals`: a GPU at
 "Minimum" clock makes ms look high.
 
+## NPCs (M7)
+
+- `game/rooms.h`: room graph (rooms, door nodes, slots with tags and an occupant, lift cells). The hospital fills it in
+  `hospital_rooms_build` (`game/hospital.c`); NPC code only uses this API. `rooms_validate` snaps slots to the nav grid at
+  load and logs any on a blocked cell as an error. A slot can have a separate seat point (chair, bed) from the point an NPC
+  walks to. Developer -> Show slots.
+- `assets/npcs.json`: archetypes and roster coefficients; `assets/npc_names.json`: names. Rows with `"enabled": false` are
+  reserved data (night shift) and ignored; there is no time-of-day logic.
+
 ## Performance (PERF-1)
 
 Standing rules and budgets: [docs/PERF_RULES.md](docs/PERF_RULES.md); measurements: [docs/PERF.md](docs/PERF.md).

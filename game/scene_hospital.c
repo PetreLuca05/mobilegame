@@ -1,4 +1,5 @@
 /* MG_SCENE=hospital (default): yard + 3-storey hospital. */
+#include "rooms.h"
 #include "scene.h"
 
 #include <math.h>
@@ -88,6 +89,12 @@ int scene_area_kind(float x, float z, int storey)
 }
 
 struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world) { return hospital_nav_bake(&s->h, perm, world); }
+
+void scene_rooms_build(Scene *s, struct RoomGraph *g)
+{
+    (void)s;
+    hospital_rooms_build(g);
+}
 
 bool scene_box_cut_away(const Scene *s, int box, const float *fade)
 {

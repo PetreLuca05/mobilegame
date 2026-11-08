@@ -1,0 +1,65 @@
+{
+  "_comment": "M7 NPCs, day roster. Rows with enabled:false are ignored by the loader; the night rows are reserved for a possible future day/night return.",
+  "roster": {
+    "staff_per_room": 0.5,
+    "outpatients_per_exam_room": 3,
+    "inpatients_per_bed": 0.7,
+    "visitors_per_ward": 1,
+    "cafe_visitors_per_seat": 0.5,
+    "pedestrians_per_bench_seat": 1.25,
+    "waiting_families": 1
+  },
+  "archetypes": [
+    {"name": "receptionist", "type": "staff", "staff_weight": 1, "age": [0, 1, 0.1], "speed": 1.6, "look": "coat", "storeys": [0],
+     "packages": [{"kind": "post", "tags": ["RECEPTION_DESK"]}]},
+    {"name": "doctor", "type": "staff", "staff_weight": 3, "age": [0, 0.85, 0.15], "speed": 1.6, "look": "doctor", "storeys": [0, 1, 2],
+     "packages": [{"kind": "patrol", "tags": ["EXAM_DOCTOR", "NURSE_STATION", "OFFICE_DESK", "OR_SURGEON"], "dwell": [20, 40]}]},
+    {"name": "nurse", "type": "staff", "staff_weight": 3, "age": [0, 1, 0], "speed": 1.6, "look": "nurse", "storeys": [0, 1],
+     "packages": [{"kind": "patrol", "tags": ["WARD_BED", "NURSE_STATION", "EXAM_DOCTOR"], "dwell": [8, 30]}]},
+    {"name": "orderly", "type": "staff", "staff_weight": 1, "age": [0, 0.8, 0.2], "speed": 1.6, "look": "orderly", "storeys": [0, 1, 2],
+     "packages": [{"kind": "patrol", "tags": ["MOP_SPOT"], "dwell": [6, 6], "pose": "mop", "random": true}]},
+    {"name": "security", "type": "staff", "staff_weight": 1, "age": [0, 1, 0], "speed": 1.6, "look": "security", "storeys": [-1],
+     "packages": [{"kind": "patrol", "tags": ["GATE_POST", "ENTRANCE_IN", "PARKING_BAY"], "dwell": [45, 90]}]},
+    {"name": "gardener", "type": "staff", "staff_weight": 1, "age": [0, 0.5, 0.5], "speed": 1.3, "look": "gardener", "storeys": [-1],
+     "packages": [{"kind": "patrol", "tags": ["GARDEN_SPOT"], "dwell": [25, 25], "pose": "crouch", "random": true}]},
+    {"name": "outpatient", "type": "outpatient", "age": [0, 0.65, 0.35], "speed": 1.6, "look": "civilian", "storeys": [0],
+     "packages": [{"kind": "route", "steps": [
+       {"do": "goto", "tags": ["ENTRANCE_IN"]},
+       {"do": "queue", "tags": ["RECEPTION_QUEUE"], "wait": [6, 12]},
+       {"do": "sit", "tags": ["WAIT_CHAIR"], "wait": [20, 40]},
+       {"do": "post", "tags": ["EXAM_PATIENT"], "wait": [25, 45]},
+       {"do": "leave"}]}]},
+    {"name": "inpatient", "type": "inpatient", "age": [0, 0.55, 0.45], "speed": 1.2, "look": "gown", "storeys": [1],
+     "packages": [
+       {"kind": "wander", "radius": 2.5, "chance": 0.25, "every": 600, "duration": 30},
+       {"kind": "bed", "tags": ["WARD_BED"]}]},
+    {"name": "visitor", "type": "visitor", "age": [0, 0.75, 0.25], "speed": 1.6, "look": "civilian", "storeys": [1],
+     "packages": [{"kind": "route", "steps": [
+       {"do": "sit", "tags": ["WARD_VISITOR_CHAIR"], "wait": [90, 180]},
+       {"do": "leave"}]}]},
+    {"name": "cafe_visitor", "type": "visitor", "age": [0, 0.75, 0.25], "speed": 1.6, "look": "civilian", "storeys": [2],
+     "packages": [{"kind": "route", "steps": [
+       {"do": "sit", "tags": ["CAFE_SEAT"], "wait": [60, 120]},
+       {"do": "leave"}]}]},
+    {"name": "pedestrian", "type": "pedestrian", "age": [0, 0.7, 0.3], "speed": 1.6, "look": "civilian", "storeys": [-1],
+     "packages": [{"kind": "route", "steps": [
+       {"do": "goto", "tags": ["PATH_NODE"]},
+       {"do": "goto", "tags": ["PATH_NODE"]},
+       {"do": "sit", "tags": ["BENCH"], "wait": [60, 200]},
+       {"do": "goto", "tags": ["PATH_NODE"]},
+       {"do": "leave"}]}]},
+    {"name": "parent", "type": "visitor", "age": [0, 1, 0], "speed": 1.6, "look": "civilian", "storeys": [0],
+     "packages": [{"kind": "route", "steps": [
+       {"do": "sit", "tags": ["WAIT_CHAIR"], "wait": [60, 120]},
+       {"do": "leave"}]}]},
+    {"name": "child", "type": "visitor", "age": [1, 0, 0], "speed": 1.9, "look": "civilian", "storeys": [0, 1],
+     "packages": [{"kind": "escort"}]},
+
+    {"name": "night_guard", "enabled": false, "type": "staff", "age": [0, 1, 0], "speed": 1.6, "look": "security", "storeys": [-1],
+     "_comment": "reserved: night shift",
+     "packages": [{"kind": "post", "tags": ["ENTRANCE_IN"]}]},
+    {"name": "night_nurse", "enabled": false, "type": "staff", "age": [0, 1, 0], "speed": 1.6, "look": "nurse", "storeys": [1],
+     "_comment": "reserved: night shift, sleeping wards, empty yard",
+     "packages": [{"kind": "post", "tags": ["NURSE_STATION"]}]}
+  ]
+}

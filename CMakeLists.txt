@@ -97,6 +97,8 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
   ${CMAKE_SOURCE_DIR}/assets/cacert.pem
   ${CMAKE_SOURCE_DIR}/assets/strings.json
+  ${CMAKE_SOURCE_DIR}/assets/npcs.json
+  ${CMAKE_SOURCE_DIR}/assets/npc_names.json
 )
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
@@ -227,6 +229,7 @@ set(MG_GAME_SOURCES
   game/stress.c
   game/bake.c
   game/npc.c
+  game/rooms.c
   game/stats.c
   game/player.c
   game/camera_td.c

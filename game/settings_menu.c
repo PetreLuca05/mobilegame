@@ -122,6 +122,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 #endif
         ui_toggle(ui, "Profiler", x, y, cw, &s->show_profiler);
         y += 44.0f;
+        ui_toggle(ui, "Show slots", x, y, cw, &s->show_slots);
+        y += 44.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Stress");
         y += 22.0f;
         ui_slider(ui, "Dummy avatars##stress", x, y, cw, &s->stress_count, 0.0f, 400.0f, "%.0f");

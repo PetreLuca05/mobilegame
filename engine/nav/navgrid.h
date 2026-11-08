@@ -95,6 +95,8 @@ void nav_cancel(NavWorld *n, NavClass cls, uint32_t id);
 /* A random walkable spot of a grid (0 ground, 1.. upper storeys) connected to
  * the car; storey -1 outdoors. False if none was found in a few tries. */
 bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos, int *storey);
+/* Moves (*x, *z) to the nearest walkable cell centre within `radius` m. */
+bool nav_snap(const NavWorld *n, int storey, float *x, float *z, float radius);
 bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey);
 
 typedef struct NavStats {
