@@ -79,6 +79,7 @@ void prefs_load(Prefs *p, const char *profile)
         g->show_floor_peek = flag(s, "show_floor_peek", g->show_floor_peek);
         g->floor_peek_hold = mg_clampf(num(s, "floor_peek_hold", g->floor_peek_hold), 0.0f, 10.0f);
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
+        g->show_xray = flag(s, "show_xray", g->show_xray);
         g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
         g->render_scale = num(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
@@ -142,6 +143,7 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddBoolToObject(s, "show_floor_peek", g->show_floor_peek);
     cJSON_AddNumberToObject(s, "floor_peek_hold", g->floor_peek_hold);
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
+    cJSON_AddBoolToObject(s, "show_xray", g->show_xray);
     cJSON_AddNumberToObject(s, "dead_zone", g->dead_zone_pt);
     cJSON_AddNumberToObject(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL

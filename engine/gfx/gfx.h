@@ -41,7 +41,8 @@ typedef enum GfxMaterialKind {
     GFX_MAT_TEXT,   /* world-space SDF glyph quads (signs), UV in the normal, alpha-blended */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */
-    GFX_MAT_XRAY,   /* ghost drawn only where something is in front (avatars behind walls) */
+    GFX_MAT_XRAY_RIM, /* x-ray: 2 px black rim of what is hidden behind geometry (drawn first) */
+    GFX_MAT_XRAY,     /* x-ray: flat dithered fill of what is hidden behind geometry */
     GFX_MAT_COUNT
 } GfxMaterialKind;
 
@@ -64,7 +65,7 @@ enum {
     GFX_DRAW_NO_MAIN = 1u << 1, /* reflection only */
     GFX_DRAW_PREVIEW = 1u << 2, /* settings preview camera only (see gfx_preview) */
     GFX_DRAW_NO_SHADOW = 1u << 3, /* never drawn into shadow maps */
-    GFX_DRAW_DYNAMIC = 1u << 4,   /* moves (avatars): dirties cached shadow tiles it touches */
+    GFX_DRAW_DYNAMIC = 1u << 4,   /* avatars: drawn after the x-ray passes (and, full: dirty shadow tiles) */
 };
 
 #ifdef MG_RENDER_FULL /* the M3 lighting path (MG_RENDER=full, reference only) */

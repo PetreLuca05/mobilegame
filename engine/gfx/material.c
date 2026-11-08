@@ -13,7 +13,8 @@ static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_TEXT] = {"mesh.vert", "text.frag", 2, 1, 1, true, false, false},
     [GFX_MAT_SPRITE] = {"mesh.vert", "sprite.frag", 2, 1, 0, true, false, false},
     [GFX_MAT_GHOST] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, false},
-    [GFX_MAT_XRAY] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, true, false, true},
+    [GFX_MAT_XRAY_RIM] = {"xray_rim.vert", "xray.frag", 2, 1, 0, false, false, true, false, true},
+    [GFX_MAT_XRAY] = {"mesh.vert", "xray.frag", 2, 1, 0, false, false, true, false, true},
 };
 
 const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_programs[kind]; }
@@ -106,8 +107,9 @@ GfxMaterial mat_sprite(HMM_Vec4 color, float shape)
     return m;
 }
 
-GfxMaterial mat_xray(HMM_Vec4 color)
+GfxMaterial mat_xray(HMM_Vec4 color, bool rim, bool always)
 {
-    GfxMaterial m = {GFX_MAT_XRAY, color, HMM_V4(0, 0, 0, 0)};
+    GfxMaterial m = {rim ? GFX_MAT_XRAY_RIM : GFX_MAT_XRAY, color, HMM_V4(0, 0, 0, always ? 1.0f : 0.0f)};
+    m.hide = 0.4f; /* 60 % dither: reads as "behind something" */
     return m;
 }

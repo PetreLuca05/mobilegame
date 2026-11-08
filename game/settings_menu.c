@@ -58,6 +58,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += 52.0f;
     ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
     cy += 44.0f;
+    ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
+    cy += 44.0f;
 #else
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
@@ -109,7 +111,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_triggers);
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Storey colours", x, y, cw, &s->show_storeys);
-        y += 44.0f;
+        ui_toggle(ui, "X-ray always", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->xray_always);
+        y += wide ? 44.0f : 84.0f;
 #ifdef MG_RENDER_FULL
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;

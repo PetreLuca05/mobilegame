@@ -112,6 +112,7 @@ enum { LAYOUT_NONE, LAYOUT_MESH, LAYOUT_UI };
 
 typedef struct PipelineSet {
     SDL_GPUGraphicsPipeline *mat[GFX_MAT_COUNT];
+    SDL_GPUGraphicsPipeline *xray_always[2]; /* rim, fill with depth test ALWAYS */
     SDL_GPUGraphicsPipeline *sky;
 } PipelineSet;
 
@@ -410,6 +411,11 @@ static bool create_pipelines(GfxContext *g)
             g->pipes[t].mat[k] = make_pipeline(g, &d);
             if (!g->pipes[t].mat[k]) {
                 return false;
+            }
+            if (k == GFX_MAT_XRAY_RIM || k == GFX_MAT_XRAY) {
+                d.depth_greater = false;
+                d.depth_always = true;
+                g->pipes[t].xray_always[k == GFX_MAT_XRAY] = make_pipeline(g, &d);
             }
         }
         PipeDesc sky = {
@@ -792,6 +798,11 @@ void gfx_shutdown(GfxContext *g)
         if (g->pipes[t].sky) {
             SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].sky);
         }
+        for (int k = 0; k < 2; k++) {
+            if (g->pipes[t].xray_always[k]) {
+                SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].xray_always[k]);
+            }
+        }
     }
     if (g->ui_pipe) {
         SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe);
@@ -976,7 +987,18 @@ void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, 
     g->preview_bg = background;
 }
 
-/* Opaque draws grouped by material, then sprites far-to-near. */
+/* Bucket 0: the world (grouped by material, sprites far-to-near); 1: the
+ * x-ray passes, tested against the world's depth only; 2: avatars
+ * (GFX_DRAW_DYNAMIC), which then paint over the x-ray wherever they are
+ * visible - so an avatar's own parts never x-ray through each other. */
+static int draw_bucket(const DrawItem *d)
+{
+    if (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) {
+        return 1;
+    }
+    return (d->flags & GFX_DRAW_DYNAMIC) ? 2 : 0;
+}
+
 static void sort_draws(GfxContext *g)
 {
     uint32_t n = g->draw_count;
@@ -990,7 +1012,10 @@ static void sort_draws(GfxContext *g)
         while (j > 0) {
             const DrawItem *b = &g->draws[g->order[j - 1]];
             bool before;
-            if (a->kind != b->kind) {
+            int ba = draw_bucket(a), bb = draw_bucket(b);
+            if (ba != bb) {
+                before = ba < bb;
+            } else if (a->kind != b->kind) {
                 before = a->kind < b->kind;
             } else if (a->kind == GFX_MAT_SPRITE) {
                 before = a->sort > b->sort;
@@ -1059,6 +1084,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
     SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     int bound = -1;
+    SDL_GPUGraphicsPipeline *bound_pipe = NULL;
     uint32_t count = 0;
     for (uint32_t i = 0; i < g->draw_count; i++) {
         const DrawItem *d = &g->draws[g->order[i]];
@@ -1077,8 +1103,15 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         if (d->flags & GFX_DRAW_NO_MAIN) {
             continue;
         }
+        SDL_GPUGraphicsPipeline *pipe = g->pipes[target].mat[d->kind];
+        if ((d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f) {
+            pipe = g->pipes[target].xray_always[d->kind == GFX_MAT_XRAY];
+        }
+        if (pipe != bound_pipe) {
+            SDL_BindGPUGraphicsPipeline(pass, pipe);
+            bound_pipe = pipe;
+        }
         if (bound != d->kind) {
-            SDL_BindGPUGraphicsPipeline(pass, g->pipes[target].mat[d->kind]);
             bound = d->kind;
 #ifdef MG_RENDER_FULL
             SDL_GPUTextureSamplerBinding shadow_maps[3] = {

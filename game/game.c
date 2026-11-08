@@ -57,7 +57,7 @@ typedef struct Game {
     TdCamera td;           /* the default camera */
     FloorFade fade;        /* storeys / wall cutaway / canopies (scene fade slots) */
     bool riding;           /* in the moving elevator car */
-    uint32_t occl_frames, occl_hidden; /* route test: indoor frames / player hidden behind a wall */
+    uint32_t occl_frames, occl_hidden, occl_lost; /* route test: indoor frames / behind a wall / ... with no x-ray */
     FloorPeek peek;
     int peek_view;         /* storey the floor peek shows, -1 = the player's */
     char peek_label[4][2];
@@ -385,6 +385,33 @@ static void update_fly_camera(Game *g, MgApp *app)
 }
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
+
+/* X-ray silhouette colour: the avatar's accent at full saturation x 0.85
+ * (grey accents stay grey), so players can tell each other apart. */
+static HMM_Vec4 xray_color(uint32_t accent)
+{
+    float r = (float)((accent >> 16) & 255) / 255.0f, gr = (float)((accent >> 8) & 255) / 255.0f,
+          b = (float)(accent & 255) / 255.0f;
+    float mx = mg_maxf(r, mg_maxf(gr, b)), mn = mg_minf(r, mg_minf(gr, b));
+    if (mx - mn > 0.05f) { /* stretch to S = 1, keep hue and value */
+        float k = mx / (mx - mn);
+        r = (r - mn) * k;
+        gr = (gr - mn) * k;
+        b = (b - mn) * k;
+    }
+    return HMM_V4(r * 0.85f, gr * 0.85f, b * 0.85f, 1.0f);
+}
+
+/* M5-X: the hidden parts of an avatar - a 2 px dark rim, then the flat
+ * accent fill (both dithered 60 %, depth GREATER; `always` ignores depth). */
+static void draw_xray(Game *g, MgApp *app, const AvatarLook *look, const AvatarPose *pose, const AvatarAnim *anim,
+                      bool always)
+{
+    GfxMaterial rim = mat_xray(HMM_V4(0.0f, 0.0f, 0.0f, 1.0f), true, always);
+    GfxMaterial fill = mat_xray(xray_color(look->accent), false, always);
+    avatar_draw_with(app->gfx, &g->avatar_meshes, look, pose, anim, &rim);
+    avatar_draw_with(app->gfx, &g->avatar_meshes, look, pose, anim, &fill);
+}
 
 /* Touch stick / jump button, plus WASD, Shift, Space on desktop
  * (third-person: also camera drag, arrows and right-mouse drag). */
@@ -1162,14 +1189,17 @@ void game_frame(MgApp *app, float alpha)
                 }
                 if (!scene_box_cut_away(g->scene, hit.box, g->fade.vis)) {
                     g->occl_hidden++;
+                    g->occl_lost += !g->settings.show_xray; /* no silhouette to show them */
                     break;
                 }
                 start = HMM_AddV3(start, HMM_MulV3F(to, hit.t + 0.4f / mg_maxf(HMM_LenV3(to), 0.4f)));
             }
         }
         if (g->route.done && g->occl_frames) {
-            mg_log_info("occlusion: player hidden behind walls in %.0f %% of %u indoor frames",
-                        100.0 * g->occl_hidden / g->occl_frames, g->occl_frames);
+            mg_log_info("occlusion: player behind walls in %.0f %% of %u indoor frames, lost (no x-ray "
+                        "silhouette) in %.0f %%",
+                        100.0 * g->occl_hidden / g->occl_frames, g->occl_frames,
+                        100.0 * g->occl_lost / g->occl_frames);
             g->occl_frames = 0;
         }
         if (g->route.done) {
@@ -1247,20 +1277,15 @@ void game_frame(MgApp *app, float alpha)
 #ifdef MG_CAMERA_THIRDPERSON
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
 #else
-    if (player_floor > floor) { /* peeking below: a dithered ghost, put on the peeked plan so you never lose yourself */
-        GfxMaterial ghost = mat_ghost(HMM_V4(0.75f, 0.85f, 1.0f, 0.9f));
-        ghost.hide = 0.65f;
+    if (player_floor > floor) { /* peeking below: the x-ray silhouette on the peeked plan, depth ignored */
         AvatarPose gp = pose;
         gp.feet.Y = scene_floor_y(g->scene, floor) + (feet.Y - scene_floor_y(g->scene, player_floor));
-        avatar_draw_with(app->gfx, &g->avatar_meshes, &g->local_look, &gp, &g->local_anim, &ghost);
+        draw_xray(g, app, &g->local_look, &gp, &g->local_anim, true);
     } else {
         avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
-        /* silhouette where walls (corridor sides, the car front) hide the
-         * player: one convex capsule just around the avatar, so its own
-         * parts never count as "in front" */
-        GfxMaterial xr = mat_xray(HMM_V4(0.75f, 0.88f, 1.0f, 0.7f));
-        HMM_Mat4 xm = HMM_MulM4(HMM_Translate(feet), HMM_Scale(HMM_V3(1.3f, 1.12f, 1.3f)));
-        gfx_draw(app->gfx, g->ref_capsule, &xm, &xr, GFX_DRAW_NO_SHADOW);
+        if (s->show_xray) {
+            draw_xray(g, app, &g->local_look, &pose, &g->local_anim, s->xray_always);
+        }
     }
 #endif
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
@@ -1277,6 +1302,11 @@ void game_frame(MgApp *app, float alpha)
                          (r->sample.flags & REP_JUMPING) != 0, scene_indoors(g->scene, r->pos), false};
         avatar_animate(&r->anim, &rp, mg_minf(app->frame_dt, 0.1f));
         avatar_draw(app->gfx, &g->avatar_meshes, &r->look, &rp, &r->anim, &g->world);
+#ifndef MG_CAMERA_THIRDPERSON
+        if (s->show_xray && (int)r->sample.floor == floor) { /* only players on the view floor */
+            draw_xray(g, app, &r->look, &rp, &r->anim, s->xray_always);
+        }
+#endif
     }
     if (s->show_colliders) {
         draw_colliders(g, app->gfx, feet);

@@ -13,6 +13,8 @@ typedef struct GameSettings {
     bool show_floor_peek;   /* storey selector on the left edge */
     float floor_peek_hold;  /* s a tapped peek lasts: 0, 3, 10 */
     bool show_own_name;     /* name tag over the local player */
+    bool show_xray;         /* players' silhouettes through walls (M5-X) */
+    bool xray_always;       /* debug: x-ray ignores depth */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */
     float dead_zone_pt;     /* 60 */
@@ -43,6 +45,8 @@ static inline void settings_default(GameSettings *s)
     s->show_floor_peek = true;
     s->floor_peek_hold = 3.0f;
     s->show_own_name = false;
+    s->show_xray = true;
+    s->xray_always = false;
     s->cam_pitch_deg = -20.0f;
     s->fov_deg = 55.0f;
     s->dead_zone_pt = 60.0f;

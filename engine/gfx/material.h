@@ -21,8 +21,11 @@ typedef struct MaterialProgram {
 const MaterialProgram *material_program(GfxMaterialKind kind);
 
 GfxMaterial mat_unlit(HMM_Vec4 color);
-/* Silhouette of the hidden parts of a mesh (drawn after everything else). */
-GfxMaterial mat_xray(HMM_Vec4 color);
+/* X-ray (M5-X): the parts of a mesh hidden behind geometry, flat colour,
+ * 60 % dither, drawn after all opaque geometry. `rim`: the 2 px outline pass
+ * (draw it first, in black). `always`: ignore depth (debug "X-ray always",
+ * floor-peek ghost of the local player). */
+GfxMaterial mat_xray(HMM_Vec4 color, bool rim, bool always);
 GfxMaterial mat_toon(HMM_Vec4 color, float rim); /* matte */
 GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss); /* gloss 0..1: specular spot */
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */
