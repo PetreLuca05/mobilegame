@@ -133,6 +133,31 @@ float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_p
     return pen - x;
 }
 
+void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_m, HMM_Vec4 color, const char *s)
+{
+    float scale = height_m / f->em_px;
+    float pen = -text_width(f, s, height_m) * 0.5f;
+    float top = f->ascent_px * scale * 0.55f; /* same vertical centring as text_draw_centered */
+    for (; *s; s++) {
+        const TextGlyph *gl = glyph_for(f, (unsigned char)*s);
+        if (gl->w > 0.0f) {
+            float x0 = pen + gl->xoff * scale, x1 = x0 + gl->w * scale;
+            float y0 = top - (f->ascent_px + gl->yoff) * scale, y1 = y0 - gl->h * scale;
+            const float xs[4] = {x0, x1, x1, x0}, ys[4] = {y0, y0, y1, y1};
+            const float us[4] = {gl->u0, gl->u1, gl->u1, gl->u0}, vs[4] = {gl->v0, gl->v0, gl->v1, gl->v1};
+            uint32_t base = 0;
+            for (int i = 0; i < 4; i++) {
+                HMM_Vec4 p = HMM_MulM4V4(xform, HMM_V4(xs[i], ys[i], 0.0f, 1.0f));
+                uint32_t idx = mb_vertex(mb, p.XYZ, HMM_V3(us[i], vs[i], 0.0f), color);
+                base = i == 0 ? idx : base;
+            }
+            mb_triangle_idx(mb, base, base + 2, base + 1);
+            mb_triangle_idx(mb, base, base + 3, base + 2);
+        }
+        pen += gl->advance * scale;
+    }
+}
+
 float text_draw_shadow(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s)
 {
     float off = size_pt * 0.08f;

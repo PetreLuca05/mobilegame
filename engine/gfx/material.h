@@ -25,6 +25,8 @@ GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss); /* gloss 0.
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */
 GfxMaterial mat_outline(HMM_Vec4 color);   /* draw the same mesh again with this for a toon outline */
 GfxMaterial mat_floor(HMM_Vec4 color);
+GfxMaterial mat_floor_plain(HMM_Vec4 color, float reflection); /* no grid; reflection 0 = off */
+GfxMaterial mat_text(HMM_Vec4 color);                           /* mesh from text_mesh() */
 GfxMaterial mat_sprite(HMM_Vec4 color, float shape);
 GfxMaterial mat_ghost(HMM_Vec4 color);
 

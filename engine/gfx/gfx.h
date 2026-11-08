@@ -38,6 +38,7 @@ typedef enum GfxMaterialKind {
     GFX_MAT_TOON,   /* 3-band cel ramp + hard rim (+ specular spot when glossy) + flat ambient */
     GFX_MAT_OUTLINE, /* inverted-hull toon outline: flat colour, mesh pushed out, front faces culled */
     GFX_MAT_FLOOR,  /* grid slab with planar reflection */
+    GFX_MAT_TEXT,   /* world-space SDF glyph quads (signs), UV in the normal, alpha-blended */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */
     GFX_MAT_COUNT
@@ -48,6 +49,8 @@ typedef enum GfxMaterialKind {
 #define GFX_SPRITE_CLOUD 1.0f
 #define GFX_SPRITE_GLOW 2.0f
 
+/* Lit materials (toon, floor) treat vertex alpha x tint alpha as "outdoor":
+ * 1 = sun + sky, 0 = indoor lighting. */
 typedef struct GfxMaterial {
     GfxMaterialKind kind;
     HMM_Vec4 tint;   /* multiplied with vertex colour */

@@ -5,7 +5,7 @@
 
 #include "core/mg_types.h"
 
-#define COL_MAX_BOXES 64
+#define COL_MAX_BOXES 1024
 
 typedef struct ColBox {
     HMM_Vec3 center;
@@ -38,6 +38,8 @@ typedef struct ColHit {
 void colworld_clear(ColWorld *w);
 /* Box rotated by `pitch` radians about +X. */
 bool colworld_add_box(ColWorld *w, HMM_Vec3 center, HMM_Vec3 half, float pitch);
+/* Move an axis-aligned box (doors); `index` is its position in the world. */
+void colworld_move_box(ColWorld *w, int index, HMM_Vec3 center);
 
 /* Closest points between segment [a, b] and the box; returns the distance
  * (0 when they intersect). */

@@ -677,8 +677,8 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     }
     DrawItem *d = &g->draws[g->draw_count++];
     d->model = *model;
-    if (mat->kind == GFX_MAT_SPRITE) {
-        d->normal = HMM_M4D(1.0f); /* sprites carry UVs in the normal */
+    if (mat->kind == GFX_MAT_SPRITE || mat->kind == GFX_MAT_TEXT) {
+        d->normal = HMM_M4D(1.0f); /* sprites and glyphs carry UVs in the normal */
     } else {
         d->normal = HMM_TransposeM4(HMM_InvGeneralM4(*model));
     }
@@ -781,6 +781,9 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target)
             if (d->kind == GFX_MAT_FLOOR) {
                 SDL_GPUTextureSamplerBinding tsb = {
                     g->scene.reflection_strength > 0.0f ? g->refl_color : g->dummy_tex, g->linear_clamp};
+                SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+            } else if (d->kind == GFX_MAT_TEXT) {
+                SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas ? g->ui_atlas : g->dummy_tex, g->ui_sampler};
                 SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
             }
         }

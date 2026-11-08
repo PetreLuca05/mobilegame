@@ -4,6 +4,7 @@
 #define MG_TEXT_H
 
 #include "gfx/gfx.h"
+#include "gfx/mesh.h"
 
 #define TEXT_FIRST_CHAR 32
 #define TEXT_GLYPH_SLOTS 128
@@ -51,6 +52,11 @@ float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_p
 float text_draw_shadow(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s);
 void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, float size_pt, UiColor c,
                         const char *s);
+
+/* World-space text for signs: glyph quads in the local XY plane of `xform`,
+ * centred on its origin, readable from +Z, `height_m` = em height in metres.
+ * Draw the mesh with mat_text(). */
+void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_m, HMM_Vec4 color, const char *s);
 
 void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c);
 void ui_round_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, float r, UiColor c);

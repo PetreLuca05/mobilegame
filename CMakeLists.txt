@@ -10,7 +10,7 @@ set_property(CACHE MG_PLATFORM PROPERTY STRINGS desktop ios android)
 set(MG_BUNDLE_ID "ro.docvex.mobilegame" CACHE STRING "Application identifier")
 set(MG_IOS_TEAM_ID "" CACHE STRING "Apple development team ID for code signing")
 option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
-set(MG_SCENE "devroom" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
+set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
 set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
 
 set(CMAKE_C_STANDARD 11)
@@ -134,6 +134,7 @@ set(MG_GAME_SOURCES
   game/scene_${MG_SCENE}.c
   game/devroom.c
   game/devroom_layout.c
+  game/hospital.c
   game/player.c
   game/camera_tp.c
   game/debug_menu.c

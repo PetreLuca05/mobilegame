@@ -25,8 +25,7 @@ float4 PSMain(VSOut i) : SV_Target0
     float3 base = i.col.rgb * u_tint.rgb;
     float3 n = normalize(i.nrm);
     float3 v = normalize(u_eye.xyz - i.wpos);
-    float lit = cel_lit(dot(n, u_sun_dir.xyz));
-    float3 c = base * (u_ambient.rgb + u_sun_color.rgb * lit);
+    float3 c = base * cel_light(n, saturate(i.col.a * u_tint.a));
     if (u_misc.y > 0.0 && n.y > 0.9) {
         float2 uv = i.pos.xy * u_misc.zw;
         float3 refl = u_reflection.Sample(u_reflection_sampler, uv).rgb;

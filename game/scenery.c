@@ -14,16 +14,17 @@ static float smooth01(float e0, float e1, float x)
     return t * t * (3.0f - 2.0f * t);
 }
 
-float scenery_terrain_height(float x, float z)
+float scenery_terrain_height(const SceneryShape *sh, float x, float z)
 {
-    float d = fmaxf(fabsf(x), fabsf(z)); /* square room -> square falloff */
+    /* distance outside the flat rectangle, square falloff */
+    float d = fmaxf(fabsf(x) - sh->half_x, fabsf(z) - sh->half_z);
     float r = sqrtf(x * x + z * z);
     float hills = 3.2f + 2.6f * sinf(x * 0.071f + 1.3f) * cosf(z * 0.063f - 0.4f) +
                   1.6f * sinf(x * 0.13f - z * 0.11f + 0.7f) + 0.9f * sinf(0.23f * x + 0.19f * z + 2.1f);
-    float bank = 2.2f * smooth01(12.4f, 14.5f, d) * (1.0f - smooth01(16.0f, 26.0f, d)); /* hugs the walls */
-    float field = smooth01(14.0f, 30.0f, d) * fmaxf(hills, 0.4f);
+    float bank = sh->bank * smooth01(0.0f, 2.1f, d) * (1.0f - smooth01(3.6f, 13.6f, d)); /* hugs the edge */
+    float field = smooth01(1.6f, 17.6f, d) * fmaxf(hills, 0.4f);
     float ring = smooth01(85.0f, 125.0f, r) * 22.0f; /* hides the terrain edge */
-    return -0.6f + bank + field + ring;
+    return sh->base_y + bank + field + ring;
 }
 
 static HMM_Vec4 terrain_color(float h)
@@ -37,8 +38,9 @@ static HMM_Vec4 terrain_color(float h)
     return c;
 }
 
-bool scenery_init(Scenery *s, GfxContext *g, Arena *scratch)
+bool scenery_init(Scenery *s, const SceneryShape *shape, GfxContext *g, Arena *scratch)
 {
+    s->shape = *shape;
     size_t mark = arena_mark(scratch);
     MeshBuilder mb;
     const int n = TERRAIN_QUADS;
@@ -50,10 +52,10 @@ bool scenery_init(Scenery *s, GfxContext *g, Arena *scratch)
         for (int i = 0; i <= n; i++) {
             float x = -TERRAIN_EXTENT + step * (float)i;
             float z = -TERRAIN_EXTENT + step * (float)j;
-            float h = scenery_terrain_height(x, z);
+            float h = scenery_terrain_height(shape, x, z);
             const float e = 0.5f;
-            float dx = scenery_terrain_height(x + e, z) - scenery_terrain_height(x - e, z);
-            float dz = scenery_terrain_height(x, z + e) - scenery_terrain_height(x, z - e);
+            float dx = scenery_terrain_height(shape, x + e, z) - scenery_terrain_height(shape, x - e, z);
+            float dz = scenery_terrain_height(shape, x, z + e) - scenery_terrain_height(shape, x, z - e);
             HMM_Vec3 nrm = HMM_NormV3(HMM_V3(-dx, 2.0f * e, -dz));
             mb_vertex(&mb, HMM_V3(x, h, z), nrm, terrain_color(h));
         }

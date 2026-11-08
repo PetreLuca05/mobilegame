@@ -7,13 +7,20 @@ struct Scene {
     DevRoom room;
 };
 
-Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world)
+Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont *font)
 {
+    (void)font;
     Scene *s = ARENA_PUSH(perm, Scene, 1);
     if (!s || !devroom_init(&s->room, g, perm)) {
         return NULL;
     }
     devroom_colliders(&s->room, world);
+    return s;
+}
+
+SceneryShape scene_scenery_shape(void)
+{
+    SceneryShape s = {12.4f, 12.4f, -0.6f, 2.2f};
     return s;
 }
 
@@ -33,6 +40,13 @@ int scene_floor_of(const Scene *s, HMM_Vec3 p)
     (void)s;
     (void)p;
     return 0;
+}
+
+float scene_floor_y(const Scene *s, int floor)
+{
+    (void)s;
+    (void)floor;
+    return 0.0f;
 }
 
 bool scene_indoors(const Scene *s, HMM_Vec3 p)

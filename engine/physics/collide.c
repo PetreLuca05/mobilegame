@@ -29,6 +29,18 @@ bool colworld_add_box(ColWorld *w, HMM_Vec3 center, HMM_Vec3 half, float pitch)
     return true;
 }
 
+void colworld_move_box(ColWorld *w, int index, HMM_Vec3 center)
+{
+    if (index < 0 || index >= w->count) {
+        return;
+    }
+    ColBox *b = &w->boxes[index];
+    HMM_Vec3 d = HMM_SubV3(center, b->center);
+    b->center = center;
+    b->aabb_min = HMM_AddV3(b->aabb_min, d);
+    b->aabb_max = HMM_AddV3(b->aabb_max, d);
+}
+
 static HMM_Vec3 to_local(const ColBox *b, HMM_Vec3 p)
 {
     HMM_Vec3 d = HMM_SubV3(p, b->center);

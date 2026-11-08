@@ -1,0 +1,33 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct DrawFS
+{
+    float4 u_tint;
+    float4 u_params;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_nrm [[user(locn1)]];
+    float4 i_col [[user(locn2)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _60 [[buffer(0)]], texture2d<float> u_atlas [[texture(0)]], sampler u_atlas_sampler [[sampler(0)]])
+{
+    PSMain_out out = {};
+    float4 _126 = u_atlas.sample(u_atlas_sampler, in.i_nrm.xy);
+    float _127 = _126.x;
+    float _131 = fast::max(fwidth(_127), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+    float _143 = (smoothstep(0.5 - _131, 0.5 + _131, _127) * in.i_col.w) * _60.u_tint.w;
+    out._entryPointOutput = float4((in.i_col.xyz * _60.u_tint.xyz) * _143, _143);
+    return out;
+}
+

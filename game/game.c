@@ -101,7 +101,7 @@ bool game_init(MgApp *app)
 {
     Game *g = ARENA_PUSH(&app->perm, Game, 1);
     app->game = g;
-    g->scene = scene_create(app->gfx, &app->perm, &g->world);
+    g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
     if (!g->scene) {
         return false;
     }
@@ -133,7 +133,8 @@ bool game_init(MgApp *app)
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), 0.35f, 0.35f, 1.8f, 16, 24, HMM_V4(0.92f, 0.92f, 0.95f, 1));
     g->ref_capsule = mb_upload(&mb, app->gfx);
     arena_reset_to(&app->perm, mark);
-    if (!scenery_init(&g->scenery, app->gfx, &app->perm) ||
+    SceneryShape shape = scene_scenery_shape();
+    if (!scenery_init(&g->scenery, &shape, app->gfx, &app->perm) ||
         !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
         return false;
     }
@@ -430,10 +431,12 @@ void game_frame(MgApp *app, float alpha)
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
     }
+    int floor = scene_floor_of(g->scene, g->fly_mode ? HMM_SubV3(sp.eye, HMM_V3(0, 1.5f, 0)) : feet);
     scene_defaults(&sp, (float)app->time);
+    sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
-    SceneView view = {sp.eye, scene_floor_of(g->scene, feet), (float)app->time, false};
+    SceneView view = {sp.eye, floor, (float)app->time, s->show_colliders};
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,

@@ -7,6 +7,8 @@
 
 #include "gfx/gfx.h"
 #include "physics/collide.h"
+#include "scenery.h"
+#include "ui/text.h"
 
 #define SCENE_SPAWNS 4
 
@@ -20,12 +22,16 @@ typedef struct SceneView {
     bool show_triggers; /* debug: draw trigger volumes */
 } SceneView;
 
-/* Builds meshes and fills `world` with the static colliders. */
-Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world);
+/* Builds meshes (signs use `font`) and fills `world` with the static colliders. */
+Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont *font);
+/* Where the surrounding hills leave flat ground. */
+SceneryShape scene_scenery_shape(void);
 HMM_Vec3 scene_spawn(const Scene *s, int slot);
 float scene_spawn_yaw(const Scene *s);
 /* Storey index for a position (0 = ground / outdoors). */
 int scene_floor_of(const Scene *s, HMM_Vec3 p);
+/* Height of a storey's floor (reflection plane, teleports). */
+float scene_floor_y(const Scene *s, int floor);
 /* Inside a building: lower ambient on avatars, shorter camera boom. */
 bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
