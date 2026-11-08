@@ -386,6 +386,12 @@ bool game_init(MgApp *app)
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
     g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log");
+    if (atest && (SDL_strcmp(atest, "npcs-save") == 0 || SDL_strcmp(atest, "npcs-continue") == 0)) {
+        g->offline_play = true;
+        if (SDL_strcmp(atest, "npcs-continue") == 0 && save_read(&g->save, g->profile_name)) {
+            g->npc_resume_tick = g->save.npc_tick;
+        }
+    }
     const char *force_thermal = arg_value(app->argc, app->argv, "--force-thermal");
     g->thermal_force = force_thermal ? SDL_atoi(force_thermal) : -1;
     g->logged_fe = -1;
@@ -492,6 +498,8 @@ static void run_npc_bench(Game *g, MgApp *app);
 static uint32_t npc_seed_for(Game *g, MgApp *app);
 static void npc_step(Game *g, MgApp *app);
 static void npc_catch_up(Game *g, MgApp *app);
+static void npc_save_test_compare(Game *g, MgApp *app);
+static void npc_save_test_save(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
 static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
@@ -591,6 +599,7 @@ static void write_save(Game *g)
     }
     SaveGame *s = &g->save;
     s->pos = g->player.kin.pos;
+    s->npc_tick = g->npcs_on ? g->npcs.tick : g->npc_resume_tick;
 #ifdef MG_CAMERA_THIRDPERSON
     s->yaw = g->player.yaw;
 #else
@@ -905,6 +914,7 @@ static void load_step(Game *g, MgApp *app)
         net_set_quiet(g->net, g->offline_play);
         g->save_play_base = g->save_rides_base = 0;
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
+            g->npc_resume_tick = g->save.npc_tick;
             player_init(&g->player, g->save.pos, g->save.yaw);
 #ifndef MG_CAMERA_THIRDPERSON
             /* v2 saves store the camera yaw; the camera is fixed now */
@@ -919,6 +929,7 @@ static void load_step(Game *g, MgApp *app)
             save_delete(g->profile_name);
             g->has_save = false;
             SDL_zero(g->save);
+            g->npc_resume_tick = 0;
             g->save_play_base = (uint32_t)0 - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
         }
@@ -1153,6 +1164,63 @@ static double wall_clock_ms(void)
     return (double)t / 1e6;
 }
 
+static void npc_save_check_path(char *path, size_t size)
+{
+#if defined(SDL_PLATFORM_IOS)
+    const char *dir = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+    SDL_snprintf(path, size, "%s/npc_save_check.txt", dir ? dir : ".");
+#else
+    char *dir = SDL_GetPrefPath("docvex", "mobilegame");
+    SDL_snprintf(path, size, "%snpc_save_check.txt", dir ? dir : "");
+    SDL_free(dir);
+#endif
+}
+
+/* --autotest npcs-save: play, save, die without any goodbye */
+static void npc_save_test_save(Game *g, MgApp *app)
+{
+    const char *at = arg_value(app->argc, app->argv, "--autotest");
+    if (!at || SDL_strcmp(at, "npcs-save") != 0 || !g->npcs_on || g->npc_catching_up || g->npcs.tick < 1200u) {
+        return;
+    }
+    write_save(g);
+    char path[640], text[64];
+    npc_save_check_path(path, sizeof(path));
+    const int n = SDL_snprintf(text, sizeof(text), "%u %08x %u\n", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.seed);
+    SDL_IOStream *io = SDL_IOFromFile(path, "w");
+    if (io) {
+        SDL_WriteIO(io, text, (size_t)n);
+        SDL_CloseIO(io);
+    }
+    mg_log_info("autotest npcs-save: saved at tick %u hash %08x seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.seed);
+    mg_log_info("AUTOTEST PASSED");
+    _Exit(0);
+}
+
+/* --autotest npcs-continue: at the saved tick every position must match what was saved */
+static void npc_save_test_compare(Game *g, MgApp *app)
+{
+    const char *at = arg_value(app->argc, app->argv, "--autotest");
+    if (!at || SDL_strcmp(at, "npcs-continue") != 0) {
+        return;
+    }
+    char path[640];
+    npc_save_check_path(path, sizeof(path));
+    size_t len = 0;
+    char *text = (char *)SDL_LoadFile(path, &len);
+    uint32_t tick = 0, hash = 0, seed = 0;
+    const bool read = text && SDL_sscanf(text, "%u %x %u", &tick, &hash, &seed) == 3;
+    SDL_free(text);
+    const uint32_t now = npc_world_hash(&g->npcs);
+    const bool ok = read && tick == g->npcs.tick && hash == now && seed == g->npcs.seed;
+    if (!ok) {
+        mg_log_error("autotest npcs-continue: assert same_state: saved tick %u hash %08x seed %u, restored tick %u hash %08x seed %u", tick, hash, seed, g->npcs.tick, now, g->npcs.seed);
+    }
+    mg_log_info("autotest npcs-continue: tick %u hash %08x, saved %08x: %s", g->npcs.tick, now, hash, ok ? "identical" : "DIFFERENT");
+    mg_log_info("AUTOTEST %s", ok ? "PASSED" : "FAILED");
+    app->quit_requested = true;
+}
+
 /* One sim tick, plus what the tests watch */
 static void npc_step(Game *g, MgApp *app)
 {
@@ -1181,6 +1249,7 @@ static void npc_catch_up(Game *g, MgApp *app)
     if (g->npcs.tick >= target) {
         g->npc_catching_up = false;
         mg_log_info("npc: caught up at tick %u", g->npcs.tick);
+        npc_save_test_compare(g, app);
     }
 }
 
@@ -1351,6 +1420,7 @@ void game_frame(MgApp *app, float alpha)
         npc_room_epoch(g);
     }
     npc_catch_up(g, app);
+    npc_save_test_save(g, app);
     if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
         const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
         if (want != g->crowd.pool.count) {

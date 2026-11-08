@@ -2,7 +2,7 @@
  *   "MGS1" | version u32 | pos 3 x f32 | yaw f32 | floor u32 |
  *   (v2, M5: yaw is the top-down camera yaw; v1 = player facing, still read)
  *   play_seconds u32 | elevator_rides u32 | visited_rooms u64 |
- *   (v3, M7) npc_seed u32
+ *   (v3, M7) npc_seed u32 | (v4) npc_tick u32
  * One slot; written atomically (temp file + rename). The day cycle keeps
  * following the device clock, so no game time is stored. */
 #ifndef MG_SAVE_H
@@ -10,7 +10,7 @@
 
 #include "core/mg_types.h"
 
-#define SAVE_VERSION 3
+#define SAVE_VERSION 4
 
 typedef struct SaveGame {
     HMM_Vec3 pos;
@@ -20,6 +20,7 @@ typedef struct SaveGame {
     uint32_t elevator_rides;
     uint64_t visited_rooms; /* bit = storey * 16 + chunk */
     uint32_t npc_seed;      /* the roster of this save; 0 = pick one */
+    uint32_t npc_tick;      /* Continue replays the NPCs to here */
     uint32_t version;       /* read: the file's version */
 } SaveGame;
 

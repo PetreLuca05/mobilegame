@@ -5,7 +5,8 @@
 #include "core/log.h"
 #include "prefs.h"
 
-#define SAVE_BYTES 52
+#define SAVE_BYTES 56
+#define SAVE_BYTES_V3 52
 #define SAVE_BYTES_V2 48
 
 static void put32(uint8_t *p, uint32_t v)
@@ -53,6 +54,7 @@ bool save_write(const SaveGame *s, const char *profile)
     put32(b + 36, (uint32_t)s->visited_rooms);
     put32(b + 40, (uint32_t)(s->visited_rooms >> 32));
     put32(b + 48, s->npc_seed);
+    put32(b + 52, s->npc_tick);
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     bool ok = SDL_SaveFile(tmp, b, sizeof(b)) && SDL_RenamePath(tmp, path);
     if (!ok) {
@@ -75,7 +77,8 @@ bool save_read(SaveGame *s, const char *profile)
         s->play_seconds = get32(b + 28);
         s->elevator_rides = get32(b + 32);
         s->visited_rooms = (uint64_t)get32(b + 36) | ((uint64_t)get32(b + 40) << 32);
-        s->npc_seed = s->version >= 3 && len >= SAVE_BYTES ? get32(b + 48) : 0;
+        s->npc_seed = s->version >= 3 && len >= SAVE_BYTES_V3 ? get32(b + 48) : 0;
+        s->npc_tick = s->version >= 4 && len >= SAVE_BYTES ? get32(b + 52) : 0;
     }
     SDL_free(b);
     return ok;
