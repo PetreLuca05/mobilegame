@@ -20,9 +20,11 @@ typedef struct GameSettings {
     float dead_zone_pt;     /* 60 */
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
+#ifdef MG_DAYCYCLE_CONTINUOUS
     bool follow_clock;      /* day cycle follows the device's local time */
     float time_of_day;      /* hours, shown / set by the Time slider */
     float time_speed;       /* 1, 60, 600 */
+#endif
 #ifdef MG_RENDER_FULL
     bool show_lights;       /* light gizmos + light counts */
     int tier_override;      /* 0 auto (RAM), 1 low, 2 high */

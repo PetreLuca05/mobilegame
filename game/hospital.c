@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "gfx/floorfade.h"
+#include "world/lighting_day.h"
 #include "gfx/material.h"
 #include "core/log.h"
 #include "gfx/mesh.h"
@@ -1159,9 +1160,14 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
     GfxMaterial glossy = mat_toon_glossy(HMM_V4(1, 1, 1, 1), 0.0f, 1.0f);
     GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), floor == 0 ? 0.25f : 0.0f);
     GfxMaterial text = mat_text(HMM_V4(1, 1, 1, 1));
-    GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * v->lamp_on);
-    /* ceiling panels glow by night, faintly by day (emissive only: they light nothing) */
-    GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), 0.25f + 1.15f * v->lamp_on);
+#ifdef MG_DAYCYCLE_CONTINUOUS
+    const float lamp_glow = 0.15f + 1.6f * v->lamp_on, panel_glow = 0.25f + 1.15f * v->lamp_on;
+#else
+    const float lamp_glow = LAMP_DAY_EMISSIVE, panel_glow = LAMP_DAY_EMISSIVE; /* always day: dim, no switching */
+#endif
+    GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), lamp_glow);
+    /* emissive only: lamps light nothing */
+    GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), panel_glow);
     draw_group(h, g, v, HM_SHELL, &matte, GFX_DRAW_REFLECT);
     draw_group(h, g, v, HM_YARD, &matte, GFX_DRAW_REFLECT);
     draw_group(h, g, v, HM_GLOSS_OUT, &glossy, GFX_DRAW_REFLECT);

@@ -23,7 +23,9 @@ typedef enum MenuAction {
     MENU_NAME,         /* name edited and valid (SettingsMenu.name) */
     MENU_GOOGLE,       /* "Continue with Google" */
     MENU_SIGN_OUT,
+#ifdef MG_DAYCYCLE_CONTINUOUS
     MENU_TIME,         /* time-of-day slider moved */
+#endif
     MENU_EDIT_CHARACTER, /* open the character creator */
     MENU_APPLE,        /* "Continue with Apple" (iOS) */
 } MenuAction;

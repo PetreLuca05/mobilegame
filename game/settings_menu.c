@@ -18,6 +18,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     bool wide = w > 560.0f;
     float cw = wide ? (w - 24.0f) * 0.5f : w;
     float x2 = x + cw + 24.0f;
+#ifdef MG_DAYCYCLE_CONTINUOUS
     /* Day / night: drag to pick an hour (stops following the clock) */
     int hh = (int)s->time_of_day, mm = (int)((s->time_of_day - (float)hh) * 60.0f);
     char tod[64];
@@ -40,6 +41,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     y = sy + 52.0f;
     ui_rect(ui->gfx, ui->font, x, y - 6.0f, w, 1.0f, ui_rgba(0xFFFFFF22));
     y += 6.0f;
+#endif
     float cx = x, cy = y;
     const float sliders_top = y;
 #ifndef MG_CAMERA_THIRDPERSON

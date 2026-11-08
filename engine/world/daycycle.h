@@ -6,6 +6,7 @@
 #define MG_DAYCYCLE_H
 
 #include "core/mg_types.h"
+#include "lighting_day.h"
 
 #define DAY_MAX_KEYS 16
 
@@ -28,21 +29,6 @@ typedef struct DayCycle {
     double t;           /* hours 0..24 */
     double next_clock_read;
 } DayCycle;
-
-/* What the renderer and lamps need at the current time. */
-typedef struct DayState {
-    HMM_Vec3 key_dir;    /* towards the key light (sun or moon) */
-    HMM_Vec3 key_color;  /* colour * intensity */
-    HMM_Vec3 ambient;
-    HMM_Vec4 horizon, zenith;
-    HMM_Vec3 fog;
-    float fog_density;
-    HMM_Vec3 cloud;
-    float lamp_on;       /* 0..1 exterior lamps */
-    HMM_Vec4 sun_disc;   /* xyz direction, w visibility */
-    HMM_Vec4 moon_disc;
-    float stars;         /* 0..1 */
-} DayState;
 
 /* Loads assets/daycycle.json (built-in defaults if missing/invalid). */
 void daycycle_init(DayCycle *d);

@@ -423,7 +423,11 @@ static bool create_pipelines(GfxContext *g)
         }
         PipeDesc sky = {
             .vs = load_shader(g, "sky.vert", 0, 0),
+#ifdef MG_DAYCYCLE_CONTINUOUS
             .fs = load_shader(g, "sky.frag", 1, 0),
+#else
+            .fs = load_shader(g, "sky_day.frag", 1, 0),
+#endif
             .layout = LAYOUT_NONE,
             .cull = SDL_GPU_CULLMODE_NONE,
             .front = front,

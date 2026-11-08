@@ -1,0 +1,38 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct SkyFS
+{
+    float4x4 u_inv_view_proj;
+    float4 u_eye;
+    float4 u_horizon;
+    float4 u_zenith;
+    float4 u_sun;
+    float4 u_moon;
+    float4 u_stars;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float2 i_ndc [[user(locn0)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant SkyFS& _29 [[buffer(0)]])
+{
+    PSMain_out out = {};
+    float4 _138 = _29.u_inv_view_proj * float4(in.i_ndc, 1.0, 1.0);
+    float4 _125 = _138;
+    float3 _149 = fast::normalize((_138.xyz / float3(_125.w)) - _29.u_eye.xyz);
+    float3 _126 = _149;
+    float _165 = dot(_149, _29.u_sun.xyz);
+    out._entryPointOutput = float4(mix(mix(_29.u_horizon.xyz, _29.u_zenith.xyz, float3(smoothstep(0.0, 0.64999997615814208984375, _126.y))), float3(1.0, 0.959999978542327880859375, 0.85000002384185791015625), float3(smoothstep(0.99954998493194580078125, 0.999700009822845458984375, _165) * _29.u_sun.w)) + (float3(1.0, 0.85000002384185791015625, 0.60000002384185791015625) * ((powr(fast::clamp(_165, 0.0, 1.0), 300.0) * 0.3499999940395355224609375) * _29.u_sun.w)), 1.0);
+    return out;
+}
+

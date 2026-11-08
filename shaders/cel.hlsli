@@ -32,3 +32,13 @@ float3 cel_light(float3 n, float outdoor, float shadow)
     float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * cel_lit(dot(n, normalize(float3(0.25, 1.0, 0.35))));
     return lerp(inside, sun, outdoor);
 }
+
+// Always-day version (minimal renderer): indoor faces step on the sun
+// direction too, so rooms read as boxes from the fixed camera.
+float3 cel_light_day(float3 n, float outdoor)
+{
+    float lit = cel_lit(dot(n, u_sun_dir.xyz));
+    float3 sun = u_ambient.rgb + u_sun_color.rgb * lit;
+    float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * lit;
+    return lerp(inside, sun, outdoor);
+}

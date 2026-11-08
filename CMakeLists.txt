@@ -21,6 +21,12 @@ set_property(CACHE MG_RENDER PROPERTY STRINGS minimal full)
 if(MG_RENDER STREQUAL "full")
   add_compile_definitions(MG_RENDER_FULL=1)
 endif()
+set(MG_DAYCYCLE "fixed" CACHE STRING
+    "Lighting over time: fixed (always day) | continuous (M3 day/night cycle, reference only, not shipped)")
+set_property(CACHE MG_DAYCYCLE PROPERTY STRINGS fixed continuous)
+if(MG_DAYCYCLE STREQUAL "continuous")
+  add_compile_definitions(MG_DAYCYCLE_CONTINUOUS=1)
+endif()
 set(MG_CAMERA "topdown" CACHE STRING "Game camera: topdown (M5) | thirdperson (M1-M4, engine tests only)")
 set_property(CACHE MG_CAMERA PROPERTY STRINGS topdown thirdperson)
 if(MG_CAMERA STREQUAL "thirdperson")
@@ -77,9 +83,11 @@ set(MG_EMBED_FILES
   ${MG_SHADER_MSL}
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
   ${CMAKE_SOURCE_DIR}/assets/cacert.pem
-  ${CMAKE_SOURCE_DIR}/assets/daycycle.json
   ${CMAKE_SOURCE_DIR}/assets/strings.json
 )
+if(MG_DAYCYCLE STREQUAL "continuous")
+  list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
+endif()
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
   OUTPUT ${MG_EMBED_C}
@@ -122,7 +130,7 @@ add_library(mg_engine STATIC
   engine/platform/app_sdl.c
   engine/platform/input_touch.c
   engine/audio/audio_sdl.c
-  engine/world/daycycle.c
+  engine/world/lighting_day.c
   engine/gfx/camera.c
   engine/gfx/gpu.c
   engine/gfx/material.c
@@ -154,6 +162,9 @@ elseif(MG_PLATFORM STREQUAL "android")
   target_sources(mg_engine PRIVATE engine/platform/google_auth_android.c)
 else()
   target_sources(mg_engine PRIVATE engine/platform/google_auth_stub.c)
+endif()
+if(MG_DAYCYCLE STREQUAL "continuous")
+  target_sources(mg_engine PRIVATE engine/world/daycycle.c)
 endif()
 if(MG_RENDER STREQUAL "full")
   target_sources(mg_engine PRIVATE engine/gfx/shadows.c engine/gfx/reflection.c)

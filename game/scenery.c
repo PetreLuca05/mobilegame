@@ -105,12 +105,14 @@ void scenery_draw(const Scenery *s, GfxContext *g, const GfxSceneParams *sc, flo
         GfxMaterial glow = mat_sprite(HMM_V4(1.0f, 0.93f, 0.72f, 0.9f * sc->sun_disc.W), GFX_SPRITE_GLOW);
         gfx_draw(g, s->quad, &sm, &glow, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
     }
+#ifdef MG_DAYCYCLE_CONTINUOUS
     if (sc->moon_disc.W > 0.01f) {
         HMM_Vec3 moon = HMM_AddV3(sc->eye, HMM_MulV3F(sc->moon_disc.XYZ, 300.0f));
         HMM_Mat4 mm = billboard(sc, moon, 40.0f, 40.0f);
         GfxMaterial glow = mat_sprite(HMM_V4(0.6f, 0.7f, 1.0f, 0.5f * sc->moon_disc.W), GFX_SPRITE_GLOW);
         gfx_draw(g, s->quad, &mm, &glow, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
     }
+#endif
 
     /* five soft clouds drifting around the horizon */
     static const float clouds[5][5] = {

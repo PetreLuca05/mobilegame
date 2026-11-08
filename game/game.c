@@ -8,7 +8,11 @@
 #include <stdlib.h> /* _Exit: autotest save */
 
 #include "audio/audio.h"
+#ifdef MG_DAYCYCLE_CONTINUOUS
 #include "world/daycycle.h"
+#else
+#include "world/lighting_day.h"
+#endif
 #include "platform/google_auth.h"
 #include "autotest.h"
 #include "avatar.h"
@@ -96,14 +100,16 @@ typedef struct Game {
     Audio *audio;
     RouteTest route;
     Stats stats;
+#ifdef MG_DAYCYCLE_CONTINUOUS
     DayCycle day;
+#endif
 #ifdef MG_RENDER_FULL
     int tier;              /* 1 low, 2 high (applied) */
     GfxShadowConfig shadow_cfg; /* last applied */
     int shadowed_lights;  /* shadow-casting lights this frame */
 #endif
     DayState day_state;
-    float lamp_on;        /* lamps glow (emissive), from the day cycle */
+    float lamp_on;        /* continuous cycle only; fixed: 0 */
     NetProfile profile;    /* our account (name, skin, guest/Google) */
     bool profile_loaded;
     GoogleAuth *google;
@@ -314,6 +320,7 @@ bool game_init(MgApp *app)
     autotest_init(&g->autotest, app->argc, app->argv);
     g->logged_fe = -1;
     g->audio = audio_create(&app->perm);
+#ifdef MG_DAYCYCLE_CONTINUOUS
     daycycle_init(&g->day);
     g->settings.follow_clock = true;
     g->settings.time_speed = 1.0f;
@@ -322,6 +329,9 @@ bool game_init(MgApp *app)
         g->day.follow_device = g->settings.follow_clock = false;
         g->day.t = SDL_atof(time_arg);
     }
+#else
+    g->day_state = lighting_day();
+#endif
     g->google = google_auth_create(&app->perm, MG_GOOGLE_WEB_CLIENT_ID, MG_GOOGLE_IOS_CLIENT_ID);
     route_test_init(&g->route, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
@@ -557,9 +567,11 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
         break;
+#ifdef MG_DAYCYCLE_CONTINUOUS
     case MENU_TIME: /* slider: stop following the clock */
         g->day.t = g->settings.time_of_day;
         g->settings.follow_clock = false;
+#endif
         break;
     case MENU_TELEPORT: {
         Elevator *el = scene_elevator(g->scene);
@@ -951,12 +963,14 @@ void game_frame(MgApp *app, float alpha)
     apply_tier(g, app);
 #endif
     audio_set_muted(g->audio, !s->sound_on);
+#ifdef MG_DAYCYCLE_CONTINUOUS
     g->day.follow_device = s->follow_clock;
     g->day.speed = s->time_speed;
     daycycle_update(&g->day, app->time, mg_minf(app->frame_dt, 0.25f));
     s->time_of_day = (float)g->day.t;
     g->day_state = daycycle_state(&g->day, (float)g->day.t);
     g->lamp_on = g->day_state.lamp_on;
+#endif
     Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
     AutotestProbe probe = {g->player.kin.pos,
                            g->player.kin.vel,

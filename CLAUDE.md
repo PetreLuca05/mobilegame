@@ -113,29 +113,27 @@ off-switch stays OFF) — step by step in `docs/GOOGLE_SIGN_IN.md`.
 Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 `MG_GOOGLE_IOS_CLIENT_ID`); the Web client secret only goes into Supabase.
 
-## Lighting (M3)
+## Lighting
 
-- Day/night: `engine/world/daycycle.c` follows the device's local clock
-  (`SDL_GetCurrentTime` + `SDL_TimeToDateTime`, read once a second; no
-  network time). Each client uses its own clock: players in different time
-  zones see different skies in the same room (accepted for now).
-  Sun path is fixed (06:30-19:30, 70 deg peak, E-S-W); the moon is the key
-  light at night. Developer section: Follow device clock, time slider,
-  x1/x60/x600; desktop `--time H`.
-- `assets/daycycle.json`: `sunrise`, `sunset`, `sun_max_elevation`,
-  `moon_color`, `moon_intensity`, `sun_scale` / `ambient_scale` (map the
-  curves' colour x intensity onto the toon ramp), `ambient_floor` (keeps
-  skins readable at night) and `keys[]` = {t (hour), sun, sun_i, ambient,
-  ambient_i, horizon, zenith, fog, fog_density, cloud, lamps}; colours
-  `#RRGGBB`, linear interpolation, wraps at 24 h.
+- Always day: one set of constants in `engine/world/lighting_day.c` (sun
+  `#FFFFFF` x 1.0, ambient `#9FB7D9` x 0.8, both through the toon-ramp scales
+  0.5 / 0.72; sky `#BFE3FF` -> `#3F8FE8`; white clouds). Sun vector
+  (+0.28, +0.819, +0.50), elevation 55 deg: the wall faces the north-looking
+  camera sees point south (+Z, dot 0.50 = lit step), north faces and west
+  faces are dark, east faces the middle step, so rooms read as boxes. Indoor
+  faces step on the same vector (`cel_light_day`). Lamps are emissive meshes at
+  a constant 0.3 (`LAMP_DAY_EMISSIVE`), no switching.
+- `-DMG_DAYCYCLE=continuous` compiles the old device-clock cycle
+  (`daycycle.c`, `assets/daycycle.json`, moon, stars, time rows, `--time`) for
+  reference only: not shipped, not maintained.
 - Renderer (M5-S): CMake `MG_RENDER=minimal` (default) | `full`.
   minimal = one directional key light (sun/moon from the day cycle) + flat
-  ambient through the 2-step toon ramp (`shaders/toon_flat.frag.hlsl`,
+  ambient through the toon ramp (`shaders/toon_flat.frag.hlsl`,
   floors `floor_flat.frag.hlsl` with procedural 60 cm tiles). No shadow
   maps, no point/spot lights, no planar reflection, no tiers, no fog; the
   only "shadow" is the avatar contact disc. The floor fade slots:
   storeys + roof, tree canopies, wall pieces (`HOSP_FADE_*`). Lamps (lamp posts, ceiling
-  panels) are emissive meshes driven by lamp-on; they light nothing.
+  panels) are emissive meshes; they light nothing.
   Architecture has no rim light (on big walls the view-angle rim made a
   dark circle that followed the camera); avatars and props keep theirs.
   The log line "gfx: targets WxH: ..." lists every render target (no

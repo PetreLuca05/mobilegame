@@ -16,7 +16,7 @@ float4 PSMain(VSOut i) : SV_Target0
     float3 v = normalize(u_eye.xyz - i.wpos);
     float ndl = dot(n, u_sun_dir.xyz);
     float outdoor = saturate(i.col.a * u_tint.a);
-    float3 light = cel_light(n, outdoor, 1.0);
+    float3 light = cel_light_day(n, outdoor);
     float sunny = cel_step(ndl, 0.0) * outdoor + (1.0 - outdoor) * cel_step(n.y, -0.2);
     float gloss = u_params.w;
     // rim only on side-facing surfaces (no ring on flat ground)

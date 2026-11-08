@@ -24,6 +24,6 @@ float4 PSMain(VSOut i) : SV_Target0
     }
     float3 n = normalize(i.nrm);
     float outdoor = saturate(i.col.a * u_tint.a);
-    float3 c = base * cel_light(n, outdoor, 1.0);
+    float3 c = base * cel_light_day(n, outdoor);
     return float4(c, 1.0);
 }
