@@ -31,6 +31,7 @@ typedef struct npc_hot_t {
     uint8_t rate;         /* updates every `rate` ticks: 1, 3 or 6 */
     uint8_t lod;          /* 0, 1, 2 */
     uint8_t pad[2];
+    float speed;          /* walking speed, m/s */
 } npc_hot_t;
 
 _Static_assert(sizeof(npc_hot_t) <= 64, "npc_hot_t must fit one cache line");
@@ -40,6 +41,20 @@ typedef struct npc_cold_t {
     AvatarLook look;
     AvatarAnim anim;
     uint16_t gen;
+    /* M7: only the main thread, or the steering job for its own NPC, writes these */
+    uint32_t id;          /* never reused in a session */
+    uint32_t leader_id;   /* ESCORT */
+    uint32_t slot;        /* claimed slot or SLOT_NONE */
+    char name[24];
+    float goal_x, goal_z;
+    float home_x, home_z;
+    float stuck_x, stuck_z, stuck_t;
+    float yield_t, squash;
+    float timer, interrupt_t, fade;
+    float sit_t;          /* 0 standing at the slot .. 1 on the seat */
+    float seat_x, seat_z, seat_yaw;
+    uint8_t archetype, age, pose, package, step, phase;
+    uint8_t stuck_count, flags;
 } npc_cold_t;
 
 typedef struct NpcPool {

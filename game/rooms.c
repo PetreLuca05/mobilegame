@@ -140,7 +140,7 @@ uint32_t slot_claim(RoomGraph *g, uint32_t tags, int storey, float x, float z, u
     float best_d = 1e12f;
     for (int i = 0; i < g->slot_count; i++) {
         const Slot *s = &g->slots[i];
-        if (!s->valid || s->occupant || !(s->tags & tags) || (storey != -2 && s->storey != storey)) {
+        if (!s->valid || s->occupant || !(s->tags & tags) || (storey != -2 && (s->storey < 0 ? 0 : s->storey) != storey)) {
             continue;
         }
         const float dx = s->x - x, dz = s->z - z, d = dx * dx + dz * dz;

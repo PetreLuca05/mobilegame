@@ -17,6 +17,7 @@
 #include "autotest.h"
 #include "core/jobs.h"
 #include "core/prof.h"
+#include "npc_sim.h"
 #include "perf_run.h"
 #include "rooms.h"
 #include "platform/device_stats.h"
@@ -128,6 +129,8 @@ typedef struct Game {
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
     RoomGraph rooms;
+    NpcWorld npcs;
+    bool npcs_ok, npcs_on;
     int msaa_samples;           /* what the thermal path returns to */
     int thermal, thermal_force; /* thermal_force: --force-thermal N, -1 = ask the OS */
     double next_thermal_poll;
@@ -232,6 +235,7 @@ static bool ensure_world(Game *g, MgApp *app)
             int bad = rooms_validate(&g->rooms, g->nav);
             mg_log_info("rooms: %d rooms, %d doors, %d slots, %d on blocked cells", g->rooms.room_count, g->rooms.door_count,
                         g->rooms.slot_count, bad);
+            g->npcs_ok = npc_world_init(&g->npcs, &app->perm, &g->rooms, g->nav);
         }
         arena_release_unused(&app->perm); /* the mesh builders' scratch: ~30 MB of dirty pages */
     }
@@ -432,6 +436,12 @@ void game_tick(MgApp *app)
         PROF_SCOPE("kinematic");
         player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
     }
+    if (g->npcs_ok && g->npcs_on && g->nav) {
+        PROF_SCOPE("npc.roster");
+        const HMM_Vec3 pp = g->player.kin.pos;
+        NpcPlayer np = {pp.X, pp.Z, g->player.kin.vel.X, g->player.kin.vel.Z, scene_indoors(g->scene, pp) ? scene_floor_of(g->scene, pp) : 0};
+        npc_tick(&g->npcs, app->jobs, &app->frame, &np, MG_TICK_DT);
+    }
     if (g->crowd_ok && g->nav) {
         PROF_SCOPE("npc");
         StressView sv = {g->player.kin.pos.X, g->player.kin.pos.Z, scene_indoors(g->scene, g->player.kin.pos) ? scene_floor_of(g->scene, g->player.kin.pos) : 0};
@@ -470,6 +480,7 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void draw_npcs(Game *g, MgApp *app, int floor, float alpha);
 static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
 static void run_determinism_check(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
@@ -1115,6 +1126,39 @@ static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
     g->rendered_entities += rendered;
 }
 
+/* M7 roster: culled and given a LOD on the job system, drawn on the main thread */
+static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
+{
+    NpcPool *p = &g->npcs.pool;
+    const npc_hot_t *hot = p->hot[p->read];
+    const float dt = mg_minf(app->frame_dt, 0.1f), now = (float)g->npcs.tick + alpha;
+    uint8_t *lods = ARENA_PUSH(&app->frame, uint8_t, (size_t)p->count);
+    if (!lods) {
+        return;
+    }
+    const float near_m = g->thermal >= 2 ? 11.0f : 22.0f;
+    CrowdCull cull = {hot, lods, g->view_proj, g->player.kin.pos.X, g->player.kin.pos.Z, near_m * near_m, floor, g->no_lod};
+    jobs_run(app->jobs, crowd_cull_job, &cull, p->count, 32);
+    jobs_wait(app->jobs);
+    for (int i = 0; i < p->count; i++) {
+        if (lods[i] == 255) {
+            continue;
+        }
+        const npc_hot_t *h = &hot[i];
+        npc_cold_t *c = &p->cold[i];
+        const float w = mg_clampf((now - (float)h->last_tick - 1.0f) / (float)h->rate, 0.0f, 1.0f);
+        HMM_Vec3 feet = HMM_V3(h->prev_x + (h->x - h->prev_x) * w, h->y, h->prev_z + (h->z - h->prev_z) * w);
+        if (c->pose == POSE_SIT || c->pose == POSE_BED) { /* slide onto the seat */
+            feet.X += (c->seat_x - feet.X) * c->sit_t;
+            feet.Z += (c->seat_z - feet.Z) * c->sit_t;
+        }
+        AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
+        avatar_animate(&c->anim, &pose, dt);
+        avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
+        g->rendered_entities++;
+    }
+}
+
 /* debug: every slot of the view floor as an arrow; free green, taken red, blocked magenta;
  * the tag name shows within 3 m of the player */
 static void draw_slots(Game *g, MgApp *app, int floor, HMM_Vec3 feet)
@@ -1155,6 +1199,10 @@ void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
+    if (g->npcs_ok && g->playing && !g->npcs_on && !arg_value(app->argc, app->argv, "--autotest")) {
+        g->npcs_on = true; /* other autotests keep the world empty, so their numbers stay comparable */
+        npc_world_start(&g->npcs, app->clock.tick | 1u, 1.0f);
+    }
     if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
         const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
         if (want != g->crowd.pool.count) {
@@ -1681,6 +1729,10 @@ void game_frame(MgApp *app, float alpha)
             draw_xray(g, app, &r->look, &rp, &r->anim, s->xray_always);
         }
 #endif
+    }
+    if (g->npcs_ok && g->npcs_on && g->npcs.pool.count > 0) {
+        PROF_SCOPE("npc.roster_draw");
+        draw_npcs(g, app, floor, alpha);
     }
     if (g->crowd_ok && g->crowd.pool.count > 0) {
         PROF_SCOPE("npc.draw");

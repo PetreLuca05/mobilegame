@@ -89,7 +89,7 @@ int rooms_count_slots(const RoomGraph *g, uint32_t tags);
 const char *slot_tag_name(uint32_t tag);
 uint32_t slot_tag_from_name(const char *name); /* 0 if unknown */
 
-/* The nearest free slot with any of `tags` on `storey` (storey -2 = any). */
+/* The nearest free slot with any of `tags` on nav grid `storey` (the yard counts as 0; -2 = anywhere). */
 uint32_t slot_claim(RoomGraph *g, uint32_t tags, int storey, float x, float z, uint32_t npc_id);
 /* The slot with this tag paired to `other` (same group), free. */
 uint32_t slot_claim_pair(RoomGraph *g, uint32_t tag, uint32_t other, uint32_t npc_id);

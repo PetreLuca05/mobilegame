@@ -230,6 +230,10 @@ set(MG_GAME_SOURCES
   game/bake.c
   game/npc.c
   game/rooms.c
+  game/npc_data.c
+  game/npc_sim.c
+  game/npc_pkg.c
+  game/npc_look.c
   game/stats.c
   game/player.c
   game/camera_td.c
