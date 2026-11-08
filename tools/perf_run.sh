@@ -1,20 +1,21 @@
 #!/bin/zsh
 # Runs --autotest perf on the connected devices and records the results.
-#   tools/perf_run.sh OUTDIR [--devices "ipad iphone"] [--scenarios "yard lobby corridor_f2 stress200"]
-#                     [--seconds N] [--gpu] [--no-json] [--tag NAME] [--extra "app args"]
+#   tools/perf_run.sh OUTDIR [--devices "ipad"] [--scenarios "yard lobby corridor_f2 stress200"]
+#                     [--seconds N] [--gpu] [--gate] [--no-json] [--tag NAME] [--extra "app args"]
 # Fails (non-zero, naming the file) if a run produced no new output: every file
 # must be newer than its run, carry that run's id and the commit at HEAD.
 # Never falls back to an earlier file.
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad iphone); SCEN=(yard lobby corridor_f2 stress200); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=()
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;
     --scenarios) SCEN=(${=2}); shift 2 ;;
     --seconds) SECONDS_OVERRIDE=$2; shift 2 ;;
     --gpu) GPU=1; shift ;;
+    --gate) GATE=1; shift ;;
     --no-json) JSON=0; shift ;;
     --tag) TAG=_$2; shift 2 ;;
     --extra) EXTRA=(${=2}); shift 2 ;;
@@ -78,7 +79,7 @@ PY
       sleep 8
       rm -rf "$base.trace" "$base.stamp"
       start=$(date +%s)
-      timeout 120 xcrun xctrace record --template 'Metal System Trace' --device $udid --time-limit 10s --output "$base.trace" \
+      timeout -s KILL 120 xcrun xctrace record --template 'Metal System Trace' --device $udid --time-limit 10s --output "$base.trace" \
         --launch -- $BID --autotest perf $s 30 --quit-after 45 --perf-run-id $id $EXTRA > "$base.log" 2>&1
       [[ -e "$base.trace/Trace1.run" ]] || { tail -5 "$base.log" >&2; fail "$base.trace: xctrace recorded nothing" }
       pull $dev perf_stamp.txt "$base.stamp"
@@ -95,3 +96,5 @@ PY
     fi
   done
 done
+(( GATE )) && { python3 tools/perf_gate.py "$OUT" || exit 1 }
+exit 0

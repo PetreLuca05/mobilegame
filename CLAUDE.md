@@ -391,6 +391,9 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 
 Standing rules and budgets: [docs/PERF_RULES.md](docs/PERF_RULES.md); measurements: [docs/PERF.md](docs/PERF.md).
 
+Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer tested (user decision). Full gate:
+`tools/perf_run.sh OUT --gpu --gate` with a clean tree and HEAD installed.
+
 - Profiler: `PROF_SCOPE("name")` (`engine/core/prof.h`), main thread, compiled out with `-DMG_PROF=OFF` (store archives).
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter

@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-DEVICES = ["ipad", "iphone"]
+DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
 SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200"]
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}

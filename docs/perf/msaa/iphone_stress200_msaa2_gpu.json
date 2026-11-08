@@ -1,0 +1,1 @@
+{"device": "iphone", "scenario": "stress200", "commit": "f8a0163", "fps": 60, "gpu_frame_ms": 2.75, "busy_pct": 16, "effective_ms": 0.45, "clock": "Minimum", "clock_share_pct": 100}

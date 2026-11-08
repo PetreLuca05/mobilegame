@@ -5,10 +5,10 @@ Standing rules for every milestone. Numbers and history are in [PERF.md](PERF.md
 ## The gate
 
 - Every milestone ends with a perf step: `--autotest perf` on all scenarios (`yard`, `lobby`, `corridor_f2`,
-  `stress200`) on the iPad Air 4 and the iPhone 17 Pro Max, compared with `docs/perf/after/`, reported
+  `stress200`) on the iPad Air 4 (and desktop for a labelled sanity check), compared with `docs/perf/after/`, reported
   PASS / FAIL per budget.
 - A milestone is not signed off if any budget is exceeded or regresses by more than 10 %.
-- Each prompt's done checklist gets: `[ ] --autotest perf within budget on iPad Air 4 + iPhone 17 Pro Max; docs/perf/ updated.`
+- Each prompt's done checklist gets: `[ ] --autotest perf within budget on iPad Air 4; docs/perf/ updated.`
 - Never commit an optimisation without its measured delta in PERF.md.
 
 ## Budgets (iPad Air 4, 60 fps, 200 NPCs)
@@ -24,7 +24,7 @@ Standing rules for every milestone. Numbers and history are in [PERF.md](PERF.md
 | Resident memory | 300 MB | - |
 | Dropped frames in a 5-minute stress run | 0 at steady state, thermal state at most "fair" | - |
 
-The iPhone 17 Pro Max must be at or under the iPad numbers. GPU numbers follow the rule in CLAUDE.md: frame ms,
+GPU numbers follow the rule in CLAUDE.md: frame ms,
 GPU-busy %, effective ms = ms x busy %, dominant clock state.
 
 ## Code
