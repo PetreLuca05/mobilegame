@@ -19,7 +19,8 @@ cmake -S . -B "$BUILD" -G Xcode \
     -DCMAKE_SYSTEM_NAME=iOS \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
     -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DMG_IOS_TEAM_ID="$TEAM"
+    -DMG_IOS_TEAM_ID="$TEAM" \
+    -DMG_IOS_APPLE_SIGNIN="${MG_IOS_APPLE_SIGNIN:-OFF}"
 if [[ "${1:-}" == "--open" ]]; then
     open "$BUILD/mobilegame.xcodeproj"
     exit 0

@@ -10,6 +10,9 @@ set_property(CACHE MG_PLATFORM PROPERTY STRINGS desktop ios android)
 set(MG_BUNDLE_ID "ro.docvex.mobilegame" CACHE STRING "Application identifier")
 set(MG_IOS_TEAM_ID "" CACHE STRING "Apple development team ID for code signing")
 option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
+# Needs the "Sign In with Apple" capability on the App ID (see CLAUDE.md);
+# without it the provisioning profile rejects the entitlement.
+option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
 set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
 set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
 
@@ -228,4 +231,9 @@ elseif(MG_PLATFORM STREQUAL "ios")
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos"
   )
+  if(MG_IOS_APPLE_SIGNIN)
+    set_target_properties(mobilegame PROPERTIES XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS
+                          "${CMAKE_SOURCE_DIR}/platform/ios/mobilegame.entitlements")
+    target_compile_definitions(mg_engine PRIVATE MG_APPLE_SIGNIN=1)
+  endif()
 endif()
