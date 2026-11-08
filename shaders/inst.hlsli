@@ -32,8 +32,8 @@ float3 inst_world(InstIn i)
 float3 inst_normal(InstIn i)
 {
     float3 a = i.row0.xyz, b = i.row1.xyz, c = i.row2.xyz;
-    float3 c0 = cross(b, c), c1 = cross(c, a), c2 = cross(a, b);
-    return c0 * i.nrm.x + c1 * i.nrm.y + c2 * i.nrm.z;
+    // these crosses are the cofactor's rows: dot with the normal (as columns they would undo the rotation)
+    return float3(dot(cross(b, c), i.nrm), dot(cross(c, a), i.nrm), dot(cross(a, b), i.nrm));
 }
 
 // Dithered pipelines only: the opaque ones never call clip() (Apple TBDR hidden-surface removal stays on)
