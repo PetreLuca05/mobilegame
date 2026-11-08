@@ -14,7 +14,9 @@ void touch_controls_default_config(TouchControlsConfig *c)
 
 void touch_controls_reset(TouchControls *tc)
 {
-    tc->stick_touch = tc->camera_touch = tc->jump_touch = -1;
+    tc->stick_touch = tc->camera_touch = tc->camera_touch2 = tc->jump_touch = -1;
+    tc->camera_released = tc->double_tap = false;
+    tc->pinch_dpt = 0.0f;
     tc->move_x = tc->move_y = 0.0f;
     tc->knob_dx = tc->knob_dy = 0.0f;
     tc->sprint = false;
@@ -30,7 +32,7 @@ static void release_if_gone(MgInput *in, int *slot)
 }
 
 void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, MgInput *in, float w_pt, float h_pt,
-                           float safe_right, float safe_bottom)
+                           float safe_right, float safe_bottom, double now)
 {
     float jr = cfg->jump_size_pt * 0.5f;
     tc->jump_cx = w_pt - safe_right - 24.0f - jr;
@@ -38,8 +40,28 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
     const float split = w_pt * cfg->stick_zone_x; /* stick left of this, camera right of it */
 
     release_if_gone(in, &tc->stick_touch);
-    release_if_gone(in, &tc->camera_touch);
     release_if_gone(in, &tc->jump_touch);
+    /* camera finger lifted: a short still touch is a tap (two = double tap) */
+    tc->camera_released = tc->double_tap = false;
+    if (tc->camera_touch >= 0 && !in->touches[tc->camera_touch].active) {
+        const MgTouch *t = &in->touches[tc->camera_touch];
+        float mx = t->x - t->x0, my = t->y - t->y0;
+        bool tap = !tc->pinched && tc->camera_touch2 < 0 && mx * mx + my * my < 12.0f * 12.0f;
+        if (tap) {
+            float dx = t->x - tc->last_tap_x, dy = t->y - tc->last_tap_y;
+            tc->double_tap = now - tc->last_tap_time < 0.35 && dx * dx + dy * dy < 60.0f * 60.0f;
+            tc->last_tap_time = tc->double_tap ? 0.0 : now;
+            tc->last_tap_x = t->x;
+            tc->last_tap_y = t->y;
+        }
+        tc->camera_touch = tc->camera_touch2; /* the other pinch finger keeps dragging */
+        tc->camera_touch2 = -1;
+        tc->camera_released = tc->camera_touch < 0;
+        tc->pinched = tc->pinched && tc->camera_touch >= 0;
+    }
+    if (tc->camera_touch2 >= 0 && !in->touches[tc->camera_touch2].active) {
+        tc->camera_touch2 = -1;
+    }
 
     /* assign new touches */
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
@@ -60,6 +82,10 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
         } else if (tc->camera_touch < 0 && t->x0 >= split) {
             t->owner = TOUCH_OWNER_CAMERA;
             tc->camera_touch = i;
+        } else if (tc->camera_touch2 < 0 && t->x0 >= split) {
+            t->owner = TOUCH_OWNER_CAMERA;
+            tc->camera_touch2 = i;
+            tc->pinch_dist = -1.0f; /* measured below */
         }
     }
 
@@ -85,7 +111,14 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
 
     /* camera */
     tc->camera_dx = tc->camera_dy = 0.0f;
-    if (tc->camera_touch >= 0) {
+    tc->pinch_dpt = 0.0f;
+    if (tc->camera_touch >= 0 && tc->camera_touch2 >= 0) { /* pinch: no yaw */
+        const MgTouch *a = &in->touches[tc->camera_touch], *b = &in->touches[tc->camera_touch2];
+        float d = sqrtf((a->x - b->x) * (a->x - b->x) + (a->y - b->y) * (a->y - b->y));
+        tc->pinch_dpt = tc->pinch_dist >= 0.0f ? d - tc->pinch_dist : 0.0f;
+        tc->pinch_dist = d;
+        tc->pinched = true;
+    } else if (tc->camera_touch >= 0) {
         tc->camera_dx = in->touches[tc->camera_touch].dx;
         tc->camera_dy = in->touches[tc->camera_touch].dy;
     }

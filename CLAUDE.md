@@ -143,6 +143,21 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   with Xcode's Metal frame capture / Android GPU Inspector. N views near 1
   (cascade 0 only) means the atlas is fully cached.
 
+## Camera (M5)
+
+- Default: diagonal top-down `game/camera_td.c` — pitch 62 deg, vertical FOV
+  32 deg, 10-24 m (default 16) from a pivot 0.9 m above the current storey's
+  floor, near/far 0.5/120 m, no wall collision. Yaw is free while dragged
+  (right 55 % one finger, desktop middle/right drag) and springs to the
+  nearest 45 deg on release; Q/E step 45 deg; pinch (two fingers in the right
+  zone) / wheel zoom; double tap in the right zone recentres. Stick and WASD
+  are camera-relative. Follow spring 8/s + 1.2 m look-ahead.
+- `-DMG_CAMERA=thirdperson` builds the M1-M4 orbit camera (`camera_tp.c`,
+  wall sphere-cast) for engine tests; not shipped.
+- Settings: Camera distance, Lock camera north; Developer -> Camera: pitch,
+  FOV, snap, show pivot. `--autotest snaps --spawn -12,0.1,10` walks
+  "stick up" in all 8 views.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

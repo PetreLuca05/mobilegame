@@ -44,6 +44,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     const float sliders_top = y;
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
+#ifndef MG_CAMERA_THIRDPERSON
+    ui_slider(ui, "Camera distance##s3", cx, cy, cw, &s->cam_distance, 10.0f, 24.0f, "%.1f m");
+    cy += step + 4.0f;
+    ui_toggle(ui, "Lock camera north", cx, cy, cw, &s->cam_yaw_lock);
+    cy += 44.0f;
+#else
     ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
     ui_slider(ui, "Camera distance##s3", cx, cy, cw, &s->cam_distance, 1.5f, 8.0f, "%.1f m");
@@ -52,19 +58,24 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         *action = MENU_CAMERA_PITCH;
     }
     cy += step;
+#endif
     float left_end = cy;
     if (wide) {
         cx = x2;
         cy = sliders_top;
     }
+#ifdef MG_CAMERA_THIRDPERSON
     ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 45.0f, 75.0f, "%.0f" TEXT_DEGREE);
     cy += step;
+#endif
     ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 100.0f, "%.0f pt");
     cy += step;
     ui_slider(ui, "Render scale##s7", cx, cy, cw, &s->render_scale, 0.5f, 1.0f, "%.2f");
     cy += step + 4.0f;
+#ifdef MG_CAMERA_THIRDPERSON
     ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
     cy += 44.0f;
+#endif
     y = mg_maxf(cy, left_end) + 6.0f;
 
 
@@ -90,6 +101,17 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;
+#ifndef MG_CAMERA_THIRDPERSON
+        ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Camera");
+        y += 22.0f;
+        ui_slider(ui, "Pitch##tdp", x, y, cw, &s->cam_pitch_override, 45.0f, 89.0f, "%.0f" TEXT_DEGREE);
+        y += step;
+        ui_slider(ui, "FOV##tdf", x, y, cw, &s->cam_fov_td, 20.0f, 60.0f, "%.0f" TEXT_DEGREE);
+        y += step;
+        ui_toggle(ui, "Snap yaw to 45" TEXT_DEGREE, x, y, cw, &s->cam_snap);
+        ui_toggle(ui, "Show pivot", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_pivot);
+        y += wide ? 44.0f : 84.0f;
+#endif
         /* Lighting */
         static const char *const tiers[3] = {"Auto##tier", "Low##tier", "High##tier"};
         float tb = (cw - 16.0f) / 3.0f;

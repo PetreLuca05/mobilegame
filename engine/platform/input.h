@@ -26,7 +26,7 @@ typedef struct MgInput {
     bool key_down[SDL_SCANCODE_COUNT];
     bool key_pressed[SDL_SCANCODE_COUNT]; /* edge, this frame */
     float wheel;
-    float mouse_dx, mouse_dy; /* relative motion with right button held (desktop camera) */
+    float mouse_dx, mouse_dy; /* relative motion with right or middle button held (desktop camera) */
     bool mouse_right;
     char text[32]; /* text typed this frame (ASCII subset) */
     int text_len;

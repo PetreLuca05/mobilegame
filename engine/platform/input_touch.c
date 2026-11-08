@@ -100,12 +100,12 @@ void input_handle_event(MgInput *in, const SDL_Event *e, float width_pt, float h
         in->wheel += e->wheel.y;
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if (e->button.which != SDL_TOUCH_MOUSEID && e->button.button == SDL_BUTTON_RIGHT) {
+        if (e->button.which != SDL_TOUCH_MOUSEID && (e->button.button == SDL_BUTTON_RIGHT || e->button.button == SDL_BUTTON_MIDDLE)) {
             in->mouse_right = true;
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
-        if (e->button.which != SDL_TOUCH_MOUSEID && e->button.button == SDL_BUTTON_RIGHT) {
+        if (e->button.which != SDL_TOUCH_MOUSEID && (e->button.button == SDL_BUTTON_RIGHT || e->button.button == SDL_BUTTON_MIDDLE)) {
             in->mouse_right = false;
         }
         break;

@@ -1,5 +1,6 @@
 /* Game: scene (hospital or dev room), kinematic player, landscape touch
- * controls, third-person camera, HUD, settings menu and multiplayer session.
+ * controls, diagonal top-down camera (third-person with
+ * MG_CAMERA=thirdperson), HUD, settings menu and multiplayer session.
  * Keyboard/mouse also work on desktop. */
 #include "game.h"
 
@@ -10,6 +11,7 @@
 #include "platform/google_auth.h"
 #include "autotest.h"
 #include "avatar.h"
+#include "camera_td.h"
 #include "camera_tp.h"
 #include "config.local.h"
 #ifndef MG_VERSION
@@ -48,7 +50,8 @@ typedef struct Game {
     ColWorld world;
     KinematicParams kparams;
     Player player;
-    TpCamera cam;
+    TpCamera cam;          /* MG_CAMERA=thirdperson only */
+    TdCamera td;           /* the default camera */
     FlyCamera fly;
     bool fly_mode;
     GameSettings settings;
@@ -185,6 +188,7 @@ bool game_init(MgApp *app)
     touch_controls_reset(&g->touch);
 
     tpcam_init(&g->cam);
+    tdcam_init(&g->td);
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
@@ -308,6 +312,7 @@ void game_tick(MgApp *app)
             g->player.kin.pos.Y += dy;
             g->player.prev_pos.Y += dy;
             g->cam.pivot.Y += dy;
+            g->td.pivot.Y += dy;
         }
         audio_ding(g->audio);
         g->stats.rides++;
@@ -355,16 +360,45 @@ static void update_player_input(Game *g, MgApp *app)
     float dt = mg_minf(app->frame_dt, 0.1f);
 
     float look_x = g->touch.camera_dx + in->mouse_dx;
+#ifdef MG_CAMERA_THIRDPERSON
     float look_y = g->touch.camera_dy + in->mouse_dy;
     look_x += ((k[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f)) * 400.0f * dt;
     look_y += ((k[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_UP] ? 1.0f : 0.0f)) * 300.0f * dt;
     float invert = s->invert_y ? -1.0f : 1.0f;
     tpcam_orbit(&g->cam, -HMM_AngleDeg(s->yaw_deg_per_pt) * look_x, -HMM_AngleDeg(s->pitch_deg_per_pt) * look_y * invert);
     g->settings.cam_pitch_deg = HMM_ToDeg(g->cam.pitch);
+    const float cam_yaw = g->cam.yaw;
+#else
+    /* right thumb / middle or right mouse drag = yaw, pinch / wheel = zoom,
+     * Q / E = 45 deg steps, double tap = recentre */
+    TdCamera *td = &g->td;
+    tdcam_drag(td, -HMM_AngleDeg(s->yaw_deg_per_pt) * look_x);
+    if (g->touch.camera_released || (td->dragging && !in->mouse_right && g->touch.camera_touch < 0)) {
+        tdcam_release(td);
+    }
+    if (g->touch.pinch_dpt != 0.0f) { /* ~0.02 m per pt at 16 m, logarithmic */
+        tdcam_zoom(td, expf(-g->touch.pinch_dpt * 0.02f / TDCAM_DEFAULT_DISTANCE));
+    }
+    if (in->wheel != 0.0f) {
+        tdcam_zoom(td, expf(-in->wheel * 0.1f));
+    }
+    if (in->key_pressed[SDL_SCANCODE_Q]) {
+        tdcam_step(td, -1);
+    }
+    if (in->key_pressed[SDL_SCANCODE_E]) {
+        tdcam_step(td, 1);
+    }
+    if (g->touch.double_tap) {
+        tdcam_recentre(td);
+    }
+    g->settings.cam_distance = td->distance;
+    const float cam_yaw = td->yaw;
+    (void)dt;
+#endif
 
     float fw = g->touch.move_y + (k[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_S] ? 1.0f : 0.0f);
     float st = g->touch.move_x + (k[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (k[SDL_SCANCODE_A] ? 1.0f : 0.0f);
-    float sy = HMM_SinF(g->cam.yaw), cy = HMM_CosF(g->cam.yaw);
+    float sy = HMM_SinF(cam_yaw), cy = HMM_CosF(cam_yaw); /* stick up = away from the camera */
     float mx = -sy * fw + cy * st;
     float mz = -cy * fw - sy * st;
     float len = HMM_SqrtF(mx * mx + mz * mz);
@@ -482,7 +516,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         if (el) {
             elevator_place(el, f);
         }
-        g->cam.initialized = false;
+        g->cam.initialized = g->td.initialized = false;
         break;
     }
     case MENU_MAIN_MENU:
@@ -720,7 +754,7 @@ static void load_step(Game *g, MgApp *app)
             g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
         }
         g->next_save = app->time + 30.0;
-        g->cam.initialized = false;
+        g->cam.initialized = g->td.initialized = false;
         touch_controls_reset(&g->touch);
         if (g->pending_play == 1) {
             session_start(&g->session, MODE_PARTY, NULL);
@@ -862,7 +896,11 @@ void game_frame(MgApp *app, float alpha)
     Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
     AutotestProbe probe = {g->player.kin.pos,
                            g->player.kin.vel,
+#ifdef MG_CAMERA_THIRDPERSON
                            HMM_ToDeg(g->cam.yaw),
+#else
+                           HMM_ToDeg(g->td.yaw),
+#endif
                            g->player.kin.jump_count,
                            g->touch.sprint,
                            1,
@@ -913,7 +951,7 @@ void game_frame(MgApp *app, float alpha)
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
             player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
-            g->cam.initialized = false;
+            g->cam.initialized = g->td.initialized = false;
         }
         if (g->session.profile_new) { /* account loaded or switched */
             g->session.profile_new = false;
@@ -1028,8 +1066,15 @@ void game_frame(MgApp *app, float alpha)
         }
     }
     gfx_set_render_scale(app->gfx, s->render_scale);
-    g->cam.distance = s->cam_distance;
+#ifdef MG_CAMERA_THIRDPERSON
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
+#else
+    g->td.distance = mg_clampf(s->cam_distance, TDCAM_MIN_DISTANCE, TDCAM_MAX_DISTANCE);
+    g->td.lock_north = s->cam_yaw_lock;
+    g->td.snap = s->cam_snap;
+    g->td.pitch = -HMM_AngleDeg(s->cam_pitch_override);
+    g->td.fov_y = HMM_AngleDeg(s->cam_fov_td);
+#endif
     if (g->menu.open || riding) {
         touch_controls_reset(&g->touch);
     } else {
@@ -1039,7 +1084,7 @@ void game_frame(MgApp *app, float alpha)
         g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
-                              app->safe_bottom);
+                              app->safe_bottom, app->time);
     }
 
     HMM_Vec3 feet = player_render_pos(&g->player, alpha);
@@ -1065,9 +1110,15 @@ void game_frame(MgApp *app, float alpha)
         } else {
             update_player_input(g, app);
         }
+#ifdef MG_CAMERA_THIRDPERSON
         tpcam_update(&g->cam, feet, mg_minf(app->frame_dt, 0.1f));
         tpcam_collide(&g->cam, &g->world, scene_indoors(g->scene, feet) ? 2.4f : 100.0f, mg_minf(app->frame_dt, 0.1f));
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
+#else
+        float floor_y = scene_floor_y(g->scene, scene_floor_of(g->scene, feet));
+        tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.sprint_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
+        tdcam_matrices(&g->td, aspect, &sp.view, &sp.proj, &sp.eye);
+#endif
     }
     int floor = scene_floor_of(g->scene, g->fly_mode ? HMM_SubV3(sp.eye, HMM_V3(0, 1.5f, 0)) : feet);
     scene_defaults(&sp, (float)app->time, &g->day_state);
