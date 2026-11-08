@@ -35,7 +35,7 @@
 #define HOSP_DOOR_Z (-12.81f) /* centre plane of the sliding panels */
 
 enum {
-    HM_SHELL,     /* exterior walls, slabs, roof, canopy (matte) */
+    HM_SHELL,     /* entrance canopy + posts (matte, yard level) */
     HM_YARD,      /* fence, trees, benches, sign (matte, outdoor) */
     HM_GLOSS_OUT, /* glass, lamp heads */
     HM_GROUND,    /* path + drop-off loop (floor material) */
@@ -46,8 +46,18 @@ enum {
     HM_TEXT0,
     HM_LAMPS = HM_TEXT0 + HOSP_FLOORS, /* exterior lamp heads (emissive with lamp-on) */
     HM_FIX0,                           /* ceiling light panels per storey (emissive) */
-    HM_COUNT = HM_FIX0 + HOSP_FLOORS,
+    HM_WALL_LO0 = HM_FIX0 + HOSP_FLOORS, /* exterior walls per storey, below 0.9 m */
+    HM_WALL_HI0 = HM_WALL_LO0 + HOSP_FLOORS, /* ... above 0.9 m + the blue band */
+    HM_WIN0 = HM_WALL_HI0 + HOSP_FLOORS,     /* window glass per storey */
+    HM_SLAB0 = HM_WIN0 + HOSP_FLOORS,        /* slab under storey f (its floor, ceiling of f-1) */
+    HM_ROOF = HM_SLAB0 + HOSP_FLOORS,        /* roof slab + parapet (storey 3) */
+    HM_COUNT,
 };
+/* Storey ids: -1 yard (always drawn), 0..2 storeys, 3 roof. Every mesh group
+ * has one (hospital_group_storey); a slab, ceiling panel or car ceiling
+ * belongs to the storey whose floor it is, i.e. the ceiling of storey f is
+ * tagged f + 1, so storey V can be drawn without its ceiling. */
+#define HOSP_ROOF_STOREY HOSP_FLOORS
 /* HM_INT*, HM_GLOSS* and HM_FLOOR* are split into HOSP_CELLS chunks each, so
  * every chunk draw gets the few lights near it. */
 
@@ -70,12 +80,23 @@ typedef struct Hospital {
     float door_open[HOSP_FLOORS]; /* 0 closed .. 1 open, set by the elevator */
 } Hospital;
 
+/* What to draw: visibility per storey id 0..3 (1 drawn, 0 hidden; step 3
+ * fades in between) and the view floor (lights, reflection). */
+typedef struct HospView {
+    int view_floor;
+    float storey_vis[HOSP_FLOORS + 1];
+    bool storey_tint; /* debug: colour every mesh by its storey id */
+    bool show_triggers;
+    float lamp_on;
+} HospView;
+
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font);
+int hospital_group_storey(int grp);
 /* Slide the door leaves' colliders to match door_open[]. */
 void hospital_apply_doors(Hospital *h, ColWorld *world);
-/* `floor` = storey the viewer is on: only its interior is drawn (the
- * windows are opaque) and only its floor reflects. */
-void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers, float lamp_on);
+/* Interiors are drawn only while the roof is not fully there (from outside
+ * the opaque windows hide them); only the view floor reflects. */
+void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v);
 /* Add this frame's lights: exterior ones scaled by lamp_on, interior ones of
  * `floor`, nothing beyond 40 m from the eye. Returns how many cast shadows. */
 int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 eye, float lamp_on);

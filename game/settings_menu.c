@@ -100,7 +100,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_triggers);
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
-        y += 44.0f;
+        ui_toggle(ui, "Storey colours", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_storeys);
+        y += wide ? 44.0f : 84.0f;
 #ifndef MG_CAMERA_THIRDPERSON
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Camera");
         y += 22.0f;

@@ -22,6 +22,8 @@ typedef struct SceneView {
     bool show_triggers; /* debug: draw trigger volumes */
     bool show_lights;   /* debug: light gizmos */
     float lamp_on;      /* day cycle: exterior lamps 0..1 */
+    float storey_vis[4]; /* per storey id 0..3 (3 = roof): 1 drawn .. 0 hidden */
+    bool storey_tint;   /* debug: colour meshes by storey id */
 } SceneView;
 
 /* Builds meshes (signs use `font`) and fills `world` with the static colliders. */

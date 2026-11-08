@@ -124,7 +124,7 @@ static void blocker(Build *b, float x0, float y0, float z0, float x1, float y1, 
 
 /* ------------------------------------------------------------------ walls */
 
-enum { OP_GAP, OP_DOOR, OP_WINDOW };
+enum { OP_GAP, OP_DOOR, OP_WINDOW, OP_DOOR_SIDES /* door frame posts only (lower part of a split wall) */ };
 
 typedef struct Opening {
     float at, w;  /* centre along the wall, width */
@@ -170,7 +170,11 @@ static void wall(Build *b, const WallSpec *w, const Opening *op, int n)
         if (w->y0 + op[i].y1 < w->y1) {
             wall_piece(b, w, w->grp, o0, o1, w->y0 + op[i].y1, w->y1, 0.0f, w->hex, true);
         }
-        if (op[i].kind == OP_DOOR) {
+        if (op[i].kind == OP_DOOR_SIDES) {
+            const float f = 0.08f;
+            wall_piece(b, w, w->grp, o0, o0 + f, w->y0, w->y1, 0.03f, C_DOOR, false);
+            wall_piece(b, w, w->grp, o1 - f, o1, w->y0, w->y1, 0.03f, C_DOOR, false);
+        } else if (op[i].kind == OP_DOOR) {
             const float f = 0.08f;
             float top = w->y0 + op[i].y1;
             wall_piece(b, w, w->grp, o0, o0 + f, w->y0, top, 0.03f, C_DOOR, false);
@@ -187,6 +191,66 @@ static void wall(Build *b, const WallSpec *w, const Opening *op, int n)
         wall_piece(b, w, w->grp, cur, w->a1, w->y0, w->y1, 0.0f, w->hex, true);
     }
 }
+
+/* Exterior wall of storey f in two meshes, split at 0.9 m above its floor
+ * (the low-wall cutaway fades only the upper part). */
+#define LOW_WALL 0.9f
+static void split_wall(Build *b, const WallSpec *w, int f, const Opening *op, int n)
+{
+    Opening lo[16], hi[16];
+    int nl = 0, nh = 0;
+    for (int i = 0; i < n && i < 16; i++) {
+        if (op[i].y0 < LOW_WALL) { /* reaches into the low part */
+            lo[nl] = op[i];
+            lo[nl].y1 = LOW_WALL + 1.0f; /* no lintel in the low part */
+            lo[nl].kind = op[i].kind == OP_DOOR ? OP_DOOR_SIDES : op[i].kind;
+            nl++;
+        }
+        hi[nh] = op[i];
+        hi[nh].y0 = op[i].y0 > LOW_WALL ? op[i].y0 - LOW_WALL : 0.0f;
+        hi[nh].y1 = op[i].y1 - LOW_WALL;
+        nh++;
+    }
+    WallSpec a = *w, c = *w;
+    a.grp = HM_WALL_LO0 + f;
+    a.glass_grp = HM_WIN0 + f;
+    a.y1 = w->y0 + LOW_WALL;
+    c.grp = HM_WALL_HI0 + f;
+    c.glass_grp = HM_WIN0 + f;
+    c.y0 = w->y0 + LOW_WALL;
+    wall(b, &a, lo, nl);
+    wall(b, &c, hi, nh);
+}
+
+/* Box with a rectangular hole in XZ (stairwell): up to four pieces. */
+static void box_with_hole(Build *b, int grp, float x0, float y0, float z0, float x1, float y1, float z1, uint32_t hex,
+                          const float hole[4])
+{
+    if (!hole) {
+        box(b, grp, x0, y0, z0, x1, y1, z1, hex, 0, false);
+        return;
+    }
+    float hx0 = mg_maxf(hole[0], x0), hz0 = mg_maxf(hole[1], z0), hx1 = mg_minf(hole[2], x1), hz1 = mg_minf(hole[3], z1);
+    if (hx0 >= hx1 || hz0 >= hz1) {
+        box(b, grp, x0, y0, z0, x1, y1, z1, hex, 0, false);
+        return;
+    }
+    if (hz0 > z0) {
+        box(b, grp, x0, y0, z0, x1, y1, hz0, hex, 0, false);
+    }
+    if (hz1 < z1) {
+        box(b, grp, x0, y0, hz1, x1, y1, z1, hex, 0, false);
+    }
+    if (hx0 > x0) {
+        box(b, grp, x0, y0, hz0, hx0, y1, hz1, hex, 0, false);
+    }
+    if (hx1 < x1) {
+        box(b, grp, hx1, y0, hz0, x1, y1, hz1, hex, 0, false);
+    }
+}
+
+/* the stairwell is open from storey 1 up (seen from above), rope kept */
+static const float k_stair_hole[4] = {-5.8f, -16.75f, -2.625f, -10.875f};
 
 static Opening door_at(float at) { return (Opening){at, 1.2f, 0.0f, 2.1f, OP_DOOR}; }
 static Opening gap_at(float at, float w, float h) { return (Opening){at, w, 0.0f, h, OP_GAP}; }
@@ -223,6 +287,12 @@ static void door_sign(Build *b, int f, float x, float wall_z, int facing, const 
 {
     float face = wall_z + (facing == FACE_PZ ? WALL_T * 0.5f : -WALL_T * 0.5f);
     sign(b, HM_INT0 + f, HM_TEXT0 + f, HMM_V3(x, (float)f * HOSP_STOREY + 2.42f, face), facing, text, 0.2f, 0);
+    if (strncmp(text, "Stairs", 6) != 0) { /* floor-painted label in the room: readable from above */
+        float z = wall_z + (facing == FACE_PZ ? -2.2f : 2.2f);
+        HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_V3(x, (float)f * HOSP_STOREY + 0.012f, z)),
+                               HMM_Rotate_RH(-HMM_PI32 * 0.5f, HMM_V3(1, 0, 0)));
+        text_mesh(mbg(b, HM_TEXT0 + f, x, z), b->font, m, 0.8f, HMM_V4(0.42f, 0.48f, 0.56f, 1.0f), text);
+    }
 }
 
 /* ------------------------------------------------------------------ props */
@@ -421,7 +491,7 @@ static void build_shell(Build *b)
         }
         WallSpec s = {HM_SHELL, HM_GLOSS_OUT, true, HOSP_X0, HOSP_X1, HOSP_Z1 - WALL_T * 0.5f, WALL_T, y,
                       y + HOSP_STOREY, C_EXTERIOR, F_ALL & ~F_NZ};
-        wall(b, &s, ns, nn);
+        split_wall(b, &s, f, ns, nn);
         /* north facade: no windows into the shaft void */
         nn = 0;
         for (int k = 0; k < 10; k++) {
@@ -433,28 +503,32 @@ static void build_shell(Build *b)
         WallSpec n = s;
         n.c = HOSP_Z0 + WALL_T * 0.5f;
         n.outdoor = F_ALL & ~F_PZ;
-        wall(b, &n, ns, nn);
+        split_wall(b, &n, f, ns, nn);
         for (int k = 0; k < 6; k++) {
             ew[ne++] = (Opening){-15.5f + 3.0f * (float)k, 1.6f, 0.9f, 2.3f, OP_WINDOW};
         }
         WallSpec w = {HM_SHELL, HM_GLOSS_OUT, false, HOSP_Z0 + WALL_T, HOSP_Z1 - WALL_T, HOSP_X0 + WALL_T * 0.5f,
                       WALL_T, y, y + HOSP_STOREY, C_EXTERIOR, F_ALL & ~F_PX};
-        wall(b, &w, ew, ne);
+        split_wall(b, &w, f, ew, ne);
         WallSpec e = w;
         e.c = HOSP_X1 - WALL_T * 0.5f;
         e.outdoor = F_ALL & ~F_NX;
-        wall(b, &e, ew, ne);
+        split_wall(b, &e, f, ew, ne);
 
         /* blue band under each storey's top */
         float b0 = y + 3.3f, b1 = y + 3.7f, o = 0.06f;
-        box(b, HM_SHELL, HOSP_X0 - o, b0, HOSP_Z1, HOSP_X1 + o, b1, HOSP_Z1 + o, C_BAND, F_ALL, false);
-        box(b, HM_SHELL, HOSP_X0 - o, b0, HOSP_Z0 - o, HOSP_X1 + o, b1, HOSP_Z0, C_BAND, F_ALL, false);
-        box(b, HM_SHELL, HOSP_X0 - o, b0, HOSP_Z0, HOSP_X0, b1, HOSP_Z1, C_BAND, F_ALL, false);
-        box(b, HM_SHELL, HOSP_X1, b0, HOSP_Z0, HOSP_X1 + o, b1, HOSP_Z1, C_BAND, F_ALL, false);
+        int hi = HM_WALL_HI0 + f;
+        box(b, hi, HOSP_X0 - o, b0, HOSP_Z1, HOSP_X1 + o, b1, HOSP_Z1 + o, C_BAND, F_ALL, false);
+        box(b, hi, HOSP_X0 - o, b0, HOSP_Z0 - o, HOSP_X1 + o, b1, HOSP_Z0, C_BAND, F_ALL, false);
+        box(b, hi, HOSP_X0 - o, b0, HOSP_Z0, HOSP_X0, b1, HOSP_Z1, C_BAND, F_ALL, false);
+        box(b, hi, HOSP_X1, b0, HOSP_Z0, HOSP_X1 + o, b1, HOSP_Z1, C_BAND, F_ALL, false);
 
-        /* slab under the storey (ceiling of the one below) */
-        box(b, HM_SHELL, HOSP_X0 + WALL_T, y - 0.3f, HOSP_Z0 + WALL_T, HOSP_X1 - WALL_T, y, HOSP_Z1 - WALL_T, C_WALL, 0,
-            true);
+        /* slab under the storey (ceiling of the one below): drawn with the
+         * stairwell open from storey 1 up, collides as one solid box */
+        const float *hole = f > 0 ? k_stair_hole : NULL;
+        box_with_hole(b, HM_SLAB0 + f, HOSP_X0 + WALL_T, y - 0.3f, HOSP_Z0 + WALL_T, HOSP_X1 - WALL_T, y,
+                      HOSP_Z1 - WALL_T, C_WALL, hole);
+        blocker(b, HOSP_X0 + WALL_T, y - 0.3f, HOSP_Z0 + WALL_T, HOSP_X1 - WALL_T, y, HOSP_Z1 - WALL_T);
         /* floor finish, drawn with the floor material, one piece per chunk */
         const float cz[3] = {HOSP_Z0 + WALL_T, -9.4f, HOSP_Z1 - WALL_T};
         float cx[9];
@@ -463,17 +537,18 @@ static void build_shell(Build *b)
         }
         for (int iz = 0; iz < 2; iz++) {
             for (int ix = 0; ix < 8; ix++) {
-                box(b, HM_FLOOR0 + f, cx[ix], y - 0.02f, cz[iz], cx[ix + 1], y + 0.004f, cz[iz + 1], C_FLOOR, 0, false);
+                box_with_hole(b, HM_FLOOR0 + f, cx[ix], y - 0.02f, cz[iz], cx[ix + 1], y + 0.004f, cz[iz + 1], C_FLOOR,
+                              hole);
             }
         }
     }
     /* roof slab + parapet */
     float r = HOSP_FLOORS * HOSP_STOREY;
-    box(b, HM_SHELL, HOSP_X0, r - 0.3f, HOSP_Z0, HOSP_X1, r, HOSP_Z1, C_ROOF, F_ALL & ~F_NY, true);
-    box(b, HM_SHELL, HOSP_X0, r, HOSP_Z1 - 0.2f, HOSP_X1, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
-    box(b, HM_SHELL, HOSP_X0, r, HOSP_Z0, HOSP_X1, r + 0.6f, HOSP_Z0 + 0.2f, C_EXTERIOR, F_ALL, false);
-    box(b, HM_SHELL, HOSP_X0, r, HOSP_Z0, HOSP_X0 + 0.2f, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
-    box(b, HM_SHELL, HOSP_X1 - 0.2f, r, HOSP_Z0, HOSP_X1, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
+    box(b, HM_ROOF, HOSP_X0, r - 0.3f, HOSP_Z0, HOSP_X1, r, HOSP_Z1, C_ROOF, F_ALL & ~F_NY, true);
+    box(b, HM_ROOF, HOSP_X0, r, HOSP_Z1 - 0.2f, HOSP_X1, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
+    box(b, HM_ROOF, HOSP_X0, r, HOSP_Z0, HOSP_X1, r + 0.6f, HOSP_Z0 + 0.2f, C_EXTERIOR, F_ALL, false);
+    box(b, HM_ROOF, HOSP_X0, r, HOSP_Z0, HOSP_X0 + 0.2f, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
+    box(b, HM_ROOF, HOSP_X1 - 0.2f, r, HOSP_Z0, HOSP_X1, r + 0.6f, HOSP_Z1, C_EXTERIOR, F_ALL, false);
 
     /* entrance canopy on two posts, name sign on its front */
     box(b, HM_SHELL, -3.0f, 2.9f, HOSP_Z1, 3.0f, 3.1f, HOSP_Z1 + 2.2f, C_EXTERIOR, F_ALL, false);
@@ -513,8 +588,9 @@ static void build_elevator(Build *b, Hospital *h, int f)
     box(b, g, -1.25f, y, -15.09f, 1.25f, y + INT_H, HOSP_CAR_Z0, 0xDCE3EA, 0, true);
     box(b, g, -2.375f, y, -13.09f, -1.25f, y + INT_H, HOSP_CAR_Z1, C_WALL, 0, true);
     box(b, g, 1.25f, y, -13.09f, 2.375f, y + INT_H, HOSP_CAR_Z1, C_WALL, 0, true);
-    box(b, g, HOSP_CAR_X0, y + HOSP_CAR_H, HOSP_CAR_Z0, HOSP_CAR_X1, y + HOSP_CAR_H + 0.1f, -12.75f, 0xF4F7FA, 0,
-        false);
+    /* car ceiling: part of the storey above, so the car is open from above */
+    box(b, f + 1 < HOSP_FLOORS ? HM_SLAB0 + f + 1 : HM_ROOF, HOSP_CAR_X0, y + HOSP_CAR_H, HOSP_CAR_Z0, HOSP_CAR_X1,
+        y + HOSP_CAR_H + 0.1f, -12.75f, 0xF4F7FA, 0, false);
     box(b, g, HOSP_CAR_X0, y, HOSP_CAR_Z0, HOSP_CAR_X1, y + 0.008f, HOSP_CAR_Z1, 0x5B6470, 0, false);
     box(b, gl, -0.9f, y + 0.92f, HOSP_CAR_Z0 + 0.04f, 0.9f, y + 0.97f, HOSP_CAR_Z0 + 0.09f, C_STEEL, 0, false);
     box(b, g, 0.96f, y + 1.0f, -13.45f, 1.0f, y + 1.5f, -13.25f, C_DARK, 0, false);
@@ -812,6 +888,8 @@ static uint32_t group_caps(int grp, bool indices)
     uint32_t v = 4096;
     if (grp == HM_SHELL || grp == HM_YARD) {
         v = 32768;
+    } else if (grp >= HM_WALL_LO0 && grp <= HM_ROOF) {
+        v = 8192;
     } else if (grp == HM_GLOSS_OUT || (grp >= HM_TEXT_OUT && grp < HM_TEXT0 + HOSP_FLOORS)) {
         v = 8192;
     } else if (grp == HM_GROUND || grp == HM_LAMPS || (grp >= HM_FIX0 && grp < HM_FIX0 + HOSP_FLOORS)) {
@@ -919,35 +997,87 @@ static void draw_mesh(GfxContext *g, GfxMeshId m, const GfxMaterial *mat, uint32
     }
 }
 
-void hospital_draw(const Hospital *h, GfxContext *g, int floor, bool show_triggers, float lamp_on)
+int hospital_group_storey(int grp)
 {
-    floor = floor < 0 ? 0 : (floor >= HOSP_FLOORS ? HOSP_FLOORS - 1 : floor);
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        if (grp == HM_INT0 + f || grp == HM_GLOSS0 + f || grp == HM_FLOOR0 + f || grp == HM_TEXT0 + f ||
+            grp == HM_WALL_LO0 + f || grp == HM_WALL_HI0 + f || grp == HM_WIN0 + f || grp == HM_SLAB0 + f) {
+            return f;
+        }
+        if (grp == HM_FIX0 + f) {
+            return f + 1; /* ceiling panels: the ceiling of f is the next storey's floor */
+        }
+    }
+    return grp == HM_ROOF ? HOSP_ROOF_STOREY : -1; /* yard, canopy, outdoor lamps, sign */
+}
+
+/* debug colours by storey id: yard grey, G green, 1 blue, 2 orange, roof magenta */
+static GfxMaterial tinted(GfxMaterial m, const HospView *v, int storey)
+{
+    static const uint32_t k[5] = {0x9AA0A6, 0x4CD964, 0x4A8BFF, 0xFF9F0A, 0xFF2D95};
+    if (v->storey_tint) {
+        uint32_t c = k[storey + 1];
+        m.tint = HMM_V4((float)((c >> 16) & 255) / 255.0f, (float)((c >> 8) & 255) / 255.0f,
+                        (float)(c & 255) / 255.0f, m.tint.W);
+    }
+    return m;
+}
+
+static bool storey_shown(const HospView *v, int storey) { return storey < 0 || v->storey_vis[storey] > 0.02f; }
+
+static void draw_group(const Hospital *h, GfxContext *g, const HospView *v, int grp, const GfxMaterial *mat,
+                       uint32_t flags)
+{
+    int st = hospital_group_storey(grp);
+    if (storey_shown(v, st)) {
+        GfxMaterial m = tinted(*mat, v, st);
+        draw_mesh(g, h->mesh[grp], &m, flags);
+    }
+}
+
+void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
+{
+    int floor = v->view_floor < 0 ? 0 : (v->view_floor >= HOSP_FLOORS ? HOSP_FLOORS - 1 : v->view_floor);
     GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.2f);
     GfxMaterial glossy = mat_toon_glossy(HMM_V4(1, 1, 1, 1), 0.3f, 1.0f);
     GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), floor == 0 ? 0.25f : 0.0f);
-    GfxMaterial inside = mat_floor_plain(HMM_V4(1, 1, 1, 1), 0.35f);
     GfxMaterial text = mat_text(HMM_V4(1, 1, 1, 1));
-    GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * lamp_on);
+    GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * v->lamp_on);
     GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), 1.4f);
-    draw_mesh(g, h->mesh[HM_SHELL], &matte, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_YARD], &matte, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_GLOSS_OUT], &glossy, GFX_DRAW_REFLECT);
-    draw_mesh(g, h->mesh[HM_LAMPS], &lamps, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
-    draw_mesh(g, h->mesh[HM_GROUND], &ground, GFX_DRAW_NO_SHADOW);
-    draw_mesh(g, h->mesh[HM_TEXT_OUT], &text, GFX_DRAW_NO_SHADOW);
-    for (int c = 0; c < HOSP_CELLS; c++) {
-        draw_mesh(g, h->cell[floor][0][c], &matte, GFX_DRAW_REFLECT);
-        draw_mesh(g, h->cell[floor][1][c], &glossy, GFX_DRAW_REFLECT);
-        draw_mesh(g, h->cell[floor][2][c], &inside, GFX_DRAW_NO_SHADOW);
+    draw_group(h, g, v, HM_SHELL, &matte, GFX_DRAW_REFLECT);
+    draw_group(h, g, v, HM_YARD, &matte, GFX_DRAW_REFLECT);
+    draw_group(h, g, v, HM_GLOSS_OUT, &glossy, GFX_DRAW_REFLECT);
+    draw_group(h, g, v, HM_LAMPS, &lamps, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
+    draw_group(h, g, v, HM_GROUND, &ground, GFX_DRAW_NO_SHADOW);
+    draw_group(h, g, v, HM_TEXT_OUT, &text, GFX_DRAW_NO_SHADOW);
+    draw_group(h, g, v, HM_ROOF, &matte, GFX_DRAW_REFLECT);
+    /* from outside the roof and the opaque windows hide every interior */
+    bool interiors = v->storey_vis[HOSP_ROOF_STOREY] < 1.0f;
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        draw_group(h, g, v, HM_WALL_LO0 + f, &matte, GFX_DRAW_REFLECT);
+        draw_group(h, g, v, HM_WALL_HI0 + f, &matte, GFX_DRAW_REFLECT);
+        draw_group(h, g, v, HM_WIN0 + f, &glossy, GFX_DRAW_REFLECT);
+        draw_group(h, g, v, HM_SLAB0 + f, &matte, GFX_DRAW_REFLECT);
+        if (!interiors || !storey_shown(v, f)) {
+            continue;
+        }
+        /* only the view floor reflects */
+        GfxMaterial inside = tinted(mat_floor_plain(HMM_V4(1, 1, 1, 1), f == floor ? 0.35f : 0.0f), v, f);
+        GfxMaterial mt = tinted(matte, v, f), gl = tinted(glossy, v, f);
+        for (int c = 0; c < HOSP_CELLS; c++) {
+            draw_mesh(g, h->cell[f][0][c], &mt, GFX_DRAW_REFLECT);
+            draw_mesh(g, h->cell[f][1][c], &gl, GFX_DRAW_REFLECT);
+            draw_mesh(g, h->cell[f][2][c], &inside, GFX_DRAW_NO_SHADOW);
+        }
+        draw_group(h, g, v, HM_FIX0 + f, &panels, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
+        draw_group(h, g, v, HM_TEXT0 + f, &text, GFX_DRAW_NO_SHADOW);
+        for (int s = 0; s < 2; s++) {
+            HMM_Mat4 m = HMM_Translate(
+                HMM_V3(leaf_x(s, h->door_open[f]), (float)f * HOSP_STOREY + HOSP_CAR_H * 0.5f, HOSP_DOOR_Z));
+            gfx_draw(g, h->door_panel, &m, &gl, GFX_DRAW_REFLECT);
+        }
     }
-    draw_mesh(g, h->mesh[HM_FIX0 + floor], &panels, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
-    draw_mesh(g, h->mesh[HM_TEXT0 + floor], &text, GFX_DRAW_NO_SHADOW);
-    for (int s = 0; s < 2; s++) {
-        HMM_Mat4 m = HMM_Translate(
-            HMM_V3(leaf_x(s, h->door_open[floor]), (float)floor * HOSP_STOREY + HOSP_CAR_H * 0.5f, HOSP_DOOR_Z));
-        gfx_draw(g, h->door_panel, &m, &glossy, GFX_DRAW_REFLECT);
-    }
-    if (show_triggers) {
+    if (v->show_triggers) {
         HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_V3(0.0f, (float)floor * HOSP_STOREY + HOSP_CAR_H * 0.5f,
                                                      (HOSP_CAR_Z0 + HOSP_CAR_Z1) * 0.5f)),
                                HMM_Scale(HMM_V3(HOSP_CAR_X1 - HOSP_CAR_X0, HOSP_CAR_H, HOSP_CAR_Z1 - HOSP_CAR_Z0)));

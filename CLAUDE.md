@@ -158,6 +158,16 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   FOV, snap, show pivot. `--autotest snaps --spawn -12,0.1,10` walks
   "stick up" in all 8 views.
 
+- Storeys (`game/hospital.h`): every mesh group has a storey id
+  (`hospital_group_storey`): -1 yard (always drawn), 0..2, 3 roof. A slab,
+  ceiling panel or car ceiling is tagged with the storey whose *floor* it is
+  (the ceiling of f is f + 1), so the view floor draws without a ceiling.
+  New meshes must go into a tagged group (Developer -> Storey colours /
+  `--storeys`: yard grey, G green, 1 blue, 2 orange, roof magenta).
+  Exterior walls are split at 0.9 m (`HM_WALL_LO*` / `HM_WALL_HI*`) for
+  the low-wall cutaway; slabs from storey 1 up have the stairwell open
+  visually but collide as one box. Rooms have floor-painted labels.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

@@ -15,6 +15,7 @@ typedef struct GameSettings {
     float cam_pitch_override; /* top-down pitch, deg below horizontal, 62 (debug 45-89) */
     float cam_fov_td;       /* top-down vertical FOV, 32 (debug) */
     bool show_pivot;        /* top-down pivot marker (debug) */
+    bool show_storeys;      /* colour meshes by storey id (debug) */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */
     float dead_zone_pt;     /* 60 */
@@ -45,6 +46,7 @@ static inline void settings_default(GameSettings *s)
     s->cam_pitch_override = 62.0f;
     s->cam_fov_td = 32.0f;
     s->show_pivot = false;
+    s->show_storeys = false;
     s->cam_pitch_deg = -20.0f;
     s->fov_deg = 55.0f;
     s->dead_zone_pt = 60.0f;

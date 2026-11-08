@@ -193,6 +193,7 @@ bool game_init(MgApp *app)
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
+    g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
     g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
     const char *tier_arg = arg_value(app->argc, app->argv, "--tier");
     g->settings.tier_override = tier_arg ? (SDL_strcmp(tier_arg, "low") == 0 ? 1 : 2) : 0;
@@ -1125,7 +1126,16 @@ void game_frame(MgApp *app, float alpha)
     sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
-    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on};
+    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, {0}, s->show_storeys};
+    /* inside: storeys up to the view floor, no roof; outside: everything
+     * (the third-person camera, fly cam and menus keep the old look) */
+    bool inside = scene_indoors(g->scene, feet) && !g->fly_mode;
+#ifdef MG_CAMERA_THIRDPERSON
+    inside = false;
+#endif
+    for (int i = 0; i < 4; i++) {
+        view.storey_vis[i] = !inside || (i < 3 && i <= floor) ? 1.0f : 0.0f;
+    }
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
