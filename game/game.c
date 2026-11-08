@@ -22,6 +22,7 @@
 #include "rooms.h"
 #include "platform/device_stats.h"
 #include "stress.h"
+#include "ui/layout.h"
 #include "ui/prof_hud.h"
 #include "avatar.h"
 #include "camera_td.h"
@@ -490,6 +491,7 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void layout_autotest(Game *g, MgApp *app);
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha);
 static void npc_autotest_check(Game *g, MgApp *app);
 static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
@@ -521,6 +523,11 @@ static void draw_xray(Game *g, MgApp *app, const AvatarLook *look, const AvatarP
 
 /* Touch stick / jump button, plus WASD, Shift, Space on desktop
  * (third-person: also camera drag, arrows and right-mouse drag). */
+static ui_frame_t frame_of(const MgApp *app)
+{
+    return (ui_frame_t){app->width_pt, app->height_pt, app->safe_left, app->safe_right, app->safe_top, app->safe_bottom, app->corner_clearance};
+}
+
 static void update_player_input(Game *g, MgApp *app)
 {
     MgInput *in = &app->input;
@@ -993,7 +1000,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         g->menu.open = true;
         SettingsAccount acct = account_view(g);
         MenuAction ma = settings_menu(&g->menu, &g->ui, &g->settings, &acct, app->width_pt, app->height_pt,
-                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, "");
+                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, app->corner_clearance, "");
         handle_menu_action(g, app, ma);
         app_text_input(app, g->menu.editing_name);
         if (!g->menu.open && f->state == FE_SETTINGS) {
@@ -1719,7 +1726,7 @@ void game_frame(MgApp *app, float alpha)
     SettingsAccount acct = account_view(g);
     g->menu.in_room = g->session.mode != MODE_OFFLINE;
     MenuAction action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt,
-                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, g->status);
+                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, app->corner_clearance, g->status);
     handle_menu_action(g, app, action);
     poll_sign_in(g, app);
     app_text_input(app, g->menu.open && g->menu.editing_name);
@@ -2052,8 +2059,20 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     if (s->show_stats) {
-        hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+        hud_draw(app->gfx, &app->font, app->safe_left + 10.0f + app->corner_clearance, app->safe_top + 8.0f, &hud);
     }
+    if (s->show_safe_rect) {
+        const ui_frame_t lf = frame_of(app);
+        const UiColor c = ui_rgba(0xFF4DA6FF);
+        ui_rect(app->gfx, &app->font, ui_safe_left(&lf), ui_safe_top(&lf), ui_safe_w(&lf), 1.0f, c);
+        ui_rect(app->gfx, &app->font, ui_safe_left(&lf), ui_safe_bottom(&lf) - 1.0f, ui_safe_w(&lf), 1.0f, c);
+        ui_rect(app->gfx, &app->font, ui_safe_left(&lf), ui_safe_top(&lf), 1.0f, ui_safe_h(&lf), c);
+        ui_rect(app->gfx, &app->font, ui_safe_right(&lf) - 1.0f, ui_safe_top(&lf), 1.0f, ui_safe_h(&lf), c);
+        char insets[64];
+        SDL_snprintf(insets, sizeof(insets), "insets l%.0f t%.0f r%.0f b%.0f", (double)lf.inset_l, (double)lf.inset_t, (double)lf.inset_r, (double)lf.inset_b);
+        text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
+    }
+    layout_autotest(g, app);
     if (s->show_profiler != g->prof_on && !g->perf.active) {
         g->prof_on = s->show_profiler;
         prof_set_enabled(g->prof_on);
@@ -2311,7 +2330,10 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
     const float w = app->width_pt, h = app->height_pt;
     float res[16];
     int rc = 0;
-    const float pause_btn[4] = {w - app->safe_right - 62.0f, app->safe_top + 2.0f, 56.0f, 56.0f};
+    const ui_frame_t uf = frame_of(app);
+    float px, py, ps;
+    ui_pause_rect(&uf, &px, &py, &ps);
+    const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
     memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
     if (floor_menu_up) {
@@ -2536,6 +2558,52 @@ static void npc_autotest_check(Game *g, MgApp *app)
     SDL_snprintf(g->perf.extra_json, sizeof(g->perf.extra_json),
                  "\"npc\": {\"alive\": %d, \"min_alive\": %d, \"max_alive\": %u, \"spawned\": %u, \"despawned\": %u, \"stuck_events\": %u, \"path_requests\": %u}",
                  w->pool.count, min_alive, w->stats.max_alive, w->stats.spawned, w->stats.despawned, w->stats.stuck_events, w->stats.path_requests);
+}
+
+/* --autotest layout: nothing inside the area the OS excludes, nothing far from an edge the OS leaves free */
+static void layout_autotest(Game *g, MgApp *app)
+{
+    const char *at = arg_value(app->argc, app->argv, "--autotest");
+    if (!at || SDL_strcmp(at, "layout") != 0 || app->time < 3.0) {
+        return;
+    }
+    const ui_frame_t f = frame_of(app);
+    float px, py, ps;
+    ui_pause_rect(&f, &px, &py, &ps);
+    const float r = g->touch_cfg.radius_pt * 0.75f;
+    const float stick_x = f.inset_l + 16.0f, stick_y = f.h - f.inset_b - 16.0f - 2.0f * r;
+    const struct { const char *name; float x, y, w, h; } items[] = {
+        {"pause", px, py, ps, ps},
+        {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r},
+        {"stats", f.inset_l + 10.0f + f.corner, f.inset_t + 8.0f, 200.0f, 90.0f},
+    };
+    bool ok = true;
+    float left = 1e9f, right = 1e9f, top = 1e9f, bottom = 1e9f;
+    for (size_t i = 0; i < MG_ARRAY_COUNT(items); i++) {
+        const bool in = ui_rect_in_safe(&f, items[i].x, items[i].y, items[i].w, items[i].h);
+        ok = ok && in;
+        if (!in) {
+            mg_log_error("autotest layout: assert in_safe_rect: %s at (%.0f, %.0f) size %.0f x %.0f, insets l%.0f t%.0f r%.0f b%.0f", items[i].name, (double)items[i].x, (double)items[i].y, (double)items[i].w,
+                         (double)items[i].h, (double)f.inset_l, (double)f.inset_t, (double)f.inset_r, (double)f.inset_b);
+        }
+        left = mg_minf(left, items[i].x - ui_safe_left(&f));
+        top = mg_minf(top, items[i].y - ui_safe_top(&f));
+        right = mg_minf(right, ui_safe_right(&f) - items[i].x - items[i].w);
+        bottom = mg_minf(bottom, ui_safe_bottom(&f) - items[i].y - items[i].h);
+    }
+    static const char *const edge[4] = {"left", "top", "right", "bottom"};
+    const float gap[4] = {left, top, right, bottom}, inset[4] = {f.inset_l, f.inset_t, f.inset_r, f.inset_b};
+    for (int e = 0; e < 4; e++) {
+        const bool close = inset[e] > 0.0f || gap[e] <= 20.0f + f.corner;
+        ok = ok && close;
+        if (!close) {
+            mg_log_error("autotest layout: assert uses_edge: %s edge has no inset but the nearest element is %.0f pt away", edge[e], (double)gap[e]);
+        }
+    }
+    mg_log_info("autotest layout: %.0f x %.0f, insets l%.0f t%.0f r%.0f b%.0f, gaps l%.0f t%.0f r%.0f b%.0f", (double)f.w, (double)f.h, (double)f.inset_l, (double)f.inset_t, (double)f.inset_r, (double)f.inset_b,
+                (double)left, (double)top, (double)right, (double)bottom);
+    mg_log_info("AUTOTEST %s", ok ? "PASSED" : "FAILED");
+    app->quit_requested = true;
 }
 
 static void run_nav_check(Game *g, MgApp *app)

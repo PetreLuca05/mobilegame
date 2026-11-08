@@ -1,3 +1,4 @@
+#include "ui/layout.h"
 #include "settings_menu.h"
 
 #include <SDL3/SDL_stdinc.h>
@@ -133,6 +134,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
 #endif
+        ui_toggle(ui, "Show safe rect", x, y, cw, &s->show_safe_rect);
+        y += 44.0f;
         ui_toggle(ui, "Profiler", x, y, cw, &s->show_profiler);
         y += 44.0f;
         ui_toggle(ui, "Show slots", x, y, cw, &s->show_slots);
@@ -290,15 +293,16 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
 }
 
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
-                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
+                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b, float corner,
                          const char *status)
 {
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
     if (!m->open) { /* pause button, top-right */
-        const float gs = 44.0f;
-        float gx = w_pt - safe_r - 12.0f - gs, gy = safe_t + 8.0f;
+        const ui_frame_t uf = {w_pt, h_pt, 0.0f, safe_r, safe_t, 0.0f, corner};
+        float gs, gx, gy;
+        ui_pause_rect(&uf, &gx, &gy, &gs);
         if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {
             m->open = true;
             m->card = true;

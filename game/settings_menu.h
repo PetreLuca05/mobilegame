@@ -59,7 +59,7 @@ typedef struct SettingsMenu {
 
 /* Draw the gear button (always) and the panel (when open). */
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
-                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
+                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b, float corner,
                          const char *status);
 
 #endif

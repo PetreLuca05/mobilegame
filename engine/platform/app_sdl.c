@@ -12,6 +12,10 @@
 
 static MgApp g_app; /* the single global app context */
 
+#if defined(SDL_PLATFORM_IOS)
+bool ios_safe_insets(SDL_Window *window, float *left, float *top, float *right, float *bottom);
+#endif
+
 static void update_metrics(MgApp *app)
 {
     int pw = 0, ph = 0, ww = 0, wh = 0;
@@ -31,6 +35,32 @@ static void update_metrics(MgApp *app)
         app->safe_top = (float)safe.y * f;
         app->safe_right = (float)(ww - safe.x - safe.w) * f;
         app->safe_bottom = (float)(wh - safe.y - safe.h) * f;
+    }
+#if defined(SDL_PLATFORM_IOS)
+    if (app->safe_left == 0.0f && app->safe_top == 0.0f && app->safe_right == 0.0f && app->safe_bottom == 0.0f) {
+        /* SDL had nothing: ask UIKit directly */
+        float l, t, r, b;
+        if (ios_safe_insets(app->window, &l, &t, &r, &b)) {
+            app->safe_left = l;
+            app->safe_top = t;
+            app->safe_right = r;
+            app->safe_bottom = b;
+        }
+    }
+    app->corner_clearance = 6.0f;
+#endif
+    /* desktop stand-ins for a notched phone, in each landscape direction */
+    const char *win_preset = SDL_getenv("MG_WINDOW");
+    if (win_preset && SDL_strcmp(win_preset, "iphone") == 0) {
+        app->safe_left = 59.0f;
+        app->safe_right = 0.0f;
+        app->safe_top = 0.0f;
+        app->safe_bottom = 21.0f;
+    } else if (win_preset && SDL_strcmp(win_preset, "iphone-flip") == 0) {
+        app->safe_left = 0.0f;
+        app->safe_right = 59.0f;
+        app->safe_top = 0.0f;
+        app->safe_bottom = 21.0f;
     }
     gfx_set_ui_size(app->gfx, app->width_pt, app->height_pt);
 }

@@ -144,8 +144,8 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, r * 0.283f, knob);
     } else {
         /* resting hint where a left thumb usually lands */
-        float cx = safe_left + 24.0f + r * 0.75f;
-        float cy = h_pt - mg_maxf(safe_bottom, 16.0f) - 40.0f - r * 0.75f;
+        float cx = safe_left + 16.0f + r * 0.75f;
+        float cy = h_pt - safe_bottom - 16.0f - r * 0.75f;
         ui_circle(g, f, cx, cy, r * 0.75f, ui_rgba(0xFFFFFF14));
         ui_circle(g, f, cx, cy, r * 0.25f, ui_rgba(0xFFFFFF40));
         if (tc->auto_dot) {

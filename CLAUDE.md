@@ -387,6 +387,11 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 `metal-gpu-intervals` table. Check `gpu-performance-state-intervals`: a GPU at
 "Minimum" clock makes ms look high.
 
+## UI layout (M8)
+
+- `engine/ui/layout.h`: `ui_frame_t`, the screen and its real safe-area insets (SDL, then UIKit on iOS if SDL has nothing), `ui_pause_rect`. No fixed insets: anchor to the safe rect with an 8-16 pt margin. The 3D view is always full-screen.
+- Desktop presets: `MG_WINDOW=iphone` / `iphone-flip` simulate the island and home indicator in each landscape direction. Developer -> Show safe rect. `--autotest layout`.
+
 ## NPCs (M7)
 
 - `game/rooms.h`: room graph (rooms, door nodes, slots with tags and an occupant, lift cells). The hospital fills it in

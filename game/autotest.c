@@ -48,7 +48,7 @@ bool autotest_starts_in_game(int argc, char **argv)
                    SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 ||
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
-                   SDL_strcmp(argv[i + 1], "npcs-continue") == 0;
+                   SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0;
         }
     }
     return false;

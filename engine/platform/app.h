@@ -40,6 +40,7 @@ struct MgApp {
     float width_pt, height_pt; /* drawable size in points */
     float scale;               /* pixels per point */
     float safe_left, safe_top, safe_right, safe_bottom; /* insets, pt */
+    float corner_clearance; /* rounded screen corners, pt */
     bool background;
     bool quit_requested;
     bool quit_notified; /* cb->quit already ran */
