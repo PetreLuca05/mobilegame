@@ -6,15 +6,14 @@
 
 #include "core/log.h"
 
-#define NEAR_DIST2 (22.0f * 22.0f)
 #define MAX_NEIGHBOURS 24
 #define STEER_BATCH 16
+#define JOBS_MIN_NPCS 100 /* below this, dispatching costs more than it saves (docs/PERF.md) */
 #define ARRIVE_RADIUS 0.35f
 #define LOOK_AHEAD 0.8f
 #define SEPARATE_RADIUS 1.2f
 #define AVOID_TIME 1.5f
 #define AVOID_DIST 0.7f
-#define YIELD_DIST 1.5f
 #define STUCK_TIME 2.0f
 #define STUCK_MOVE 0.2f
 #define ACCEL 6.0f
@@ -208,17 +207,17 @@ static void compute_targets(NpcWorld *w)
             w->target[i] = (int)((float)staff * a->staff_weight / weight);
             assigned += w->target[i];
         } else if (a->type == NPC_OUTPATIENT) {
-            w->target[i] = round_i((float)exam * d->outpatients_per_exam_room * w->density);
+            w->target[i] = round_i((float)exam * d->outpatients_per_exam_room);
         } else if (a->type == NPC_INPATIENT) {
             w->target[i] = round_i((float)rooms_count_slots(g, SLOT_WARD_BED) * d->inpatients_per_bed);
         } else if (a->type == NPC_PEDESTRIAN) {
-            w->target[i] = round_i((float)rooms_count_slots(g, SLOT_BENCH) * d->pedestrians_per_seat * w->density);
+            w->target[i] = round_i((float)rooms_count_slots(g, SLOT_BENCH) * d->pedestrians_per_seat);
         } else if (SDL_strcmp(a->name, "visitor") == 0) {
-            w->target[i] = round_i((float)rooms_count_type(g, ROOM_WARD) * d->visitors_per_ward * w->density);
+            w->target[i] = round_i((float)rooms_count_type(g, ROOM_WARD) * d->visitors_per_ward);
         } else if (SDL_strcmp(a->name, "cafe_visitor") == 0) {
-            w->target[i] = round_i((float)rooms_count_slots(g, SLOT_CAFE_SEAT) * d->cafe_per_seat * w->density);
+            w->target[i] = round_i((float)rooms_count_slots(g, SLOT_CAFE_SEAT) * d->cafe_per_seat);
         } else if (SDL_strcmp(a->name, "parent") == 0 || SDL_strcmp(a->name, "child") == 0) {
-            w->target[i] = round_i((float)d->waiting_families * w->density);
+            w->target[i] = d->waiting_families;
         }
     }
     for (int i = 0; i < d->archetype_count && assigned < staff; i++) { /* rounding: the first archetypes get the rest */
@@ -231,7 +230,7 @@ static void compute_targets(NpcWorld *w)
     for (int i = 0; i < d->archetype_count; i++) {
         total += w->target[i];
     }
-    mg_log_info("npc: roster %d from %d rooms, %d exam rooms (density %.2f)", total, rooms, exam, (double)w->density);
+    mg_log_info("npc: roster %d from %d rooms, %d exam rooms", total, rooms, exam);
 }
 
 static int storey_for(const NpcWorld *w, int archetype, int nth)
@@ -275,19 +274,16 @@ static void fill_roster(NpcWorld *w, bool steady)
     }
 }
 
-void npc_world_start(NpcWorld *w, uint32_t seed, float density)
+void npc_world_start(NpcWorld *w, uint32_t seed)
 {
     npc_world_stop(w);
     w->seed = seed ? seed : 1u;
     w->rng = w->seed;
-    w->density = density;
     w->tick = 0;
     memset(&w->stats, 0, sizeof(w->stats));
-    w->running = density > 0.0f;
-    if (w->running) {
-        compute_targets(w);
-        fill_roster(w, true);
-    }
+    w->running = true;
+    compute_targets(w);
+    fill_roster(w, true);
 }
 
 void npc_world_stop(NpcWorld *w)
@@ -384,10 +380,7 @@ static void steer_one(const SteerCtx *s, int i)
     o->prev_x = r->x;
     o->prev_z = r->z;
     o->last_tick = s->tick;
-    const NpcPlayer *pl = &W->player;
     const int grid = r->storey < 0 ? 0 : r->storey;
-    const bool same_floor = grid == pl->view_floor;
-    const float tpx = pl->x - r->x, tpz = pl->z - r->z, pd2 = tpx * tpx + tpz * tpz;
     if (r->state != MOVE_WALK) {
         o->vx = o->vz = 0.0f;
         return;
@@ -499,18 +492,6 @@ static void steer_one(const SteerCtx *s, int i)
             sz *= k;
         }
     }
-    /* yield to the player: a side step towards the side with more room */
-    if (same_floor && pd2 < YIELD_DIST * YIELD_DIST && tpx * ux + tpz * uz > 0.0f && c->yield_t < 2.0f) {
-        const float rx = -uz, rz = ux;
-        const bool right_free = walkable(W, r->storey, r->x + rx * 0.7f, r->z + rz * 0.7f);
-        const float side = right_free ? 1.0f : -1.0f;
-        sx += rx * side * speed * 0.8f;
-        sz += rz * side * speed * 0.8f;
-        speed *= 0.2f;
-        c->yield_t += dt;
-    } else if (pd2 > (YIELD_DIST + 0.5f) * (YIELD_DIST + 0.5f)) {
-        c->yield_t = 0.0f;
-    }
     if (door_wait) {
         speed = 0.0f;
     }
@@ -559,7 +540,7 @@ static void steer_one(const SteerCtx *s, int i)
         c->stuck_x = nx;
         c->stuck_z = nz;
         c->stuck_t = 0.0f;
-    } else if (c->yield_t <= 0.0f && !door_wait) {
+    } else if (!door_wait) {
         c->stuck_t += dt;
         if (c->stuck_t > STUCK_TIME) {
             c->stuck_t = 0.0f;
@@ -610,6 +591,8 @@ static void path_phase(NpcWorld *w)
             }
         } else if (h->state == MOVE_STUCK) {
             w->stats.stuck_events++;
+            w->stats.last_stuck_id = c->id;
+            w->stats.last_stuck_tick = w->tick;
             mg_log_warn("npc: %s (%s) stuck at (%.2f, %.2f) storey %d, leg %d/%d, goal (%.2f, %.2f)", c->name, w->data.archetypes[c->archetype].name,
                         (double)h->x, (double)h->z, h->storey, h->next, c->path.count, (double)c->goal_x, (double)c->goal_z);
             if (++c->stuck_count >= 2) {
@@ -623,26 +606,22 @@ static void path_phase(NpcWorld *w)
     }
 }
 
-void npc_tick(NpcWorld *w, JobSystem *jobs, Arena *scratch, const NpcPlayer *player, float dt)
+void npc_tick(NpcWorld *w, JobSystem *jobs, Arena *scratch, float dt)
 {
     NpcPool *p = &w->pool;
     if (!w->running || p->count == 0) {
         return;
     }
-    w->player = *player;
     npc_hot_t *read = p->hot[p->read];
-    for (int i = 0; i < p->count; i++) {
-        npc_hot_t *h = &read[i];
-        const float dx = h->x - player->x, dz = h->z - player->z;
-        const bool same = (h->storey < 0 ? 0 : h->storey) == player->view_floor;
-        const bool near_view = dx * dx + dz * dz <= NEAR_DIST2;
-        h->rate = same ? (near_view ? 1 : 3) : 6;
-        h->lod = same ? 0 : 1;
-    }
+    /* every NPC every tick: update rates that depended on the viewer would make two clients differ */
     spatial_build(&w->grid, &read[0].x, &read[0].z, &read[0].storey, sizeof(npc_hot_t), p->count, scratch);
     SteerCtx ctx = {w, dt, w->tick};
-    jobs_run(jobs, steer_job, &ctx, p->count, STEER_BATCH);
-    jobs_wait(jobs);
+    if (p->count >= JOBS_MIN_NPCS || w->always_jobs) {
+        jobs_run(jobs, steer_job, &ctx, p->count, STEER_BATCH);
+        jobs_wait(jobs);
+    } else {
+        steer_job(&ctx, 0, p->count, 0);
+    }
     p->read = 1 - p->read;
     nav_service(w->nav, NAV_CLASS_NPC, 0.0, NAV_NPC_EXPANSIONS, NAV_NPC_PATHS);
     path_phase(w);

@@ -438,9 +438,7 @@ void game_tick(MgApp *app)
     }
     if (g->npcs_ok && g->npcs_on && g->nav && !g->settings.freeze_npcs) {
         PROF_SCOPE("npc.roster");
-        const HMM_Vec3 pp = g->player.kin.pos;
-        NpcPlayer np = {pp.X, pp.Z, g->player.kin.vel.X, g->player.kin.vel.Z, scene_indoors(g->scene, pp) ? scene_floor_of(g->scene, pp) : 0};
-        npc_tick(&g->npcs, app->jobs, &app->frame, &np, MG_TICK_DT);
+        npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
     }
     if (g->crowd_ok && g->nav) {
         PROF_SCOPE("npc");
@@ -485,7 +483,7 @@ static void npc_autotest_check(Game *g, MgApp *app);
 static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
 static void run_determinism_check(Game *g, MgApp *app);
 static void run_npc_bench(Game *g, MgApp *app);
-static uint32_t npc_seed_for(Game *g);
+static uint32_t npc_seed_for(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
 static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
@@ -1125,10 +1123,14 @@ static uint32_t hash_text(const char *t)
 }
 
 /* Everyone in a room derives the same roster from its name; offline it is the save's */
-static uint32_t npc_seed_for(Game *g)
+static uint32_t npc_seed_for(Game *g, MgApp *app)
 {
     if (!g->offline_play && g->session.mode != MODE_OFFLINE && g->session.topic[0]) {
         return hash_text(g->session.topic);
+    }
+    const char *forced = arg_value(app->argc, app->argv, "--npc-seed");
+    if (forced) {
+        return (uint32_t)SDL_atoi(forced) | 1u;
     }
     if (!g->save.npc_seed) {
         g->save.npc_seed = (uint32_t)SDL_GetPerformanceCounter() | 1u;
@@ -1142,16 +1144,23 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
     NpcPool *p = &g->npcs.pool;
     const npc_hot_t *hot = p->hot[p->read];
     const float dt = mg_minf(app->frame_dt, 0.1f), now = (float)g->npcs.tick + alpha;
+    const bool half = g->settings.npc_density < 1.0f && !(g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0);
+    const HMM_Vec3 me = g->player.kin.pos;
     uint8_t *lods = ARENA_PUSH(&app->frame, uint8_t, (size_t)p->count);
     if (!lods) {
         return;
     }
     const float near_m = g->thermal >= 2 ? 11.0f : 22.0f;
     CrowdCull cull = {hot, lods, g->view_proj, g->player.kin.pos.X, g->player.kin.pos.Z, near_m * near_m, floor, g->no_lod};
-    jobs_run(app->jobs, crowd_cull_job, &cull, p->count, 32);
-    jobs_wait(app->jobs);
+    if (p->count >= 100) {
+        jobs_run(app->jobs, crowd_cull_job, &cull, p->count, 32);
+        jobs_wait(app->jobs);
+    } else {
+        crowd_cull_job(&cull, 0, p->count, 0);
+    }
+    const float blend = mg_minf(dt * 8.0f, 1.0f);
     for (int i = 0; i < p->count; i++) {
-        if (lods[i] == 255) {
+        if (lods[i] == 255 || (half && (p->cold[i].id & 1u))) {
             continue;
         }
         const npc_hot_t *h = &hot[i];
@@ -1162,7 +1171,32 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
             feet.X += (c->seat_x - feet.X) * c->sit_t;
             feet.Z += (c->seat_z - feet.Z) * c->sit_t;
         }
-        AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
+        /* reactions to the local player are drawn, never simulated: the sim must not depend on who is watching */
+        const float px = me.X - feet.X, pz = me.Z - feet.Z, pd2 = px * px + pz * pz;
+        const bool near_me = (h->storey < 0 ? 0 : (int)h->storey) == floor && pd2 < 2.5f * 2.5f && pd2 > 1e-4f;
+        float off_x = 0.0f, off_z = 0.0f, yaw_add = 0.0f;
+        const float spd2 = h->vx * h->vx + h->vz * h->vz;
+        if (near_me && pd2 < 1.5f * 1.5f && spd2 > 0.01f) { /* steps aside */
+            const float s_inv = 1.0f / sqrtf(spd2), ux = h->vx * s_inv, uz = h->vz * s_inv;
+            if (px * ux + pz * uz > 0.0f) {
+                const float side = (-uz * px + ux * pz) > 0.0f ? -1.0f : 1.0f, k = 0.5f * (1.0f - sqrtf(pd2) / 1.5f);
+                off_x = -uz * side * k;
+                off_z = ux * side * k;
+                if (!(nav_flags_at(g->nav, h->storey < 0 ? 0 : h->storey, feet.X + off_x * 2.0f, feet.Z + off_z * 2.0f) & NAV_WALKABLE)) {
+                    off_x = off_z = 0.0f; /* not into a wall */
+                }
+            }
+        } else if (near_me && c->phase == NPC_PHASE_HOLD && c->pose == POSE_STAND) { /* greets the player */
+            float d = atan2f(-px, -pz) - h->yaw;
+            d = fmodf(d + 3.0f * HMM_PI32, 2.0f * HMM_PI32) - HMM_PI32;
+            yaw_add = d;
+        }
+        c->vis_x += (off_x - c->vis_x) * blend;
+        c->vis_z += (off_z - c->vis_z) * blend;
+        c->vis_yaw += (yaw_add - c->vis_yaw) * blend;
+        feet.X += c->vis_x;
+        feet.Z += c->vis_z;
+        AvatarPose pose = {feet, h->yaw + c->vis_yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
         pose.sit = c->pose == POSE_SIT ? c->sit_t : 0.0f;
         pose.lying = c->pose == POSE_BED ? c->sit_t : 0.0f;
         pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
@@ -1224,12 +1258,15 @@ void game_frame(MgApp *app, float alpha)
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
         const bool roster_test = at_kind && (SDL_strcmp(at_kind, "npcs") == 0 || (g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0));
         if (!at_kind || roster_test) {
-            const uint32_t seed = npc_seed_for(g);
-            const float density = roster_test ? 1.0f : s->npc_density;
-            if (!g->npcs_on || seed != g->npcs.seed || density != g->npcs.density || s->respawn_npcs) {
+            const uint32_t seed = npc_seed_for(g, app);
+            const bool want = roster_test || s->npc_density > 0.0f; /* density Low only draws fewer: every client simulates the same people */
+            if (want && (!g->npcs_on || seed != g->npcs.seed || s->respawn_npcs)) {
                 s->respawn_npcs = false;
                 g->npcs_on = true;
-                npc_world_start(&g->npcs, seed, density);
+                npc_world_start(&g->npcs, seed);
+            } else if (!want && g->npcs_on) {
+                g->npcs_on = false;
+                npc_world_stop(&g->npcs);
             }
         }
     } else if (g->npcs_ok && g->npcs_on) {
@@ -2216,7 +2253,6 @@ static void run_npc_bench(Game *g, MgApp *app)
 {
     enum { TICKS = 1800 };
     static const int sizes[2] = {44, 200};
-    const NpcPlayer view = {0.0f, -3.0f, 0.0f, 0.0f, 0};
     bool same = true;
     for (int s = 0; s < 2; s++) {
         double ms[2];
@@ -2227,10 +2263,11 @@ static void run_npc_bench(Game *g, MgApp *app)
             jobs_limit_threads(app->jobs, threads[run]);
             used[run] = jobs_thread_count(app->jobs);
             npc_world_bench(&g->npcs, sizes[s], 0xC0FFEEu);
+            g->npcs.always_jobs = true; /* measure the dispatch at both sizes */
             double t0 = mg_time_now();
             for (int t = 0; t < TICKS; t++) {
                 size_t mark = arena_mark(&app->frame);
-                npc_tick(&g->npcs, app->jobs, &app->frame, &view, MG_TICK_DT);
+                npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
                 arena_reset_to(&app->frame, mark);
             }
             ms[run] = (mg_time_now() - t0) * 1000.0 / (double)TICKS;
@@ -2263,21 +2300,24 @@ static void npc_autotest_check(Game *g, MgApp *app)
             const npc_hot_t *h = &hot[i];
             const npc_cold_t *c = &p->cold[i];
             if (!(nav_flags_at(w->nav, h->storey < 0 ? 0 : h->storey, h->x, h->z) & NAV_WALKABLE)) {
-                SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "%s off the grid at (%.1f, %.1f) storey %d", c->name, (double)h->x, (double)h->z, h->storey);
+                SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "assert on_grid: tick %u, npc %u (%s) at (%.2f, %.2f) storey %d, seed %u", w->tick, c->id, c->name, (double)h->x, (double)h->z,
+                             h->storey, w->seed);
             }
             if (c->age == AGE_CHILD && c->phase != NPC_PHASE_FADE_OUT) { /* a leaving parent takes the child along */
                 const int room = room_at(w->rooms, h->x, h->z, h->storey);
                 const RoomType t = room >= 0 ? w->rooms->rooms[room].type : ROOM_YARD;
                 if (npc_index_by_id(w, c->leader_id) < 0 || (t != ROOM_LOBBY && t != ROOM_WARD && t != ROOM_YARD)) {
-                    SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "child %s alone or in a %d room", c->name, (int)t);
+                    SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "assert child_escorted: tick %u, npc %u (%s), room type %d, leader %u, seed %u", w->tick, c->id, c->name, (int)t, c->leader_id,
+                                 w->seed);
                 }
             }
         }
         if (min_alive < 44 && !g->perf.why_failed[0]) {
-            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "only %d NPCs alive", min_alive);
+            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "assert min_alive: tick %u, only %d alive, seed %u", w->tick, min_alive, w->seed);
         }
         if (w->stats.stuck_events > 0 && !g->perf.why_failed[0]) {
-            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "%u NPCs stuck for more than 2 s", w->stats.stuck_events);
+            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "assert not_stuck: tick %u, npc %u stuck over 2 s (%u events), seed %u", w->stats.last_stuck_tick, w->stats.last_stuck_id,
+                         w->stats.stuck_events, w->seed);
         }
     }
     SDL_snprintf(g->perf.extra_json, sizeof(g->perf.extra_json),

@@ -395,18 +395,6 @@ void npc_pkg_update(NpcWorld *w, int i, float dt)
         while (dyaw < -HMM_PI32) {
             dyaw += 2.0f * HMM_PI32;
         }
-        const NpcPlayer *pl = &w->player;
-        const float px = pl->x - h->x, pz = pl->z - h->z;
-        if (st->kind == STEP_POST && grid_of(h) == pl->view_floor && px * px + pz * pz < 2.5f * 2.5f) { /* greets the player */
-            const float want = atan2f(-px, -pz);
-            dyaw = want - h->yaw;
-            while (dyaw > HMM_PI32) {
-                dyaw -= 2.0f * HMM_PI32;
-            }
-            while (dyaw < -HMM_PI32) {
-                dyaw += 2.0f * HMM_PI32;
-            }
-        }
         h->yaw += dyaw * mg_minf(dt / 0.3f, 1.0f);
         if (st->kind == STEP_QUEUE) { /* step forward when the place ahead frees up; only the head is being served */
             const int order = w->rooms->slots[c->slot].order;

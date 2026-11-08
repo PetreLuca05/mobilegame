@@ -14,13 +14,9 @@ enum { NPC_PHASE_START, NPC_PHASE_WALK, NPC_PHASE_HOLD, NPC_PHASE_FADE_IN, NPC_P
 #define NPC_FLAG_STAY 1u      /* never leaves (the parent at a paediatric bed) */
 #define NPC_FLAG_BENCH 2u     /* benchmark wanderer: ignores the roster */
 
-typedef struct NpcPlayer {
-    float x, z, vx, vz;
-    int view_floor;
-} NpcPlayer;
-
 typedef struct NpcStats {
     uint32_t spawned, despawned, stuck_events, repaths, max_alive, path_requests;
+    uint32_t last_stuck_id, last_stuck_tick;
 } NpcStats;
 
 typedef struct NpcWorld {
@@ -31,10 +27,9 @@ typedef struct NpcWorld {
     struct NavWorld *nav;
     uint32_t tick, seed, rng, next_id;
     int target[NPC_ARCHETYPES];
-    float density;
     bool running;
+    bool always_jobs;  /* --autotest npcs-bench */
     int requests_left;
-    NpcPlayer player;
     NpcStats stats;
     void (*on_arrived)(uint32_t id, uint32_t slot, void *user);
     void (*on_package_changed)(uint32_t id, void *user);
@@ -42,13 +37,14 @@ typedef struct NpcWorld {
 } NpcWorld;
 
 bool npc_world_init(NpcWorld *w, Arena *perm, RoomGraph *rooms, struct NavWorld *nav);
-/* Fill the roster in its steady state from `seed`; density 0..1. */
-void npc_world_start(NpcWorld *w, uint32_t seed, float density);
+/* Fill the roster in its steady state from `seed`. Everything after that depends only on seed and
+ * tick: not on the viewer, the frame rate or the number of threads. */
+void npc_world_start(NpcWorld *w, uint32_t seed);
 void npc_world_stop(NpcWorld *w);
 /* n plain wanderers scattered over the map, no roster (--autotest npcs-bench). */
 void npc_world_bench(NpcWorld *w, int n, uint32_t seed);
 uint32_t npc_world_hash(const NpcWorld *w);
-void npc_tick(NpcWorld *w, JobSystem *jobs, Arena *scratch, const NpcPlayer *player, float dt);
+void npc_tick(NpcWorld *w, JobSystem *jobs, Arena *scratch, float dt);
 
 /* Hooks for later milestones. Returns the id, 0 if it failed. */
 uint32_t npc_spawn(NpcWorld *w, int archetype, int storey, bool steady, uint32_t leader_id, unsigned flags);
