@@ -10,6 +10,7 @@
 #include "avatar.h"
 #include "camera_tp.h"
 #include "config.local.h"
+#include "core/log.h"
 #ifndef MG_GOOGLE_WEB_CLIENT_ID /* older config.local.h */
 #define MG_GOOGLE_WEB_CLIENT_ID ""
 #endif
@@ -64,6 +65,8 @@ typedef struct Game {
     RouteTest route;
     Stats stats;
     DayCycle day;
+    int tier;              /* 1 low, 2 high (applied) */
+    GfxShadowConfig shadow_cfg; /* last applied */
     DayState day_state;
     float lamp_on;        /* exterior lamps, from the day cycle */
     int shadowed_lights;  /* shadow-casting lights this frame */
@@ -151,6 +154,9 @@ bool game_init(MgApp *app)
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
+    const char *tier_arg = arg_value(app->argc, app->argv, "--tier");
+    g->settings.tier_override = tier_arg ? (SDL_strcmp(tier_arg, "low") == 0 ? 1 : 2) : 0;
+    g->settings.shadows_on = !has_flag(app->argc, app->argv, "--no-shadows");
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
     const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
     g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
@@ -471,10 +477,33 @@ static void draw_room_badge(Game *g, MgApp *app)
     }
 }
 
+/* GPU tier from RAM (A12-class phones have <= 4 GB, A15+ 6 GB+) unless
+ * overridden; sets shadow sizes, caps and lights per draw. */
+static void apply_tier(Game *g, MgApp *app)
+{
+    const GameSettings *s = &g->settings;
+    int tier = s->tier_override ? s->tier_override : (SDL_GetSystemRAM() >= 6000 ? 2 : 1);
+    GfxShadowConfig c = tier == 2 ? (GfxShadowConfig){true, 2048, 4096, 2048, 8, 2, false, false}
+                                  : (GfxShadowConfig){true, 1024, 2048, 1024, 4, 1, false, false};
+    c.enabled = s->shadows_on;
+    c.show_cascades = s->show_cascades;
+    c.freeze = s->freeze_shadows;
+    if (tier != g->tier || SDL_memcmp(&c, &g->shadow_cfg, sizeof(c)) != 0) {
+        if (tier != g->tier) {
+            mg_log_info("gfx: %s tier (%d MB RAM)", tier == 2 ? "high" : "low", SDL_GetSystemRAM());
+        }
+        g->tier = tier;
+        g->shadow_cfg = c;
+        gfx_set_shadows(app->gfx, &c);
+        gfx_set_lights_per_draw(app->gfx, tier == 2 ? 8 : 4);
+    }
+}
+
 void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
+    apply_tier(g, app);
     g->day.follow_device = s->follow_clock;
     g->day.speed = s->time_speed;
     daycycle_update(&g->day, app->time, mg_minf(app->frame_dt, 0.25f));
@@ -696,7 +725,9 @@ void game_frame(MgApp *app, float alpha)
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
     if (s->show_lights) {
         char line[96];
-        SDL_snprintf(line, sizeof(line), "lights %u (shadowed %d)", gs.lights, g->shadowed_lights);
+        SDL_snprintf(line, sizeof(line), "%s tier  lights %u (shadowed %d)  shadow %.2f ms / %u views  main %.2f ms (CPU)",
+                     g->tier == 2 ? "high" : "low", gs.lights, gs.shadowed_lights, (double)gs.shadow_cpu_ms,
+                     gs.shadow_views, (double)gs.main_cpu_ms);
         text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 150.0f, 14.0f,
                          ui_rgba(0xFFFFFFFF), line);
     }

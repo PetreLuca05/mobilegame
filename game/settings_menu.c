@@ -65,6 +65,21 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;
+        /* Lighting */
+        static const char *const tiers[3] = {"Auto##tier", "Low##tier", "High##tier"};
+        float tb = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            if (ui_button(ui, tiers[i], x + (float)i * (tb + 8.0f), y, tb, 40.0f, s->tier_override == i)) {
+                s->tier_override = i;
+            }
+        }
+        y += 52.0f;
+        ui_toggle(ui, "Shadows", x, y, cw, &s->shadows_on);
+        y += 44.0f;
+        ui_toggle(ui, "Cascade colours", x, y, cw, &s->show_cascades);
+        y += 44.0f;
+        ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
+        y += 44.0f;
         /* Time */
         ui_toggle(ui, "Follow device clock", x, y, cw, &s->follow_clock);
         y += 44.0f;
