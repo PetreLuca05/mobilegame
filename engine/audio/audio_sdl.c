@@ -16,6 +16,9 @@ struct Audio {
     SDL_AtomicInt cursor; /* next sample to play, ding_len = idle */
     float click[1440];    /* 30 ms */
     SDL_AtomicInt click_cursor;
+    float *cue[AUDIO_CUE_COUNT];
+    int cue_len[AUDIO_CUE_COUNT];
+    SDL_AtomicInt cue_cursor[AUDIO_CUE_COUNT];
     bool muted;
 };
 
@@ -41,6 +44,45 @@ static void render_ding(float *out, int n)
     }
 }
 
+/* One note: 10 ms attack, `release` at the end, optional odd partials. */
+static void note(float *out, float start_s, float dur_s, float hz, float gain, float release_s, bool square)
+{
+    const int n0 = (int)(start_s * AUDIO_RATE), n = (int)(dur_s * AUDIO_RATE);
+    for (int i = 0; i < n; i++) {
+        float t = (float)i / (float)AUDIO_RATE;
+        float env = fminf(t / 0.010f, 1.0f) * fminf((dur_s - t) / release_s, 1.0f);
+        float w = 2.0f * (float)M_PI * hz * t;
+        float v = square ? sinf(w) + sinf(3.0f * w) / 3.0f + sinf(5.0f * w) / 5.0f : sinf(w) + 0.15f * sinf(2.0f * w);
+        out[n0 + i] += gain * env * v;
+    }
+}
+
+static float db(float d) { return powf(10.0f, d / 20.0f); }
+
+static bool render_cues(Audio *a, Arena *perm)
+{
+    static const float secs[AUDIO_CUE_COUNT] = {0.10f, 0.21f, 0.05f, 0.18f};
+    for (int c = 0; c < AUDIO_CUE_COUNT; c++) {
+        a->cue_len[c] = (int)(secs[c] * AUDIO_RATE);
+        a->cue[c] = ARENA_PUSH(perm, float, a->cue_len[c] + 16);
+        if (!a->cue[c]) {
+            return false;
+        }
+        SDL_memset(a->cue[c], 0, sizeof(float) * (size_t)(a->cue_len[c] + 16));
+        SDL_SetAtomicInt(&a->cue_cursor[c], a->cue_len[c]);
+    }
+    const float vol = 0.5f; /* master for cues; the dB figures are relative to it */
+    note(a->cue[AUDIO_CUE_TICK], 0.0f, 0.04f, 880.0f, vol * db(-6), 0.03f, false);
+    note(a->cue[AUDIO_CUE_TICK], 0.04f, 0.06f, 1320.0f, vol * db(-6), 0.05f, false);
+    for (int i = 0; i < 3; i++) {
+        static const float hz[3] = {660.0f, 880.0f, 1320.0f};
+        note(a->cue[AUDIO_CUE_CHIME], 0.07f * (float)i, 0.07f, hz[i], vol * db(-8), 0.05f, false);
+    }
+    note(a->cue[AUDIO_CUE_DUP], 0.0f, 0.05f, 330.0f, vol * db(-12), 0.03f, false);
+    note(a->cue[AUDIO_CUE_BUZZ], 0.0f, 0.18f, 220.0f, vol * db(-10), 0.05f, true);
+    return true;
+}
+
 static void SDLCALL feed(void *user, SDL_AudioStream *stream, int additional, int total)
 {
     Audio *a = (Audio *)user;
@@ -53,6 +95,13 @@ static void SDLCALL feed(void *user, SDL_AudioStream *stream, int additional, in
         const int click_len = (int)(sizeof(a->click) / sizeof(a->click[0]));
         for (int i = 0; i < n; i++) {
             buf[i] = (cur < a->ding_len ? a->ding[cur++] : 0.0f) + (cc < click_len ? a->click[cc++] : 0.0f);
+        }
+        for (int c = 0; c < AUDIO_CUE_COUNT; c++) {
+            int p = SDL_GetAtomicInt(&a->cue_cursor[c]);
+            for (int i = 0; i < n && p < a->cue_len[c]; i++) {
+                buf[i] += a->cue[c][p++];
+            }
+            SDL_SetAtomicInt(&a->cue_cursor[c], p);
         }
         SDL_SetAtomicInt(&a->cursor, cur);
         SDL_SetAtomicInt(&a->click_cursor, cc);
@@ -80,6 +129,9 @@ Audio *audio_create(Arena *perm)
         a->click[i] = 0.12f * sinf(2.0f * (float)M_PI * 1800.0f * t) * expf(-t * 160.0f);
     }
     SDL_SetAtomicInt(&a->click_cursor, click_len);
+    if (!render_cues(a, perm)) {
+        return NULL;
+    }
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         mg_log_warn("audio: init failed: %s", SDL_GetError());
         return NULL;
@@ -106,6 +158,13 @@ void audio_set_muted(Audio *a, bool muted)
 {
     if (a) {
         a->muted = muted;
+    }
+}
+
+void audio_cue(Audio *a, AudioCue cue)
+{
+    if (a && !a->muted) {
+        SDL_SetAtomicInt(&a->cue_cursor[cue], 0);
     }
 }
 

@@ -1,5 +1,7 @@
 #include "text.h"
 
+#include <math.h>
+
 #include <string.h>
 
 #include "core/assets.h"
@@ -178,6 +180,20 @@ void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float 
     GfxUiVertex *v = gfx_ui_quads(g, 1);
     if (v) {
         put_quad(v, x, y, x + w, y + h, f->solid_u, f->solid_v, f->solid_u, f->solid_v, c);
+    }
+}
+
+void ui_line(GfxContext *g, const TextFont *f, float x0, float y0, float x1, float y1, float thick, UiColor c)
+{
+    float dx = x1 - x0, dy = y1 - y0, len = sqrtf(dx * dx + dy * dy);
+    GfxUiVertex *v = gfx_ui_quads(g, 1);
+    if (!v || len < 1e-3f) {
+        return;
+    }
+    float nx = -dy / len * thick * 0.5f, ny = dx / len * thick * 0.5f;
+    const float xs[4] = {x0 + nx, x1 + nx, x1 - nx, x0 - nx}, ys[4] = {y0 + ny, y1 + ny, y1 - ny, y0 - ny};
+    for (int i = 0; i < 4; i++) {
+        v[i] = (GfxUiVertex){xs[i], ys[i], f->solid_u, f->solid_v, c.r, c.g, c.b, c.a};
     }
 }
 

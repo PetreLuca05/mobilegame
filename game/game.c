@@ -44,7 +44,10 @@
 #include "net_session.h"
 #include "player.h"
 #include "autonav.h"
+#include "markers.h"
 #include "nav_debug.h"
+#include "platform/haptics.h"
+#include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
 #include "scenery.h"
@@ -67,6 +70,15 @@ typedef struct Game {
     uint32_t shots_taken;  /* --screenshot-at entries done (bit per entry) */
     uint32_t occl_frames, occl_hidden, occl_lost; /* route test: indoor frames / behind a wall / ... with no x-ray */
     struct NavWorld *nav;  /* pathfinding grids, NULL if the scene has none */
+    Markers markers;
+    uint32_t active_marker; /* the one auto-nav is walking to, 0 none */
+    double marker_spawn_at; /* test markers: no new one before this */
+    uint32_t markers_reached;
+    MarkerHudIn hud_in[MARKER_HUD_MAX];
+    MarkerHudOut hud_out[MARKER_HUD_MAX];
+    int hud_count;
+    NavPath *all_paths;     /* debug preview, MARKER_MAX */
+    int all_paths_next;
     Autonav autonav;
     float auto_x, auto_z;  /* this frame's synthetic stick */
     NavPath nav_path;      /* last path found */
@@ -200,6 +212,10 @@ static bool ensure_world(Game *g, MgApp *app)
             mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
         }
     }
+    if (g->nav && !markers_init(&g->markers, app->gfx, &app->perm)) {
+        return false;
+    }
+    g->all_paths = ARENA_PUSH(&app->perm, NavPath, MARKER_MAX);
     SceneryShape shape = scene_scenery_shape();
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
@@ -417,6 +433,9 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
+static void marker_tapped(Game *g, MgApp *app, uint32_t id);
+static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
 static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y_pt, float y, HMM_Vec3 *out);
 
 /* X-ray silhouette colour: the avatar's accent at full saturation x 0.85
@@ -548,6 +567,8 @@ static void leave_play(Game *g, MgApp *app)
     g->playing = false;
     g->offline_play = false;
     autonav_clear(&g->autonav);
+    g->active_marker = 0;
+    marker_clear(&g->markers, MARKER_TEST);
     net_set_quiet(g->net, false);
     g->play_paused = false;
     g->menu.open = false;
@@ -593,6 +614,9 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         break;
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
+        break;
+    case MENU_RESPAWN_MARKERS:
+        marker_clear(&g->markers, MARKER_TEST);
         break;
 #ifdef MG_DAYCYCLE_CONTINUOUS
     case MENU_TIME: /* slider: stop following the clock */
@@ -854,6 +878,7 @@ static void load_step(Game *g, MgApp *app)
         }
         g->next_save = app->time + 30.0;
         autonav_clear(&g->autonav);
+        g->active_marker = 0;
         g->cam.initialized = g->td.initialized = false;
         g->fade_snap = true;
         touch_controls_reset(&g->touch);
@@ -1018,6 +1043,11 @@ void game_frame(MgApp *app, float alpha)
                            SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
                            g->route.active && !g->route.done ? g->route.step : -1,
                            (int)g->autonav.state,
+                           g->markers_reached,
+                           g->active_marker,
+                           g->touch.stick_touch >= 0,
+                           g->hud_count,
+                           g->hud_out,
                            g->playing && scene_indoors(g->scene, g->player.kin.pos)
                                ? scene_floor_of(g->scene, g->player.kin.pos)
                                : -1};
@@ -1055,6 +1085,9 @@ void game_frame(MgApp *app, float alpha)
         SDL_free(dir);
 #endif
         gfx_request_screenshot(app->gfx, path);
+    }
+    if (ato.respawn_markers) {
+        marker_clear(&g->markers, MARKER_TEST);
     }
     if (ato.nav_go && g->nav) {
         AutonavCtx ac = {g->player.kin.pos, probe.nav_storey, app->time, false, false, 0};
@@ -1249,7 +1282,10 @@ void game_frame(MgApp *app, float alpha)
         g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
-                              app->safe_bottom);
+                              app->safe_bottom, app->time);
+        if (g->touch.tapped_id && g->nav) {
+            marker_tapped(g, app, g->touch.tapped_id);
+        }
     }
 
     HMM_Vec3 feet = player_render_pos(&g->player, alpha);
@@ -1314,6 +1350,9 @@ void game_frame(MgApp *app, float alpha)
             if (ao.ride_to >= 0 && el) {
                 elevator_request(el, ao.ride_to);
             }
+        }
+        if (g->nav) {
+            markers_update(g, app, feet);
         }
         g->touch.auto_dot = g->autonav.state == AUTONAV_WALKING;
         if (riding || g->menu.open) {
@@ -1393,6 +1432,11 @@ void game_frame(MgApp *app, float alpha)
             if (screen_to_floor(g, app, app->input.right_click_x, app->input.right_click_y,
                                 scene_floor_y(g->scene, floor), &hit)) {
                 int from = scene_indoors(g->scene, feet) ? player_floor : -1;
+                marker_t *old = marker_get(&g->markers, g->active_marker);
+                if (old) {
+                    marker_set_state(old, MARKER_IDLE);
+                    g->active_marker = 0;
+                }
                 AutonavCtx ac = {feet, from, app->time, false, false, 0};
                 int to = floor == 0 && !(nav_flags_at(g->nav, 0, hit.X, hit.Z) & NAV_OUTDOOR) ? 0 : floor;
                 g->nav_path_ok = autonav_go(&g->autonav, g->nav, &ac, hit, to, 0);
@@ -1400,6 +1444,24 @@ void game_frame(MgApp *app, float alpha)
                 mg_log_info("nav: walk to (%.1f, %.1f) floor %d: %s, %d points, %.1f m, %.2f ms", (double)hit.X,
                             (double)hit.Z, floor, g->nav_path_ok ? "ok" : "unreachable", g->nav_path.count,
                             (double)g->nav_path.length, (double)nav_path_ms(g->nav));
+            }
+        }
+        markers_draw(&g->markers, app->gfx, g->fade.vis, floor, (float)app->time, g->avatar_meshes.shadow);
+        marker_t *am = marker_get(&g->markers, g->active_marker);
+        if (am && autonav_active(&g->autonav) && g->autonav.next >= 0) {
+            markers_draw_path(&g->markers, app->gfx, &g->autonav.path, g->autonav.next, feet, floor, am->color_rgba, am->ring_t);
+        }
+        if (s->show_all_paths) { /* one refreshed per frame */
+            int from = scene_indoors(g->scene, feet) ? player_floor : -1;
+            marker_t *rf = &g->markers.m[g->all_paths_next];
+            g->all_paths_next = (g->all_paths_next + 1) % MARKER_MAX;
+            if (rf->id) {
+                nav_find_path(g->nav, feet, from, rf->pos, rf->storey, &g->all_paths[rf - g->markers.m]);
+            }
+            for (int i = 0; i < MARKER_MAX; i++) {
+                if (g->markers.m[i].id) {
+                    markers_draw_path(&g->markers, app->gfx, &g->all_paths[i], 1, feet, floor, g->markers.m[i].color_rgba, 1.0f);
+                }
             }
         }
         if (s->show_nav) {
@@ -1451,8 +1513,12 @@ void game_frame(MgApp *app, float alpha)
     if (g->menu.open) {
         return;
     }
+    if (g->nav) {
+        markers_hud(g, app, floor, feet, menu_shown);
+    }
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
                         app->safe_bottom);
+    frontend_toast_draw(&g->fe, &g->ui, app);
     draw_name_tags(g, app, floor, player_floor, feet);
     HudInfo hud = {0};
     hud.fps = app->fps;
@@ -1498,6 +1564,260 @@ static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y
     float t = (y - pa.Y) / (pb.Y - pa.Y);
     *out = HMM_AddV3(pa, HMM_MulV3F(HMM_SubV3(pb, pa), t));
     return t > 0.0f;
+}
+
+/* ---------------------------------------------------------------- markers */
+
+static int level_of(int storey) { return storey < 0 ? 0 : storey; }
+
+static void marker_cue(Game *g, AudioCue cue)
+{
+    if (g->settings.marker_sounds) {
+        audio_cue(g->audio, cue);
+    }
+}
+
+static void marker_failed(Game *g, MgApp *app, marker_t *m)
+{
+    marker_set_state(m, MARKER_FAILED);
+    marker_cue(g, AUDIO_CUE_BUZZ);
+    frontend_toast(&g->fe, str("cant_get_there"), app->time);
+}
+
+static void marker_tapped(Game *g, MgApp *app, uint32_t id)
+{
+    marker_t *m = marker_get(&g->markers, id);
+    if (!m || m->state == MARKER_REACHED) {
+        return;
+    }
+    if (id == g->active_marker && autonav_active(&g->autonav)) {
+        autonav_cancel(&g->autonav); /* tapping the active one stops; markers_update does the feedback */
+        return;
+    }
+    marker_t *old = marker_get(&g->markers, g->active_marker);
+    if (old) { /* re-target without stopping: the old one just lets go */
+        marker_set_state(old, MARKER_IDLE);
+    }
+    g->active_marker = 0;
+    HMM_Vec3 p = g->player.kin.pos;
+    AutonavCtx c = {p, scene_indoors(g->scene, p) ? scene_floor_of(g->scene, p) : -1, app->time, false, false, 0};
+    if (autonav_go(&g->autonav, g->nav, &c, m->pos, m->storey, id)) {
+        g->active_marker = id;
+        marker_set_state(m, MARKER_TAPPED);
+        marker_cue(g, AUDIO_CUE_TICK);
+        if (g->settings.haptics) {
+            haptic_impact(false);
+        }
+    } else {
+        autonav_clear(&g->autonav);
+        marker_failed(g, app, m);
+    }
+    if (g->markers.on_tapped) {
+        g->markers.on_tapped(g->markers.user, id);
+    }
+}
+
+static void marker_reached(Game *g, MgApp *app, marker_t *m)
+{
+    marker_set_state(m, MARKER_REACHED);
+    marker_cue(g, AUDIO_CUE_CHIME);
+    if (g->settings.haptics) {
+        haptic_impact(true);
+    }
+    g->markers_reached++;
+    if (m->id == g->active_marker) {
+        g->active_marker = 0;
+        autonav_clear(&g->autonav);
+    }
+    if (m->kind == MARKER_TEST) {
+        g->marker_spawn_at = app->time + 0.5;
+    }
+    if (g->markers.on_reached) {
+        g->markers.on_reached(g->markers.user, m->id);
+    }
+}
+
+/* A random spot for a test marker: 50 % rooms, 25 % corridors, 25 % yard; never
+ * in the car, against a wall, near another marker or the player. */
+static bool spawn_test_marker(Game *g, HMM_Vec3 feet)
+{
+    static const uint32_t colours[8] = {0xFF4D4DFF, 0xFFA52EFF, 0xFFD93DFF, 0x4CD964FF,
+                                        0x35C9D6FF, 0x4A8BFFFF, 0xB46BFFFF, 0xFF6BB5FF};
+    int roll = SDL_rand(100), want = roll < 50 ? 0 : (roll < 75 ? 1 : 2);
+    for (int tries = 0; tries < 300; tries++) {
+        int storey = want == 2 ? -1 : SDL_rand(nav_grid_count(g->nav));
+        const NavGrid *grid = nav_grid(g->nav, level_of(storey));
+        int cx = SDL_rand(grid->d.cols), cz = SDL_rand(grid->d.rows);
+        uint8_t f = grid->flags[cz * grid->d.cols + cx];
+        if (!(f & NAV_WALKABLE) || (f & (NAV_NEAR_WALL | NAV_ELEVATOR | NAV_DOOR))) {
+            continue;
+        }
+        bool outdoor = (f & NAV_OUTDOOR) != 0;
+        if (outdoor != (want == 2)) {
+            continue;
+        }
+        HMM_Vec3 p = HMM_V3(grid->d.x0 + ((float)cx + 0.5f) * NAV_CELL, grid->d.floor_y, grid->d.z0 + ((float)cz + 0.5f) * NAV_CELL);
+        if (!outdoor && scene_area_kind(p.X, p.Z, storey) != want) {
+            continue;
+        }
+        bool clear = HMM_LenSqrV3(HMM_SubV3(p, feet)) > 1.5f * 1.5f;
+        for (int i = 0; i < MARKER_MAX && clear; i++) {
+            const marker_t *m = &g->markers.m[i];
+            clear = !m->id || level_of(m->storey) != level_of(storey) || HMM_LenSqrV3(HMM_SubV3(p, m->pos)) > 1.5f * 1.5f;
+        }
+        NavPath probe; /* islands (behind the rope) are out */
+        int from = scene_indoors(g->scene, feet) ? scene_floor_of(g->scene, feet) : -1;
+        if (!clear || nav_find_path(g->nav, feet, from, p, storey, &probe) != 0) {
+            continue;
+        }
+        return marker_add(&g->markers, p, storey, MARKER_TEST, colours[g->markers.next_id % 8]) != 0;
+    }
+    return false;
+}
+
+static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
+{
+    Markers *ms = &g->markers;
+    markers_tick(ms, mg_minf(app->frame_dt, 0.1f));
+    marker_t *a = marker_get(ms, g->active_marker);
+    if (g->autonav.state == AUTONAV_ARRIVED) {
+        if (a) {
+            marker_reached(g, app, a);
+        }
+        autonav_clear(&g->autonav);
+    } else if (g->autonav.state == AUTONAV_CANCELLED) {
+        if (a) {
+            marker_set_state(a, MARKER_IDLE);
+            marker_cue(g, AUDIO_CUE_DUP);
+        }
+        g->active_marker = 0;
+        autonav_clear(&g->autonav);
+    } else if (g->autonav.state == AUTONAV_FAILED) {
+        if (a) {
+            marker_failed(g, app, a);
+        }
+        g->active_marker = 0;
+        autonav_clear(&g->autonav);
+    }
+    /* walking onto a marker counts, navigated or not */
+    int level = scene_floor_of(g->scene, feet);
+    int alive_test = 0;
+    for (int i = 0; i < MARKER_MAX; i++) {
+        marker_t *m = &ms->m[i];
+        if (!m->id || m->state == MARKER_REACHED) {
+            continue;
+        }
+        alive_test += m->kind == MARKER_TEST;
+        float dx = m->pos.X - feet.X, dz = m->pos.Z - feet.Z;
+        if (level_of(m->storey) == level && dx * dx + dz * dz < 0.36f) {
+            marker_reached(g, app, m);
+            alive_test -= m->kind == MARKER_TEST;
+        }
+    }
+    const GameSettings *s = &g->settings;
+    if (!s->test_markers) {
+        if (alive_test > 0) {
+            marker_clear(ms, MARKER_TEST);
+        }
+    } else if (alive_test < (int)s->test_marker_count && app->time >= g->marker_spawn_at) {
+        spawn_test_marker(g, feet);
+    } else if (alive_test > (int)s->test_marker_count) {
+        for (int i = MARKER_MAX - 1; i >= 0; i--) {
+            if (ms->m[i].id && ms->m[i].kind == MARKER_TEST && ms->m[i].id != g->active_marker) {
+                ms->m[i].id = 0;
+                break;
+            }
+        }
+    }
+}
+
+static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up)
+{
+    Markers *ms = &g->markers;
+    const float dt = mg_minf(app->frame_dt, 0.1f);
+    int n = 0;
+    for (int i = 0; i < MARKER_MAX && n < MARKER_HUD_MAX; i++) {
+        marker_t *m = &ms->m[i];
+        if (!m->id) {
+            continue;
+        }
+        float dx = m->pos.X - feet.X, dz = m->pos.Z - feet.Z;
+        m->dist_timer -= dt;
+        if (m->dist_timer <= 0.0f) { /* the label changes at 4 Hz */
+            m->dist_timer = 0.25f;
+            m->dist_shown = sqrtf(dx * dx + dz * dz);
+        }
+        MarkerHudIn *in = &g->hud_in[n++];
+        uint32_t c = m->color_rgba;
+        float scale = 1.0f, shake = 0.0f;
+        UiColor tint = {(uint8_t)(c >> 24), (uint8_t)(c >> 16), (uint8_t)(c >> 8), 255};
+        if (m->state == MARKER_TAPPED) {
+            scale = 1.0f + 0.3f * sinf(mg_saturate(m->anim_t / 0.15f) * 3.14159f);
+            if (m->anim_t < 0.06f) {
+                tint = (UiColor){255, 255, 255, 255};
+            }
+        } else if (m->state == MARKER_REACHED) {
+            scale = 1.0f - mg_saturate(m->anim_t / 0.3f);
+        } else if (m->state == MARKER_FAILED) {
+            shake = 4.0f * sinf(m->anim_t * 12.0f * 6.2831853f);
+            tint = (UiColor){240, 60, 60, 255};
+        }
+        *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
+                            scale, shake, m->ring_t, tint};
+    }
+    /* panels the icons stay out of: gear, floor peek, floor menu, toast */
+    const float w = app->width_pt, h = app->height_pt;
+    float res[16];
+    int rc = 0;
+    const float gear[4] = {w - app->safe_right - 62.0f, app->safe_top + 2.0f, 56.0f, 56.0f};
+    memcpy(res + rc * 4, gear, sizeof(gear));
+    rc++;
+    if (g->settings.show_floor_peek) {
+        const float peek[4] = {app->safe_left + 4.0f, h * 0.5f - 62.0f, 44.0f, 124.0f};
+        memcpy(res + rc * 4, peek, sizeof(peek));
+        rc++;
+    }
+    if (floor_menu_up) {
+        const float fm[4] = {w - app->safe_right - 192.0f, app->safe_top + 64.0f, 180.0f, 200.0f};
+        memcpy(res + rc * 4, fm, sizeof(fm));
+        rc++;
+    }
+    if (frontend_toast_active(&g->fe, app->time)) {
+        const float t[4] = {w * 0.5f - 170.0f, h - mg_maxf(app->safe_bottom, 12.0f) - 60.0f, 340.0f, 48.0f};
+        memcpy(res + rc * 4, t, sizeof(t));
+        rc++;
+    }
+    MarkerHudView v = {g->view_proj, w, h, app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, view_floor, res, rc};
+    g->hud_count = marker_hud_layout(g->hud_in, n, &v, g->hud_out);
+    marker_hud_draw(app->gfx, &app->font, g->hud_out, g->hud_count, view_floor);
+    /* tap targets for the next frame's touch pass */
+    int nt = 0;
+    for (int i = 0; i < g->hud_count && nt < TOUCH_MAX_TARGETS; i++) {
+        const MarkerHudOut *o = &g->hud_out[i];
+        if (!o->hidden && !(o->icon && o->in->scale <= 0.01f)) {
+            g->touch.targets[nt].id = o->id;
+            g->touch.targets[nt].x = o->x;
+            g->touch.targets[nt].y = o->y;
+            nt++;
+        }
+    }
+    g->touch.target_count = nt;
+    if (g->settings.test_markers && g->settings.show_nav) { /* debug line */
+        marker_t *am = marker_get(ms, g->active_marker);
+        char line[128];
+        int alive = 0;
+        for (int i = 0; i < MARKER_MAX; i++) {
+            alive += ms->m[i].id != 0;
+        }
+        if (am) {
+            SDL_snprintf(line, sizeof(line), "markers %d " TEXT_BULLET " active #%u (%.1f m, floor %d) " TEXT_BULLET
+                         " path %d pts " TEXT_BULLET " %.1f ms", alive, (unsigned)am->id, (double)am->dist_shown,
+                         level_of(am->storey), g->autonav.path.count, (double)nav_path_ms(g->nav));
+        } else {
+            SDL_snprintf(line, sizeof(line), "markers %d " TEXT_BULLET " bake %.1f ms", alive, (double)nav_bake_ms(g->nav));
+        }
+        text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 96.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
+    }
 }
 
 /* --autotest nav: every room reachable from the gate, cross-storey paths go

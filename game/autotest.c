@@ -7,13 +7,13 @@
 #include "player.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
-       AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV };
+       AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS };
 
 static int kind_of(int argc, char **argv)
 {
-    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav"};
+    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 7 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 8 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -39,7 +39,8 @@ bool autotest_starts_in_game(int argc, char **argv)
         if (SDL_strcmp(argv[i], "--autotest") == 0) {
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
                    SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0 ||
-                   SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0;
+                   SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0 ||
+                   SDL_strcmp(argv[i + 1], "markers") == 0;
         }
     }
     return false;
@@ -261,6 +262,153 @@ static bool run_autonav(Autotest *t, MgApp *app, const AutotestProbe *p, Autotes
     return false;
 }
 
+/* A marker's on-screen tap point; false if it is not laid out. */
+static bool marker_point(const AutotestProbe *p, uint32_t id, float *x, float *y)
+{
+    for (int i = 0; i < p->hud_count; i++) {
+        if (p->hud[i].id == id && !p->hud[i].hidden) {
+            *x = p->hud[i].x;
+            *y = p->hud[i].y;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool run_markers(Autotest *t, MgApp *app, const AutotestProbe *p, double el)
+{
+    const int FINGER = 52;
+    if (el < 3.0) {
+        return false; /* let the spawner fill up */
+    }
+    float x = 0.0f, y = 0.0f;
+    switch (t->stage) {
+    case 0: { /* tap: the nearest marker */
+        float best = 1e9f;
+        for (int i = 0; i < p->hud_count; i++) {
+            if (!p->hud[i].hidden && p->hud[i].in->distance > 0.8f && p->hud[i].in->distance < best) {
+                best = p->hud[i].in->distance;
+                t->pick = p->hud[i].id;
+            }
+        }
+        t->step = p->hud_count; /* markers alive */
+        if (t->pick && marker_point(p, t->pick, &x, &y)) {
+            finger(app, SDL_EVENT_FINGER_DOWN, FINGER, x, y);
+            t->tap_x = x;
+            t->tap_y = y;
+            t->wait_until = el + 0.1;
+            t->stage = 1;
+        }
+        break;
+    }
+    case 1:
+    case 4:
+    case 7: /* release, then look a moment later */
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.4;
+            t->stage++;
+        }
+        break;
+    case 2: /* it must be walking there */
+        if (el >= t->wait_until) {
+            bool ok = p->active_marker == t->pick && p->nav_state >= 1 && p->nav_state <= 3;
+            mg_log_info("autotest markers: tap starts navigation (%s)", ok ? "ok" : "FAIL");
+            t->passed = ok;
+            t->stage = marker_point(p, t->pick, &x, &y) ? 3 : 99;
+            t->tap_x = x;
+            t->tap_y = y;
+        }
+        break;
+    case 3: /* tap the active one again */
+        finger(app, SDL_EVENT_FINGER_DOWN, FINGER, t->tap_x, t->tap_y);
+        t->wait_until = el + 0.1;
+        t->stage = 4;
+        break;
+    case 5: {
+        if (el >= t->wait_until) {
+            bool ok = p->active_marker == 0;
+            mg_log_info("autotest markers: tapping the active marker cancels (%s)", ok ? "ok" : "FAIL");
+            t->passed = t->passed && ok;
+            t->stage = 6;
+        }
+        break;
+    }
+    case 6: /* tap and walk all the way */
+        if (marker_point(p, t->pick, &x, &y)) {
+            t->skin_before = p->markers_reached;
+            finger(app, SDL_EVENT_FINGER_DOWN, FINGER, x, y);
+            t->tap_x = x;
+            t->tap_y = y;
+            t->wait_until = el + 0.1;
+            t->step_start = el;
+            t->stage = 7;
+        } else {
+            t->stage = 99;
+        }
+        break;
+    case 8:
+        if (p->markers_reached > t->skin_before) {
+            mg_log_info("autotest markers: reached after %.1f s", el - t->step_start);
+            t->wait_until = el + 1.5;
+            t->stage = 9;
+        } else if (el - t->step_start > 75.0) {
+            return fail(t, "markers", "never reached the marker");
+        }
+        break;
+    case 9:
+        if (el >= t->wait_until) {
+            bool ok = p->hud_count == t->step;
+            mg_log_info("autotest markers: replacement spawned, %d alive (%s)", p->hud_count, ok ? "ok" : "FAIL");
+            t->passed = t->passed && ok;
+            t->stage = 10;
+        }
+        break;
+    case 10: { /* a drag that starts on a marker in the stick zone becomes the stick */
+        const MarkerHudOut *left = NULL;
+        for (int i = 0; i < p->hud_count && !left; i++) {
+            if (!p->hud[i].hidden && p->hud[i].x < app->width_pt * 0.45f) {
+                left = &p->hud[i];
+            }
+        }
+        if (!left) {
+            mg_log_info("autotest markers: no marker in the stick zone, drag check skipped");
+            t->stage = 99;
+            break;
+        }
+        t->pick = left->id;
+        t->tap_x = left->x;
+        t->tap_y = left->y;
+        finger(app, SDL_EVENT_FINGER_DOWN, FINGER, left->x, left->y);
+        t->skin_before = p->active_marker;
+        t->wait_until = el + 0.06;
+        t->stage = 11;
+        break;
+    }
+    case 11:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_MOTION, FINGER, t->tap_x + 40.0f, t->tap_y);
+            t->wait_until = el + 0.2;
+            t->stage = 12;
+        }
+        break;
+    case 12:
+        finger(app, SDL_EVENT_FINGER_MOTION, FINGER, t->tap_x + 40.0f, t->tap_y);
+        if (el >= t->wait_until) {
+            bool ok = p->stick_active && p->active_marker != t->pick;
+            mg_log_info("autotest markers: drag from a marker becomes the stick (%s)", ok ? "ok" : "FAIL");
+            t->passed = t->passed && ok;
+            finger(app, SDL_EVENT_FINGER_UP, FINGER, t->tap_x + 40.0f, t->tap_y);
+            t->stage = 99;
+        }
+        break;
+    default:
+        mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
+        return true;
+    }
+    return false;
+}
+
 /* ------------------------------------------------------------ menu scripts */
 
 typedef struct TapStep {
@@ -453,6 +601,9 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_AUTONAV:
         finished = run_autonav(t, app, p, out, el);
+        break;
+    case AUTOTEST_MARKERS:
+        finished = run_markers(t, app, p, el);
         break;
     case AUTOTEST_SCREENSHOT: /* let the scene settle, shoot, quit a second later */
         if (t->stage == 0 && el > 3.0) {

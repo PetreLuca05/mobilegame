@@ -245,6 +245,26 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   appears), rides with `elevator_request`. Desktop right-click = walk there.
   `--autotest autonav`.
 
+- Markers (`game/markers.c`): `marker_add(ms, pos, storey, kind, rgba)`,
+  `marker_remove`, `marker_clear(kind)`, callbacks `on_tapped` / `on_reached`;
+  32 max. World: spinning diamond, ground ring (0.6 coverage via dither),
+  contact disc, storey-tagged like the scene (above the view floor: gone).
+  HUD (`engine/ui/marker_hud.c`): on-screen on the view floor = invisible 44 pt
+  tap target only; off-screen / in a reserved panel (gear, floor peek, floor
+  menu, toast) = edge icon with chevron + distance (4 Hz), max 12, 48 pt apart;
+  other storey = icon + floor badge.
+- Touch arbitration (`touch_controls.c`): targets are tested before the zones;
+  the touch is the marker's only if it ends within 250 ms having moved < 10 pt,
+  else it goes back to its zone on that event (a stick spawns at the original
+  point, which then cancels navigation).
+- Feedback: scale punch, ripple, flash, shake, procedural `audio_cue` (tick,
+  chime, dup, buzz), `haptic_impact` on iOS. Tapping the active marker cancels;
+  tapping another re-targets. Walking onto a marker counts as reaching it.
+- Debug: Developer -> Markers (Test markers, count 1-16, show paths for all,
+  respawn) - on in debug builds. Test markers: 50 % rooms, 25 % corridors,
+  25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
+  `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

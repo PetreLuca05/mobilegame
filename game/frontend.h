@@ -87,6 +87,9 @@ void frontend_go(Frontend *f, FeState s); /* pushes the current state for Back *
 /* Android back / Escape: one state back; returns FE_EXIT on the welcome screen. */
 FeAction frontend_back(Frontend *f);
 void frontend_toast(Frontend *f, const char *msg, double now);
+/* The toast also shows during play (bottom centre, above the home indicator). */
+void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app);
+bool frontend_toast_active(const Frontend *f, double now);
 /* Draws the locker room + current screen; call between ui_begin and the end
  * of the frame when not in PLAY. */
 FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes);

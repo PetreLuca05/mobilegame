@@ -70,6 +70,12 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
     devroom_draw(&s->room, g, false);
 }
 
+int scene_area_kind(float x, float z, int storey)
+{
+    (void)x, (void)z, (void)storey;
+    return 0;
+}
+
 struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world)
 {
     (void)s, (void)perm, (void)world;

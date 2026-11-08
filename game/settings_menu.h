@@ -28,6 +28,7 @@ typedef enum MenuAction {
 #endif
     MENU_EDIT_CHARACTER, /* open the character creator */
     MENU_APPLE,        /* "Continue with Apple" (iOS) */
+    MENU_RESPAWN_MARKERS, /* debug: new test markers */
 } MenuAction;
 
 typedef struct SettingsAccount {

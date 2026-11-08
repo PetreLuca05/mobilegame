@@ -15,6 +15,11 @@ typedef struct GameSettings {
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
     bool show_nav;          /* debug: walkability grid + last path */
+    bool haptics;           /* marker taps (iOS) */
+    bool marker_sounds;
+    bool test_markers;      /* debug: scatter markers to tap */
+    float test_marker_count; /* 1..16 */
+    bool show_all_paths;    /* debug: a path preview for every marker */
     bool xray_always;       /* debug: x-ray ignores depth */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */
@@ -49,6 +54,15 @@ static inline void settings_default(GameSettings *s)
     s->floor_peek_hold = 3.0f;
     s->show_own_name = false;
     s->show_xray = true;
+    s->haptics = true;
+    s->marker_sounds = true;
+#ifdef NDEBUG
+    s->test_markers = false;
+#else
+    s->test_markers = true;
+#endif
+    s->test_marker_count = 8.0f;
+    s->show_all_paths = false;
     s->xray_always = false;
     s->cam_pitch_deg = -20.0f;
     s->fov_deg = 55.0f;

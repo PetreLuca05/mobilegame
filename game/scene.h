@@ -42,6 +42,8 @@ bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
 void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target);
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v);
+/* Where a walkable spot is: 0 room, 1 corridor / lobby, 2 yard (test markers). */
+int scene_area_kind(float x, float z, int storey);
 /* Pathfinding grids from the static colliders; NULL if the scene has none. */
 struct NavWorld;
 struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world);

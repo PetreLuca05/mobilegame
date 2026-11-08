@@ -8,6 +8,8 @@
  *   stickdir    stick up/right/down/left walk north/east/south/west
  *   autonav     auto-nav across the yard and into a room, a stick cancel,
  *               then yard -> floor 2 and floor 2 -> yard through the car
+ *   markers     tap a marker (walks), tap again (cancels), tap and arrive
+ *               (reached, respawn), a drag from a marker becomes the stick
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -19,6 +21,7 @@
 #define MG_AUTOTEST_H
 
 #include "platform/app.h"
+#include "ui/marker_hud.h"
 #include "ui/widgets.h"
 
 typedef struct AutotestProbe {
@@ -36,6 +39,11 @@ typedef struct AutotestProbe {
     uint32_t skin_hash; /* changes whenever the look changes */
     int route_step;    /* route test progress (-1 = not running) */
     int nav_state;     /* AutonavState */
+    uint32_t markers_reached;
+    uint32_t active_marker;
+    bool stick_active;
+    int hud_count;
+    const MarkerHudOut *hud;
     int nav_storey;    /* player's storey, -1 yard */
 } AutotestProbe;
 
@@ -44,6 +52,7 @@ typedef struct AutotestOut {
     bool start_route; /* save: start walking the route test */
     bool kill;        /* save: background (saves) and exit at once */
     char screenshot[48]; /* save this frame as <name>.png ("" = none) */
+    bool respawn_markers;
     bool nav_go;      /* start auto-nav to nav_pos / nav_to */
     HMM_Vec3 nav_pos;
     int nav_to;
@@ -65,6 +74,7 @@ typedef struct Autotest {
     uint32_t skin_before;
     int skin_changes;
     char shot_name[48];  /* screenshot kind */
+    uint32_t pick;       /* markers: the one being tapped */
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

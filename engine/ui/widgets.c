@@ -225,7 +225,7 @@ float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float 
         float ky = y + (float)(i / cols) * (key_h + gap);
         char label[24];
         if (i < 26) {
-            SDL_snprintf(label, sizeof(label), "%c##%s", 'A' + i, id);
+            SDL_snprintf(label, sizeof(label), "%c##%s_%c", 'A' + i, id, 'A' + i);
             if (ui_button(ui, label, kx, ky, kw, key_h, false) && len < max_len) {
                 code[len++] = (char)('A' + i);
                 code[len] = 0;

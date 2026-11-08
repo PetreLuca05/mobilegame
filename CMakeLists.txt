@@ -142,6 +142,7 @@ add_library(mg_engine STATIC
   engine/ui/widgets.c
   engine/ui/touch_controls.c
   engine/ui/floorpeek.c
+  engine/ui/marker_hud.c
   engine/ui/hud.c
   engine/platform/secure_store.c
   engine/platform/google_auth.c
@@ -156,14 +157,17 @@ target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physic
 # native Google sign-in, one starter per platform (engine/platform/google_auth.h)
 if(MG_PLATFORM STREQUAL "ios")
   enable_language(OBJC)
-  target_sources(mg_engine PRIVATE platform/ios/google_auth.m platform/ios/apple_auth.m)
-  set_source_files_properties(platform/ios/google_auth.m platform/ios/apple_auth.m PROPERTIES COMPILE_OPTIONS
+  target_sources(mg_engine PRIVATE platform/ios/google_auth.m platform/ios/apple_auth.m platform/ios/haptics.m)
+  set_source_files_properties(platform/ios/google_auth.m platform/ios/apple_auth.m platform/ios/haptics.m PROPERTIES COMPILE_OPTIONS
                               "-fobjc-arc")
   target_link_libraries(mg_engine PUBLIC "-framework AuthenticationServices" "-framework UIKit")
 elseif(MG_PLATFORM STREQUAL "android")
   target_sources(mg_engine PRIVATE engine/platform/google_auth_android.c)
 else()
   target_sources(mg_engine PRIVATE engine/platform/google_auth_stub.c)
+endif()
+if(NOT MG_PLATFORM STREQUAL "ios")
+  target_sources(mg_engine PRIVATE engine/platform/haptics_stub.c)
 endif()
 if(MG_DAYCYCLE STREQUAL "continuous")
   target_sources(mg_engine PRIVATE engine/world/daycycle.c)
@@ -198,6 +202,7 @@ set(MG_GAME_SOURCES
   game/floor_menu.c
   game/route_test.c
   game/nav_debug.c
+  game/markers.c
   game/autonav.c
   game/stats.c
   game/player.c

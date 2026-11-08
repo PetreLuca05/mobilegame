@@ -62,6 +62,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += 44.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
     cy += 44.0f;
+    ui_toggle(ui, str("haptics"), cx, cy, cw, &s->haptics);
+    cy += 44.0f;
+    ui_toggle(ui, str("marker_sounds"), cx, cy, cw, &s->marker_sounds);
+    cy += 44.0f;
 #else
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
@@ -135,6 +139,18 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
 #endif
+        ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Markers");
+        y += 22.0f;
+        ui_toggle(ui, "Test markers", x, y, cw, &s->test_markers);
+        y += 44.0f;
+        ui_slider(ui, "Marker count##mkc", x, y, cw, &s->test_marker_count, 1.0f, 16.0f, "%.0f");
+        y += step;
+        ui_toggle(ui, "Show paths for all markers", x, y, cw, &s->show_all_paths);
+        y += 44.0f;
+        if (ui_button(ui, "Respawn all##mkr", x, y, cw, 40.0f, false)) {
+            *action = MENU_RESPAWN_MARKERS;
+        }
+        y += 52.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Teleport to floor");
         y += 22.0f;
         static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};

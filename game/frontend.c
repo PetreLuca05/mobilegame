@@ -194,7 +194,9 @@ static float wrapped(Ui *ui, float x, float y, float w, float size, UiColor c, c
     return yy - y;
 }
 
-static void toast_draw(Frontend *f, Ui *ui, MgApp *app)
+bool frontend_toast_active(const Frontend *f, double now) { return now < f->toast_until && f->toast[0]; }
+
+void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app)
 {
     if (app->time >= f->toast_until || !f->toast[0]) {
         return;
@@ -562,6 +564,6 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
     default: /* SETTINGS is drawn by the game (the settings panel) */
         break;
     }
-    toast_draw(f, ui, app);
+    frontend_toast_draw(f, ui, app);
     return a;
 }

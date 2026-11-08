@@ -48,5 +48,11 @@
   "mode_versus": "Versus",
   "mode_versus_desc": "Race other doctors",
   "provider_google": "Google",
-  "provider_apple": "Apple"
+  "provider_apple": "Apple",
+  "cant_get_there": "Can't get there",
+  "haptics": "Haptics",
+  "marker_sounds": "Marker sounds",
+  "resume": "Resume",
+  "pause_title": "Paused",
+  "settings_row": "Settings"
 }

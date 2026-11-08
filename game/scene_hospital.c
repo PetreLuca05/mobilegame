@@ -76,6 +76,17 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
 #endif
 }
 
+int scene_area_kind(float x, float z, int storey)
+{
+    if (storey < 0) {
+        return 2;
+    }
+    const bool corridor = z > -10.75f && z < -8.1f;
+    const bool lift_lobby = z > -12.6f && z <= -10.75f && fabsf(x) < 2.5f;
+    const bool main_lobby = storey == 0 && z >= -8.1f && fabsf(x) < 7.0f;
+    return corridor || lift_lobby || main_lobby ? 1 : 0;
+}
+
 struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world) { return hospital_nav_bake(&s->h, perm, world); }
 
 bool scene_box_cut_away(const Scene *s, int box, const float *fade)

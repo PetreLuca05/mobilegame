@@ -15,6 +15,8 @@
 #define TOUCH_OWNER_STICK 1
 #define TOUCH_OWNER_CAMERA 2
 #define TOUCH_OWNER_JUMP 3
+#define TOUCH_OWNER_MARKER 4
+#define TOUCH_MAX_TARGETS 32
 
 typedef struct TouchControlsConfig {
     float dead_zone_pt;   /* 60 */
@@ -37,6 +39,19 @@ typedef struct TouchControls {
     float camera_dx, camera_dy; /* pt dragged this frame (camera_zone) */
     bool jump_held;
     bool auto_dot;             /* navigation is driving: small dot in the stick's resting spot */
+    /* marker tap targets (44 pt squares, set by the game), tested before the
+     * zones. A touch on one is the marker's only if it ends within 250 ms and
+     * moved < 10 pt; otherwise it goes back to its zone (stick at the original
+     * point) on that same event, so nothing feels swallowed. */
+    struct {
+        uint32_t id;
+        float x, y;
+    } targets[TOUCH_MAX_TARGETS];
+    int target_count;
+    int pending_touch;         /* tentative marker touch, -1 none */
+    uint32_t pending_id;
+    double pending_since;
+    uint32_t tapped_id;        /* this frame's completed marker tap, 0 none */
     /* layout */
     float jump_cx, jump_cy;
 } TouchControls;
@@ -44,7 +59,7 @@ typedef struct TouchControls {
 void touch_controls_default_config(TouchControlsConfig *c);
 void touch_controls_reset(TouchControls *tc);
 void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, MgInput *in, float w_pt, float h_pt,
-                           float safe_right, float safe_bottom);
+                           float safe_right, float safe_bottom, double now);
 void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg, GfxContext *g, const TextFont *f,
                          float safe_left, float h_pt, float safe_bottom);
 

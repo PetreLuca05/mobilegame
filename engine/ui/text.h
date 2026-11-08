@@ -61,5 +61,7 @@ void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_
 void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c);
 void ui_round_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, float r, UiColor c);
 void ui_circle(GfxContext *g, const TextFont *f, float cx, float cy, float r, UiColor c);
+/* Straight stroke of any angle (chevrons, back arrow). */
+void ui_line(GfxContext *g, const TextFont *f, float x0, float y0, float x1, float y1, float thick, UiColor c);
 
 #endif

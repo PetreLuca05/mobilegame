@@ -16,7 +16,8 @@ void touch_controls_default_config(TouchControlsConfig *c)
 
 void touch_controls_reset(TouchControls *tc)
 {
-    tc->stick_touch = tc->camera_touch = tc->jump_touch = -1;
+    tc->stick_touch = tc->camera_touch = tc->jump_touch = tc->pending_touch = -1;
+    tc->tapped_id = 0;
     tc->move_x = tc->move_y = 0.0f;
     tc->knob_dx = tc->knob_dy = 0.0f;
     tc->sprint = false;
@@ -32,7 +33,7 @@ static void release_if_gone(MgInput *in, int *slot)
 }
 
 void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, MgInput *in, float w_pt, float h_pt,
-                           float safe_right, float safe_bottom)
+                           float safe_right, float safe_bottom, double now)
 {
     float jr = cfg->jump_size_pt * 0.5f;
     tc->jump_cx = w_pt - safe_right - 24.0f - jr;
@@ -42,11 +43,49 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
     release_if_gone(in, &tc->stick_touch);
     release_if_gone(in, &tc->jump_touch);
     release_if_gone(in, &tc->camera_touch);
+    /* a tentative marker touch: tap, or hand it back to its zone */
+    tc->tapped_id = 0;
+    if (tc->pending_touch >= 0) {
+        MgTouch *t = &in->touches[tc->pending_touch];
+        float mx = t->x - t->x0, my = t->y - t->y0;
+        bool still = mx * mx + my * my < 100.0f && now - tc->pending_since <= 0.25;
+        if (!t->active || t->ended) {
+            if (still) {
+                tc->tapped_id = tc->pending_id;
+            }
+            tc->pending_touch = -1;
+        } else if (!still) {
+            t->owner = MG_TOUCH_FREE;
+            if (tc->stick_touch < 0 && t->x0 < w_pt * cfg->stick_zone_x) {
+                t->owner = TOUCH_OWNER_STICK;
+                tc->stick_touch = tc->pending_touch;
+                tc->stick_ox = t->x0;
+                tc->stick_oy = t->y0;
+            }
+            tc->pending_touch = -1;
+        }
+    }
+
     /* assign new touches */
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
         MgTouch *t = &in->touches[i];
         if (!t->began || t->owner != MG_TOUCH_FREE) {
             continue;
+        }
+        if (tc->pending_touch < 0) { /* marker tap targets come before the zones */
+            bool hit = false;
+            for (int k = 0; k < tc->target_count && !hit; k++) {
+                if (fabsf(t->x0 - tc->targets[k].x) <= 22.0f && fabsf(t->y0 - tc->targets[k].y) <= 22.0f) {
+                    hit = true;
+                    t->owner = TOUCH_OWNER_MARKER;
+                    tc->pending_touch = i;
+                    tc->pending_id = tc->targets[k].id;
+                    tc->pending_since = now;
+                }
+            }
+            if (hit) {
+                continue;
+            }
         }
         float dx = t->x0 - tc->jump_cx, dy = t->y0 - tc->jump_cy;
         float slop = jr + 14.0f; /* generous hit area: thumbs land off-centre */

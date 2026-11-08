@@ -16,6 +16,16 @@ void audio_destroy(Audio *a);
 void audio_ding(Audio *a);
 /* Short menu click (sine blip). */
 void audio_click(Audio *a);
+/* M6 marker feedback: short procedural notes with an attack / release
+ * envelope; one voice per cue. */
+typedef enum AudioCue {
+    AUDIO_CUE_TICK,  /* tapped: 880 -> 1320 Hz */
+    AUDIO_CUE_CHIME, /* reached: 660 / 880 / 1320 Hz */
+    AUDIO_CUE_DUP,   /* cancelled: low 330 Hz */
+    AUDIO_CUE_BUZZ,  /* failed: 220 Hz square-ish */
+    AUDIO_CUE_COUNT
+} AudioCue;
+void audio_cue(Audio *a, AudioCue cue);
 /* Settings -> Sound off: every sound call is ignored. */
 void audio_set_muted(Audio *a, bool muted);
 
