@@ -10,6 +10,12 @@
 #define PLAYER_JUMP_ENABLED 0
 #endif
 
+/* One movement speed (walk 4.5 m/s). The controller's sprint branch stays;
+ * build with -DPLAYER_SPRINT_ENABLED=1 to bring rim-sprint and Shift back. */
+#ifndef PLAYER_SPRINT_ENABLED
+#define PLAYER_SPRINT_ENABLED 0
+#endif
+
 typedef struct Player {
     KinematicState kin;
     HMM_Vec3 prev_pos;  /* position at the previous tick, for interpolation */

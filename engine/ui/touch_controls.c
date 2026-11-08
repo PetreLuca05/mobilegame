@@ -7,6 +7,7 @@ void touch_controls_default_config(TouchControlsConfig *c)
     c->dead_zone_pt = 60.0f;
     c->radius_pt = 120.0f;
     c->sprint_at = 0.95f;
+    c->full_at = 1.0f;
     c->stick_zone_y = 0.0f;  /* whole height (below the safe area) */
     c->stick_zone_x = 0.45f; /* left 45 % stick, right 55 % camera */
     c->jump_size_pt = 72.0f;
@@ -76,7 +77,7 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
             float k = d > r ? r / d : 1.0f;
             tc->knob_dx = dx * k;
             tc->knob_dy = dy * k;
-            float mag = mg_saturate((d - cfg->dead_zone_pt) / mg_maxf(r - cfg->dead_zone_pt, 1.0f));
+            float mag = mg_saturate((d - cfg->dead_zone_pt) / mg_maxf(r * cfg->full_at - cfg->dead_zone_pt, 1.0f));
             tc->move_x = dx / d * mag;
             tc->move_y = -dy / d * mag;
             tc->sprint = d >= r * cfg->sprint_at;

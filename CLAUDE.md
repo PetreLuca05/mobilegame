@@ -71,6 +71,9 @@ picks the device for `tools/run_ios.sh`.
 
 Scene: `-DMG_SCENE=hospital` (default) or `devroom` (M1 engine test room).
 `PLAYER_JUMP_ENABLED` (game/player.h, default 0) brings jumping back.
+`PLAYER_SPRINT_ENABLED` (game/player.h, default 0): one speed, walk 4.5 m/s
+(full speed from a 3/4 stick push, slower below; Shift does nothing; the
+replication sprint bit stays reserved and is always 0).
 
 ## Shaders
 

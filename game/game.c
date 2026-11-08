@@ -198,6 +198,10 @@ bool game_init(MgApp *app)
     g->settings = g->prefs.settings; /* per device */
     g->has_save = save_exists(g->profile_name);
     touch_controls_default_config(&g->touch_cfg);
+#if !PLAYER_SPRINT_ENABLED
+    g->touch_cfg.sprint_at = 2.0f; /* never: no rim sprint, no knob highlight */
+    g->touch_cfg.full_at = 0.75f;  /* walk speed from a 3/4 push on; slower below */
+#endif
 #ifdef MG_CAMERA_THIRDPERSON
     g->touch_cfg.camera_zone = true;
 #endif
@@ -1257,7 +1261,7 @@ void game_frame(MgApp *app, float alpha)
         /* riding: the pivot rides with the car, so the floors cross-fade as it passes the slabs */
         int pivot_floor = g->peek_view >= 0 ? g->peek_view : scene_floor_of(g->scene, feet);
         float floor_y = g->riding ? feet.Y - g->ride_offset : scene_floor_y(g->scene, pivot_floor);
-        tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.sprint_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
+        tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.walk_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
         tdcam_matrices(&g->td, aspect, &sp.view, &sp.proj, &sp.eye);
 #endif
     }

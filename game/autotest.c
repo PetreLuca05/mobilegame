@@ -107,8 +107,12 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
             HMM_Vec3 d = HMM_SubV3(p->player_pos, t->at_start.player_pos);
             float moved = sqrtf(d.X * d.X + d.Z * d.Z);
             float dyaw = p->cam_yaw_deg - t->at_start.cam_yaw_deg;
-            bool ok_move = moved > 6.0f;
+            bool ok_move = moved > 5.0f;
+#if PLAYER_SPRINT_ENABLED
             bool ok_sprint = t->max_speed > 6.9f;
+#else
+            bool ok_sprint = fabsf(t->max_speed - 4.5f) < 0.1f; /* rim push = walk speed, never 7 */
+#endif
 #ifdef MG_CAMERA_THIRDPERSON
             bool ok_yaw = fabsf(dyaw + 25.0f) < 1.5f;
 #else
@@ -131,44 +135,51 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
 }
 
 /* Fixed camera: the stick pushed up / right / down / left (0.6 s each) must
- * walk the player north / east / south / west - screen up is north. */
+ * walk the player north / east / south / west - screen up is north. Then a
+ * full-rim push east and a 3/4 push west, 2 s each: both cover 9 m +- 0.3
+ * (no sprint; walk speed from 3/4 of the radius on). */
 static bool run_stickdir(Autotest *t, MgApp *app, const AutotestProbe *p, double el)
 {
-    static const float dir[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};   /* stick, screen space */
-    static const float world[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; /* expected XZ */
-    static const char *const names[4] = {"up", "right", "down", "left"};
-    const float sx = 120.0f, sy = app->height_pt * 0.6f;
-    double local = el - 1.0 - (double)t->step * 1.2;
+    static const float dir[6][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, 0}, {-1, 0}}; /* stick, screen space */
+    static const float world[6][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, 0}, {-1, 0}}; /* expected XZ */
+    static const char *const names[6] = {"up", "right", "down", "left", "rim 2 s", "3/4 2 s"};
     if (el < 1.0) {
         return false;
     }
-    float kx = sx + dir[t->step][0] * 110.0f, ky = sy + dir[t->step][1] * 110.0f;
+    const float k = fminf(app->height_pt / 390.0f, 1.4f) < 1.0f ? 1.0f : fminf(app->height_pt / 390.0f, 1.4f);
+    const float sx = 130.0f * k, sy = app->height_pt * 0.6f;
+    const bool timed = t->step >= 4;
+    const double hold = timed ? 2.0 : 0.6, settle = 0.5;
+    const float reach = (t->step == 5 ? 90.0f : (timed ? 125.0f : 110.0f)) * k;
+    float kx = sx + dir[t->step][0] * reach, ky = sy + dir[t->step][1] * reach;
+    double local = el - t->step_start;
     switch (t->stage) {
     case 0:
         t->at_start = *p;
+        t->step_start = el;
         finger(app, SDL_EVENT_FINGER_DOWN, 50, sx, sy);
         finger(app, SDL_EVENT_FINGER_MOTION, 50, kx, ky);
         t->stage = 1;
         break;
     case 1:
         finger(app, SDL_EVENT_FINGER_MOTION, 50, kx, ky);
-        if (local > 0.6) {
+        if (local > hold) {
             finger(app, SDL_EVENT_FINGER_UP, 50, kx, ky);
             t->stage = 2;
         }
         break;
     default:
-        if (local > 1.0) {
+        if (local > hold + settle) {
             HMM_Vec3 d = HMM_SubV3(p->player_pos, t->at_start.player_pos);
             float len = sqrtf(d.X * d.X + d.Z * d.Z);
             float along = (d.X * world[t->step][0] + d.Z * world[t->step][1]) / fmaxf(len, 1e-3f);
-            bool ok = len > 1.0f && along > 0.99f && fabsf(p->cam_yaw_deg) < 0.01f;
+            bool ok = (timed ? fabsf(len - 9.0f) <= 0.3f : len > 1.0f) && along > 0.99f && fabsf(p->cam_yaw_deg) < 0.01f;
             mg_log_info("autotest stickdir: stick %s, moved %.2f m, along %.3f, camera yaw %.1f (%s)",
                         names[t->step], len, along, p->cam_yaw_deg, ok ? "ok" : "FAIL");
             t->passed = (t->step == 0 || t->passed) && ok;
             t->step++;
             t->stage = 0;
-            if (t->step == 4) {
+            if (t->step == 6) {
                 mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
                 return true;
             }

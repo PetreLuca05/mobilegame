@@ -1,4 +1,5 @@
 #include "avatar.h"
+#include "player.h"
 
 #include <math.h>
 
@@ -387,9 +388,14 @@ static float approach(float v, float target, float rate, float dt)
     return target + (v - target) * expf(-rate * dt);
 }
 
+#define WALK_POSE_SPEED 4.5f
+
 void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt)
 {
     float hs = sqrtf(p->vel.X * p->vel.X + p->vel.Z * p->vel.Z);
+#if !PLAYER_SPRINT_ENABLED
+    hs = mg_minf(hs, WALK_POSE_SPEED); /* remote old builds may still sprint: never the sprint pose */
+#endif
     if (p->grounded) {
         a->stride += hs * dt;
     }
@@ -399,8 +405,13 @@ void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt)
     float fwd = -s * p->vel.X - c * p->vel.Z;
     float side = c * p->vel.X - s * p->vel.Z;
     const float max_lean = HMM_AngleDeg(10.0f);
-    float lf = mg_clampf(fwd / 7.0f, -1.0f, 1.0f) * max_lean;
-    float ls = mg_clampf(side / 7.0f, -1.0f, 1.0f) * max_lean;
+#if PLAYER_SPRINT_ENABLED
+    const float lean_cap = 1.0f;
+#else
+    const float lean_cap = WALK_POSE_SPEED / 7.0f; /* the walk tilt is the most it ever leans */
+#endif
+    float lf = mg_clampf(fwd / 7.0f, -lean_cap, lean_cap) * max_lean;
+    float ls = mg_clampf(side / 7.0f, -lean_cap, lean_cap) * max_lean;
     a->lean_fwd = approach(a->lean_fwd, lf, 10.0f, dt);
     a->lean_side = approach(a->lean_side, ls, 10.0f, dt);
     a->swing = approach(a->swing, p->grounded ? mg_saturate(hs / 4.5f) : 0.3f, 8.0f, dt);
