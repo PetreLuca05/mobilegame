@@ -16,5 +16,7 @@ void audio_destroy(Audio *a);
 void audio_ding(Audio *a);
 /* Short menu click (sine blip). */
 void audio_click(Audio *a);
+/* Settings -> Sound off: every sound call is ignored. */
+void audio_set_muted(Audio *a, bool muted);
 
 #endif

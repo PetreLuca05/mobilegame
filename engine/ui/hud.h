@@ -14,7 +14,8 @@ typedef struct HudInfo {
     int players;        /* including the local player */
     const char *mode;   /* "offline", "party ABCD", "world 01" */
     const char *net;    /* connection status text */
-    uint32_t draws, reflect_draws;
+    uint32_t draws;
+    float main_ms;      /* CPU time encoding the main pass (no GPU timestamps in SDL GPU) */
     uint32_t render_w, render_h;
 } HudInfo;
 

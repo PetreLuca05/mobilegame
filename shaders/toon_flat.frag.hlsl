@@ -3,7 +3,7 @@
 
 // MG_RENDER=minimal toon (M5b): one directional key light + flat ambient
 // through the cel ramp, hard rim, glossy spot. No shadows, no point/spot
-// lights, no reflection; floors use this too.
+// lights, no reflection, no fog.
 // u_params: x rim strength, y unlit (1 = flat colour), z emissive boost, w gloss (0 matte .. 1 glossy)
 float4 PSMain(VSOut i) : SV_Target0
 {
@@ -25,5 +25,5 @@ float4 PSMain(VSOut i) : SV_Target0
     float ndh = dot(n, normalize(u_sun_dir.xyz + v));
     float spec = gloss * sunny * (0.5 * cel_step(ndh, 0.95) + 0.5 * cel_step(ndh, 0.99));
     float3 c = base * light + (rim * 0.45 + spec * 0.9) * float3(1.0, 1.0, 1.0) + base * u_params.z;
-    return float4(apply_fog(c, i.wpos), 1.0);
+    return float4(c, 1.0); // no distance fog: from a fixed top-down camera it only darkens a ring round the eye
 }

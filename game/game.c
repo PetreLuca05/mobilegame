@@ -591,8 +591,8 @@ static void scene_defaults(GfxSceneParams *sp, float time, const DayState *d)
     sp->sun_disc = d->sun_disc;
     sp->moon_disc = d->moon_disc;
     sp->stars = d->stars;
-    sp->reflection_y = 0.0f;
 #ifdef MG_RENDER_FULL
+    sp->reflection_y = 0.0f;
     sp->reflection_strength = 1.0f;
 #endif
     sp->time = time;
@@ -917,6 +917,7 @@ void game_frame(MgApp *app, float alpha)
 #ifdef MG_RENDER_FULL
     apply_tier(g, app);
 #endif
+    audio_set_muted(g->audio, !s->sound_on);
     g->day.follow_device = s->follow_clock;
     g->day.speed = s->time_speed;
     daycycle_update(&g->day, app->time, mg_minf(app->frame_dt, 0.25f));
@@ -1197,7 +1198,9 @@ void game_frame(MgApp *app, float alpha)
     int floor = g->peek_view >= 0 ? g->peek_view : player_floor; /* the view floor */
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     scene_defaults(&sp, (float)app->time, &g->day_state);
+#ifdef MG_RENDER_FULL
     sp.reflection_y = scene_floor_y(g->scene, floor);
+#endif
 #if !defined(MG_CAMERA_THIRDPERSON) && defined(MG_RENDER_FULL)
     sp.shadow_focus = g->fly_mode ? 0.0f : g->td.distance; /* cascades: 8 m / 30 m past the player */
 #endif
@@ -1299,7 +1302,7 @@ void game_frame(MgApp *app, float alpha)
     GfxStats gs;
     gfx_get_stats(app->gfx, &gs);
     hud.draws = gs.draws;
-    hud.reflect_draws = gs.reflect_draws;
+    hud.main_ms = gs.main_cpu_ms;
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);

@@ -16,6 +16,7 @@ struct Audio {
     SDL_AtomicInt cursor; /* next sample to play, ding_len = idle */
     float click[1440];    /* 30 ms */
     SDL_AtomicInt click_cursor;
+    bool muted;
 };
 
 /* Two sine notes (E6 then C6) with soft attack, exponential decay and a
@@ -101,16 +102,23 @@ void audio_destroy(Audio *a)
     }
 }
 
-void audio_ding(Audio *a)
+void audio_set_muted(Audio *a, bool muted)
 {
     if (a) {
+        a->muted = muted;
+    }
+}
+
+void audio_ding(Audio *a)
+{
+    if (a && !a->muted) {
         SDL_SetAtomicInt(&a->cursor, 0);
     }
 }
 
 void audio_click(Audio *a)
 {
-    if (a) {
+    if (a && !a->muted) {
         SDL_SetAtomicInt(&a->click_cursor, 0);
     }
 }

@@ -42,7 +42,6 @@ typedef struct DayState {
     HMM_Vec4 sun_disc;   /* xyz direction, w visibility */
     HMM_Vec4 moon_disc;
     float stars;         /* 0..1 */
-    float sun_elev_deg;
 } DayState;
 
 /* Loads assets/daycycle.json (built-in defaults if missing/invalid). */

@@ -115,8 +115,8 @@ typedef struct GfxSceneParams {
     HMM_Vec4 sun_disc;    /* xyz direction, w visibility (sky) */
     HMM_Vec4 moon_disc;
     float stars;          /* 0..1 */
-    float reflection_y;   /* height of the mirror plane */
 #ifdef MG_RENDER_FULL
+    float reflection_y;   /* height of the mirror plane */
     float shadow_focus;   /* eye-to-player distance for the cascade splits, 0 = fixed 12 / 45 m */
     float reflection_strength; /* 0 disables the reflection pass */
 #endif

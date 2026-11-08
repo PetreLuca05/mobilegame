@@ -78,9 +78,9 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step;
 #endif
     ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 100.0f, "%.0f pt");
-    cy += step;
-    ui_slider(ui, "Render scale##s7", cx, cy, cw, &s->render_scale, 0.5f, 1.0f, "%.2f");
     cy += step + 4.0f;
+    ui_toggle(ui, "Sound", cx, cy, cw, &s->sound_on);
+    cy += 44.0f;
 #ifdef MG_CAMERA_THIRDPERSON
     ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
     cy += 44.0f;

@@ -1123,8 +1123,11 @@ static void draw_group(const Hospital *h, GfxContext *g, const HospView *v, int 
 void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
 {
     int floor = v->view_floor < 0 ? 0 : (v->view_floor >= HOSP_FLOORS ? HOSP_FLOORS - 1 : v->view_floor);
-    GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.2f);
-    GfxMaterial glossy = mat_toon_glossy(HMM_V4(1, 1, 1, 1), 0.3f, 1.0f);
+    /* no rim on architecture: on big flat walls the view-angle rim lights
+     * everything but a circle round the screen centre, which then follows
+     * the camera as a dark patch (avatars and props keep theirs) */
+    GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    GfxMaterial glossy = mat_toon_glossy(HMM_V4(1, 1, 1, 1), 0.0f, 1.0f);
     GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), floor == 0 ? 0.25f : 0.0f);
     GfxMaterial text = mat_text(HMM_V4(1, 1, 1, 1));
     GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * v->lamp_on);

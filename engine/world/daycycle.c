@@ -188,6 +188,5 @@ DayState daycycle_state(const DayCycle *d, float t)
     s.sun_disc = HMM_V4V(sun_dir, smooth(-3.0f, 2.0f, elev));
     s.moon_disc = HMM_V4V(moon_dir, smooth(-3.0f, 3.0f, moon_elev) * (1.0f - day));
     s.stars = 1.0f - smooth(-8.0f, 10.0f, elev);
-    s.sun_elev_deg = elev;
     return s;
 }

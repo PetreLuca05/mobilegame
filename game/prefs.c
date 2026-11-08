@@ -69,14 +69,16 @@ void prefs_load(Prefs *p, const char *profile)
     const cJSON *s = cJSON_GetObjectItemCaseSensitive(j, "settings");
     if (cJSON_IsObject(s)) {
         GameSettings *g = &p->settings;
+#ifdef MG_CAMERA_THIRDPERSON
         g->yaw_deg_per_pt = num(s, "yaw_sens", g->yaw_deg_per_pt);
         g->pitch_deg_per_pt = num(s, "pitch_sens", g->pitch_deg_per_pt);
         g->invert_y = flag(s, "invert_y", g->invert_y);
+        g->cam_pitch_deg = num(s, "cam_pitch", g->cam_pitch_deg);
+        g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
+#endif
         g->show_floor_peek = flag(s, "show_floor_peek", g->show_floor_peek);
         g->floor_peek_hold = mg_clampf(num(s, "floor_peek_hold", g->floor_peek_hold), 0.0f, 10.0f);
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
-        g->cam_pitch_deg = num(s, "cam_pitch", g->cam_pitch_deg);
-        g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
         g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
         g->render_scale = num(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
@@ -130,14 +132,16 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON *j = cJSON_CreateObject();
     cJSON *s = cJSON_AddObjectToObject(j, "settings");
     const GameSettings *g = &p->settings;
+#ifdef MG_CAMERA_THIRDPERSON
     cJSON_AddNumberToObject(s, "yaw_sens", g->yaw_deg_per_pt);
     cJSON_AddNumberToObject(s, "pitch_sens", g->pitch_deg_per_pt);
     cJSON_AddBoolToObject(s, "invert_y", g->invert_y);
+    cJSON_AddNumberToObject(s, "cam_pitch", g->cam_pitch_deg);
+    cJSON_AddNumberToObject(s, "fov", g->fov_deg);
+#endif
     cJSON_AddBoolToObject(s, "show_floor_peek", g->show_floor_peek);
     cJSON_AddNumberToObject(s, "floor_peek_hold", g->floor_peek_hold);
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
-    cJSON_AddNumberToObject(s, "cam_pitch", g->cam_pitch_deg);
-    cJSON_AddNumberToObject(s, "fov", g->fov_deg);
     cJSON_AddNumberToObject(s, "dead_zone", g->dead_zone_pt);
     cJSON_AddNumberToObject(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL

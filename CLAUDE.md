@@ -124,26 +124,22 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   skins readable at night) and `keys[]` = {t (hour), sun, sun_i, ambient,
   ambient_i, horizon, zenith, fog, fog_density, cloud, lamps}; colours
   `#RRGGBB`, linear interpolation, wraps at 24 h.
-- Lights: `gfx_add_light` (64 per frame), up to 8 (4 low tier) per draw
-  chosen on the CPU from mesh bounds; summed then quantised into toon steps
-  (`shaders/lighting.hlsli`). Hospital lights live in `game/hospital.c`
-  (`place_lights`); interiors are split into 16 chunks per storey so each
-  chunk gets its own nearby lights.
-- Shadows (`engine/gfx/shadows.c`, gpu.c): sun/moon 2 cascades (0-12 m,
-  12-45 m from the eye; top-down: `GfxSceneParams.shadow_focus` = camera
-  distance moves the splits to 8 m and 30 m past the player; cascade 1
-  re-rendered every 4th frame); spot tiles and 6-face
-  point tiles in one atlas, cached and re-rendered only for a new light or
-  an avatar (`GFX_DRAW_DYNAMIC`) inside the light (<= 15 Hz). Shadows drop
-  the light one toon step. Manual-compare PCF (no comparison samplers).
-- Tiers: auto by RAM (>= 6 GB high: 2048 cascades, 4096x2048 atlas, 8 spots,
-  2 points, 8 lights/draw; else low: 1024, 2048x1024, 4, 1, 4). Override:
-  Developer -> Auto/Low/High, or desktop `--tier low|high`; `--no-shadows`.
-- Timings: Developer -> Light gizmos (or `--lights`) shows tier, lights,
-  shadowed lights, "shadow X ms / N views" and "main Y ms". These are CPU
-  encode times: SDL3 GPU exposes no GPU timestamps, so measure the GPU frame
-  with Xcode's Metal frame capture / Android GPU Inspector. N views near 1
-  (cascade 0 only) means the atlas is fully cached.
+- Renderer (M5-S): CMake `MG_RENDER=minimal` (default) | `full`.
+  minimal = one directional key light (sun/moon from the day cycle) + flat
+  ambient through the 2-step toon ramp (`shaders/toon_flat.frag.hlsl`,
+  floors `floor_flat.frag.hlsl` with procedural 60 cm tiles). No shadow
+  maps, no point/spot lights, no planar reflection, no tiers, no fog; the
+  only "shadow" is the avatar contact disc. Lamps (lamp posts, ceiling
+  panels) are emissive meshes driven by lamp-on; they light nothing.
+  Architecture has no rim light (on big walls the view-angle rim made a
+  dark circle that followed the camera); avatars and props keep theirs.
+  The log line "gfx: targets WxH: ..." lists every render target (no
+  shadow or reflection textures in minimal). HUD: draws + "main X ms" (CPU
+  encode; measure GPU time with Instruments, see Tests).
+- `MG_RENDER=full` keeps the M3 path compiling for reference (not shipped,
+  not tested): light list (`gfx_add_light`, `game/hospital.c`
+  `place_lights`), CSM + spot/point atlas shadows (`shadows.c`), planar
+  reflection (`reflection.c`), RAM tiers and their Developer rows.
 
 ## Camera (M5)
 
