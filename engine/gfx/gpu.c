@@ -165,8 +165,8 @@ struct GfxContext {
     SDL_GPUTextureFormat depth_fmt;
     SDL_GPUTextureFormat refl_fmt;
     SDL_GPUSampleCount msaa;
-    bool msaa_supported;
     bool no_instancing;
+    uint64_t ui_atlas_bytes;
     int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
     PipelineSet pipes[TARGET_COUNT];
@@ -653,6 +653,11 @@ static void release_targets(GfxContext *g)
         }                                               \
     } while (0)
 
+static int sample_count(SDL_GPUSampleCount s)
+{
+    return s == SDL_GPU_SAMPLECOUNT_4 ? 4 : (s == SDL_GPU_SAMPLECOUNT_2 ? 2 : 1);
+}
+
 static void release_pipelines(GfxContext *g)
 {
     for (int t = 0; t < TARGET_COUNT; t++) {
@@ -676,17 +681,18 @@ static void release_pipelines(GfxContext *g)
     RELEASE_PIPE(g->ui_pipe_direct);
 }
 
-void gfx_set_msaa(GfxContext *g, bool on) { g->msaa_wanted = on ? 1 : 0; }
+void gfx_set_msaa(GfxContext *g, int samples) { g->msaa_wanted = samples; }
 void gfx_set_instancing(GfxContext *g, bool on) { g->no_instancing = !on; }
 
 /* Between frames' GPU work: pipelines and targets depend on the sample count. */
 static void apply_msaa(GfxContext *g)
 {
-    SDL_GPUSampleCount want = g->msaa;
-    if (g->msaa_wanted == 0) {
-        want = SDL_GPU_SAMPLECOUNT_1;
-    } else if (g->msaa_wanted == 1 && g->msaa_supported) {
-        want = SDL_GPU_SAMPLECOUNT_4;
+    SDL_GPUSampleCount want = SDL_GPU_SAMPLECOUNT_1;
+    if (g->msaa_wanted == 2 || g->msaa_wanted == 4) {
+        SDL_GPUSampleCount w = g->msaa_wanted == 2 ? SDL_GPU_SAMPLECOUNT_2 : SDL_GPU_SAMPLECOUNT_4;
+        if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, w) && SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, w)) {
+            want = w;
+        }
     }
     g->msaa_wanted = -1;
     if (want == g->msaa) {
@@ -706,7 +712,7 @@ static void apply_msaa(GfxContext *g)
     if (!create_pipelines(g)) {
         mg_log_error("gfx: pipelines failed after an MSAA change");
     }
-    mg_log_info("gfx: MSAA %s", want == SDL_GPU_SAMPLECOUNT_4 ? "4x" : "off");
+    mg_log_info("gfx: MSAA %dx", sample_count(want));
 }
 
 static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
@@ -873,7 +879,6 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, SDL_GPU_SAMPLECOUNT_4) &&
         SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, SDL_GPU_SAMPLECOUNT_4)) {
         g->msaa = SDL_GPU_SAMPLECOUNT_4;
-        g->msaa_supported = true;
     }
     g->msaa_wanted = -1;
     mg_log_info("gfx: backend %s, shaders %s, color fmt %d, depth fmt %d, msaa %s", g->backend,
@@ -1077,6 +1082,7 @@ bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t
     if (g->ui_atlas) {
         SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
     }
+    g->ui_atlas_bytes = (uint64_t)w * h;
     g->ui_atlas = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8_UNORM, w, h, SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                SDL_GPU_SAMPLECOUNT_1);
     return g->ui_atlas && upload_texture(g, g->ui_atlas, pixels, w, h, 1);
@@ -2092,7 +2098,7 @@ void gfx_frame_end(GfxContext *g)
     const bool scaled = rw != g->swap_w || rh != g->swap_h || g->keep_scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
-    g->stats.msaa = g->msaa == SDL_GPU_SAMPLECOUNT_4 ? 4 : 1;
+    g->stats.msaa = sample_count(g->msaa);
 
     if (!ensure_targets(g, rw, rh, scaled)) {
         SDL_SubmitGPUCommandBuffer(g->cmd);
@@ -2318,3 +2324,23 @@ void gfx_request_screenshot(GfxContext *g, const char *path)
 }
 
 void gfx_get_stats(const GfxContext *g, GfxStats *out) { *out = g->stats; }
+
+void gfx_get_memory(const GfxContext *g, GfxMemory *o)
+{
+    SDL_zerop(o);
+    const uint32_t samples = (uint32_t)sample_count(g->msaa);
+    const uint64_t color = SDL_CalculateGPUTextureFormatSize(g->color_fmt, g->target_w, g->target_h, 1);
+    o->msaa_color = g->msaa_color ? color * samples : 0;
+    o->depth = g->depth ? (uint64_t)SDL_CalculateGPUTextureFormatSize(g->depth_fmt, g->target_w, g->target_h, 1) * samples : 0;
+    o->scene = g->scene_tex ? color : 0;
+    o->blur = g->blur_a ? (uint64_t)SDL_CalculateGPUTextureFormatSize(g->color_fmt, g->blur_w, g->blur_h, 1) * 2u : 0;
+    o->preview = g->preview_color ? (uint64_t)GFX_PREVIEW_PX * GFX_PREVIEW_PX * 4u * (1u + (g->preview_msaa ? samples : 0u)) : 0;
+    o->swapchain = (uint64_t)g->swap_w * g->swap_h * 4u * 3u;
+    o->ui_atlas = g->ui_atlas_bytes;
+    o->mesh_vb_reserved = GFX_VB_BYTES;
+    o->mesh_ib_reserved = GFX_IB_BYTES;
+    o->mesh_vb_used = g->vb_used;
+    o->mesh_ib_used = g->ib_used;
+    o->ui_buffers = GFX_MAX_UI_QUADS * 4u * sizeof(GfxUiVertex) * 2u + GFX_MAX_UI_QUADS * 6u * sizeof(uint16_t);
+    o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u;
+}

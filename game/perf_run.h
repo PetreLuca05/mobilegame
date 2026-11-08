@@ -11,6 +11,7 @@
 typedef struct PerfSample {
     GfxStats gs;
     uint32_t sim, rendered;
+    size_t nav_bytes, npc_bytes;
 } PerfSample;
 
 typedef struct PerfSum {
@@ -23,6 +24,9 @@ enum { PERF_DRAWS, PERF_TRIS, PERF_INST, PERF_PIPES, PERF_TEX, PERF_UNIFORM, PER
 typedef struct PerfRun {
     bool active, recording, done;
     char scenario[24];
+    char run_id[24];   /* --perf-run-id: tools/perf_run.sh checks it comes back */
+    bool stamped;
+    PerfSample last;
     double seconds, start, record_start;
     int wp, wp_count, failed;
     double park_until;

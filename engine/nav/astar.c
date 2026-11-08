@@ -713,6 +713,13 @@ void nav_cancel(NavWorld *n, NavClass cls, uint32_t id)
     }
 }
 
+size_t nav_memory_bytes(const NavWorld *n)
+{
+    const size_t per_mem = sizeof(float) + sizeof(int32_t) + sizeof(uint32_t) + 4 * (sizeof(int32_t) + sizeof(float));
+    return (size_t)n->total * (sizeof(uint8_t) + 2 * sizeof(uint16_t) + (NAV_CLASS_COUNT + 1) * per_mem) +
+           NAV_CLASS_COUNT * NAV_MAX_REQUESTS * sizeof(NavRequest) + (NAV_CACHE_PLAYER + NAV_CACHE_NPC) * sizeof(NavCacheEntry);
+}
+
 NavStats nav_stats(const NavWorld *n) { return n->stats; }
 
 void nav_stats_reset(NavWorld *n) { memset(&n->stats, 0, sizeof(n->stats)); }

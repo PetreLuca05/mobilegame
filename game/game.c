@@ -126,6 +126,7 @@ typedef struct Game {
     PerfRun perf;
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
+    int msaa_samples;           /* what the thermal path returns to */
     int thermal, thermal_force; /* thermal_force: --force-thermal N, -1 = ask the OS */
     double next_thermal_poll;
     uint32_t rendered_entities, rendered_last; /* this frame / the finished one */
@@ -224,6 +225,7 @@ static bool ensure_world(Game *g, MgApp *app)
         if (g->nav) {
             mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
         }
+        arena_release_unused(&app->perm); /* the mesh builders' scratch: ~30 MB of dirty pages */
     }
     if (g->nav && !markers_init(&g->markers, app->gfx, &app->perm)) {
         return false;
@@ -363,9 +365,9 @@ bool game_init(MgApp *app)
     }
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
-    if (has_flag(app->argc, app->argv, "--no-msaa")) {
-        gfx_set_msaa(app->gfx, false);
-    }
+    const char *msaa_arg = arg_value(app->argc, app->argv, "--msaa");
+    g->msaa_samples = has_flag(app->argc, app->argv, "--no-msaa") ? 1 : (msaa_arg ? SDL_atoi(msaa_arg) : GFX_DEFAULT_MSAA);
+    gfx_set_msaa(app->gfx, g->msaa_samples);
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
     const char *force_thermal = arg_value(app->argc, app->argv, "--force-thermal");
@@ -1114,7 +1116,7 @@ static void update_thermal(Game *g, MgApp *app)
     int t = g->thermal_force >= 0 ? g->thermal_force : device_thermal_state();
     if ((t >= 2) != (g->thermal >= 2)) {
         mg_log_warn("thermal: state %d: NPC detail radius %s, MSAA %s", t, t >= 2 ? "11 m" : "22 m", t >= 2 ? "off" : "on");
-        gfx_set_msaa(app->gfx, t < 2);
+        gfx_set_msaa(app->gfx, t >= 2 ? 1 : g->msaa_samples);
     }
     g->thermal = t;
 }
@@ -1182,6 +1184,8 @@ void game_frame(MgApp *app, float alpha)
         gfx_get_stats(app->gfx, &ps.gs);
         ps.sim = (uint32_t)g->crowd.pool.count + 1;
         ps.rendered = g->rendered_last;
+        ps.nav_bytes = g->nav ? nav_memory_bytes(g->nav) : 0;
+        ps.npc_bytes = sizeof(npc_hot_t) * 2u * NPC_MAX + sizeof(npc_cold_t) * NPC_MAX;
         perf_run_update(&g->perf, app, &probe, &ato, &ps);
     }
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */

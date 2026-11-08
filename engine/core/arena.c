@@ -1,3 +1,7 @@
+#if defined(__APPLE__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 #include "arena.h"
 
 #include <string.h>
@@ -50,3 +54,17 @@ void arena_reset_to(Arena *a, size_t mark)
 }
 
 void arena_reset(Arena *a) { a->used = 0; }
+
+void arena_release_unused(Arena *a)
+{
+#if defined(__APPLE__)
+    const uintptr_t page = (uintptr_t)getpagesize();
+    uintptr_t start = ((uintptr_t)a->base + a->used + page - 1) & ~(page - 1);
+    uintptr_t end = ((uintptr_t)a->base + a->size) & ~(page - 1);
+    if (end > start) {
+        madvise((void *)start, end - start, MADV_FREE_REUSABLE); /* arena_alloc zeroes what it hands out */
+    }
+#else
+    (void)a;
+#endif
+}

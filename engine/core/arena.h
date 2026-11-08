@@ -20,6 +20,8 @@ bool arena_sub(Arena *parent, Arena *child, size_t size);
 size_t arena_mark(const Arena *a);
 void arena_reset_to(Arena *a, size_t mark);
 void arena_reset(Arena *a);
+/* Give the pages above `used` back to the OS (after loading: scratch high-water). */
+void arena_release_unused(Arena *a);
 
 #define ARENA_PUSH(a, T, n) ((T *)arena_alloc((a), sizeof(T) * (size_t)(n), _Alignof(T)))
 

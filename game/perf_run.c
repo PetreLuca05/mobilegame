@@ -4,6 +4,7 @@
 
 #include "core/log.h"
 #include "core/prof.h"
+#include "build_info.h"
 #include "platform/device_stats.h"
 
 #define SETTLE_SECONDS 5.0 /* loading hitches do not count */
@@ -44,6 +45,11 @@ void perf_run_init(PerfRun *p, int argc, char **argv)
 {
     SDL_zerop(p);
     p->thermal_worst = -1;
+    for (int i = 1; i + 1 < argc; i++) {
+        if (SDL_strcmp(argv[i], "--perf-run-id") == 0) {
+            SDL_snprintf(p->run_id, sizeof(p->run_id), "%s", argv[i + 1]);
+        }
+    }
     for (int i = 1; i + 1 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") != 0) {
             continue;
@@ -86,6 +92,32 @@ static void add(PerfSum *f, double v)
     f->max = v > f->max ? v : f->max;
 }
 
+static void output_path(char *path, size_t size, const char *name)
+{
+#if defined(SDL_PLATFORM_IOS)
+    const char *dir = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+    size_t dl = dir ? SDL_strlen(dir) : 0;
+    SDL_snprintf(path, size, "%s%s%s", dir ? dir : ".", dl && dir[dl - 1] == '/' ? "" : "/", name);
+#else
+    char *dir = SDL_GetPrefPath("docvex", "mobilegame");
+    SDL_snprintf(path, size, "%s%s", dir ? dir : "", name);
+    SDL_free(dir);
+#endif
+}
+
+/* Written when the run starts: proves which build ran, even if it never finishes (GPU traces). */
+static void write_stamp(const PerfRun *p)
+{
+    char path[640], text[128];
+    output_path(path, sizeof(path), "perf_stamp.txt");
+    int n = SDL_snprintf(text, sizeof(text), "%s %s %s\n", p->run_id[0] ? p->run_id : "-", MG_BUILD_COMMIT, p->scenario);
+    SDL_IOStream *io = SDL_IOFromFile(path, "w");
+    if (io) {
+        SDL_WriteIO(io, text, (size_t)n);
+        SDL_CloseIO(io);
+    }
+}
+
 /* The JSON goes to one buffer: written as a file, then logged line by line. */
 static void write_report(const PerfRun *p, MgApp *app)
 {
@@ -98,13 +130,27 @@ static void write_report(const PerfRun *p, MgApp *app)
     ProfFrames fr = prof_run_frames();
     GfxStats gs;
     gfx_get_stats(app->gfx, &gs);
-    PUT("{\n\"scenario\": \"%s\",\n\"seconds\": %.0f,\n\"backend\": \"%s\",\n\"render\": [%u, %u],\n", p->scenario, p->seconds,
+    PUT("{\n\"commit\": \"%s\",\n\"run_id\": \"%s\",\n", MG_BUILD_COMMIT, p->run_id);
+    PUT("\"scenario\": \"%s\",\n\"seconds\": %.0f,\n\"backend\": \"%s\",\n\"render\": [%u, %u],\n", p->scenario, p->seconds,
         gs.backend ? gs.backend : "", gs.width_px, gs.height_px);
     PUT("\"frames\": %u,\n\"interval_16ms\": %u,\n\"interval_33ms\": %u,\n\"interval_50ms_plus\": %u,\n\"dropped\": %u,\n", fr.frames,
         fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse);
     PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n", p->thermal_worst,
         (double)p->resident_max, prof_allocs_run(), prof_alloc_frames_run());
     PUT("\"entities_sim_max\": %u,\n\"entities_rendered_max\": %u,\n\"route_failures\": %d,\n", p->sim_max, p->rendered_max, p->failed);
+    {
+        GfxMemory gm;
+        gfx_get_memory(app->gfx, &gm);
+#define MB(x) ((double)(x) / (1024.0 * 1024.0))
+        PUT("\"memory_mb\": {\"footprint\": %.1f, \"msaa_color\": %.1f, \"depth\": %.1f, \"scene\": %.1f, \"blur\": %.1f, \"preview\": %.1f, "
+            "\"swapchain_est\": %.1f, \"ui_atlas\": %.1f, \"mesh_vb_reserved\": %.1f, \"mesh_ib_reserved\": %.1f, \"mesh_vb_used\": %.1f, "
+            "\"mesh_ib_used\": %.1f, \"ui_buffers\": %.1f, \"instance_buffers\": %.1f, \"perm_arena_size\": %.1f, \"perm_arena_used\": %.1f, "
+            "\"perm_arena_peak\": %.1f, \"frame_arena_peak\": %.2f, \"nav\": %.1f, \"npc\": %.1f},\n",
+            (double)p->resident_max, MB(gm.msaa_color), MB(gm.depth), MB(gm.scene), MB(gm.blur), MB(gm.preview), MB(gm.swapchain), MB(gm.ui_atlas),
+            MB(gm.mesh_vb_reserved), MB(gm.mesh_ib_reserved), MB(gm.mesh_vb_used), MB(gm.mesh_ib_used), MB(gm.ui_buffers), MB(gm.instance_buffers),
+            MB(app->perm.size), MB(app->perm.used), MB(app->perm.peak), MB(app->frame.peak), MB(p->last.nav_bytes), MB(p->last.npc_bytes));
+#undef MB
+    }
     PUT("\"counters\": {\n");
     for (int i = 0; i < PERF_FIELDS; i++) {
         PUT("  \"%s\": {\"avg\": %.2f, \"max\": %.2f}%s\n", names[i], p->f[i].sum / frames, p->f[i].max, i + 1 < PERF_FIELDS ? "," : "");
@@ -118,16 +164,9 @@ static void write_report(const PerfRun *p, MgApp *app)
     }
     PUT("]\n}\n");
 #undef PUT
-    char path[640];
-#if defined(SDL_PLATFORM_IOS)
-    const char *dir = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
-    size_t dl = dir ? SDL_strlen(dir) : 0;
-    SDL_snprintf(path, sizeof(path), "%s%sperf_%s.json", dir ? dir : ".", dl && dir[dl - 1] == '/' ? "" : "/", p->scenario);
-#else
-    char *dir = SDL_GetPrefPath("docvex", "mobilegame");
-    SDL_snprintf(path, sizeof(path), "%sperf_%s.json", dir ? dir : "", p->scenario);
-    SDL_free(dir);
-#endif
+    char path[640], name[64];
+    SDL_snprintf(name, sizeof(name), "perf_%s.json", p->scenario);
+    output_path(path, sizeof(path), name);
     SDL_IOStream *io = SDL_IOFromFile(path, "w");
     if (io) {
         SDL_WriteIO(io, out, (size_t)n);
@@ -151,6 +190,11 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
 {
     if (!p->active || p->done) {
         return;
+    }
+    p->last = *s;
+    if (!p->stamped) {
+        p->stamped = true;
+        write_stamp(p);
     }
     if (p->start == 0.0) {
         p->start = app->time;

@@ -18,6 +18,7 @@ struct SDL_Window;
 typedef struct GfxContext GfxContext;
 typedef uint16_t GfxMeshId;
 #define GFX_MESH_NONE ((GfxMeshId)0xFFFF)
+#define GFX_DEFAULT_MSAA 4 /* see docs/PERF.md */
 
 /* 28-byte mesh vertex. For sprite quads, nx/ny carry the quad UV (-1..1). */
 typedef struct GfxVertex {
@@ -199,10 +200,17 @@ float gfx_default_render_scale(void);
 /* Drop GPU work while the app is in the background (iOS forbids it). */
 void gfx_set_paused(GfxContext *g, bool paused);
 void gfx_get_stats(const GfxContext *g, GfxStats *out);
+/* What the renderer holds, in bytes (the swapchain is an estimate: three drawables). */
+typedef struct GfxMemory {
+    uint64_t msaa_color, depth, scene, blur, preview, swapchain, ui_atlas;
+    uint64_t mesh_vb_reserved, mesh_ib_reserved, mesh_vb_used, mesh_ib_used;
+    uint64_t ui_buffers, instance_buffers;
+} GfxMemory;
+void gfx_get_memory(const GfxContext *g, GfxMemory *out);
 /* Submit 3D and UI separately with fences to time them (profiler / perf runs). */
 void gfx_set_gpu_timing(GfxContext *g, bool on);
-/* 4x on the main pass when the GPU has it; applied at the end of this frame. */
-void gfx_set_msaa(GfxContext *g, bool on);
+/* Main pass samples: 1, 2 or 4 (1 if the GPU lacks it); applied at the end of this frame. */
+void gfx_set_msaa(GfxContext *g, int samples);
 /* Default on; off draws every mesh separately (--no-instancing, to measure the saving). */
 void gfx_set_instancing(GfxContext *g, bool on);
 

@@ -111,6 +111,8 @@ void nav_queue_reset(NavWorld *n, NavClass cls);
 const NavGrid *nav_grid(const NavWorld *n, int index);
 int nav_grid_count(const NavWorld *n);
 float nav_bake_ms(const NavWorld *n);
+/* flags + labels + search memory of all queues */
+size_t nav_memory_bytes(const NavWorld *n);
 float nav_path_ms(const NavWorld *n); /* the last nav_find_path */
 /* Flags of the cell under (x, z) on a storey; 0 outside the grid. */
 uint8_t nav_flags_at(const NavWorld *n, int storey, float x, float z);
