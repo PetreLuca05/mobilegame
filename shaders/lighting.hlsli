@@ -27,6 +27,8 @@ float light_falloff(float d, float range)
     return w * w / (d * d + 1.0);
 }
 
+float local_shadow(int i, float3 wpos, float3 n); // shadows.hlsli
+
 float3 local_lights(float3 wpos, float3 n)
 {
     float3 sum = 0.0;
@@ -41,6 +43,8 @@ float3 local_lights(float3 wpos, float3 n)
         float w = light_falloff(d, u_light_pos_range[i].w) * saturate(dot(n, l) * 1.2 + 0.1);
         if (u_light_color_type[i].w > 0.5)
             w *= smoothstep(u_light_dir_cone[i].w, u_light_extra[i].x, dot(-l, u_light_dir_cone[i].xyz));
+        if (w > 0.0 && u_light_extra[i].y >= 0.0)
+            w *= local_shadow(i, wpos, n);
         sum += u_light_color_type[i].rgb * w;
     }
     // toon steps on the total: hue kept, brightness quantised

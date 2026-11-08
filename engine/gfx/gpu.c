@@ -190,6 +190,9 @@ struct GfxContext {
     SDL_GPUTexture *csm[2];
     SDL_GPUTexture *atlas;
     SDL_GPUGraphicsPipeline *shadow_pipe;
+    SDL_GPUGraphicsPipeline *tile_clear_pipe;
+    uint32_t slot_light[GFX_SHADOW_SLOTS]; /* light id whose depth is in each atlas slot, 0 = none */
+    bool slot_dynamic[GFX_SHADOW_SLOTS];   /* a moving caster was inside when it was rendered */
     SDL_GPUSampler *point_clamp;
     HMM_Mat4 csm_vp[2]; /* as last rendered: sampled with the matrix it was made with */
     bool csm_valid[2];
@@ -273,6 +276,7 @@ typedef struct PipeDesc {
     bool depth_only;       /* shadow maps: no colour target */
     SDL_GPUTextureFormat depth_override;
     bool depth_bias;
+    bool depth_always;     /* tile clear: write depth whatever is there */
 } PipeDesc;
 
 static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
@@ -331,7 +335,7 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     ci.multisample_state.sample_count = d->samples;
     ci.depth_stencil_state.enable_depth_test = d->depth_test;
     ci.depth_stencil_state.enable_depth_write = d->depth_write;
-    ci.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    ci.depth_stencil_state.compare_op = d->depth_always ? SDL_GPU_COMPAREOP_ALWAYS : SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
     ci.target_info.color_target_descriptions = d->depth_only ? NULL : &ctd;
     ci.target_info.num_color_targets = d->depth_only ? 0 : 1;
     ci.target_info.depth_stencil_format = d->no_depth          ? SDL_GPU_TEXTUREFORMAT_INVALID
@@ -439,9 +443,16 @@ static bool create_pipelines(GfxContext *g)
         .depth_bias = true,
     };
     g->shadow_pipe = make_pipeline(g, &sh);
+    PipeDesc tc = sh;
+    tc.vs = load_shader(g, "clear_depth.vert", 0, 0);
+    tc.layout = LAYOUT_NONE;
+    tc.cull = SDL_GPU_CULLMODE_NONE;
+    tc.depth_bias = false;
+    tc.depth_always = true;
+    g->tile_clear_pipe = make_pipeline(g, &tc);
     release_shaders(g);
     return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL &&
-           g->shadow_pipe != NULL;
+           g->shadow_pipe != NULL && g->tile_clear_pipe != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -704,6 +715,9 @@ void gfx_shutdown(GfxContext *g)
     release_shadow_maps(g);
     if (g->shadow_pipe) {
         SDL_ReleaseGPUGraphicsPipeline(g->dev, g->shadow_pipe);
+    }
+    if (g->tile_clear_pipe) {
+        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->tile_clear_pipe);
     }
     if (g->point_clamp) {
         SDL_ReleaseGPUSampler(g->dev, g->point_clamp);
@@ -1147,6 +1161,7 @@ bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg)
     }
     g->atlas = make_texture(g, g->shadow_fmt, (uint32_t)cfg->atlas_w, (uint32_t)cfg->atlas_h, u, SDL_GPU_SAMPLECOUNT_1);
     g->atlas_valid = false;
+    memset(g->slot_light, 0, sizeof(g->slot_light));
     int bpp = g->shadow_fmt == SDL_GPU_TEXTUREFORMAT_D16_UNORM ? 2 : 4;
     mg_log_info("gfx: shadow maps %dx%d x2 + atlas %dx%d, %d MB", cfg->csm_size, cfg->csm_size, cfg->atlas_w,
                 cfg->atlas_h, (2 * cfg->csm_size * cfg->csm_size + cfg->atlas_w * cfg->atlas_h) * bpp >> 20);
@@ -1225,6 +1240,182 @@ static void render_cascades(GfxContext *g)
     }
     u->csm_vp[0] = g->csm_vp[0];
     u->csm_vp[1] = g->csm_vp[1];
+}
+
+/* Atlas layout: spot tiles (atlas_h / 4 square) fill the top half, point
+ * faces (atlas_h / 8) the bottom half. Slots 0-7 spots, 8+ six per point. */
+#define SPOT_SLOTS 8
+static void slot_rect(const GfxContext *g, int slot, float r[4])
+{
+    const GfxShadowConfig *c = &g->shadow_cfg;
+    int size, x, y;
+    if (slot < SPOT_SLOTS) {
+        size = c->atlas_h / 4;
+        int per_row = c->atlas_w / size;
+        x = (slot % per_row) * size;
+        y = (slot / per_row) * size;
+    } else {
+        size = c->atlas_h / 8;
+        int j = slot - SPOT_SLOTS, per_row = c->atlas_w / size;
+        x = (j % per_row) * size;
+        y = c->atlas_h / 2 + (j / per_row) * size;
+    }
+    r[0] = (float)x;
+    r[1] = (float)y;
+    r[2] = (float)size;
+    r[3] = (float)size;
+}
+
+static bool sphere_touches_box(HMM_Vec3 c, float r, HMM_Vec3 mn, HMM_Vec3 mx)
+{
+    float d2 = 0.0f;
+    for (int k = 0; k < 3; k++) {
+        float v = c.Elements[k];
+        float q = v < mn.Elements[k] ? mn.Elements[k] - v : (v > mx.Elements[k] ? v - mx.Elements[k] : 0.0f);
+        d2 += q * q;
+    }
+    return d2 <= r * r;
+}
+
+static bool dynamic_inside(const GfxContext *g, const GfxLight *l)
+{
+    for (uint32_t i = 0; i < g->draw_count; i++) {
+        const DrawItem *d = &g->draws[i];
+        if ((d->flags & GFX_DRAW_DYNAMIC) && casts_shadow(d)) {
+            HMM_Vec3 mn, mx;
+            draw_bounds(g, d, &mn, &mx);
+            if (sphere_touches_box(l->pos, l->range, mn, mx)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Pick the shadowed spot/point lights (nearest first, tier caps), keep each
+ * in the slot it had, and re-render only the tiles that changed: a new
+ * light, or a moving caster inside (<= 15 Hz) or just gone. Static tiles
+ * stay cached, so with nobody near a shadowed light this costs nothing. */
+static void render_atlas(GfxContext *g)
+{
+    LightsFSUniforms *u = &g->light_ubo;
+    const GfxShadowConfig *c = &g->shadow_cfg;
+    u->atlas_params = HMM_V4(1.0f / (float)c->atlas_w, 1.0f / (float)c->atlas_h, 0, 0);
+    g->stats.shadowed_lights = 0;
+    if (!c->enabled) {
+        return;
+    }
+    /* candidates by distance */
+    int order[GFX_MAX_LIGHTS], n = 0;
+    float dist[GFX_MAX_LIGHTS];
+    for (uint32_t i = 0; i < g->light_count; i++) {
+        if (g->lights[i].cast_shadow && g->lights[i].intensity > 0.01f) {
+            HMM_Vec3 d = HMM_SubV3(g->lights[i].pos, g->scene.eye);
+            dist[i] = HMM_DotV3(d, d);
+            int k = n++;
+            while (k > 0 && dist[order[k - 1]] > dist[i]) {
+                order[k] = order[k - 1];
+                k--;
+            }
+            order[k] = (int)i;
+        }
+    }
+    int max_points = c->max_points < 2 ? c->max_points : 2;
+    int spots = 0, points = 0;
+    int chosen[GFX_MAX_LIGHTS], nc = 0;
+    for (int k = 0; k < n; k++) {
+        const GfxLight *l = &g->lights[order[k]];
+        if (l->type == GFX_LIGHT_SPOT ? spots < c->max_spots && spots < SPOT_SLOTS : points < max_points) {
+            chosen[nc++] = order[k];
+            spots += l->type == GFX_LIGHT_SPOT;
+            points += l->type == GFX_LIGHT_POINT;
+        }
+    }
+    /* stable slots: keep what is already there, then fill free ones */
+    int slot_of[GFX_MAX_LIGHTS];
+    bool taken[GFX_SHADOW_SLOTS] = {false};
+    for (int k = 0; k < nc; k++) {
+        const GfxLight *l = &g->lights[chosen[k]];
+        slot_of[k] = -1;
+        int lo = l->type == GFX_LIGHT_SPOT ? 0 : SPOT_SLOTS, hi = l->type == GFX_LIGHT_SPOT ? SPOT_SLOTS : GFX_SHADOW_SLOTS;
+        for (int s = lo; s < hi; s += l->type == GFX_LIGHT_SPOT ? 1 : 6) {
+            if (g->slot_light[s] == l->id && !taken[s]) {
+                slot_of[k] = s;
+                taken[s] = true;
+                break;
+            }
+        }
+    }
+    for (int k = 0; k < nc; k++) {
+        const GfxLight *l = &g->lights[chosen[k]];
+        int lo = l->type == GFX_LIGHT_SPOT ? 0 : SPOT_SLOTS, hi = l->type == GFX_LIGHT_SPOT ? SPOT_SLOTS : GFX_SHADOW_SLOTS;
+        int step = l->type == GFX_LIGHT_SPOT ? 1 : 6;
+        for (int s = lo; slot_of[k] < 0 && s + step <= hi; s += step) {
+            if (!taken[s]) {
+                slot_of[k] = s;
+                taken[s] = true;
+            }
+        }
+    }
+    /* matrices + which tiles to redraw */
+    int dirty[GFX_MAX_LIGHTS], nd = 0;
+    for (int k = 0; k < nc; k++) {
+        int i = chosen[k], s = slot_of[k];
+        if (s < 0) {
+            continue;
+        }
+        const GfxLight *l = &g->lights[i];
+        int faces = l->type == GFX_LIGHT_SPOT ? 1 : 6;
+        for (int f = 0; f < faces; f++) {
+            float r[4];
+            slot_rect(g, s + f, r);
+            u->shadow_vp[s + f] = l->type == GFX_LIGHT_SPOT ? shadow_spot_vp(l) : shadow_point_face_vp(l->pos, l->range, f);
+            u->shadow_rect[s + f] = HMM_V4(r[0] / (float)c->atlas_w, r[1] / (float)c->atlas_h, r[2] / (float)c->atlas_w,
+                                           r[3] / (float)c->atlas_h);
+        }
+        u->extra[i].Y = (float)s;
+        u->extra[i].Z = l->type == GFX_LIGHT_POINT ? 1.0f : 0.0f;
+        g->stats.shadowed_lights++;
+        bool inside = dynamic_inside(g, l);
+        bool due = !g->atlas_valid || g->slot_light[s] != l->id || (inside && (g->frame_no % 4) == 0) ||
+                   (g->slot_dynamic[s] && !inside);
+        if (due && (!c->freeze || g->slot_light[s] != l->id || !g->atlas_valid)) {
+            dirty[nd++] = k;
+            g->slot_light[s] = l->id;
+            g->slot_dynamic[s] = inside;
+        }
+    }
+    if (nd == 0) {
+        return;
+    }
+    SDL_GPUDepthStencilTargetInfo dti;
+    SDL_zero(dti);
+    dti.texture = g->atlas;
+    dti.clear_depth = 1.0f;
+    dti.load_op = g->atlas_valid ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+    dti.store_op = SDL_GPU_STOREOP_STORE;
+    dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, NULL, 0, &dti);
+    for (int d = 0; d < nd; d++) {
+        int k = dirty[d], s = slot_of[k];
+        const GfxLight *l = &g->lights[chosen[k]];
+        int faces = l->type == GFX_LIGHT_SPOT ? 1 : 6;
+        for (int f = 0; f < faces; f++) {
+            float r[4];
+            slot_rect(g, s + f, r);
+            SDL_GPUViewport vp = {r[0], r[1], r[2], r[3], 0.0f, 1.0f};
+            SDL_Rect sc = {(int)r[0], (int)r[1], (int)r[2], (int)r[3]};
+            SDL_SetGPUViewport(rp, &vp);
+            SDL_SetGPUScissor(rp, &sc);
+            SDL_BindGPUGraphicsPipeline(rp, g->tile_clear_pipe);
+            SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
+            draw_casters(g, rp, &u->shadow_vp[s + f], false);
+            g->stats.shadow_views++;
+        }
+    }
+    SDL_EndGPURenderPass(rp);
+    g->atlas_valid = true;
 }
 
 /* Quarter-res copy of the finished 3D image, blurred H then V (blur_a). */
@@ -1402,6 +1593,7 @@ void gfx_frame_end(GfxContext *g)
     g->stats.shadow_views = 0;
     double sh0 = mg_time_now();
     render_cascades(g);
+    render_atlas(g);
     g->stats.shadow_cpu_ms = (float)((mg_time_now() - sh0) * 1000.0);
     double main0 = mg_time_now();
     const GfxSceneParams *s = &g->scene;

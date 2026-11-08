@@ -1,0 +1,17 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct VSMain_out
+{
+    float4 gl_Position [[position]];
+};
+
+vertex VSMain_out VSMain(uint gl_VertexIndex [[vertex_id]])
+{
+    VSMain_out out = {};
+    out.gl_Position = float4((float2(float((gl_VertexIndex << uint(1)) & 2u), float(gl_VertexIndex & 2u)) * float2(2.0, -2.0)) + float2(-1.0, 1.0), 1.0, 1.0);
+    return out;
+}
+

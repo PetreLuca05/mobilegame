@@ -378,7 +378,7 @@ static void outlined(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t col
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                  const AvatarAnim *a, const ColWorld *world)
 {
-    const DrawCtx dc = {g, p->preview ? GFX_DRAW_PREVIEW : GFX_DRAW_REFLECT, p->indoors ? 0.0f : 1.0f};
+    const DrawCtx dc = {g, p->preview ? GFX_DRAW_PREVIEW : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC, p->indoors ? 0.0f : 1.0f};
     HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(p->yaw, HMM_V3(0, 1, 0)));
     const float phase = a->stride * (2.0f * HMM_PI32 / 1.6f); /* one bob cycle per 0.8 m step */
     float bob = (0.02f * HMM_SinF(phase * 2.0f)) * a->swing + 0.008f * HMM_SinF(a->idle_t * 2.4f) * (1.0f - a->swing);
