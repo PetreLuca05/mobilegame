@@ -995,13 +995,17 @@ void game_frame(MgApp *app, float alpha)
             elevator_request(el, pick);
         }
     }
-    g->touch_cfg.dead_zone_pt = s->dead_zone_pt;
     gfx_set_render_scale(app->gfx, s->render_scale);
     g->cam.distance = s->cam_distance;
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
     if (g->menu.open || riding) {
         touch_controls_reset(&g->touch);
     } else {
+        /* iPad: bigger controls so thumbs reach them */
+        float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
+        g->touch_cfg.radius_pt = 120.0f * k;
+        g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
+        g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
                               app->safe_bottom);
     }

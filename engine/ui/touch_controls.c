@@ -7,7 +7,8 @@ void touch_controls_default_config(TouchControlsConfig *c)
     c->dead_zone_pt = 60.0f;
     c->radius_pt = 120.0f;
     c->sprint_at = 0.95f;
-    c->stick_zone_y = 0.35f;
+    c->stick_zone_y = 0.0f;  /* whole height (below the safe area) */
+    c->stick_zone_x = 0.45f; /* left 45 % stick, right 55 % camera */
     c->jump_size_pt = 72.0f;
 }
 
@@ -32,8 +33,9 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
                            float safe_right, float safe_bottom)
 {
     float jr = cfg->jump_size_pt * 0.5f;
-    tc->jump_cx = w_pt - safe_right - 28.0f - jr;
-    tc->jump_cy = h_pt - mg_maxf(safe_bottom, 16.0f) - 36.0f - jr;
+    tc->jump_cx = w_pt - safe_right - 24.0f - jr;
+    tc->jump_cy = h_pt - mg_maxf(safe_bottom, 0.0f) - 24.0f - jr;
+    const float split = w_pt * cfg->stick_zone_x; /* stick left of this, camera right of it */
 
     release_if_gone(in, &tc->stick_touch);
     release_if_gone(in, &tc->camera_touch);
@@ -50,12 +52,12 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
         if (jr > 0.0f && tc->jump_touch < 0 && dx * dx + dy * dy <= slop * slop) {
             t->owner = TOUCH_OWNER_JUMP;
             tc->jump_touch = i;
-        } else if (tc->stick_touch < 0 && t->x0 < w_pt * 0.5f && t->y0 > h_pt * cfg->stick_zone_y) {
+        } else if (tc->stick_touch < 0 && t->x0 < split && t->y0 > h_pt * cfg->stick_zone_y) {
             t->owner = TOUCH_OWNER_STICK;
             tc->stick_touch = i;
             tc->stick_ox = t->x0;
             tc->stick_oy = t->y0;
-        } else if (tc->camera_touch < 0) {
+        } else if (tc->camera_touch < 0 && t->x0 >= split) {
             t->owner = TOUCH_OWNER_CAMERA;
             tc->camera_touch = i;
         }
