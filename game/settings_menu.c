@@ -18,7 +18,30 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     bool wide = w > 560.0f;
     float cw = wide ? (w - 24.0f) * 0.5f : w;
     float x2 = x + cw + 24.0f;
+    /* Day / night: drag to pick an hour (stops following the clock) */
+    int hh = (int)s->time_of_day, mm = (int)((s->time_of_day - (float)hh) * 60.0f);
+    char tod[64];
+    SDL_snprintf(tod, sizeof(tod), "Day / night  %02d:%02d##tod", hh, mm);
+    if (ui_slider(ui, tod, x, y, w, &s->time_of_day, 0.0f, 23.99f, "")) {
+        *action = MENU_TIME;
+    }
+    y += 56.0f;
+    ui_toggle(ui, "Follow device clock", x, y, cw, &s->follow_clock);
+    static const float speeds[3] = {1.0f, 60.0f, 600.0f};
+    static const char *const speed_labels[3] = {"x1##spd", "x60##spd", "x600##spd"};
+    float sx = wide ? x2 : x, sy = wide ? y : y + 44.0f;
+    float sw = (cw - 16.0f) / 3.0f;
+    for (int i = 0; i < 3; i++) {
+        if (ui_button(ui, speed_labels[i], sx + (float)i * (sw + 8.0f), sy - 2.0f, sw, 40.0f,
+                      s->time_speed == speeds[i])) {
+            s->time_speed = speeds[i];
+        }
+    }
+    y = sy + 52.0f;
+    ui_rect(ui->gfx, ui->font, x, y - 6.0f, w, 1.0f, ui_rgba(0xFFFFFF22));
+    y += 6.0f;
     float cx = x, cy = y;
+    const float sliders_top = y;
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
     ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
@@ -32,7 +55,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     float left_end = cy;
     if (wide) {
         cx = x2;
-        cy = y;
+        cy = sliders_top;
     }
     ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 50.0f, 100.0f, "%.0f" TEXT_DEGREE);
     cy += step;
@@ -43,6 +66,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
     cy += 44.0f;
     y = mg_maxf(cy, left_end) + 6.0f;
+
 
     float bw = (w - 16.0f) / 3.0f;
     char main_menu_label[64];
@@ -81,22 +105,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += 44.0f;
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
-        /* Time */
-        ui_toggle(ui, "Follow device clock", x, y, cw, &s->follow_clock);
-        y += 44.0f;
-        if (ui_slider(ui, "Time of day##tod", x, y, cw, &s->time_of_day, 0.0f, 23.99f, "%.2f h")) {
-            *action = MENU_TIME;
-        }
-        y += 56.0f;
-        static const float speeds[3] = {1.0f, 60.0f, 600.0f};
-        static const char *const speed_labels[3] = {"x1##spd", "x60##spd", "x600##spd"};
-        float sw = (cw - 16.0f) / 3.0f;
-        for (int i = 0; i < 3; i++) {
-            if (ui_button(ui, speed_labels[i], x + (float)i * (sw + 8.0f), y, sw, 40.0f, s->time_speed == speeds[i])) {
-                s->time_speed = speeds[i];
-            }
-        }
-        y += 52.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Teleport to floor");
         y += 22.0f;
         static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};
