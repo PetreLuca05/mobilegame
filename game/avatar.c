@@ -511,7 +511,8 @@ static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const Avat
                             HMM_Mat4 body, HMM_Mat4 body_s, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
 {
     const int l = p->lod >= 2 ? 1 : 0;
-    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y, 0)), HMM_Scale(HMM_V3(hs, hs, hs)));
+    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y, 0)), HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
+    head = HMM_MulM4(HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0))), HMM_Scale(HMM_V3(hs, hs, hs)));
     if (l == 0) {
         outlined(dc, m->lod_body[0], body_s, look->outfit);
         outlined(dc, m->lod_head[0], head, look->skin);
@@ -569,7 +570,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     /* body: floats 0.5 m up, tilts about its base */
     HMM_Mat4 body = compose(root, HMM_V3(0, base + bob, 0));
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd - tilt, HMM_V3(1, 0, 0)));
-    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side, HMM_V3(0, 0, 1)));
+    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side - p->weight_tilt, HMM_V3(0, 0, 1)));
     const HMM_Mat4 body_s = HMM_MulM4(body, HMM_Scale(HMM_V3(sw, sh, sw)));
     const bool female = look->body == BODY_FEMALE;
     if (p->lod > 0 && !override) {
@@ -611,6 +612,8 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     const float body_h = (female ? BODY_H * 0.955f : BODY_H) * sh;
     const float hs = (female ? 0.956f : 1.0f) * head_k; /* 0.43 m head */
     HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob, 0));
+    head = HMM_MulM4(head, HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
+    head = HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0)));
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));
     outlined(&dc, m->head, head, look->skin);
     if (look->hair_style != HAIR_NONE && look->hair_style < AVATAR_HAIRS) {
@@ -650,7 +653,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
 
     /* hands: hip height, swing fore/aft while walking, both rise on jumps */
     float swing = HMM_SinF(phase) * 0.16f * a->swing;
-    float lift = a->raise * 0.5f;
+    float lift = mg_maxf(a->raise, p->stretch) * 0.5f;
     float spread = (HAND_X + a->raise * 0.08f) * sw;
     const float hand_y = HAND_Y * sh + hand_dy + lift + bob + base - BODY_BASE;
     const float lap = -0.2f * p->sit; /* seated: hands forward on the lap */

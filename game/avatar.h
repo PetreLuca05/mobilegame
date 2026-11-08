@@ -81,6 +81,10 @@ typedef struct AvatarPose {
     float crouch;     /* 0 .. 1: lowered, hands down */
     float sway;       /* side-to-side (mopping), radians */
     float hide;       /* screen-door fade: spawning in or leaving */
+    /* idle touches, radians (0 for players) */
+    float head_yaw, head_pitch; /* a look, a nod */
+    float weight_tilt;          /* shifting weight, body roll */
+    float stretch;              /* 0 .. 1: hands up */
 } AvatarPose;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);

@@ -498,6 +498,7 @@ static void run_npc_bench(Game *g, MgApp *app);
 static uint32_t npc_seed_for(Game *g, MgApp *app);
 static void npc_step(Game *g, MgApp *app);
 static void npc_catch_up(Game *g, MgApp *app);
+static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc_cold_t *c, AvatarPose *pose, float dt, bool queue_waiting);
 static void npc_save_test_compare(Game *g, MgApp *app);
 static void npc_save_test_save(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
@@ -1279,6 +1280,53 @@ static void npc_room_epoch(Game *g)
     }
 }
 
+/* Small life signs, worked out where the NPC is drawn from its id and the clock: nothing here feeds
+ * back into the sim, and the only per-NPC state is the smoothed head direction. */
+static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc_cold_t *c, AvatarPose *pose, float dt, bool queue_waiting)
+{
+    const float t = (float)app->time + (float)c->id * 3.7f;
+    float head_target = 0.0f;
+    if (c->phase == NPC_PHASE_HOLD) {
+        if (c->pose == POSE_STAND) { /* weight shift, every few seconds */
+            pose->weight_tilt = HMM_AngleDeg(2.0f) * HMM_SinF(t * 1.3f);
+        }
+        if (c->pose == POSE_STAND || c->pose == POSE_SIT) { /* looks at whoever walks past, otherwise glances around */
+            uint16_t near[12];
+            const int n = spatial_query(&g->npcs.grid, h->storey, h->x, h->z, 3.0f, near, 12);
+            const npc_hot_t *hot = g->npcs.pool.hot[g->npcs.pool.read];
+            float best = 9.0f;
+            bool passer = false;
+            for (int k = 0; k < n; k++) {
+                const npc_hot_t *o = &hot[near[k]];
+                const float ox = o->x - h->x, oz = o->z - h->z, d2 = ox * ox + oz * oz;
+                if (near[k] != i && (o->vx != 0.0f || o->vz != 0.0f) && d2 < best) {
+                    float rel = fmodf(atan2f(-ox, -oz) - h->yaw + 3.0f * HMM_PI32, 2.0f * HMM_PI32) - HMM_PI32;
+                    best = d2;
+                    head_target = mg_clampf(rel, -HMM_AngleDeg(40.0f), HMM_AngleDeg(40.0f));
+                    passer = true;
+                }
+            }
+            if (!passer) {
+                head_target = HMM_AngleDeg(20.0f) * HMM_SinF(t * 0.45f);
+            }
+        }
+        if (c->pose == POSE_SIT) { /* one seated stretch in ten, every 20 s */
+            const float cycle = fmodf(t, 20.0f);
+            if (cycle < 0.9f && (((uint32_t)(t / 20.0f) + c->id) % 10u) == 0u) {
+                pose->stretch = HMM_SinF(cycle / 0.9f * HMM_PI32);
+            }
+        }
+        if (queue_waiting && c->pose == POSE_STAND && SDL_strcmp(g->npcs.data.archetypes[c->archetype].name, "receptionist") == 0) {
+            const float cycle = fmodf(t, 9.0f); /* a nod */
+            if (cycle < 1.0f) {
+                pose->head_pitch = HMM_AngleDeg(12.0f) * HMM_SinF(cycle * HMM_PI32);
+            }
+        }
+    }
+    c->vis_head += (head_target - c->vis_head) * mg_minf(dt * 5.0f, 1.0f);
+    pose->head_yaw = c->vis_head;
+}
+
 /* M7 roster: culled and given a LOD on the job system, drawn on the main thread */
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
 {
@@ -1300,6 +1348,11 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         crowd_cull_job(&cull, 0, p->count, 0);
     }
     const float blend = mg_minf(dt * 8.0f, 1.0f);
+    bool queue_waiting = false; /* the receptionist nods at whoever is at the front */
+    for (int i = 0; i < g->rooms.slot_count; i++) {
+        const Slot *sl = &g->rooms.slots[i];
+        queue_waiting = queue_waiting || ((sl->tags & SLOT_RECEPTION_QUEUE) && sl->order == 0 && sl->occupant);
+    }
     for (int i = 0; i < p->count; i++) {
         if (lods[i] == 255 || (half && (p->cold[i].id & 1u))) {
             continue;
@@ -1343,6 +1396,7 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
         pose.sway = c->pose == POSE_MOP ? 0.12f * HMM_SinF((float)app->time * 3.0f + (float)i) : 0.0f;
         pose.hide = c->fade < 1.0f ? 1.0f - c->fade : 0.0f;
+        npc_idle_touches(g, app, i, h, c, &pose, dt, queue_waiting);
         avatar_animate(&c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
         g->rendered_entities++;
