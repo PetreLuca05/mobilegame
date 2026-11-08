@@ -1,4 +1,6 @@
+#include "core/jobs.h"
 #include "core/prof.h"
+#include "platform/device_stats.h"
 #include "app.h"
 
 #include "core/log.h"
@@ -76,6 +78,11 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     if (!arena_sub(&app->perm, &app->frame, MG_FRAME_ARENA_BYTES)) {
         return SDL_APP_FAILURE;
     }
+    mg_log_info("render thread priority: %d", device_boost_render_thread());
+    app->jobs = jobs_create(&app->perm, -1, 256u << 10);
+    if (!app->jobs) {
+        return SDL_APP_FAILURE;
+    }
 
     SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if defined(MG_PLATFORM_DESKTOP)
@@ -148,6 +155,7 @@ SDL_AppResult app_iterate(void *appstate)
     prof_frame_begin();
     update_metrics(app);
     arena_reset(&app->frame);
+    jobs_frame_begin(app->jobs);
 
     int ticks = fixedstep_advance(&app->clock, t0, MG_MAX_TICKS_PER_FRAME);
     app->ticks_this_frame = ticks;

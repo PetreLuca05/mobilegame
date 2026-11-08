@@ -128,6 +128,7 @@ add_library(mg_engine STATIC
   engine/core/log.c
   engine/core/png_write.c
   engine/core/prof.c
+  engine/core/jobs.c
   engine/nav/navgrid.c
   engine/nav/astar.c
   engine/core/time.c
@@ -135,6 +136,7 @@ add_library(mg_engine STATIC
   engine/platform/input_touch.c
   engine/audio/audio_sdl.c
   engine/world/lighting_day.c
+  engine/world/spatial.c
   engine/gfx/camera.c
   engine/gfx/gpu.c
   engine/gfx/material.c
@@ -212,6 +214,7 @@ set(MG_GAME_SOURCES
   game/autonav.c
   game/perf_run.c
   game/stress.c
+  game/npc.c
   game/stats.c
   game/player.c
   game/camera_td.c

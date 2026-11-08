@@ -181,8 +181,9 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
             return NULL;
         }
     }
-    for (int m = 0; m < 2; m++) { /* [0] the time-sliced queue, [1] synchronous nav_find_path */
-        NavSearchMem *sm = &n->mem[m];
+    NavSearchMem *mems[NAV_CLASS_COUNT + 1] = {&n->queues[0].mem, &n->queues[1].mem, &n->sync_mem};
+    for (int m = 0; m < NAV_CLASS_COUNT + 1; m++) {
+        NavSearchMem *sm = mems[m];
         sm->g = ARENA_PUSH(perm, float, (size_t)n->total);
         sm->parent = ARENA_PUSH(perm, int32_t, (size_t)n->total);
         sm->stamp = ARENA_PUSH(perm, uint32_t, (size_t)n->total);
@@ -193,15 +194,19 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
         }
         memset(sm->stamp, 0, sizeof(uint32_t) * (size_t)n->total);
     }
-    n->reqs = ARENA_PUSH(perm, NavRequest, NAV_MAX_REQUESTS);
-    n->cache = ARENA_PUSH(perm, NavCacheEntry, NAV_CACHE_SIZE);
-    if (!n->reqs || !n->cache) {
-        return NULL;
+    for (int q = 0; q < NAV_CLASS_COUNT; q++) {
+        NavQueue *nq = &n->queues[q];
+        nq->cache_size = q == NAV_CLASS_PLAYER ? NAV_CACHE_PLAYER : NAV_CACHE_NPC;
+        nq->reqs = ARENA_PUSH(perm, NavRequest, NAV_MAX_REQUESTS);
+        nq->cache = ARENA_PUSH(perm, NavCacheEntry, (size_t)nq->cache_size);
+        if (!nq->reqs || !nq->cache) {
+            return NULL;
+        }
+        memset(nq->reqs, 0, sizeof(NavRequest) * NAV_MAX_REQUESTS);
+        memset(nq->cache, 0, sizeof(NavCacheEntry) * (size_t)nq->cache_size);
+        nq->running = -1;
     }
-    memset(n->reqs, 0, sizeof(NavRequest) * NAV_MAX_REQUESTS);
-    memset(n->cache, 0, sizeof(NavCacheEntry) * NAV_CACHE_SIZE);
     n->next_req = 1;
-    n->running = -1;
     /* labels below use the search heap as their flood-fill stack */
     size_t mark = arena_mark(perm);
     Cell *cells = ARENA_PUSH(perm, Cell, (size_t)largest);
@@ -210,8 +215,8 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
     }
     for (int i = 0; i < desc->grid_count; i++) {
         bake_grid(&n->grids[i], cells, world, desc);
-        label_cells(&n->grids[i], n->grids[i].region, 0, n->mem[0].heap);
-        label_cells(&n->grids[i], n->grids[i].room, NAV_DOOR, n->mem[0].heap);
+        label_cells(&n->grids[i], n->grids[i].region, 0, n->sync_mem.heap);
+        label_cells(&n->grids[i], n->grids[i].room, NAV_DOOR, n->sync_mem.heap);
     }
     arena_reset_to(perm, mark);
     n->bake_ms = (float)((mg_time_now() - t0) * 1000.0);

@@ -4,7 +4,8 @@
 
 #include "navgrid.h"
 
-#define NAV_CACHE_SIZE 16
+#define NAV_CACHE_PLAYER 16
+#define NAV_CACHE_NPC 32
 
 /* A* working memory: one slot per node, reset by generation */
 typedef struct NavSearchMem {
@@ -43,7 +44,7 @@ typedef enum NavReqState { NAV_REQ_FREE, NAV_REQ_QUEUED, NAV_REQ_RUNNING, NAV_RE
 typedef struct NavRequest {
     uint32_t id, seq;
     NavReqState state;
-    bool priority, has_partial, partial_taken, cross;
+    bool has_partial, partial_taken, cross;
     int segment;     /* cross-storey: 0 to the car, 1 from it */
     int gfrom, gto, from_storey, to_storey;
     NavCell a, b, ca, cb;
@@ -54,11 +55,22 @@ typedef struct NavRequest {
 
 typedef struct NavCacheEntry {
     bool used;
-    uint16_t from_room, to_room;
+    uint32_t from_key, to_key;  /* player: room ids; NPC: cell indices */
     int8_t gfrom, gto;
     uint32_t stamp;  /* least recently used goes first */
     NavPath path;
 } NavCacheEntry;
+
+/* A class of requests with its own search memory, slots and cache, so the
+ * player's walking cannot change what an NPC's search returns. */
+typedef struct NavQueue {
+    NavSearchMem mem;
+    NavRequest *reqs;
+    NavCacheEntry *cache;
+    int cache_size;
+    int running;     /* index in reqs, -1 none */
+    uint32_t clock;
+} NavQueue;
 
 struct NavWorld {
     NavGrid grids[NAV_MAX_GRIDS];
@@ -66,11 +78,9 @@ struct NavWorld {
     int total;
     float car[4];
     float bake_ms, path_ms;
-    NavSearchMem mem[2];
-    NavRequest *reqs;
-    NavCacheEntry *cache;
-    uint32_t next_req, cache_clock;
-    int running;     /* index in reqs, -1 none */
+    NavQueue queues[NAV_CLASS_COUNT];
+    NavSearchMem sync_mem;  /* nav_find_path */
+    uint32_t next_req;
     NavStats stats;
 };
 

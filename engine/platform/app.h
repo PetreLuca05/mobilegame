@@ -32,6 +32,7 @@ struct MgApp {
     MgInput input;
     Arena perm;  /* lives for the whole run */
     Arena frame; /* reset every frame */
+    struct JobSystem *jobs;
     MgFixedStep clock;
     const MgGameCallbacks *cb;
     void *game;

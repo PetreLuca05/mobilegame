@@ -15,6 +15,7 @@
 #endif
 #include "platform/google_auth.h"
 #include "autotest.h"
+#include "core/jobs.h"
 #include "core/prof.h"
 #include "perf_run.h"
 #include "platform/device_stats.h"
@@ -424,7 +425,8 @@ void game_tick(MgApp *app)
     }
     if (g->crowd_ok && g->nav) {
         PROF_SCOPE("npc");
-        stress_tick(&g->crowd, g->nav, MG_TICK_DT);
+        StressView sv = {g->player.kin.pos.X, g->player.kin.pos.Z, scene_indoors(g->scene, g->player.kin.pos) ? scene_floor_of(g->scene, g->player.kin.pos) : 0};
+        stress_tick(&g->crowd, g->nav, app->jobs, &app->frame, &sv, MG_TICK_DT);
     }
     stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
     if (g->offline_play && scene_indoors(g->scene, g->player.kin.pos)) { /* rooms visited: storey x chunk */
@@ -459,6 +461,7 @@ static void update_fly_camera(Game *g, MgApp *app)
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
+static void run_determinism_check(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
 static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
@@ -1038,17 +1041,23 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
 /* the stress dummies: every storey up to the view floor, like remote players */
 static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
 {
-    const StressCrowd *c = &g->crowd;
+    NpcPool *p = &g->crowd.pool;
+    const npc_hot_t *hot = p->hot[p->read];
     const float dt = mg_minf(app->frame_dt, 0.1f);
+    const float now = (float)g->crowd.tick + alpha;
     uint32_t rendered = 0;
-    for (int i = 0; i < c->count; i++) {
-        if ((int)c->storey[i] > floor) {
+    for (int i = 0; i < p->count; i++) {
+        const npc_hot_t *h = &hot[i];
+        if ((int)h->storey > floor) {
             continue;
         }
-        HMM_Vec3 feet = HMM_V3(c->prev_x[i] + (c->x[i] - c->prev_x[i]) * alpha, c->y[i], c->prev_z[i] + (c->z[i] - c->prev_z[i]) * alpha);
-        AvatarPose pose = {feet, c->yaw[i], HMM_V3(c->vx[i], 0.0f, c->vz[i]), true, false, c->storey[i] >= 0, false};
-        avatar_animate(&c->anims[i], &pose, dt);
-        avatar_draw(app->gfx, &g->avatar_meshes, &c->looks[i], &pose, &c->anims[i], &g->world);
+        /* a slow NPC glides between its updates */
+        float w = mg_clampf((now - (float)h->last_tick - 1.0f) / (float)h->rate, 0.0f, 1.0f);
+        HMM_Vec3 feet = HMM_V3(h->prev_x + (h->x - h->prev_x) * w, h->y, h->prev_z + (h->z - h->prev_z) * w);
+        AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false};
+        npc_cold_t *cold = &p->cold[i];
+        avatar_animate(&cold->anim, &pose, dt);
+        avatar_draw(app->gfx, &g->avatar_meshes, &cold->look, &pose, &cold->anim, &g->world);
         rendered++;
     }
     g->rendered_entities += rendered;
@@ -1060,7 +1069,7 @@ void game_frame(MgApp *app, float alpha)
     GameSettings *s = &g->settings;
     if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
         const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
-        if (want != g->crowd.count) {
+        if (want != g->crowd.pool.count) {
             stress_spawn(&g->crowd, g->nav, want);
         }
     }
@@ -1114,7 +1123,7 @@ void game_frame(MgApp *app, float alpha)
     {
         PerfSample ps;
         gfx_get_stats(app->gfx, &ps.gs);
-        ps.sim = (uint32_t)g->crowd.count + 1;
+        ps.sim = (uint32_t)g->crowd.pool.count + 1;
         ps.rendered = g->rendered_last;
         perf_run_update(&g->perf, app, &probe, &ato, &ps);
     }
@@ -1413,7 +1422,7 @@ void game_frame(MgApp *app, float alpha)
         }
         if (g->nav) {
             PROF_SCOPE("nav.service");
-            nav_service(g->nav, NAV_BUDGET_MS);
+            nav_service(g->nav, NAV_CLASS_PLAYER, NAV_BUDGET_MS, 0, 0);
         }
         if (g->nav && autonav_active(&g->autonav)) {
             if (g->menu.open) {
@@ -1508,6 +1517,9 @@ void game_frame(MgApp *app, float alpha)
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     if (g->nav) {
         const char *at = arg_value(app->argc, app->argv, "--autotest");
+        if (at && SDL_strcmp(at, "determinism") == 0 && g->crowd_ok) {
+            run_determinism_check(g, app);
+        }
         if (at && SDL_strcmp(at, "nav") == 0) {
             run_nav_check(g, app);
         }
@@ -1595,7 +1607,7 @@ void game_frame(MgApp *app, float alpha)
         }
 #endif
     }
-    if (g->crowd_ok && g->crowd.count > 0) {
+    if (g->crowd_ok && g->crowd.pool.count > 0) {
         PROF_SCOPE("npc.draw");
         draw_crowd(g, app, floor, alpha);
     }
@@ -1638,7 +1650,7 @@ void game_frame(MgApp *app, float alpha)
     }
     if (s->show_profiler) {
         ProfHudInfo ph = {gs.draws, gs.tris, gs.instances, gs.pipe_binds, gs.tex_binds, gs.uniform_bytes, gs.passes,
-                          (uint32_t)g->crowd.count + 1, g->rendered_last, gs.gpu_main_ms, gs.gpu_ui_ms,
+                          (uint32_t)g->crowd.pool.count + 1, g->rendered_last, gs.gpu_main_ms, gs.gpu_ui_ms,
                           device_thermal_state(), device_resident_mb()};
         prof_hud_draw(app->gfx, &app->font, app->width_pt - app->safe_right - 330.0f, app->safe_top + 56.0f, &ph);
     }
@@ -1949,23 +1961,23 @@ static bool run_nav_queue_check(Game *g)
         {0.0f, 17.0f, -1, 10.4f, -3.0f, 2},      {-10.4f, -3.0f, 2, 20.0f, 10.0f, -1},   {20.0f, 10.0f, -1, -10.4f, -3.0f, 2},
         {0.0f, 17.0f, -1, 10.4f, -4.0f, 0},      {10.0f, -12.4f, 2, -20.0f, 10.0f, -1},
     };
-    nav_cache_clear(g->nav);
+    nav_cache_clear(g->nav, NAV_CLASS_PLAYER);
     nav_stats_reset(g->nav);
     uint32_t id[8];
     bool ok = true;
     for (int i = 0; i < 8; i++) {
         HMM_Vec3 a = HMM_V3(r[i].fx, scene_floor_y(g->scene, r[i].fs < 0 ? 0 : r[i].fs), r[i].fz);
         HMM_Vec3 b = HMM_V3(r[i].tx, scene_floor_y(g->scene, r[i].ts < 0 ? 0 : r[i].ts), r[i].tz);
-        id[i] = nav_request(g->nav, a, r[i].fs, b, r[i].ts, false);
+        id[i] = nav_request(g->nav, NAV_CLASS_PLAYER, a, r[i].fs, b, r[i].ts);
     }
     int frames = 0, left = 8, partials = 0;
     while (left > 0 && frames < 600) {
-        nav_service(g->nav, NAV_BUDGET_MS);
+        nav_service(g->nav, NAV_CLASS_PLAYER, NAV_BUDGET_MS, 0, 0);
         frames++;
         for (int i = 0; i < 8; i++) {
             if (id[i]) {
                 bool partial;
-                NavStatus st = nav_poll(g->nav, id[i], &g->nav_path, &partial);
+                NavStatus st = nav_poll(g->nav, NAV_CLASS_PLAYER, id[i], &g->nav_path, &partial);
                 partials += partial;
                 if (st != NAV_STATUS_PENDING) {
                     ok = ok && st == NAV_STATUS_READY;
@@ -1981,10 +1993,10 @@ static bool run_nav_queue_check(Game *g)
     for (int i = 0; i < 8; i++) {
         HMM_Vec3 a = HMM_V3(r[i].fx, scene_floor_y(g->scene, r[i].fs < 0 ? 0 : r[i].fs), r[i].fz);
         HMM_Vec3 b = HMM_V3(r[i].tx, scene_floor_y(g->scene, r[i].ts < 0 ? 0 : r[i].ts), r[i].tz);
-        uint32_t q = nav_request(g->nav, a, r[i].fs, b, r[i].ts, false);
-        nav_service(g->nav, NAV_BUDGET_MS);
-        for (int f = 0; f < 600 && nav_poll(g->nav, q, &g->nav_path, NULL) == NAV_STATUS_PENDING; f++) {
-            nav_service(g->nav, NAV_BUDGET_MS);
+        uint32_t q = nav_request(g->nav, NAV_CLASS_PLAYER, a, r[i].fs, b, r[i].ts);
+        nav_service(g->nav, NAV_CLASS_PLAYER, NAV_BUDGET_MS, 0, 0);
+        for (int f = 0; f < 600 && nav_poll(g->nav, NAV_CLASS_PLAYER, q, &g->nav_path, NULL) == NAV_STATUS_PENDING; f++) {
+            nav_service(g->nav, NAV_CLASS_PLAYER, NAV_BUDGET_MS, 0, 0);
         }
     }
     uint32_t hits = nav_stats(g->nav).cache_hits - before;
@@ -1994,6 +2006,45 @@ static bool run_nav_queue_check(Game *g)
                 "cache %u/8 on the second round: %s",
                 frames, (double)st.longest_ms, (double)st.worst_frame_ms, (double)NAV_BUDGET_MS, partials, hits, ok ? "ok" : "FAIL");
     return ok;
+}
+
+/* --autotest determinism: 400 dummies twice, one thread then all of them; every
+ * position must match. */
+static void run_determinism_check(Game *g, MgApp *app)
+{
+    enum { SAMPLES = 6, TICKS_PER_SAMPLE = 300 };
+    uint32_t hash[2][SAMPLES];
+    const StressView view = {0.0f, -3.0f, 0};
+    int threads[2] = {1, JOBS_MAX_THREADS};
+    int used[2];
+    double ms[2];
+    for (int run = 0; run < 2; run++) {
+        jobs_limit_threads(app->jobs, threads[run]);
+        used[run] = jobs_thread_count(app->jobs);
+        stress_reset(&g->crowd, g->nav);
+        stress_spawn(&g->crowd, g->nav, STRESS_MAX);
+        double t0 = mg_time_now();
+        for (int s = 0; s < SAMPLES; s++) {
+            for (int t = 0; t < TICKS_PER_SAMPLE; t++) {
+                size_t mark = arena_mark(&app->frame);
+                stress_tick(&g->crowd, g->nav, app->jobs, &app->frame, &view, MG_TICK_DT);
+                arena_reset_to(&app->frame, mark);
+            }
+            hash[run][s] = stress_hash(&g->crowd);
+        }
+        ms[run] = (mg_time_now() - t0) * 1000.0 / (double)(SAMPLES * TICKS_PER_SAMPLE);
+    }
+    bool same = true;
+    for (int s = 0; s < SAMPLES; s++) {
+        same = same && hash[0][s] == hash[1][s];
+        mg_log_info("determinism: tick %4d: %08x %08x %s", (s + 1) * TICKS_PER_SAMPLE, hash[0][s], hash[1][s],
+                    hash[0][s] == hash[1][s] ? "same" : "DIFFERENT");
+    }
+    mg_log_info("determinism: %d NPCs, %d thread(s) %.3f ms per tick, %d thread(s) %.3f ms per tick", g->crowd.pool.count, used[0],
+                ms[0], used[1], ms[1]);
+    mg_log_info("AUTOTEST %s", same && used[1] > 1 ? "PASSED" : "FAILED");
+    stress_reset(&g->crowd, g->nav);
+    app->quit_requested = true;
 }
 
 static void run_nav_check(Game *g, MgApp *app)

@@ -1,0 +1,57 @@
+/* NPC storage (PERF-1 rules, shared by the stress harness and M7): a dense
+ * index, generational handles, npc_hot_t = one cache line of per-tick data,
+ * double-buffered so parallel steering reads last tick and writes this one;
+ * everything else in npc_cold_t. */
+#ifndef MG_NPC_H
+#define MG_NPC_H
+
+#include "avatar.h"
+#include "nav/navgrid.h"
+
+#define NPC_MAX 400
+
+typedef struct npc_handle_t {
+    uint16_t index;
+    uint16_t gen;
+} npc_handle_t;
+
+typedef struct npc_hot_t {
+    float x, z;           /* now */
+    float prev_x, prev_z; /* before its last update (render interpolation) */
+    float y;              /* floor height */
+    float vx, vz;
+    float yaw;
+    float timer;
+    uint32_t rng;         /* per NPC: the same draws on any thread count */
+    uint32_t req;         /* path request in flight */
+    uint32_t last_tick;   /* tick of its last update */
+    int16_t next;         /* path cursor */
+    int8_t storey;        /* -1 yard */
+    uint8_t state;
+    uint8_t rate;         /* updates every `rate` ticks: 1, 3 or 6 */
+    uint8_t lod;          /* 0, 1, 2 */
+    uint8_t pad[2];
+} npc_hot_t;
+
+_Static_assert(sizeof(npc_hot_t) <= 64, "npc_hot_t must fit one cache line");
+
+typedef struct npc_cold_t {
+    NavPath path;
+    AvatarLook look;
+    AvatarAnim anim;
+    uint16_t gen;
+} npc_cold_t;
+
+typedef struct NpcPool {
+    int count;
+    npc_hot_t *hot[2];
+    int read;             /* hot[read] = last tick, hot[1 - read] written this tick */
+    npc_cold_t *cold;
+} NpcPool;
+
+bool npc_pool_init(NpcPool *p, Arena *perm);
+npc_handle_t npc_handle_of(const NpcPool *p, int index);
+/* -1 when the NPC is gone. */
+int npc_index_of(const NpcPool *p, npc_handle_t h);
+
+#endif

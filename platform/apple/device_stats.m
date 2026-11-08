@@ -1,7 +1,24 @@
 #import <Foundation/Foundation.h>
+#include <TargetConditionals.h>
 #include <mach/mach.h>
+#include <pthread.h>
 
 #include "platform/device_stats.h"
+
+int device_boost_render_thread(void)
+{
+#if TARGET_OS_IOS
+    struct sched_param param = {.sched_priority = 45};
+    if (pthread_setschedparam(pthread_self(), SCHED_RR, &param) != 0) {
+        return 0;
+    }
+    int policy = 0;
+    pthread_getschedparam(pthread_self(), &policy, &param);
+    return policy == SCHED_RR ? param.sched_priority : 0;
+#else
+    return 0;
+#endif
+}
 
 int device_thermal_state(void) { return (int)[[NSProcessInfo processInfo] thermalState]; }
 

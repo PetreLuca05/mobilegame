@@ -63,13 +63,19 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc);
 /* 0 on success, NAV_UNREACHABLE otherwise. `from_storey` / `to_storey`: -1 yard, 0.. */
 int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey, NavPath *path);
 
-/* Time-sliced pathing (what the game uses). One search runs at a time and all
- * of it shares the budget given to nav_service, so any number of requests costs
- * at most that per frame; the player's goes first in the queue. After the first
- * slice a partial path (towards the most promising cell) is available. The last
- * 16 room-to-room paths are cached. */
+/* Time-sliced pathing (what the game uses). Each class has its own queue: one
+ * search at a time, resumable across calls.
+ *   PLAYER: serviced once per frame with a clock budget; after the first slice
+ *           a partial path (towards the most promising cell) is available; the
+ *           last 16 room-to-room paths are cached.
+ *   NPC:    serviced once per tick with a cap on cells expanded and paths
+ *           finished, never the clock, so results do not depend on the CPU; the
+ *           last 32 cell-to-cell paths are cached. */
 #define NAV_MAX_REQUESTS 32
-#define NAV_BUDGET_MS 1.0 /* per frame, all requests together */
+#define NAV_BUDGET_MS 1.0 /* player: per frame, all requests together */
+#define NAV_NPC_EXPANSIONS 600 /* NPCs: cells per tick */
+#define NAV_NPC_PATHS 2        /* NPCs: finished paths per tick */
+typedef enum NavClass { NAV_CLASS_PLAYER, NAV_CLASS_NPC, NAV_CLASS_COUNT } NavClass;
 typedef enum NavStatus {
     NAV_STATUS_NONE,        /* no such request */
     NAV_STATUS_PENDING,     /* queued or running; maybe a partial path already */
@@ -78,13 +84,13 @@ typedef enum NavStatus {
 } NavStatus;
 
 /* 0 if the queue is full. Unreachable targets answer at once. */
-uint32_t nav_request(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey, bool priority);
-/* Run the queue for at most budget_ms; call once per frame. */
-void nav_service(NavWorld *n, double budget_ms);
+uint32_t nav_request(NavWorld *n, NavClass cls, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey);
+/* 0 = no limit for any of the three. */
+void nav_service(NavWorld *n, NavClass cls, double budget_ms, int max_expansions, int max_paths);
 /* READY / UNREACHABLE release the request. PENDING with a partial path copies
  * it into `path` and sets *partial (once per request). `path` may be NULL. */
-NavStatus nav_poll(NavWorld *n, uint32_t id, NavPath *path, bool *partial);
-void nav_cancel(NavWorld *n, uint32_t id);
+NavStatus nav_poll(NavWorld *n, NavClass cls, uint32_t id, NavPath *path, bool *partial);
+void nav_cancel(NavWorld *n, NavClass cls, uint32_t id);
 /* Reachable at all? O(1), from the region labels; no path is computed. */
 /* A random walkable spot of a grid (0 ground, 1.. upper storeys) connected to
  * the car; storey -1 outdoors. False if none was found in a few tries. */
@@ -92,13 +98,15 @@ bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos,
 bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey);
 
 typedef struct NavStats {
-    float longest_ms;     /* most CPU one request took, all its slices */
-    float worst_frame_ms; /* most one nav_service call took */
+    float longest_ms;     /* most CPU one player request took, all its slices */
+    float worst_frame_ms; /* most one player nav_service call took */
     uint32_t cache_hits, cache_misses;
 } NavStats;
 NavStats nav_stats(const NavWorld *n);
 void nav_stats_reset(NavWorld *n);
-void nav_cache_clear(NavWorld *n);
+void nav_cache_clear(NavWorld *n, NavClass cls);
+/* Empty a queue and its cache: same inputs give the same results afterwards. */
+void nav_queue_reset(NavWorld *n, NavClass cls);
 
 const NavGrid *nav_grid(const NavWorld *n, int index);
 int nav_grid_count(const NavWorld *n);

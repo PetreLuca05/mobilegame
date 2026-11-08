@@ -24,10 +24,10 @@ static bool plan(Autonav *a, struct NavWorld *nav, const AutonavCtx *c)
     if (!nav_can_reach(nav, c->feet, c->storey, a->target, a->target_storey)) {
         return false;
     }
-    nav_cancel(nav, a->req);
+    nav_cancel(nav, NAV_CLASS_PLAYER, a->req);
     a->nav = nav;
     a->partial = false;
-    a->req = nav_request(nav, c->feet, c->storey, a->target, a->target_storey, true);
+    a->req = nav_request(nav, NAV_CLASS_PLAYER, c->feet, c->storey, a->target, a->target_storey);
     return a->req != 0;
 }
 
@@ -64,7 +64,7 @@ bool autonav_go(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, HMM_Vec3 
 static void drop_request(Autonav *a)
 {
     if (a->req && a->nav) {
-        nav_cancel(a->nav, a->req);
+        nav_cancel(a->nav, NAV_CLASS_PLAYER, a->req);
     }
     a->req = 0;
     a->partial = false;
@@ -121,7 +121,7 @@ void autonav_update(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, Auton
 
     if (a->req) {
         bool partial;
-        NavStatus st = nav_poll(nav, a->req, &a->path, &partial);
+        NavStatus st = nav_poll(nav, NAV_CLASS_PLAYER, a->req, &a->path, &partial);
         if (st == NAV_STATUS_READY) {
             a->req = 0;
             a->partial = false;

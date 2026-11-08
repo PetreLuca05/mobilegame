@@ -218,8 +218,8 @@ static void pull_step(NavSearch *s)
     }
 }
 
-/* Run until done or the deadline (0 = no limit). */
-static void search_run(NavSearch *s, double deadline)
+/* Run until done, the deadline (0 = no clock) or `left` steps (NULL = no cap). */
+static void search_run(NavSearch *s, double deadline, int *left)
 {
     NavSearchMem *m = s->m;
     const NavGrid *g = s->g;
@@ -231,6 +231,9 @@ static void search_run(NavSearch *s, double deadline)
             if (mg_time_now() >= deadline) {
                 return;
             }
+        }
+        if (left && (*left)-- <= 0) {
+            return;
         }
         if (s->heap_n <= 0) {
             s->phase = NAV_PHASE_FAILED;
@@ -279,6 +282,9 @@ static void search_run(NavSearch *s, double deadline)
     }
     while (s->phase == NAV_PHASE_PULL) {
         if (deadline > 0.0 && mg_time_now() >= deadline) {
+            return;
+        }
+        if (left && (*left)-- <= 0) {
             return;
         }
         pull_step(s);
@@ -382,19 +388,19 @@ int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_p
     if (gfrom >= 0 && gto >= 0 && resolve(n, from_pos, gfrom, to_pos, gto, &a, &b, &ca, &cb)) {
         NavSearch s;
         if (gfrom == gto) {
-            search_begin(&s, &n->mem[1], &n->grids[gfrom], a, b, gfrom, path, true);
-            search_run(&s, 0.0);
+            search_begin(&s, &n->sync_mem, &n->grids[gfrom], a, b, gfrom, path, true);
+            search_run(&s, 0.0, NULL);
             result = s.phase == NAV_PHASE_DONE ? 0 : NAV_UNREACHABLE;
         } else {
-            search_begin(&s, &n->mem[1], &n->grids[gfrom], a, ca, gfrom, path, true);
-            search_run(&s, 0.0);
+            search_begin(&s, &n->sync_mem, &n->grids[gfrom], a, ca, gfrom, path, true);
+            search_run(&s, 0.0, NULL);
             if (s.phase == NAV_PHASE_DONE) {
                 path->ride_at = path->count - 1;
                 path->ride_from = gfrom;
                 path->ride_to = gto;
                 add_point(path, &n->grids[gto], cb, gto);
-                search_begin(&s, &n->mem[1], &n->grids[gto], cb, b, gto, path, false);
-                search_run(&s, 0.0);
+                search_begin(&s, &n->sync_mem, &n->grids[gto], cb, b, gto, path, false);
+                search_run(&s, 0.0, NULL);
                 result = s.phase == NAV_PHASE_DONE ? 0 : NAV_UNREACHABLE;
             }
         }
@@ -410,21 +416,57 @@ int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_p
 
 /* ------------------------------------------------------------------- cache */
 
-void nav_cache_clear(NavWorld *n) { memset(n->cache, 0, sizeof(NavCacheEntry) * NAV_CACHE_SIZE); }
+void nav_cache_clear(NavWorld *n, NavClass cls)
+{
+    NavQueue *q = &n->queues[cls];
+    memset(q->cache, 0, sizeof(NavCacheEntry) * (size_t)q->cache_size);
+}
 
-/* A cached room-to-room path, re-attached to the real start and end when
- * both are in sight of its first and last inner points. */
-static bool cache_lookup(NavWorld *n, NavRequest *r)
+void nav_queue_reset(NavWorld *n, NavClass cls)
+{
+    NavQueue *q = &n->queues[cls];
+    for (int i = 0; i < NAV_MAX_REQUESTS; i++) {
+        q->reqs[i].state = NAV_REQ_FREE;
+    }
+    q->running = -1;
+    q->clock = 0;
+    nav_cache_clear(n, cls);
+}
+
+static bool cache_keys(const NavWorld *n, NavClass cls, const NavRequest *r, uint32_t *from, uint32_t *to)
 {
     const NavGrid *ga = &n->grids[r->gfrom], *gb = &n->grids[r->gto];
-    uint16_t ra = cell_label(ga, ga->room, r->a), rb = cell_label(gb, gb->room, r->b);
-    if (!ra || !rb || (r->gfrom == r->gto && ra == rb)) {
+    if (cls == NAV_CLASS_NPC) { /* patrols repeat exact cell pairs */
+        *from = (uint32_t)(r->a.z * ga->d.cols + r->a.x);
+        *to = (uint32_t)(r->b.z * gb->d.cols + r->b.x);
+        return true;
+    }
+    *from = cell_label(ga, ga->room, r->a);
+    *to = cell_label(gb, gb->room, r->b);
+    return *from && *to && !(r->gfrom == r->gto && *from == *to);
+}
+
+/* Player: a cached room-to-room path, re-attached to the real start and end
+ * when both are in sight of its first and last inner points. NPC: exact. */
+static bool cache_lookup(NavWorld *n, NavClass cls, NavRequest *r)
+{
+    NavQueue *q = &n->queues[cls];
+    uint32_t ka, kb;
+    if (!cache_keys(n, cls, r, &ka, &kb)) {
         return false;
     }
-    for (int i = 0; i < NAV_CACHE_SIZE; i++) {
-        NavCacheEntry *e = &n->cache[i];
-        if (!e->used || e->from_room != ra || e->to_room != rb || e->gfrom != r->gfrom || e->gto != r->gto ||
-            e->path.count < 3) {
+    const NavGrid *ga = &n->grids[r->gfrom], *gb = &n->grids[r->gto];
+    for (int i = 0; i < q->cache_size; i++) {
+        NavCacheEntry *e = &q->cache[i];
+        if (!e->used || e->from_key != ka || e->to_key != kb || e->gfrom != r->gfrom || e->gto != r->gto) {
+            continue;
+        }
+        if (cls == NAV_CLASS_NPC) {
+            r->path = e->path;
+            e->stamp = ++q->clock;
+            return true;
+        }
+        if (e->path.count < 3) {
             continue;
         }
         const NavPoint *second = &e->path.pts[1], *penult = &e->path.pts[e->path.count - 2];
@@ -436,22 +478,22 @@ static bool cache_lookup(NavWorld *n, NavRequest *r)
         r->path.pts[0] = point_at(ga, r->a, r->gfrom);
         r->path.pts[r->path.count - 1] = point_at(gb, r->b, r->gto);
         r->path.length = path_length(&r->path);
-        e->stamp = ++n->cache_clock;
+        e->stamp = ++q->clock;
         return true;
     }
     return false;
 }
 
-static void cache_store(NavWorld *n, const NavRequest *r)
+static void cache_store(NavWorld *n, NavClass cls, const NavRequest *r)
 {
-    const NavGrid *ga = &n->grids[r->gfrom], *gb = &n->grids[r->gto];
-    uint16_t ra = cell_label(ga, ga->room, r->a), rb = cell_label(gb, gb->room, r->b);
-    if (!ra || !rb || (r->gfrom == r->gto && ra == rb) || r->path.count < 3) {
+    NavQueue *q = &n->queues[cls];
+    uint32_t ka, kb;
+    if (!cache_keys(n, cls, r, &ka, &kb) || (cls == NAV_CLASS_PLAYER && r->path.count < 3)) {
         return;
     }
-    NavCacheEntry *slot = &n->cache[0];
-    for (int i = 0; i < NAV_CACHE_SIZE; i++) {
-        NavCacheEntry *e = &n->cache[i];
+    NavCacheEntry *slot = &q->cache[0];
+    for (int i = 0; i < q->cache_size; i++) {
+        NavCacheEntry *e = &q->cache[i];
         if (!e->used) {
             slot = e;
             break;
@@ -461,21 +503,22 @@ static void cache_store(NavWorld *n, const NavRequest *r)
         }
     }
     slot->used = true;
-    slot->from_room = ra;
-    slot->to_room = rb;
+    slot->from_key = ka;
+    slot->to_key = kb;
     slot->gfrom = (int8_t)r->gfrom;
     slot->gto = (int8_t)r->gto;
-    slot->stamp = ++n->cache_clock;
+    slot->stamp = ++q->clock;
     slot->path = r->path;
 }
 
 /* ------------------------------------------------------------ the queue */
 
-uint32_t nav_request(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey, bool priority)
+uint32_t nav_request(NavWorld *n, NavClass cls, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey)
 {
+    NavQueue *q = &n->queues[cls];
     NavRequest *r = NULL;
     for (int i = 0; i < NAV_MAX_REQUESTS && !r; i++) {
-        r = n->reqs[i].state == NAV_REQ_FREE ? &n->reqs[i] : NULL;
+        r = q->reqs[i].state == NAV_REQ_FREE ? &q->reqs[i] : NULL;
     }
     if (!r) {
         return 0;
@@ -484,7 +527,6 @@ uint32_t nav_request(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 t
     r->cpu_ms = 0.0f;
     r->id = n->next_req++;
     r->seq = r->id;
-    r->priority = priority;
     r->from_storey = from_storey;
     r->to_storey = to_storey;
     r->gfrom = nav_grid_index(n, from_storey);
@@ -495,7 +537,7 @@ uint32_t nav_request(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 t
     r->state = NAV_REQ_UNREACHABLE;
     if (r->gfrom >= 0 && r->gto >= 0 && resolve(n, from_pos, r->gfrom, to_pos, r->gto, &r->a, &r->b, &r->ca, &r->cb) &&
         regions_connect(n, r->gfrom, r->gto, r->a, r->b, r->ca, r->cb)) {
-        if (cache_lookup(n, r)) {
+        if (cache_lookup(n, cls, r)) {
             n->stats.cache_hits++;
             r->state = NAV_REQ_READY;
         } else {
@@ -506,18 +548,18 @@ uint32_t nav_request(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 t
     return r->id;
 }
 
-static void request_start_segment(NavWorld *n, NavRequest *r)
+static void request_start_segment(NavWorld *n, NavQueue *q, NavRequest *r)
 {
     if (!r->cross) {
-        search_begin(&r->s, &n->mem[0], &n->grids[r->gfrom], r->a, r->b, r->gfrom, &r->path, true);
+        search_begin(&r->s, &q->mem, &n->grids[r->gfrom], r->a, r->b, r->gfrom, &r->path, true);
     } else if (r->segment == 0) {
-        search_begin(&r->s, &n->mem[0], &n->grids[r->gfrom], r->a, r->ca, r->gfrom, &r->path, true);
+        search_begin(&r->s, &q->mem, &n->grids[r->gfrom], r->a, r->ca, r->gfrom, &r->path, true);
     } else {
-        search_begin(&r->s, &n->mem[0], &n->grids[r->gto], r->cb, r->b, r->gto, &r->path, false);
+        search_begin(&r->s, &q->mem, &n->grids[r->gto], r->cb, r->b, r->gto, &r->path, false);
     }
 }
 
-/* After a slice that did not finish: a path towards the best cell so far. */
+/* After a slice that did not finish: the first leg towards the best cell so far. */
 static void publish_partial(NavRequest *r)
 {
     NavSearch *s = &r->s;
@@ -537,94 +579,106 @@ static void publish_partial(NavRequest *r)
     const NavGrid *g = s->g;
     NavCell anchor = s->a;
     add_point(p, g, anchor, s->storey);
-    for (int i = len - 1; i > 0;) {
-        int j = i - 1;
+    if (len > 1) {
+        int j = len - 2;
         while (j > 0 && line_clear(g, anchor, node_cell(g, cells[j - 1]))) {
             j--;
         }
         anchor = node_cell(g, cells[j]);
-        add_point(p, g, anchor, s->storey);
-        break; /* the first waypoint is all the walker needs until the real path lands */
+        add_point(p, g, anchor, s->storey); /* the first waypoint is all the walker needs */
     }
     r->has_partial = p->count >= 2;
 }
 
-static NavRequest *next_request(NavWorld *n)
+/* oldest first */
+static NavRequest *next_request(NavQueue *q)
 {
     NavRequest *best = NULL;
     for (int i = 0; i < NAV_MAX_REQUESTS; i++) {
-        NavRequest *r = &n->reqs[i];
-        if (r->state == NAV_REQ_QUEUED && (!best || (r->priority && !best->priority) ||
-                                           (r->priority == best->priority && r->seq < best->seq))) {
+        NavRequest *r = &q->reqs[i];
+        if (r->state == NAV_REQ_QUEUED && (!best || r->seq < best->seq)) {
             best = r;
         }
     }
     return best;
 }
 
-void nav_service(NavWorld *n, double budget_ms)
+void nav_service(NavWorld *n, NavClass cls, double budget_ms, int max_expansions, int max_paths)
 {
-    const double t0 = mg_time_now(), deadline = t0 + budget_ms * 0.001;
-    while (mg_time_now() < deadline) {
-        NavRequest *r = n->running >= 0 ? &n->reqs[n->running] : NULL;
+    NavQueue *q = &n->queues[cls];
+    const double t0 = mg_time_now(), deadline = budget_ms > 0.0 ? t0 + budget_ms * 0.001 : 0.0;
+    int left = max_expansions, finished = 0;
+    int *cap = max_expansions > 0 ? &left : NULL;
+    for (;;) {
+        if ((deadline > 0.0 && mg_time_now() >= deadline) || (cap && left <= 0) || (max_paths > 0 && finished >= max_paths)) {
+            break;
+        }
+        NavRequest *r = q->running >= 0 ? &q->reqs[q->running] : NULL;
         if (!r) {
-            r = next_request(n);
+            r = next_request(q);
             if (!r) {
                 break;
             }
-            n->running = (int)(r - n->reqs);
+            q->running = (int)(r - q->reqs);
             r->state = NAV_REQ_RUNNING;
             r->segment = 0;
-            request_start_segment(n, r);
+            request_start_segment(n, q, r);
         }
         const double slice0 = mg_time_now();
-        search_run(&r->s, deadline);
+        search_run(&r->s, deadline, cap);
         if (r->s.phase == NAV_PHASE_SEARCH || r->s.phase == NAV_PHASE_PULL) {
-            publish_partial(r);
+            if (cls == NAV_CLASS_PLAYER) {
+                publish_partial(r);
+            }
             r->cpu_ms += (float)((mg_time_now() - slice0) * 1000.0);
-            break; /* out of budget: carry on next frame */
+            break; /* out of budget: carry on next call */
         }
         r->cpu_ms += (float)((mg_time_now() - slice0) * 1000.0);
         if (r->s.phase == NAV_PHASE_FAILED) {
             r->state = NAV_REQ_UNREACHABLE;
             path_reset(&r->path);
-            n->running = -1;
+            q->running = -1;
         } else if (r->cross && r->segment == 0) {
             r->path.ride_at = r->path.count - 1;
             r->path.ride_from = r->gfrom;
             r->path.ride_to = r->gto;
             add_point(&r->path, &n->grids[r->gto], r->cb, r->gto);
             r->segment = 1;
-            request_start_segment(n, r);
+            request_start_segment(n, q, r);
         } else {
             r->path.length = path_length(&r->path);
             r->state = NAV_REQ_READY;
-            n->running = -1;
-            cache_store(n, r);
-            n->stats.longest_ms = r->cpu_ms > n->stats.longest_ms ? r->cpu_ms : n->stats.longest_ms;
-            n->path_ms = r->cpu_ms;
+            q->running = -1;
+            finished++;
+            cache_store(n, cls, r);
+            if (cls == NAV_CLASS_PLAYER) {
+                n->stats.longest_ms = r->cpu_ms > n->stats.longest_ms ? r->cpu_ms : n->stats.longest_ms;
+                n->path_ms = r->cpu_ms;
+            }
         }
     }
-    float spent = (float)((mg_time_now() - t0) * 1000.0);
-    n->stats.worst_frame_ms = spent > n->stats.worst_frame_ms ? spent : n->stats.worst_frame_ms;
+    if (cls == NAV_CLASS_PLAYER) {
+        float spent = (float)((mg_time_now() - t0) * 1000.0);
+        n->stats.worst_frame_ms = spent > n->stats.worst_frame_ms ? spent : n->stats.worst_frame_ms;
+    }
 }
 
-static NavRequest *find_request(NavWorld *n, uint32_t id)
+static NavRequest *find_request(NavQueue *q, uint32_t id)
 {
     for (int i = 0; id && i < NAV_MAX_REQUESTS; i++) {
-        if (n->reqs[i].id == id && n->reqs[i].state != NAV_REQ_FREE) {
-            return &n->reqs[i];
+        if (q->reqs[i].id == id && q->reqs[i].state != NAV_REQ_FREE) {
+            return &q->reqs[i];
         }
     }
     return NULL;
 }
 
-NavStatus nav_poll(NavWorld *n, uint32_t id, NavPath *path, bool *partial)
+NavStatus nav_poll(NavWorld *n, NavClass cls, uint32_t id, NavPath *path, bool *partial)
 {
     if (partial) {
         *partial = false;
     }
-    NavRequest *r = find_request(n, id);
+    NavRequest *r = find_request(&n->queues[cls], id);
     if (!r) {
         return NAV_STATUS_NONE;
     }
@@ -647,12 +701,13 @@ NavStatus nav_poll(NavWorld *n, uint32_t id, NavPath *path, bool *partial)
     return NAV_STATUS_PENDING;
 }
 
-void nav_cancel(NavWorld *n, uint32_t id)
+void nav_cancel(NavWorld *n, NavClass cls, uint32_t id)
 {
-    NavRequest *r = find_request(n, id);
+    NavQueue *q = &n->queues[cls];
+    NavRequest *r = find_request(q, id);
     if (r) {
-        if (n->running == (int)(r - n->reqs)) {
-            n->running = -1;
+        if (q->running == (int)(r - q->reqs)) {
+            q->running = -1;
         }
         r->state = NAV_REQ_FREE;
     }
