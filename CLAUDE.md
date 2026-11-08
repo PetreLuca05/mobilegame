@@ -449,6 +449,11 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   meshes have too few vertices for it to look right.
 - Thermal state serious or worse: NPC detail radius 22 -> 11 m and MSAA off, logged (`update_thermal` in `game.c`).
 
+## Commit rules
+
+- `tools/hooks/pre-commit` (`git config core.hooksPath tools/hooks`) runs `tools/precommit.sh`: it builds exactly what is staged for desktop and refuses the commit on any error or warning. Never use `--no-verify`.
+- Before any `checkout`, `reset`, `stash drop`, `clean` or branch switch, commit the working tree as `wip: <step>` (squash later).
+
 ## Conventions
 
 - C11, plain C, small files. No heap allocation in the frame loop: use
