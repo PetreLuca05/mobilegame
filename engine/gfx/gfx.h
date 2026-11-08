@@ -41,6 +41,7 @@ typedef enum GfxMaterialKind {
     GFX_MAT_TEXT,   /* world-space SDF glyph quads (signs), UV in the normal, alpha-blended */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */
+    GFX_MAT_XRAY,   /* ghost drawn only where something is in front (avatars behind walls) */
     GFX_MAT_COUNT
 } GfxMaterialKind;
 

@@ -185,6 +185,18 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   pivot follows, so the view floor and the fades switch as it passes each
   slab. No fade to black; Developer -> Teleport stays instant.
 
+- Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
+  edge; holding a row views that storey, a tap keeps it for the hold time
+  (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the
+  fades follow the peeked storey. On a hidden storey the local avatar is a
+  dithered ghost drawn on the peeked plan; behind walls a capsule x-ray
+  (`GFX_MAT_XRAY`: depth GREATER, drawn last) shows where the player is.
+  Desktop `--peek F`.
+- Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
+  avatars on the view floor; own tag off by default ("Show my name tag").
+- Prefs keys (M5): `cam_distance`, `cam_yaw_lock`, `cam_pitch_override`,
+  `show_floor_peek`, `floor_peek_hold`, `show_own_name`.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

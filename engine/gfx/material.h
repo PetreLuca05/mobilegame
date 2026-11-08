@@ -15,11 +15,14 @@ typedef struct MaterialProgram {
     bool depth_write;
     bool cull_back;
     bool cull_front;     /* inverted hull (outlines) */
+    bool depth_greater;  /* x-ray: only behind what is already drawn */
 } MaterialProgram;
 
 const MaterialProgram *material_program(GfxMaterialKind kind);
 
 GfxMaterial mat_unlit(HMM_Vec4 color);
+/* Silhouette of the hidden parts of a mesh (drawn after everything else). */
+GfxMaterial mat_xray(HMM_Vec4 color);
 GfxMaterial mat_toon(HMM_Vec4 color, float rim); /* matte */
 GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss); /* gloss 0..1: specular spot */
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */

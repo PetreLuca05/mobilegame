@@ -415,10 +415,15 @@ typedef struct DrawCtx {
     GfxContext *g;
     uint32_t flags;  /* GFX_DRAW_* for every part */
     float outdoor;   /* tint alpha: 1 sun, 0 indoor light */
+    const GfxMaterial *override; /* ghost / x-ray pass: every part with this */
 } DrawCtx;
 
 static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, Surface surf)
 {
+    if (dc->override) {
+        gfx_draw(dc->g, mesh, &m, dc->override, dc->flags);
+        return;
+    }
     HMM_Vec4 c = mg_rgb(color);
     c.W = dc->outdoor;
     GfxMaterial mat = surf == SURF_FLAT     ? mat_toon_flat(c)
@@ -431,14 +436,21 @@ static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, 
 static void outlined(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color)
 {
     part(dc, mesh, m, color, SURF_MATTE);
+    if (dc->override) {
+        return;
+    }
     GfxMaterial ol = mat_outline(mg_rgb(OUTLINE_COLOR));
     gfx_draw(dc->g, mesh, &m, &ol, dc->flags);
 }
 
-void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
-                 const AvatarAnim *a, const ColWorld *world)
+static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
+                        const AvatarAnim *a, const ColWorld *world, const GfxMaterial *override)
 {
-    const DrawCtx dc = {g, p->preview ? GFX_DRAW_PREVIEW : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC, p->indoors ? 0.0f : 1.0f};
+    const DrawCtx dc = {g,
+                        override        ? GFX_DRAW_NO_SHADOW
+                        : p->preview    ? GFX_DRAW_PREVIEW
+                                        : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC,
+                        p->indoors ? 0.0f : 1.0f, override};
     HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(p->yaw, HMM_V3(0, 1, 0)));
     const float phase = a->stride * (2.0f * HMM_PI32 / 1.6f); /* one bob cycle per 0.8 m step */
     float bob = (0.02f * HMM_SinF(phase * 2.0f)) * a->swing + 0.008f * HMM_SinF(a->idle_t * 2.4f) * (1.0f - a->swing);
@@ -516,13 +528,25 @@ void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, c
 
     /* contact shadow: shrinks and fades with height above the ground */
     float ground = p->feet.Y;
-    if (world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground)) {
+    if (!override && world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground)) {
         float h = mg_maxf(p->feet.Y - ground, 0.0f);
         float k = 1.0f / (1.0f + h * 0.8f);
         HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + 0.02f, p->feet.Z)); /* above decals */
         sm = HMM_MulM4(sm, HMM_Rotate_RH(HMM_AngleDeg(-90.0f), HMM_V3(1, 0, 0)));
-        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.42f * k, 0.42f * k, 1.0f)));
+        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k, 0.46f * k, 1.0f))); /* +10 % for the top-down view */
         GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, 0.45f * k), GFX_SPRITE_DISC);
         gfx_draw(g, m->shadow, &sm, &sh, 0);
     }
+}
+
+void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
+                 const AvatarAnim *a, const ColWorld *world)
+{
+    draw_avatar(g, m, look, p, a, world, NULL);
+}
+
+void avatar_draw_with(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
+                      const AvatarAnim *a, const GfxMaterial *mat)
+{
+    draw_avatar(g, m, look, p, a, NULL, mat);
 }

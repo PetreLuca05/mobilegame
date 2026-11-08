@@ -8,6 +8,7 @@ static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_TEXT] = {"mesh.vert", "text.frag", 2, 1, 1, true, false, false},
     [GFX_MAT_SPRITE] = {"mesh.vert", "sprite.frag", 2, 1, 0, true, false, false},
     [GFX_MAT_GHOST] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, false},
+    [GFX_MAT_XRAY] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, true, false, true},
 };
 
 const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_programs[kind]; }
@@ -76,5 +77,11 @@ GfxMaterial mat_ghost(HMM_Vec4 color)
 GfxMaterial mat_sprite(HMM_Vec4 color, float shape)
 {
     GfxMaterial m = {GFX_MAT_SPRITE, color, HMM_V4(shape, 0, 0, 0)};
+    return m;
+}
+
+GfxMaterial mat_xray(HMM_Vec4 color)
+{
+    GfxMaterial m = {GFX_MAT_XRAY, color, HMM_V4(0, 0, 0, 0)};
     return m;
 }

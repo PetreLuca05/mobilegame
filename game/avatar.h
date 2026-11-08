@@ -79,5 +79,9 @@ const char *avatar_accessory_name(int i);
 void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt);
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                  const AvatarAnim *a, const ColWorld *world);
+/* Every part with one material, no outlines or contact shadow: the x-ray
+ * silhouette behind walls (mat_xray) or the ghost on a hidden storey. */
+void avatar_draw_with(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
+                      const AvatarAnim *a, const GfxMaterial *mat);
 
 #endif

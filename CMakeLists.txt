@@ -126,6 +126,7 @@ add_library(mg_engine STATIC
   engine/ui/text.c
   engine/ui/widgets.c
   engine/ui/touch_controls.c
+  engine/ui/floorpeek.c
   engine/ui/hud.c
   engine/platform/secure_store.c
   engine/platform/google_auth.c

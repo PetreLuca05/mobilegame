@@ -16,6 +16,9 @@ typedef struct GameSettings {
     float cam_fov_td;       /* top-down vertical FOV, 32 (debug) */
     bool show_pivot;        /* top-down pivot marker (debug) */
     bool show_storeys;      /* colour meshes by storey id (debug) */
+    bool show_floor_peek;   /* storey selector on the left edge */
+    float floor_peek_hold;  /* s a tapped peek lasts: 0, 3, 10 */
+    bool show_own_name;     /* name tag over the local player */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */
     float dead_zone_pt;     /* 60 */
@@ -47,6 +50,9 @@ static inline void settings_default(GameSettings *s)
     s->cam_fov_td = 32.0f;
     s->show_pivot = false;
     s->show_storeys = false;
+    s->show_floor_peek = true;
+    s->floor_peek_hold = 3.0f;
+    s->show_own_name = false;
     s->cam_pitch_deg = -20.0f;
     s->fov_deg = 55.0f;
     s->dead_zone_pt = 60.0f;

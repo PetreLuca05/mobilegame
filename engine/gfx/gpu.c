@@ -279,6 +279,7 @@ typedef struct PipeDesc {
     SDL_GPUTextureFormat depth_override;
     bool depth_bias;
     bool depth_always;     /* tile clear: write depth whatever is there */
+    bool depth_greater;    /* x-ray material */
 } PipeDesc;
 
 static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
@@ -337,7 +338,9 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     ci.multisample_state.sample_count = d->samples;
     ci.depth_stencil_state.enable_depth_test = d->depth_test;
     ci.depth_stencil_state.enable_depth_write = d->depth_write;
-    ci.depth_stencil_state.compare_op = d->depth_always ? SDL_GPU_COMPAREOP_ALWAYS : SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    ci.depth_stencil_state.compare_op = d->depth_always    ? SDL_GPU_COMPAREOP_ALWAYS
+                                        : d->depth_greater ? SDL_GPU_COMPAREOP_GREATER
+                                                           : SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
     ci.target_info.color_target_descriptions = d->depth_only ? NULL : &ctd;
     ci.target_info.num_color_targets = d->depth_only ? 0 : 1;
     ci.target_info.depth_stencil_format = d->no_depth          ? SDL_GPU_TEXTUREFORMAT_INVALID
@@ -381,6 +384,7 @@ static bool create_pipelines(GfxContext *g)
                 .front = front,
                 .color_fmt = fmt,
                 .samples = samples,
+                .depth_greater = mp->depth_greater,
             };
             g->pipes[t].mat[k] = make_pipeline(g, &d);
             if (!g->pipes[t].mat[k]) {

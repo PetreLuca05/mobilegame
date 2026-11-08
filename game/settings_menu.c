@@ -49,6 +49,21 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step + 4.0f;
     ui_toggle(ui, "Lock camera north", cx, cy, cw, &s->cam_yaw_lock);
     cy += 44.0f;
+    ui_toggle(ui, "Show floor peek", cx, cy, cw, &s->show_floor_peek);
+    cy += 44.0f;
+    ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, "Floor peek hold time");
+    cy += 22.0f;
+    static const float holds[3] = {0.0f, 3.0f, 10.0f};
+    static const char *const hold_labels[3] = {"0 s##peek", "3 s##peek", "10 s##peek"};
+    float hw = (cw - 16.0f) / 3.0f;
+    for (int i = 0; i < 3; i++) {
+        if (ui_button(ui, hold_labels[i], cx + (float)i * (hw + 8.0f), cy, hw, 40.0f, s->floor_peek_hold == holds[i])) {
+            s->floor_peek_hold = holds[i];
+        }
+    }
+    cy += 52.0f;
+    ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
+    cy += 44.0f;
 #else
     ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
