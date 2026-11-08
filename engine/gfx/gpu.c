@@ -65,7 +65,8 @@ typedef struct GfxInstance {
     HMM_Vec4 tint;
     HMM_Vec4 params; /* x rim, y gloss, z emissive (< 0 flat colour), w hide */
 } GfxInstance;
-#define GFX_MAX_INSTANCES GFX_MAX_DRAWS
+#define GFX_MAX_INSTANCES 4096
+#define GFX_BUFFER_RING 4 /* more than the frames in flight: uploads never need SDL to allocate another buffer */
 
 typedef struct DrawVSUniforms {
     HMM_Mat4 model;
@@ -198,9 +199,9 @@ struct GfxContext {
     GfxMeshRec meshes[GFX_MAX_MESHES];
     uint32_t mesh_count;
 
-    SDL_GPUBuffer *ui_vb;
+    SDL_GPUBuffer *ui_vb_ring[GFX_BUFFER_RING];
     SDL_GPUBuffer *ui_ib;
-    SDL_GPUTransferBuffer *ui_tb;
+    SDL_GPUTransferBuffer *ui_tb_ring[GFX_BUFFER_RING];
     GfxUiVertex *ui_verts;
     uint32_t ui_quads;
     float ui_w_pt, ui_h_pt;
@@ -257,8 +258,9 @@ struct GfxContext {
     uint32_t *run_first;   /* first instance of that run */
     GfxInstance *inst;
     uint32_t inst_count;
-    SDL_GPUBuffer *inst_vb;
-    SDL_GPUTransferBuffer *inst_tb;
+    SDL_GPUBuffer *inst_vb[GFX_BUFFER_RING];
+    SDL_GPUTransferBuffer *inst_tb[GFX_BUFFER_RING];
+    uint32_t ring;
     SDL_GPUGraphicsPipeline *inst_pipe[GFX_MAT_COUNT][2]; /* opaque, dithered; NULL = per-draw path */
     SDL_GPUGraphicsPipeline *floor_dither;
     uint32_t draw_count;
@@ -898,14 +900,22 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     SDL_GPUBufferCreateInfo uici = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_MAX_UI_QUADS * 6 * sizeof(uint16_t), 0};
     SDL_GPUTransferBufferCreateInfo utci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
                                             GFX_MAX_UI_QUADS * 4 * sizeof(GfxUiVertex), 0};
-    g->ui_vb = SDL_CreateGPUBuffer(g->dev, &uvci);
+    for (int i = 0; i < GFX_BUFFER_RING; i++) {
+        g->ui_vb_ring[i] = SDL_CreateGPUBuffer(g->dev, &uvci);
+        g->ui_tb_ring[i] = SDL_CreateGPUTransferBuffer(g->dev, &utci);
+    }
     g->ui_ib = SDL_CreateGPUBuffer(g->dev, &uici);
-    g->ui_tb = SDL_CreateGPUTransferBuffer(g->dev, &utci);
     SDL_GPUBufferCreateInfo ivci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_INSTANCES * (uint32_t)sizeof(GfxInstance), 0};
-    g->inst_vb = SDL_CreateGPUBuffer(g->dev, &ivci);
+    for (int i = 0; i < GFX_BUFFER_RING; i++) {
+        g->inst_vb[i] = SDL_CreateGPUBuffer(g->dev, &ivci);
     SDL_GPUTransferBufferCreateInfo itci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, GFX_MAX_INSTANCES * (uint32_t)sizeof(GfxInstance), 0};
-    g->inst_tb = SDL_CreateGPUTransferBuffer(g->dev, &itci);
-    if (!g->vb || !g->ib || !g->ui_vb || !g->ui_ib || !g->ui_tb) {
+        g->inst_tb[i] = SDL_CreateGPUTransferBuffer(g->dev, &itci);
+    }
+    bool ring_ok = true;
+    for (int i = 0; i < GFX_BUFFER_RING; i++) {
+        ring_ok = ring_ok && g->ui_vb_ring[i] && g->ui_tb_ring[i] && g->inst_vb[i] && g->inst_tb[i];
+    }
+    if (!g->vb || !g->ib || !g->ui_ib || !ring_ok) {
         mg_log_error("gfx: buffer creation failed: %s", SDL_GetError());
         return false;
     }
@@ -1033,9 +1043,13 @@ void gfx_shutdown(GfxContext *g)
     release_pipelines(g);
     SDL_ReleaseGPUBuffer(g->dev, g->vb);
     SDL_ReleaseGPUBuffer(g->dev, g->ib);
-    SDL_ReleaseGPUBuffer(g->dev, g->ui_vb);
+    for (int i = 0; i < GFX_BUFFER_RING; i++) {
+        SDL_ReleaseGPUBuffer(g->dev, g->ui_vb_ring[i]);
+        SDL_ReleaseGPUTransferBuffer(g->dev, g->ui_tb_ring[i]);
+        SDL_ReleaseGPUBuffer(g->dev, g->inst_vb[i]);
+        SDL_ReleaseGPUTransferBuffer(g->dev, g->inst_tb[i]);
+    }
     SDL_ReleaseGPUBuffer(g->dev, g->ui_ib);
-    SDL_ReleaseGPUTransferBuffer(g->dev, g->ui_tb);
     if (g->ui_atlas) {
         SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
     }
@@ -1314,6 +1328,9 @@ static void build_instances(GfxContext *g)
                 draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count) {
                 break;
             }
+            if (g->inst_count >= GFX_MAX_INSTANCES) {
+                break;
+            }
             GfxInstance *o = &g->inst[g->inst_count++];
             for (int r = 0; r < 3; r++) {
                 o->row[r] = HMM_V4(e->model.Columns[0].Elements[r], e->model.Columns[1].Elements[r], e->model.Columns[2].Elements[r],
@@ -1336,13 +1353,14 @@ static void upload_instances(GfxContext *g)
         return;
     }
     uint32_t bytes = g->inst_count * (uint32_t)sizeof(GfxInstance);
-    void *map = SDL_MapGPUTransferBuffer(g->dev, g->inst_tb, true);
+    const uint32_t r = g->ring % GFX_BUFFER_RING;
+    void *map = SDL_MapGPUTransferBuffer(g->dev, g->inst_tb[r], false);
     memcpy(map, g->inst, bytes);
-    SDL_UnmapGPUTransferBuffer(g->dev, g->inst_tb);
+    SDL_UnmapGPUTransferBuffer(g->dev, g->inst_tb[r]);
     SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
-    SDL_GPUTransferBufferLocation src = {g->inst_tb, 0};
-    SDL_GPUBufferRegion region = {g->inst_vb, 0, bytes};
-    SDL_UploadToGPUBuffer(cp, &src, &region, true);
+    SDL_GPUTransferBufferLocation src = {g->inst_tb[r], 0};
+    SDL_GPUBufferRegion region = {g->inst_vb[r], 0, bytes};
+    SDL_UploadToGPUBuffer(cp, &src, &region, false);
     SDL_EndGPUCopyPass(cp);
     g->stats.uniform_bytes += bytes;
 }
@@ -1412,7 +1430,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     uint32_t count = 0;
     const bool can_instance = target == TARGET_MAIN && !preview && g->inst_count > 0;
     if (can_instance) {
-        SDL_GPUBufferBinding ivb = {g->inst_vb, 0};
+        SDL_GPUBufferBinding ivb = {g->inst_vb[g->ring % GFX_BUFFER_RING], 0};
         SDL_BindGPUVertexBuffers(pass, 1, &ivb, 1);
     }
     for (uint32_t i = 0; i < g->draw_count; i++) {
@@ -2109,13 +2127,14 @@ static void frame_end(GfxContext *g)
     /* UI vertices for this frame */
     if (g->ui_quads > 0) {
         uint32_t bytes = g->ui_quads * 4 * (uint32_t)sizeof(GfxUiVertex);
-        void *map = SDL_MapGPUTransferBuffer(g->dev, g->ui_tb, true);
+        const uint32_t r = g->ring % GFX_BUFFER_RING;
+        void *map = SDL_MapGPUTransferBuffer(g->dev, g->ui_tb_ring[r], false);
         memcpy(map, g->ui_verts, bytes);
-        SDL_UnmapGPUTransferBuffer(g->dev, g->ui_tb);
+        SDL_UnmapGPUTransferBuffer(g->dev, g->ui_tb_ring[r]);
         SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
-        SDL_GPUTransferBufferLocation src = {g->ui_tb, 0};
-        SDL_GPUBufferRegion region = {g->ui_vb, 0, bytes};
-        SDL_UploadToGPUBuffer(cp, &src, &region, true);
+        SDL_GPUTransferBufferLocation src = {g->ui_tb_ring[r], 0};
+        SDL_GPUBufferRegion region = {g->ui_vb_ring[r], 0, bytes};
+        SDL_UploadToGPUBuffer(cp, &src, &region, false);
         SDL_EndGPUCopyPass(cp);
     }
 
@@ -2262,7 +2281,7 @@ static void frame_end(GfxContext *g)
         HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
         SDL_BindGPUGraphicsPipeline(pass, scaled ? g->ui_pipe_direct : g->ui_pipe);
         SDL_PushGPUVertexUniformData(g->cmd, 0, &screen, sizeof(screen));
-        SDL_GPUBufferBinding vbb = {g->ui_vb, 0};
+        SDL_GPUBufferBinding vbb = {g->ui_vb_ring[g->ring % GFX_BUFFER_RING], 0};
         SDL_GPUBufferBinding ibb = {g->ui_ib, 0};
         SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
         SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
@@ -2325,6 +2344,7 @@ void gfx_frame_end(GfxContext *g)
         prof_allocs_exempt(true);
     }
     frame_end(g);
+    g->ring++;
     if (shot) {
         prof_allocs_exempt(false);
     }
@@ -2353,6 +2373,6 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->mesh_ib_reserved = GFX_IB_BYTES;
     o->mesh_vb_used = g->vb_used;
     o->mesh_ib_used = g->ib_used;
-    o->ui_buffers = GFX_MAX_UI_QUADS * 4u * sizeof(GfxUiVertex) * 2u + GFX_MAX_UI_QUADS * 6u * sizeof(uint16_t);
-    o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u;
+    o->ui_buffers = GFX_MAX_UI_QUADS * 4u * sizeof(GfxUiVertex) * 2u * GFX_BUFFER_RING + GFX_MAX_UI_QUADS * 6u * sizeof(uint16_t);
+    o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u * GFX_BUFFER_RING;
 }

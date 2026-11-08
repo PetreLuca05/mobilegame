@@ -138,6 +138,15 @@ static void write_report(const PerfRun *p, MgApp *app)
         fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse);
     PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n\"heap_allocs_screenshot\": %u,\n",
         p->thermal_worst, (double)p->resident_max, prof_allocs_run(), prof_alloc_frames_run(), prof_allocs_exempt_run());
+    PUT("\"heap_alloc_sites\": [");
+    {
+        const char *site;
+        uint32_t site_bytes;
+        for (int i = 0; prof_alloc_site(i, &site, &site_bytes); i++) {
+            PUT("%s\"%s:%u\"", i ? ", " : "", site, site_bytes);
+        }
+    }
+    PUT("],\n");
     PUT("\"entities_sim_max\": %u,\n\"entities_rendered_max\": %u,\n\"route_failures\": %d,\n", p->sim_max, p->rendered_max, p->failed);
     {
         GfxMemory gm;

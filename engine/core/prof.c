@@ -34,38 +34,44 @@ static struct {
     ProfFrames intervals;
     uint32_t allocs, allocs_last, allocs_run, alloc_frames, exempt_run;
     int exempt;
+    struct { const char *scope; uint32_t bytes; } sites[8];
+    int site_count;
     SDL_malloc_func real_malloc;
     SDL_calloc_func real_calloc;
     SDL_realloc_func real_realloc;
     SDL_free_func real_free;
 } P;
 
-static void count_alloc(void)
+static void count_alloc(size_t bytes)
 {
     if (P.in_frame && SDL_GetCurrentThreadID() == P.main_thread) {
         if (P.exempt > 0) {
             P.exempt_run++;
         } else {
             P.allocs++;
+            if (P.site_count < 8) {
+                P.sites[P.site_count].scope = P.sp > 0 ? P.scopes[P.stack[P.sp - 1]].name : "frame";
+                P.sites[P.site_count++].bytes = (uint32_t)bytes;
+            }
         }
     }
 }
 
 static void *SDLCALL hook_malloc(size_t n)
 {
-    count_alloc();
+    count_alloc(n);
     return P.real_malloc(n);
 }
 
 static void *SDLCALL hook_calloc(size_t a, size_t b)
 {
-    count_alloc();
+    count_alloc(a * b);
     return P.real_calloc(a, b);
 }
 
 static void *SDLCALL hook_realloc(void *p, size_t n)
 {
-    count_alloc();
+    count_alloc(n);
     return P.real_realloc(p, n);
 }
 
@@ -220,6 +226,7 @@ void prof_run_reset(void)
     P.run_frames = 0;
     SDL_memset(&P.intervals, 0, sizeof(P.intervals));
     P.allocs_run = P.alloc_frames = P.exempt_run = 0;
+    P.site_count = 0;
 }
 
 int prof_run_rows(ProfRow *out, int max)
@@ -248,5 +255,15 @@ uint32_t prof_allocs_run(void) { return P.allocs_run; }
 uint32_t prof_alloc_frames_run(void) { return P.alloc_frames; }
 void prof_allocs_exempt(bool on) { P.exempt += on ? 1 : -1; }
 uint32_t prof_allocs_exempt_run(void) { return P.exempt_run; }
+
+bool prof_alloc_site(int i, const char **scope, uint32_t *bytes)
+{
+    if (i >= P.site_count) {
+        return false;
+    }
+    *scope = P.sites[i].scope;
+    *bytes = P.sites[i].bytes;
+    return true;
+}
 
 #endif

@@ -58,6 +58,8 @@ uint32_t prof_allocs_run(void);          /* inside the frame loop since prof_run
  * their own counter and cannot fail the gate. */
 void prof_allocs_exempt(bool on);
 uint32_t prof_allocs_exempt_run(void);
+/* The first allocations of the run: size and the scope they happened in. False past the end. */
+bool prof_alloc_site(int i, const char **scope, uint32_t *bytes);
 uint32_t prof_alloc_frames_run(void);    /* frames with at least one */
 
 #else
@@ -77,6 +79,7 @@ static inline uint32_t prof_allocs_run(void) { return 0; }
 static inline uint32_t prof_alloc_frames_run(void) { return 0; }
 static inline void prof_allocs_exempt(bool on) { (void)on; }
 static inline uint32_t prof_allocs_exempt_run(void) { return 0; }
+static inline bool prof_alloc_site(int i, const char **scope, uint32_t *bytes) { (void)i; (void)scope; (void)bytes; return false; }
 
 #endif
 #endif

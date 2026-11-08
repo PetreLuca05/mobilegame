@@ -17,7 +17,7 @@ TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
 BUDGETS = {"cpu_tick_ms": (5.0, False), "npc_ms": (2.0, True), "render_ms": (2.0, False), "gpu_effective_ms": (8.0, False),
-           "draws": (150, False), "heap_allocs": (0, False), "memory_mb": (300, False)}
+           "draws": (150, False), "heap_allocs": (0, False), "memory_mb": (300, False), "dropped": (0, False)}
 
 
 def load(path, problems):
