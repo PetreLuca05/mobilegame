@@ -338,6 +338,9 @@ static void build_yard(Build *b, Hospital *h)
             }
         }
     }
+    /* the gate stays open to look at, but nobody walks out of the yard
+     * (there is no ground out there) */
+    blocker(b, -2.0f, 0.0f, hz + 0.3f, 2.0f, 2.0f, hz + 0.5f);
     for (int s = -1; s <= 1; s += 2) { /* gate posts */
         box(b, HM_YARD, (float)s * 2.0f - 0.1f, 0.0f, hz - 0.1f, (float)s * 2.0f + 0.1f, 1.5f, hz + 0.1f, C_FENCE,
             F_ALL, true);

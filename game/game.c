@@ -25,6 +25,7 @@
 #include "frontend.h"
 #include "modes.h"
 #include "prefs.h"
+#include "save.h"
 #include "strings.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
@@ -70,7 +71,7 @@ typedef struct Game {
     bool playing;          /* in the hospital (else the front end) */
     bool play_paused;      /* front end opened from the game (edit character) */
     int load_step;
-    int pending_play;      /* what LOADING leads to: 0 offline, 1 create room, 2 join room */
+    int pending_play;      /* what LOADING leads to: 0 new game, 1 create room, 2 join room, 3 continue */
     char status[96];
     Autotest autotest;
     Audio *audio;
@@ -88,6 +89,10 @@ typedef struct Game {
     bool google_busy;      /* sign-in sheet open or link request in flight */
     bool skin_override;
     bool has_save;         /* save_slot0.bin exists (Continue) */
+    bool offline_play;     /* New Game / Continue: saves, no room */
+    double next_save;
+    SaveGame save;         /* loaded on Continue; progress kept here */
+    uint32_t save_play_base, save_rides_base;
     char pending_name[64]; /* Apple full name from the first sign-in */    /* desktop --skin P,H,A: local only, never saved */
     NetSkin override_skin;
     int last_ride_count; /* elevator rides already counted */
@@ -167,6 +172,7 @@ bool game_init(MgApp *app)
     kinematic_default_params(&g->kparams);
     prefs_load(&g->prefs, g->profile_name);
     g->settings = g->prefs.settings; /* per device */
+    g->has_save = save_exists(g->profile_name);
     touch_controls_default_config(&g->touch_cfg);
     if (!PLAYER_JUMP_ENABLED) {
         g->touch_cfg.jump_size_pt = 0.0f; /* no jump button */
@@ -246,6 +252,12 @@ bool game_init(MgApp *app)
             }
         }
     }
+    const char *play_arg = arg_value(app->argc, app->argv, "--play"); /* desktop: new | continue */
+    if (play_arg && !play_now) {
+        g->pending_play = SDL_strcmp(play_arg, "continue") == 0 ? 3 : 0;
+        g->load_step = 0;
+        g->fe.state = FE_LOADING;
+    }
     if (play_now) {
         if (!ensure_world(g, app)) {
             return false;
@@ -297,6 +309,12 @@ void game_tick(MgApp *app)
     }
     player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
     stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
+    if (g->offline_play && scene_indoors(g->scene, g->player.kin.pos)) { /* rooms visited: storey x chunk */
+        HMM_Vec3 p = g->player.kin.pos;
+        int col = (int)mg_clampf((p.X + 15.0f) / 3.75f, 0.0f, 7.0f);
+        int bit = scene_floor_of(g->scene, p) * 16 + col + (p.Z > -9.4f ? 8 : 0);
+        g->save.visited_rooms |= 1ull << (bit & 63);
+    }
 }
 
 static void update_fly_camera(Game *g, MgApp *app)
@@ -377,13 +395,30 @@ static void profile_changed(Game *g)
     save_prefs(g);
 }
 
+/* Offline game -> save_slot0.bin (position, floor, time, rides, rooms). */
+static void write_save(Game *g)
+{
+    if (!g->playing || !g->offline_play || !g->scene) {
+        return;
+    }
+    SaveGame *s = &g->save;
+    s->pos = g->player.kin.pos;
+    s->yaw = g->player.yaw;
+    s->floor = (uint32_t)scene_floor_of(g->scene, g->player.kin.pos);
+    s->play_seconds = g->save_play_base + (uint32_t)g->stats.play_seconds;
+    s->elevator_rides = g->save_rides_base + (uint32_t)g->stats.rides;
+    g->has_save = save_write(s, g->profile_name) || g->has_save;
+}
+
 /* Back to the main menu from the hospital (multiplayer: leave the room). */
 static void leave_play(Game *g, MgApp *app)
 {
     (void)app;
+    write_save(g);
     session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
     session_stop(&g->session);
     g->playing = false;
+    g->offline_play = false;
     g->play_paused = false;
     g->menu.open = false;
     g->fe.depth = 0;
@@ -649,6 +684,24 @@ static void load_step(Game *g, MgApp *app)
         break;
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
+        g->offline_play = g->pending_play == 0 || g->pending_play == 3;
+        g->save_play_base = g->save_rides_base = 0;
+        if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
+            player_init(&g->player, g->save.pos, g->save.yaw);
+            Elevator *el = scene_elevator(g->scene);
+            if (el && g->save.floor > 0) {
+                elevator_place(el, (int)g->save.floor < el->floors ? (int)g->save.floor : 0);
+            }
+            g->save_play_base = g->save.play_seconds - (uint32_t)g->stats.play_seconds;
+            g->save_rides_base = g->save.elevator_rides - (uint32_t)g->stats.rides;
+        } else if (g->pending_play == 0) { /* New Game: a clean slot */
+            save_delete(g->profile_name);
+            g->has_save = false;
+            SDL_zero(g->save);
+            g->save_play_base = (uint32_t)0 - (uint32_t)g->stats.play_seconds;
+            g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
+        }
+        g->next_save = app->time + 30.0;
         g->cam.initialized = false;
         touch_controls_reset(&g->touch);
         if (g->pending_play == 1) {
@@ -755,7 +808,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         start_loading(g, 0);
         break;
     case FE_CONTINUE:
-        start_loading(g, 0);
+        start_loading(g, 3);
         break;
     case FE_ROOM_CREATE:
         g->prefs.last_mode = mode_find("free_roam");
@@ -884,6 +937,10 @@ void game_frame(MgApp *app, float alpha)
     handle_menu_action(g, app, action);
     poll_sign_in(g, app);
     app_text_input(app, g->menu.open && g->menu.editing_name);
+    if (g->offline_play && app->time >= g->next_save) { /* autosave */
+        g->next_save = app->time + 30.0;
+        write_save(g);
+    }
     if (g->menu.preview_visible) { /* the avatar turning slowly in the Skin tab */
         GfxSceneParams pc = {0};
         pc.eye = HMM_V3(0.0f, 1.35f, -3.7f);
@@ -1030,6 +1087,8 @@ void game_pause(MgApp *app)
 {
     Game *g = (Game *)app->game;
     flush_stats(g);
+    write_save(g);
+    save_prefs(g);
     touch_controls_reset(&g->touch);
     player_set_input(&g->player, 0, 0, false, false);
     session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
@@ -1045,6 +1104,10 @@ void game_resume(MgApp *app)
 void game_quit(MgApp *app)
 {
     Game *g = (Game *)app->game;
+    if (g) {
+        write_save(g);
+        save_prefs(g);
+    }
     if (g && g->net) {
         flush_stats(g); /* the network thread finishes pending writes before it exits */
         session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);

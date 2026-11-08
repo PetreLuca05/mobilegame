@@ -45,11 +45,13 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     y = mg_maxf(cy, left_end) + 6.0f;
 
     float bw = (w - 16.0f) / 3.0f;
+    char main_menu_label[64];
+    SDL_snprintf(main_menu_label, sizeof(main_menu_label), "%s##home", str("save_and_menu"));
     if (ui_button(ui, "Disconnect", x, y, bw, 44.0f, false)) {
         *action = MENU_DISCONNECT;
         m->open = false;
     }
-    if (ui_button(ui, "Main menu##home", x + bw + 8.0f, y, bw, 44.0f, false)) {
+    if (ui_button(ui, main_menu_label, x + bw + 8.0f, y, bw, 44.0f, false)) {
         *action = MENU_MAIN_MENU;
         m->open = false;
     }

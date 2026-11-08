@@ -172,6 +172,7 @@ set(MG_GAME_SOURCES
   game/creator.c
   game/modes.c
   game/prefs.c
+  game/save.c
   game/strings.c
 )
 
