@@ -51,6 +51,7 @@ typedef struct DrawItem {
     float hide;
     float sort;
     uint32_t range_first, range_count; /* count 0 = the whole mesh */
+    uint8_t inset;   /* 0 the world, else the inset it belongs to, + 1 */
     GfxMeshId mesh;
     uint8_t kind;
     uint8_t flags;
@@ -146,6 +147,15 @@ typedef struct ShaderCacheEntry {
 } ShaderCacheEntry;
 
 #define GPU_TIMING_RING 8
+#define GFX_MAX_INSETS 4
+typedef struct GfxInset {
+    float x, y, w, h;      /* pt */
+    HMM_Mat4 view_proj;
+    HMM_Vec3 eye;
+    float min_depth, max_depth;
+    bool before_world;
+} GfxInset;
+
 typedef struct GpuTimingSlot {
     SDL_GPUFence *main_fence, *ui_fence;
     double submitted;
@@ -168,6 +178,8 @@ struct GfxContext {
     SDL_GPUSampleCount msaa;
     bool no_instancing;
     uint64_t ui_atlas_bytes;
+    GfxInset insets[GFX_MAX_INSETS];
+    int inset_count, current_inset; /* current: index + 1, 0 none */
     int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
     PipelineSet pipes[TARGET_COUNT];
@@ -1158,6 +1170,7 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_batch_count = 1;
     g->ui_batches[0] = (UiBatch){0, 0, false, {0, 0, 0, 0}};
     g->preview_on = false;
+    g->inset_count = g->current_inset = 0;
 #ifdef MG_RENDER_FULL
     g->light_count = 0;
 #endif
@@ -1197,6 +1210,7 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->params = mat->params;
     d->hide = mat->hide;
     d->range_first = d->range_count = 0;
+    d->inset = (uint8_t)g->current_inset;
     d->mesh = mesh;
     d->kind = (uint8_t)mat->kind;
     d->flags = (uint8_t)flags;
@@ -1276,7 +1290,7 @@ static int draw_bucket(const DrawItem *d)
 
 static bool instanceable(const GfxContext *g, const DrawItem *d)
 {
-    if (d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) {
+    if ((d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) || d->inset) {
         return false;
     }
     /* sprites: only the flat ground discs; clouds and glows have other shapes */
@@ -1427,6 +1441,8 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
 #endif
 }
 
+static uint32_t draw_insets(GfxContext *g, SDL_GPURenderPass *pass, bool before_world);
+
 static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipeline *pipe,
                      const HMM_Mat4 *inv_vp, HMM_Vec3 eye)
 {
@@ -1452,7 +1468,7 @@ static HMM_Mat4 draw_normal(const DrawItem *d)
     return HMM_TransposeM4(HMM_InvGeneralM4(d->model));
 }
 
-static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bool preview)
+static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bool preview, int inset)
 {
     SDL_GPUBufferBinding vbb = {g->vb, 0};
     SDL_GPUBufferBinding ibb = {g->ib, 0};
@@ -1461,14 +1477,14 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     int bound = -1;
     SDL_GPUGraphicsPipeline *bound_pipe = NULL;
     uint32_t count = 0;
-    const bool can_instance = target == TARGET_MAIN && !preview && g->inst_count > 0;
+    const bool can_instance = target == TARGET_MAIN && !preview && inset == 0 && g->inst_count > 0;
     if (can_instance) {
         SDL_GPUBufferBinding ivb = {g->inst_vb[g->ring % GFX_BUFFER_RING], 0};
         SDL_BindGPUVertexBuffers(pass, 1, &ivb, 1);
     }
     for (uint32_t i = 0; i < g->draw_count; i++) {
         const DrawItem *d = &g->draws[g->order[i]];
-        if (((d->flags & GFX_DRAW_PREVIEW) != 0) != preview) {
+        if (((d->flags & GFX_DRAW_PREVIEW) != 0) != preview || d->inset != inset) {
             continue;
         }
         if (can_instance && g->run_len[i] > 0) {
@@ -1990,6 +2006,44 @@ static void draw_preview_image(GfxContext *g, SDL_GPURenderPass *pass)
 }
 
 /* Second camera: draws flagged GFX_DRAW_PREVIEW into a square texture. */
+/* The picture-in-picture draws, each with its own viewport, depth range and camera */
+static uint32_t draw_insets(GfxContext *g, SDL_GPURenderPass *pass, bool before_world)
+{
+    uint32_t count = 0;
+    const float k = g->ui_w_pt > 0.0f ? (float)g->target_w / g->ui_w_pt : 1.0f;
+    for (int i = 0; i < g->inset_count; i++) {
+        const GfxInset *in = &g->insets[i];
+        if (in->before_world != before_world) {
+            continue;
+        }
+        SDL_GPUViewport vp = {in->x * k, in->y * k, in->w * k, in->h * k, in->min_depth, in->max_depth};
+        SDL_SetGPUViewport(pass, &vp);
+        SDL_Rect sc = {(int)(in->x * k), (int)(in->y * k), (int)(in->w * k + 0.5f), (int)(in->h * k + 0.5f)};
+        SDL_SetGPUScissor(pass, &sc);
+        push_frame_uniforms(g, &in->view_proj, in->eye, in->w * k, in->h * k, 0.0f);
+        count += draw_list(g, pass, TARGET_MAIN, false, i + 1);
+    }
+    if (g->inset_count > 0) {
+        SDL_GPUViewport full = {0.0f, 0.0f, (float)g->target_w, (float)g->target_h, 0.0f, 1.0f};
+        SDL_SetGPUViewport(pass, &full);
+        SDL_Rect sc = {0, 0, (int)g->target_w, (int)g->target_h};
+        SDL_SetGPUScissor(pass, &sc);
+    }
+    return count;
+}
+
+void gfx_inset_begin(GfxContext *g, float x, float y, float w, float h, const HMM_Mat4 *view_proj, HMM_Vec3 eye, float min_depth, float max_depth, bool before_world)
+{
+    if (g->inset_count >= GFX_MAX_INSETS) {
+        return;
+    }
+    GfxInset *in = &g->insets[g->inset_count++];
+    *in = (GfxInset){x, y, w, h, *view_proj, eye, min_depth, max_depth, before_world};
+    g->current_inset = g->inset_count;
+}
+
+void gfx_inset_end(GfxContext *g) { g->current_inset = 0; }
+
 static void render_preview(GfxContext *g)
 {
     if (!g->preview_color) {
@@ -2029,7 +2083,7 @@ static void render_preview(GfxContext *g)
     const GfxSceneParams *c = &g->preview_scene;
     HMM_Mat4 vp = HMM_MulM4(c->proj, c->view);
     push_frame_uniforms(g, &vp, c->eye, (float)GFX_PREVIEW_PX, (float)GFX_PREVIEW_PX, 0.0f);
-    draw_list(g, rp, TARGET_MAIN, true);
+    draw_list(g, rp, TARGET_MAIN, true, 0);
     SDL_EndGPURenderPass(rp);
 }
 
@@ -2215,7 +2269,7 @@ static void frame_end(GfxContext *g)
         float refl_h = (float)(g->target_h / 2 > 0 ? g->target_h / 2 : 1);
         draw_sky(g, rp, g->pipes[TARGET_REFL].sky, &rv.sky_inv_vp, rv.eye);
         push_frame_uniforms(g, &rv.view_proj, rv.eye, refl_w, refl_h, 0.0f);
-        g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL, false);
+        g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL, false, 0);
         SDL_EndGPURenderPass(rp);
     }
 #endif
@@ -2266,7 +2320,12 @@ static void frame_end(GfxContext *g)
 #endif
     {
         PROF_SCOPE("render.encode");
-        g->stats.draws = draw_list(g, pass, TARGET_MAIN, false);
+        draw_insets(g, pass, true);
+#ifndef MG_RENDER_FULL
+        push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, 0.0f);
+#endif
+        g->stats.draws = draw_list(g, pass, TARGET_MAIN, false, 0);
+        g->stats.draws += draw_insets(g, pass, false);
     }
 
     if (scaled) {

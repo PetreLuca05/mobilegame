@@ -392,6 +392,11 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 - `engine/ui/layout.h`: `ui_frame_t`, the screen and its real safe-area insets (SDL, then UIKit on iOS if SDL has nothing), `ui_pause_rect`. No fixed insets: anchor to the safe rect with an 8-16 pt margin. The 3D view is always full-screen.
 - Desktop presets: `MG_WINDOW=iphone` / `iphone-flip` simulate the island and home indicator in each landscape direction. Developer -> Show safe rect. `--autotest layout`.
 
+## Interaction (M8)
+
+- `game/interact.h`: `ia_add` / `ia_remove` / `ia_set_pos` / `ia_set_flags` (NPCs, wall buttons, markers, the lift). A 10 Hz scan through the spatial hash picks one active target (enter 2.0 m, exit 2.5 m, in front of the player unless `IA_FACING_FREE`).
+- `game/preview_panel.c`: the bottom-left card. `gfx_inset_begin` / `gfx_inset_end` draw a small 3D picture inside the main pass with its own viewport, camera and depth range (no render target). Tap-only through `TouchControls.targets`; a drag starting on it goes to the stick. Desktop: E.
+
 ## NPCs (M7)
 
 - `game/rooms.h`: room graph (rooms, door nodes, slots with tags and an occupant, lift cells). The hospital fills it in

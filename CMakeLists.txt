@@ -234,6 +234,7 @@ set(MG_GAME_SOURCES
   game/npc.c
   game/rooms.c
   game/interact.c
+  game/preview_panel.c
   game/npc_data.c
   game/npc_sim.c
   game/npc_pkg.c

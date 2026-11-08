@@ -162,6 +162,12 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
 /* A slice of a mesh: `first` and `count` are indices inside it. */
 void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t count, const HMM_Mat4 *model, const GfxMaterial *mat,
                     uint32_t flags);
+/* A small 3D picture inside the main pass: the gfx_draw calls between begin and end go to this
+ * screen rect (pt) with their own camera and depth range. before_world: drawn ahead of the world, so
+ * the tile GPU can reject what it covers. Up to 4 per frame. */
+void gfx_inset_begin(GfxContext *g, float x, float y, float w, float h, const HMM_Mat4 *view_proj, HMM_Vec3 eye, float min_depth, float max_depth,
+                     bool before_world);
+void gfx_inset_end(GfxContext *g);
 /* UI coordinate space size in points (window pixels / display scale). */
 void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
 #ifdef MG_RENDER_FULL

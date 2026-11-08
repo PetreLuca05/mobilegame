@@ -20,6 +20,7 @@
 #include "npc_sim.h"
 #include "interact.h"
 #include "perf_run.h"
+#include "preview_panel.h"
 #include "rooms.h"
 #include "platform/device_stats.h"
 #include "stress.h"
@@ -132,6 +133,7 @@ typedef struct Game {
     bool crowd_ok, prof_on, no_lod;
     RoomGraph rooms;
     Interact ia;
+    PreviewPanel panel;
     bool ia_ok, ia_log;
     uint16_t marker_ia[MARKER_MAX];
     uint32_t marker_ia_id[MARKER_MAX];
@@ -191,6 +193,9 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
 
 static void interact_setup(Game *g, MgApp *app);
 static void interact_tick(Game *g, MgApp *app);
+static void interact_tap(Game *g, MgApp *app);
+
+static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with nothing to show */
 
 static bool has_flag(int argc, char **argv, const char *flag)
 {
@@ -1345,6 +1350,21 @@ static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc
     pose->head_yaw = c->vis_head;
 }
 
+/* The panel was tapped (or E on desktop): use what it shows, once */
+static void interact_tap(Game *g, MgApp *app)
+{
+    (void)app;
+    if (ia_use_active(&g->ia)) {
+        g->panel.punch = 1.0f;
+        if (g->settings.marker_sounds) {
+            audio_cue(g->audio, AUDIO_CUE_TICK);
+        }
+        if (g->settings.haptics) {
+            haptic_impact(false);
+        }
+    }
+}
+
 static void on_call_lift(uint16_t ref, void *user)
 {
     Game *g = (Game *)user;
@@ -1384,7 +1404,7 @@ static void npc_unregistered(int index, void *user)
 /* Buttons and the lift, from the room graph */
 static void interact_setup(Game *g, MgApp *app)
 {
-    g->ia_ok = ia_init(&g->ia, &app->perm);
+    g->ia_ok = ia_init(&g->ia, &app->perm) && preview_panel_init(&g->panel, app->gfx, &app->perm);
     g->npcs.on_spawned = npc_registered;
     g->npcs.on_despawned = npc_unregistered;
     g->npcs.callback_user = g;
@@ -1394,13 +1414,13 @@ static void interact_setup(Game *g, MgApp *app)
     if (!g->ia_ok) {
         return;
     }
-    const preview_desc_t button = {g->unit_box, NULL, 0.7f, 0.0f, 0.0f, HMM_V4(0.85f, 0.25f, 0.2f, 1.0f)};
+    const preview_desc_t button = {g->unit_box, NULL, 0.22f, 0.0f, 0.0f, HMM_V4(0.85f, 0.25f, 0.2f, 1.0f)};
     for (int i = 0; i < g->rooms.button_count; i++) {
         const RoomButton *b = &g->rooms.buttons[i];
         ia_add(&g->ia, IA_BUTTON, HMM_V3(b->x, b->y, b->z), IA_ENTER_RANGE, b->storey, IA_FACING_FREE, (uint16_t)b->storey, b->label, on_call_lift, g, button);
     }
     const float cx = (g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, cz = (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f;
-    const preview_desc_t lift = {g->unit_box, NULL, 1.0f, 0.0f, 0.0f, HMM_V4(0.72f, 0.75f, 0.8f, 1.0f)};
+    const preview_desc_t lift = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.72f, 0.75f, 0.8f, 1.0f)};
     for (int f = 0; f < scene_floor_count(); f++) {
         ia_add(&g->ia, IA_ELEVATOR, HMM_V3(cx, (float)f * 4.0f, cz), IA_ENTER_RANGE, f, IA_FACING_FREE, (uint16_t)f, "Lift", on_call_lift, g, lift);
     }
@@ -1810,6 +1830,9 @@ void game_frame(MgApp *app, float alpha)
     if (app->input.key_pressed[SDL_SCANCODE_F1]) {
         g->fly_mode = !g->fly_mode;
     }
+    if (app->input.key_pressed[SDL_SCANCODE_E] && g->ia_ok && g->playing && !g->menu.open) {
+        interact_tap(g, app);
+    }
     if (app->input.key_pressed[SDL_SCANCODE_F2]) {
         s->show_colliders = !s->show_colliders;
     }
@@ -1886,7 +1909,9 @@ void game_frame(MgApp *app, float alpha)
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
                               app->safe_bottom, app->time);
-        if (g->touch.tapped_id && g->nav) {
+        if (g->touch.tapped_id == PREVIEW_TAP_ID) {
+            interact_tap(g, app);
+        } else if (g->touch.tapped_id && g->nav) {
             marker_tapped(g, app, g->touch.tapped_id);
         }
     }
@@ -2148,6 +2173,7 @@ void game_frame(MgApp *app, float alpha)
     if (g->nav) {
         markers_hud(g, app, floor, feet, menu_shown);
     }
+    g->touch.hide_hint = g->ia_ok && preview_panel_visible(&g->panel); /* the card sits where the resting stick is */
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
                         app->safe_bottom);
     frontend_toast_draw(&g->fe, &g->ui, app);
@@ -2184,6 +2210,13 @@ void game_frame(MgApp *app, float alpha)
         text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
     }
     layout_autotest(g, app);
+    if (g->ia_ok) {
+        const ui_frame_t pf = frame_of(app);
+        const bool hide_panel = g->menu.open || riding;
+        preview_panel_update(&g->panel, hide_panel ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
+        preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
+        preview_panel_draw_ui(&g->panel, &g->ia, app->gfx, &app->font);
+    }
     if (s->show_profiler != g->prof_on && !g->perf.active) {
         g->prof_on = s->show_profiler;
         prof_set_enabled(g->prof_on);
@@ -2468,8 +2501,16 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
             g->touch.targets[nt].id = o->id;
             g->touch.targets[nt].x = o->x;
             g->touch.targets[nt].y = o->y;
+            g->touch.targets[nt].half = 22.0f;
             nt++;
         }
+    }
+    if (g->ia_ok && preview_panel_visible(&g->panel) && nt < TOUCH_MAX_TARGETS) {
+        g->touch.targets[nt].id = PREVIEW_TAP_ID; /* tested first by the touch pass, tap-only */
+        g->touch.targets[nt].x = g->panel.x + g->panel.size * 0.5f;
+        g->touch.targets[nt].y = g->panel.y + g->panel.size * 0.5f;
+        g->touch.targets[nt].half = g->panel.size * 0.5f;
+        nt++;
     }
     g->touch.target_count = nt;
     if (g->settings.test_markers && g->settings.show_nav) { /* debug line */

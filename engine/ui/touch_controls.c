@@ -75,7 +75,7 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
         if (tc->pending_touch < 0) { /* marker tap targets come before the zones */
             bool hit = false;
             for (int k = 0; k < tc->target_count && !hit; k++) {
-                if (fabsf(t->x0 - tc->targets[k].x) <= 22.0f && fabsf(t->y0 - tc->targets[k].y) <= 22.0f) {
+                if (fabsf(t->x0 - tc->targets[k].x) <= tc->targets[k].half && fabsf(t->y0 - tc->targets[k].y) <= tc->targets[k].half) {
                     hit = true;
                     t->owner = TOUCH_OWNER_MARKER;
                     tc->pending_touch = i;
@@ -142,7 +142,7 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         ui_circle(g, f, tc->stick_ox, tc->stick_oy, cfg->dead_zone_pt, ui_rgba(0xFFFFFF1A));
         UiColor knob = tc->sprint ? ui_rgba(0xFFB347E6) : ui_rgba(0xFFFFFFC8);
         ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, r * 0.283f, knob);
-    } else {
+    } else if (!tc->hide_hint) {
         /* resting hint where a left thumb usually lands */
         float cx = safe_left + 16.0f + r * 0.75f;
         float cy = h_pt - safe_bottom - 16.0f - r * 0.75f;
