@@ -66,6 +66,7 @@ enum {
     GFX_DRAW_PREVIEW = 1u << 2, /* settings preview camera only (see gfx_preview) */
     GFX_DRAW_NO_SHADOW = 1u << 3, /* never drawn into shadow maps */
     GFX_DRAW_DYNAMIC = 1u << 4,   /* avatars: drawn after the x-ray passes (and, full: dirty shadow tiles) */
+    GFX_DRAW_GROUND = 1u << 5,    /* flat sprite on the ground: drawn before other sprites, in one batch */
 };
 
 #ifdef MG_RENDER_FULL /* the M3 lighting path (MG_RENDER=full, reference only) */
@@ -157,6 +158,9 @@ bool gfx_frame_begin(GfxContext *g);
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene);
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat,
               uint32_t flags);
+/* A slice of a mesh: `first` and `count` are indices inside it. */
+void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t count, const HMM_Mat4 *model, const GfxMaterial *mat,
+                    uint32_t flags);
 /* UI coordinate space size in points (window pixels / display scale). */
 void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
 #ifdef MG_RENDER_FULL
@@ -197,5 +201,9 @@ void gfx_set_paused(GfxContext *g, bool paused);
 void gfx_get_stats(const GfxContext *g, GfxStats *out);
 /* Submit 3D and UI separately with fences to time them (profiler / perf runs). */
 void gfx_set_gpu_timing(GfxContext *g, bool on);
+/* 4x on the main pass when the GPU has it; applied at the end of this frame. */
+void gfx_set_msaa(GfxContext *g, bool on);
+/* Default on; off draws every mesh separately (--no-instancing, to measure the saving). */
+void gfx_set_instancing(GfxContext *g, bool on);
 
 #endif

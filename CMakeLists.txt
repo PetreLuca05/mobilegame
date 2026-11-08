@@ -10,6 +10,7 @@ set_property(CACHE MG_PLATFORM PROPERTY STRINGS desktop ios android)
 set(MG_BUNDLE_ID "ro.docvex.mobilegame" CACHE STRING "Application identifier")
 set(MG_IOS_TEAM_ID "" CACHE STRING "Apple development team ID for code signing")
 option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
+option(MG_BAKE "Prototype: bake sun shadow and AO into the static world's vertex colours" OFF)
 option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store builds)" ON)
 # Needs the "Sign In with Apple" capability on the App ID (see CLAUDE.md);
 # without it the provisioning profile rejects the entitlement.
@@ -30,6 +31,9 @@ if(MG_DAYCYCLE STREQUAL "continuous")
 endif()
 set(MG_CAMERA "topdown" CACHE STRING "Game camera: topdown (M5) | thirdperson (M1-M4, engine tests only)")
 set_property(CACHE MG_CAMERA PROPERTY STRINGS topdown thirdperson)
+if(MG_BAKE)
+  add_compile_definitions(MG_BAKE=1)
+endif()
 if(MG_CAMERA STREQUAL "thirdperson")
   add_compile_definitions(MG_CAMERA_THIRDPERSON=1)
 endif()
@@ -213,6 +217,7 @@ set(MG_GAME_SOURCES
   game/autonav.c
   game/perf_run.c
   game/stress.c
+  game/bake.c
   game/npc.c
   game/stats.c
   game/player.c

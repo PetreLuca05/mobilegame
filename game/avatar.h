@@ -43,6 +43,8 @@ typedef struct AvatarMeshes {
     GfxMeshId body, head, hair[AVATAR_HAIRS], eye, nose, mouth, hand, decal, glasses, ear, shadow;
     GfxMeshId mask, scope, vneck, cross, pocket;
     GfxMeshId body_female;
+    /* LOD1 (~40 % of the triangles, one hair cap, no face), LOD2 (body + head) */
+    GfxMeshId lod_body[2], lod_head[2], lod_hand, lod_hair;
 } AvatarMeshes;
 
 /* Animation state, advanced once per rendered frame. */
@@ -63,6 +65,8 @@ typedef struct AvatarPose {
     bool jumping;
     bool indoors; /* indoor lighting, like the building's interior */
     bool preview; /* settings preview camera only, no shadow */
+    bool flat_ground; /* feet are on the floor: no ray cast for the contact shadow (NPCs) */
+    uint8_t lod;      /* 0 full, 1 coarse, 2 body + head */
 } AvatarPose;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);

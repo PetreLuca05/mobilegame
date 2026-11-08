@@ -7,6 +7,7 @@
  *                    sprites back-to-front, UI; 4x MSAA resolved to swapchain
  */
 #include <SDL3/SDL.h>
+#include <math.h>
 #include <string.h>
 
 #include "core/assets.h"
@@ -21,7 +22,7 @@
 #include "shadows.h"
 #endif
 
-#define GFX_MAX_MESHES 256
+#define GFX_MAX_MESHES 512
 #define GFX_MAX_DRAWS 16384
 #define GFX_VB_BYTES (8u << 20)
 #define GFX_IB_BYTES (4u << 20)
@@ -45,11 +46,11 @@ typedef struct GfxMeshRec {
 
 typedef struct DrawItem {
     HMM_Mat4 model;
-    HMM_Mat4 normal;
     HMM_Vec4 tint;
     HMM_Vec4 params;
     float hide;
     float sort;
+    uint32_t range_first, range_count; /* count 0 = the whole mesh */
     GfxMeshId mesh;
     uint8_t kind;
     uint8_t flags;
@@ -57,6 +58,14 @@ typedef struct DrawItem {
     int8_t lights[GFX_LIGHTS_PER_DRAW]; /* indices into the frame's light list, -1 = none */
 #endif
 } DrawItem;
+
+/* Per-instance data of the main pass (shaders/inst.hlsli) */
+typedef struct GfxInstance {
+    HMM_Vec4 row[3];
+    HMM_Vec4 tint;
+    HMM_Vec4 params; /* x rim, y gloss, z emissive (< 0 flat colour), w hide */
+} GfxInstance;
+#define GFX_MAX_INSTANCES GFX_MAX_DRAWS
 
 typedef struct DrawVSUniforms {
     HMM_Mat4 model;
@@ -156,11 +165,16 @@ struct GfxContext {
     SDL_GPUTextureFormat depth_fmt;
     SDL_GPUTextureFormat refl_fmt;
     SDL_GPUSampleCount msaa;
+    bool msaa_supported;
+    bool no_instancing;
+    int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
     PipelineSet pipes[TARGET_COUNT];
     SDL_GPUGraphicsPipeline *ui_pipe;        /* UI inside the MSAA main pass */
     SDL_GPUGraphicsPipeline *ui_pipe_direct; /* UI pass on the swapchain (render scale < 1) */
     SDL_GPUGraphicsPipeline *blur_pipe;      /* one Gaussian direction, quarter res */
+    SDL_GPUGraphicsPipeline *present_pipe;   /* upscales the 3D image inside the UI pass */
+    bool passes_logged;
     SDL_GPUGraphicsPipeline *panel_pipe;     /* frosted UI panel on the swapchain */
     BlurPanel panels[GFX_MAX_PANELS];
     uint32_t panel_count;
@@ -237,7 +251,16 @@ struct GfxContext {
     LightsFSUniforms light_ubo;
 #endif
     DrawItem *draws;
-    uint16_t *order;
+    uint16_t *order, *order_tmp;
+    uint64_t *keys, *keys_tmp;
+    uint16_t *run_len;     /* per position in `order`: instances from here, 0 inside a run or per-draw */
+    uint32_t *run_first;   /* first instance of that run */
+    GfxInstance *inst;
+    uint32_t inst_count;
+    SDL_GPUBuffer *inst_vb;
+    SDL_GPUTransferBuffer *inst_tb;
+    SDL_GPUGraphicsPipeline *inst_pipe[GFX_MAT_COUNT][2]; /* opaque, dithered; NULL = per-draw path */
+    SDL_GPUGraphicsPipeline *floor_dither;
     uint32_t draw_count;
     GfxStats stats;
 };
@@ -314,6 +337,7 @@ typedef struct PipeDesc {
     bool depth_bias;
     bool depth_always;     /* tile clear: write depth whatever is there */
     bool depth_greater;    /* x-ray material */
+    bool instanced;        /* LAYOUT_MESH + GfxInstance in slot 1 */
 } PipeDesc;
 
 static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
@@ -321,9 +345,10 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     if (!d->vs || !d->fs) {
         return NULL;
     }
-    SDL_GPUVertexBufferDescription vbd;
-    SDL_zero(vbd);
-    SDL_GPUVertexAttribute attrs[3];
+    SDL_GPUVertexBufferDescription vbds[2];
+    SDL_zeroa(vbds);
+    SDL_GPUVertexBufferDescription vbd = vbds[0];
+    SDL_GPUVertexAttribute attrs[8];
     SDL_zeroa(attrs);
     uint32_t nattr = 0;
     if (d->layout == LAYOUT_MESH) {
@@ -361,8 +386,18 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     SDL_zero(ci);
     ci.vertex_shader = d->vs;
     ci.fragment_shader = d->fs;
-    ci.vertex_input_state.vertex_buffer_descriptions = nattr ? &vbd : NULL;
-    ci.vertex_input_state.num_vertex_buffers = nattr ? 1 : 0;
+    vbds[0] = vbd;
+    if (d->instanced) {
+        vbds[1].slot = 1;
+        vbds[1].pitch = sizeof(GfxInstance);
+        vbds[1].input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
+        for (uint32_t r = 0; r < 5; r++) {
+            attrs[3 + r] = (SDL_GPUVertexAttribute){3 + r, 1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, r * (uint32_t)sizeof(HMM_Vec4)};
+        }
+        nattr += 5;
+    }
+    ci.vertex_input_state.vertex_buffer_descriptions = nattr ? vbds : NULL;
+    ci.vertex_input_state.num_vertex_buffers = nattr ? (d->instanced ? 2 : 1) : 0;
     ci.vertex_input_state.vertex_attributes = nattr ? attrs : NULL;
     ci.vertex_input_state.num_vertex_attributes = nattr;
     ci.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
@@ -434,6 +469,56 @@ static bool create_pipelines(GfxContext *g)
                 g->pipes[t].xray_always[k == GFX_MAT_XRAY] = make_pipeline(g, &d);
             }
         }
+#ifndef MG_RENDER_FULL
+        if (t == TARGET_MAIN) { /* instanced, opaque (no clip) and dithered (fade between 0 and 1 only) */
+            static const struct {
+                GfxMaterialKind kind;
+                const char *vert, *frag, *dither;
+            } k_inst[] = {
+                {GFX_MAT_TOON, "toon_inst.vert", "toon_inst.frag", "toon_inst_dither.frag"},
+                {GFX_MAT_OUTLINE, "outline_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag"},
+                {GFX_MAT_UNLIT, "toon_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag"},
+                {GFX_MAT_SPRITE, "sprite_inst.vert", "sprite_inst.frag", NULL},
+            };
+            for (size_t k = 0; k < MG_ARRAY_COUNT(k_inst); k++) {
+                const MaterialProgram *mp = material_program(k_inst[k].kind);
+                PipeDesc d = {
+                    .vs = load_shader(g, k_inst[k].vert, 2, 0),
+                    .fs = load_shader(g, k_inst[k].frag, 2, 0),
+                    .layout = LAYOUT_MESH,
+                    .instanced = true,
+                    .blend = mp->blend,
+                    .depth_test = true,
+                    .depth_write = mp->depth_write,
+                    .cull = mp->cull_front ? SDL_GPU_CULLMODE_FRONT : (mp->cull_back ? SDL_GPU_CULLMODE_BACK : SDL_GPU_CULLMODE_NONE),
+                    .front = front,
+                    .color_fmt = fmt,
+                    .samples = samples,
+                };
+                g->inst_pipe[k_inst[k].kind][0] = make_pipeline(g, &d);
+                if (!g->inst_pipe[k_inst[k].kind][0]) {
+                    return false;
+                }
+                if (k_inst[k].dither) {
+                    d.fs = load_shader(g, k_inst[k].dither, 2, 0);
+                    g->inst_pipe[k_inst[k].kind][1] = make_pipeline(g, &d);
+                }
+            }
+            const MaterialProgram *fp = material_program(GFX_MAT_FLOOR);
+            PipeDesc fd = {
+                .vs = load_shader(g, fp->vert, fp->vert_ubos, 0),
+                .fs = load_shader(g, "floor_flat_dither.frag", fp->frag_ubos, 0),
+                .layout = LAYOUT_MESH,
+                .depth_test = true,
+                .depth_write = fp->depth_write,
+                .cull = fp->cull_back ? SDL_GPU_CULLMODE_BACK : SDL_GPU_CULLMODE_NONE,
+                .front = front,
+                .color_fmt = fmt,
+                .samples = samples,
+            };
+            g->floor_dither = make_pipeline(g, &fd);
+        }
+#endif
         PipeDesc sky = {
             .vs = load_shader(g, "sky.vert", 0, 0),
 #ifdef MG_DAYCYCLE_CONTINUOUS
@@ -477,6 +562,17 @@ static bool create_pipelines(GfxContext *g)
         .no_depth = true,
     };
     g->blur_pipe = make_pipeline(g, &blur);
+    PipeDesc present = {
+        .vs = load_shader(g, "fullscreen.vert", 0, 0),
+        .fs = load_shader(g, "present.frag", 0, 1),
+        .layout = LAYOUT_NONE,
+        .cull = SDL_GPU_CULLMODE_NONE,
+        .front = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .color_fmt = g->color_fmt,
+        .samples = SDL_GPU_SAMPLECOUNT_1,
+        .no_depth = true,
+    };
+    g->present_pipe = make_pipeline(g, &present);
     PipeDesc panel = blur;
     panel.vs = load_shader(g, "panel.vert", 1, 0);
     panel.fs = load_shader(g, "panel.frag", 1, 1);
@@ -509,7 +605,7 @@ static bool create_pipelines(GfxContext *g)
     }
 #endif
     release_shaders(g);
-    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL;
+    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL && g->present_pipe != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -547,6 +643,70 @@ static void release_targets(GfxContext *g)
             *ts[i] = NULL;
         }
     }
+}
+
+#define RELEASE_PIPE(p)                                 \
+    do {                                                \
+        if (p) {                                        \
+            SDL_ReleaseGPUGraphicsPipeline(g->dev, p);  \
+            (p) = NULL;                                 \
+        }                                               \
+    } while (0)
+
+static void release_pipelines(GfxContext *g)
+{
+    for (int t = 0; t < TARGET_COUNT; t++) {
+        for (int k = 0; k < GFX_MAT_COUNT; k++) {
+            RELEASE_PIPE(g->pipes[t].mat[k]);
+        }
+        RELEASE_PIPE(g->pipes[t].sky);
+        for (int k = 0; k < 2; k++) {
+            RELEASE_PIPE(g->pipes[t].xray_always[k]);
+        }
+    }
+    for (int k = 0; k < GFX_MAT_COUNT; k++) {
+        RELEASE_PIPE(g->inst_pipe[k][0]);
+        RELEASE_PIPE(g->inst_pipe[k][1]);
+    }
+    RELEASE_PIPE(g->floor_dither);
+    RELEASE_PIPE(g->present_pipe);
+    RELEASE_PIPE(g->ui_pipe);
+    RELEASE_PIPE(g->blur_pipe);
+    RELEASE_PIPE(g->panel_pipe);
+    RELEASE_PIPE(g->ui_pipe_direct);
+}
+
+void gfx_set_msaa(GfxContext *g, bool on) { g->msaa_wanted = on ? 1 : 0; }
+void gfx_set_instancing(GfxContext *g, bool on) { g->no_instancing = !on; }
+
+/* Between frames' GPU work: pipelines and targets depend on the sample count. */
+static void apply_msaa(GfxContext *g)
+{
+    SDL_GPUSampleCount want = g->msaa;
+    if (g->msaa_wanted == 0) {
+        want = SDL_GPU_SAMPLECOUNT_1;
+    } else if (g->msaa_wanted == 1 && g->msaa_supported) {
+        want = SDL_GPU_SAMPLECOUNT_4;
+    }
+    g->msaa_wanted = -1;
+    if (want == g->msaa) {
+        return;
+    }
+    SDL_WaitForGPUIdle(g->dev);
+    release_pipelines(g);
+    release_targets(g);
+    SDL_GPUTexture **pv[] = {&g->preview_color, &g->preview_msaa, &g->preview_depth};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
+        if (*pv[i]) {
+            SDL_ReleaseGPUTexture(g->dev, *pv[i]);
+            *pv[i] = NULL;
+        }
+    }
+    g->msaa = want;
+    if (!create_pipelines(g)) {
+        mg_log_error("gfx: pipelines failed after an MSAA change");
+    }
+    mg_log_info("gfx: MSAA %s", want == SDL_GPU_SAMPLECOUNT_4 ? "4x" : "off");
 }
 
 static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
@@ -667,8 +827,15 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     GfxContext *g = ARENA_PUSH(perm, GfxContext, 1);
     g->draws = ARENA_PUSH(perm, DrawItem, GFX_MAX_DRAWS);
     g->order = ARENA_PUSH(perm, uint16_t, GFX_MAX_DRAWS);
+    g->order_tmp = ARENA_PUSH(perm, uint16_t, GFX_MAX_DRAWS);
+    g->keys = ARENA_PUSH(perm, uint64_t, GFX_MAX_DRAWS);
+    g->keys_tmp = ARENA_PUSH(perm, uint64_t, GFX_MAX_DRAWS);
+    g->run_len = ARENA_PUSH(perm, uint16_t, GFX_MAX_DRAWS);
+    g->run_first = ARENA_PUSH(perm, uint32_t, GFX_MAX_DRAWS);
+    g->inst = ARENA_PUSH(perm, GfxInstance, GFX_MAX_INSTANCES);
     g->ui_verts = ARENA_PUSH(perm, GfxUiVertex, GFX_MAX_UI_QUADS * 4);
-    if (!g || !g->draws || !g->order || !g->ui_verts) {
+    if (!g || !g->draws || !g->order || !g->order_tmp || !g->keys || !g->keys_tmp || !g->run_len || !g->run_first || !g->inst ||
+        !g->ui_verts) {
         mg_log_error("gfx: out of permanent memory");
         return false;
     }
@@ -706,7 +873,9 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, SDL_GPU_SAMPLECOUNT_4) &&
         SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, SDL_GPU_SAMPLECOUNT_4)) {
         g->msaa = SDL_GPU_SAMPLECOUNT_4;
+        g->msaa_supported = true;
     }
+    g->msaa_wanted = -1;
     mg_log_info("gfx: backend %s, shaders %s, color fmt %d, depth fmt %d, msaa %s", g->backend,
                 g->shader_fmt == SDL_GPU_SHADERFORMAT_MSL ? "msl" : "spirv", (int)g->color_fmt,
                 (int)g->depth_fmt, g->msaa == SDL_GPU_SAMPLECOUNT_4 ? "4x" : "off");
@@ -727,6 +896,10 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->ui_vb = SDL_CreateGPUBuffer(g->dev, &uvci);
     g->ui_ib = SDL_CreateGPUBuffer(g->dev, &uici);
     g->ui_tb = SDL_CreateGPUTransferBuffer(g->dev, &utci);
+    SDL_GPUBufferCreateInfo ivci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_INSTANCES * (uint32_t)sizeof(GfxInstance), 0};
+    g->inst_vb = SDL_CreateGPUBuffer(g->dev, &ivci);
+    SDL_GPUTransferBufferCreateInfo itci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, GFX_MAX_INSTANCES * (uint32_t)sizeof(GfxInstance), 0};
+    g->inst_tb = SDL_CreateGPUTransferBuffer(g->dev, &itci);
     if (!g->vb || !g->ib || !g->ui_vb || !g->ui_ib || !g->ui_tb) {
         mg_log_error("gfx: buffer creation failed: %s", SDL_GetError());
         return false;
@@ -852,33 +1025,7 @@ void gfx_shutdown(GfxContext *g)
             SDL_ReleaseGPUTexture(g->dev, pv[i]);
         }
     }
-    for (int t = 0; t < TARGET_COUNT; t++) {
-        for (int k = 0; k < GFX_MAT_COUNT; k++) {
-            if (g->pipes[t].mat[k]) {
-                SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].mat[k]);
-            }
-        }
-        if (g->pipes[t].sky) {
-            SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].sky);
-        }
-        for (int k = 0; k < 2; k++) {
-            if (g->pipes[t].xray_always[k]) {
-                SDL_ReleaseGPUGraphicsPipeline(g->dev, g->pipes[t].xray_always[k]);
-            }
-        }
-    }
-    if (g->ui_pipe) {
-        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe);
-    }
-    if (g->blur_pipe) {
-        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->blur_pipe);
-    }
-    if (g->panel_pipe) {
-        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->panel_pipe);
-    }
-    if (g->ui_pipe_direct) {
-        SDL_ReleaseGPUGraphicsPipeline(g->dev, g->ui_pipe_direct);
-    }
+    release_pipelines(g);
     SDL_ReleaseGPUBuffer(g->dev, g->vb);
     SDL_ReleaseGPUBuffer(g->dev, g->ib);
     SDL_ReleaseGPUBuffer(g->dev, g->ui_vb);
@@ -988,24 +1135,31 @@ void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene) { g->scene = *sce
 
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat, uint32_t flags)
 {
-    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS) {
-        return;
+    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f) {
+        return; /* fully faded draws cost nothing */
     }
     DrawItem *d = &g->draws[g->draw_count++];
     d->model = *model;
-    if (mat->kind == GFX_MAT_SPRITE || mat->kind == GFX_MAT_TEXT) {
-        d->normal = HMM_M4D(1.0f); /* sprites and glyphs carry UVs in the normal */
-    } else {
-        d->normal = HMM_TransposeM4(HMM_InvGeneralM4(*model));
-    }
     d->tint = mat->tint;
     d->params = mat->params;
     d->hide = mat->hide;
+    d->range_first = d->range_count = 0;
     d->mesh = mesh;
     d->kind = (uint8_t)mat->kind;
     d->flags = (uint8_t)flags;
     HMM_Vec3 pos = model->Columns[3].XYZ;
     d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
+}
+
+void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t count, const HMM_Mat4 *model, const GfxMaterial *mat,
+                    uint32_t flags)
+{
+    const uint32_t before = g->draw_count;
+    gfx_draw(g, mesh, model, mat, flags);
+    if (g->draw_count > before) {
+        g->draws[before].range_first = first;
+        g->draws[before].range_count = count;
+    }
 }
 
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count)
@@ -1067,37 +1221,124 @@ static int draw_bucket(const DrawItem *d)
     return d->hide > 0.0f ? 3 : 0;
 }
 
+static bool instanceable(const GfxContext *g, const DrawItem *d)
+{
+    if (d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) {
+        return false;
+    }
+    /* sprites: only the flat ground discs; clouds and glows have other shapes */
+    if (d->kind == GFX_MAT_SPRITE && !(d->flags & GFX_DRAW_GROUND)) {
+        return false;
+    }
+    return g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0] != NULL;
+}
+
+/* bucket | kind | x-ray-always | two 16-bit fields | position:
+ *   opaque: mesh then depth (front to back), so one mesh's instances are neighbours
+ *   blended: depth (back to front) then mesh; ground sprites all sort as "farthest" */
+static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
+{
+    const float dist = sqrtf(d->sort);
+    const uint64_t near_first = (uint64_t)mg_clampf(dist * 256.0f, 0.0f, 65535.0f);
+    uint64_t a, b;
+    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST) {
+        a = (d->flags & GFX_DRAW_GROUND) ? 0u : 65535u - near_first;
+        b = d->mesh;
+    } else {
+        a = d->mesh;
+        b = near_first;
+    }
+    (void)g;
+    const uint64_t always = (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f;
+    return ((uint64_t)draw_bucket(d) << 62) | ((uint64_t)d->kind << 58) | (always << 57) | (a << 41) | (b << 25) | (uint64_t)index;
+}
+
+/* Stable LSD radix sort on the key bits above the position field. */
 static void sort_draws(GfxContext *g)
 {
-    uint32_t n = g->draw_count;
+    const uint32_t n = g->draw_count;
     for (uint32_t i = 0; i < n; i++) {
-        g->order[i] = (uint16_t)i;
+        g->keys[i] = draw_key(g, &g->draws[i], i);
     }
-    for (uint32_t i = 1; i < n; i++) {
-        uint16_t key = g->order[i];
-        const DrawItem *a = &g->draws[key];
+    uint64_t *src = g->keys, *dst = g->keys_tmp;
+    for (int shift = 25; shift < 64; shift += 8) {
+        uint32_t count[256];
+        SDL_memset(count, 0, sizeof(count));
+        for (uint32_t i = 0; i < n; i++) {
+            count[(src[i] >> shift) & 255u]++;
+        }
+        uint32_t sum = 0;
+        for (int c = 0; c < 256; c++) {
+            uint32_t t = count[c];
+            count[c] = sum;
+            sum += t;
+        }
+        for (uint32_t i = 0; i < n; i++) {
+            dst[count[(src[i] >> shift) & 255u]++] = src[i];
+        }
+        uint64_t *t = src;
+        src = dst;
+        dst = t;
+    }
+    for (uint32_t i = 0; i < n; i++) {
+        g->order[i] = (uint16_t)(src[i] & 0x1FFFFFFu);
+    }
+}
+
+/* Neighbours with the same mesh and pipeline become one instanced draw. */
+static void build_instances(GfxContext *g)
+{
+    g->inst_count = 0;
+    if (g->no_instancing) {
+        return;
+    }
+    for (uint32_t i = 0; i < g->draw_count;) {
+        const DrawItem *d = &g->draws[g->order[i]];
+        g->run_len[i] = 0;
+        if (!instanceable(g, d)) {
+            i++;
+            continue;
+        }
+        const bool dither = d->hide > 0.0f;
         uint32_t j = i;
-        while (j > 0) {
-            const DrawItem *b = &g->draws[g->order[j - 1]];
-            bool before;
-            int ba = draw_bucket(a), bb = draw_bucket(b);
-            if (ba != bb) {
-                before = ba < bb;
-            } else if (a->kind != b->kind) {
-                before = a->kind < b->kind;
-            } else if (a->kind == GFX_MAT_SPRITE) {
-                before = a->sort > b->sort;
-            } else {
-                before = a->mesh < b->mesh;
-            }
-            if (!before) {
+        g->run_first[i] = g->inst_count;
+        for (; j < g->draw_count; j++) {
+            const DrawItem *e = &g->draws[g->order[j]];
+            if (e->kind != d->kind || e->mesh != d->mesh || (e->hide > 0.0f) != dither || !instanceable(g, e) ||
+                draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count) {
                 break;
             }
-            g->order[j] = g->order[j - 1];
-            j--;
+            GfxInstance *o = &g->inst[g->inst_count++];
+            for (int r = 0; r < 3; r++) {
+                o->row[r] = HMM_V4(e->model.Columns[0].Elements[r], e->model.Columns[1].Elements[r], e->model.Columns[2].Elements[r],
+                                   e->model.Columns[3].Elements[r]);
+            }
+            o->tint = e->tint;
+            o->params = HMM_V4(e->params.X, e->params.W, e->params.Y > 0.5f ? -1.0f : e->params.Z, e->hide);
+            if (j > i) {
+                g->run_len[j] = 0;
+            }
         }
-        g->order[j] = key;
+        g->run_len[i] = (uint16_t)(j - i);
+        i = j;
     }
+}
+
+static void upload_instances(GfxContext *g)
+{
+    if (g->inst_count == 0) {
+        return;
+    }
+    uint32_t bytes = g->inst_count * (uint32_t)sizeof(GfxInstance);
+    void *map = SDL_MapGPUTransferBuffer(g->dev, g->inst_tb, true);
+    memcpy(map, g->inst, bytes);
+    SDL_UnmapGPUTransferBuffer(g->dev, g->inst_tb);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+    SDL_GPUTransferBufferLocation src = {g->inst_tb, 0};
+    SDL_GPUBufferRegion region = {g->inst_vb, 0, bytes};
+    SDL_UploadToGPUBuffer(cp, &src, &region, true);
+    SDL_EndGPUCopyPass(cp);
+    g->stats.uniform_bytes += bytes;
 }
 
 static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Vec3 eye, float target_w,
@@ -1145,6 +1386,15 @@ static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipe
     SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
 }
 
+/* computed only for the few draws that still take it as a uniform */
+static HMM_Mat4 draw_normal(const DrawItem *d)
+{
+    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT) {
+        return HMM_M4D(1.0f); /* sprites and glyphs carry UVs in the normal */
+    }
+    return HMM_TransposeM4(HMM_InvGeneralM4(d->model));
+}
+
 static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bool preview)
 {
     SDL_GPUBufferBinding vbb = {g->vb, 0};
@@ -1154,9 +1404,31 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     int bound = -1;
     SDL_GPUGraphicsPipeline *bound_pipe = NULL;
     uint32_t count = 0;
+    const bool can_instance = target == TARGET_MAIN && !preview && g->inst_count > 0;
+    if (can_instance) {
+        SDL_GPUBufferBinding ivb = {g->inst_vb, 0};
+        SDL_BindGPUVertexBuffers(pass, 1, &ivb, 1);
+    }
     for (uint32_t i = 0; i < g->draw_count; i++) {
         const DrawItem *d = &g->draws[g->order[i]];
         if (((d->flags & GFX_DRAW_PREVIEW) != 0) != preview) {
+            continue;
+        }
+        if (can_instance && g->run_len[i] > 0) {
+            SDL_GPUGraphicsPipeline *ip = g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0];
+            if (ip != bound_pipe) {
+                SDL_BindGPUGraphicsPipeline(pass, ip);
+                bound_pipe = ip;
+                g->stats.pipe_binds++;
+            }
+            const GfxMeshRec *im = &g->meshes[d->mesh];
+            const uint32_t runs = g->run_len[i];
+            const uint32_t ic = d->range_count ? d->range_count : im->index_count;
+            SDL_DrawGPUIndexedPrimitives(pass, ic, runs, im->first_index + d->range_first, im->vertex_offset, g->run_first[i]);
+            count++;
+            g->stats.tris += (ic / 3) * runs;
+            g->stats.instances += runs;
+            i += runs - 1;
             continue;
         }
 #ifdef MG_RENDER_FULL
@@ -1172,6 +1444,11 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             continue;
         }
         SDL_GPUGraphicsPipeline *pipe = g->pipes[target].mat[d->kind];
+#ifndef MG_RENDER_FULL
+        if (d->kind == GFX_MAT_FLOOR && d->hide > 0.0f && g->floor_dither) {
+            pipe = g->floor_dither;
+        }
+#endif
         if ((d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f) {
             pipe = g->pipes[target].xray_always[d->kind == GFX_MAT_XRAY];
         }
@@ -1200,7 +1477,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
                 g->stats.tex_binds++;
             }
         }
-        DrawVSUniforms vu = {d->model, d->normal};
+        DrawVSUniforms vu = {d->model, draw_normal(d)};
         DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}, HMM_V4(d->hide, 0, 0, 0)};
 #ifdef MG_RENDER_FULL
         for (int k = 0; k < GFX_LIGHTS_PER_DRAW; k++) {
@@ -1210,9 +1487,10 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
         SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
         const GfxMeshRec *m = &g->meshes[d->mesh];
-        SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);
+        const uint32_t ic = d->range_count ? d->range_count : m->index_count;
+        SDL_DrawGPUIndexedPrimitives(pass, ic, 1, m->first_index + d->range_first, m->vertex_offset, 0);
         count++;
-        g->stats.tris += m->index_count / 3;
+        g->stats.tris += ic / 3;
         g->stats.instances++;
         g->stats.uniform_bytes += (uint32_t)(sizeof(vu) + sizeof(fu));
     }
@@ -1368,7 +1646,7 @@ static uint32_t draw_casters(GfxContext *g, SDL_GPURenderPass *pass, const HMM_M
         if (!casts_shadow(d) || (dynamic_only && !(d->flags & GFX_DRAW_DYNAMIC))) {
             continue;
         }
-        DrawVSUniforms vu = {d->model, d->normal};
+        DrawVSUniforms vu = {d->model, draw_normal(d)};
         SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
         const GfxMeshRec *m = &g->meshes[d->mesh];
         SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);
@@ -1793,6 +2071,9 @@ void gfx_frame_end(GfxContext *g)
         return;
     }
     g->in_frame = false;
+    if (g->msaa_wanted >= 0) {
+        apply_msaa(g);
+    }
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_quads;
@@ -1888,6 +2169,8 @@ void gfx_frame_end(GfxContext *g)
         swap_cmd = g->cmd;
         g->cmd = SDL_AcquireGPUCommandBuffer(g->dev);
     }
+    build_instances(g);
+    upload_instances(g);
     if (g->preview_on) {
         render_preview(g);
         g->stats.passes++;
@@ -1943,17 +2226,25 @@ void gfx_frame_end(GfxContext *g)
             g->cmd = swap_cmd;
         }
         g->timing[SDL_GetAtomicInt(&g->timing_head) % GPU_TIMING_RING] = (GpuTimingSlot){main_fence, NULL, main_submit};
-        if (!shot) {
-            blit_scene_to_swap(g, rw, rh);
-            g->stats.passes++;
-        }
         SDL_GPUColorTargetInfo uti;
         SDL_zero(uti);
         uti.texture = shot ? g->scene_tex : g->swap;
-        uti.load_op = SDL_GPU_LOADOP_LOAD;
+        uti.load_op = shot ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_DONT_CARE; /* every pixel is rewritten below */
         uti.store_op = SDL_GPU_STOREOP_STORE;
         pass = SDL_BeginGPURenderPass(g->cmd, &uti, 1, NULL);
         g->stats.passes++;
+        if (!shot) {
+            SDL_BindGPUGraphicsPipeline(pass, g->present_pipe);
+            SDL_GPUTextureSamplerBinding present_src = {g->scene_tex, g->linear_clamp};
+            SDL_BindGPUFragmentSamplers(pass, 0, &present_src, 1);
+            SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+            g->stats.pipe_binds++;
+            g->stats.tex_binds++;
+        }
+        if (!g->passes_logged) {
+            g->passes_logged = true;
+            mg_log_info("gfx: passes: main colour CLEAR/STORE, depth CLEAR/DONT_CARE; UI colour %s/STORE, no depth", shot ? "LOAD" : "DONT_CARE");
+        }
     }
 
     g->ui_px_w = shot ? rw : g->swap_w;

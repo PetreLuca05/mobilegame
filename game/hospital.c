@@ -1,3 +1,7 @@
+#ifdef MG_BAKE
+#include "bake.h"
+#include "world/lighting_day.h"
+#endif
 #include "hospital.h"
 
 #include <math.h>
@@ -938,6 +942,33 @@ static uint32_t group_caps(int grp, bool indices)
     return indices ? v * 2 : v;
 }
 
+/* n builders `stride` apart, as one mesh; GFX_MESH_NONE if they are empty */
+static GfxMeshId upload_merged(MeshBuilder *list, int n, int stride, Arena *scratch, GfxContext *g, bool *ok)
+{
+    uint32_t nv = 0, ni = 0;
+    for (int i = 0; i < n; i++) {
+        const MeshBuilder *m = &list[i * stride];
+        if (m->overflow) {
+            mg_log_error("hospital: merged mesh part overflowed");
+            *ok = false;
+        }
+        nv += m->nv;
+        ni += m->ni;
+    }
+    if (ni == 0) {
+        return GFX_MESH_NONE;
+    }
+    MeshBuilder all;
+    if (!mb_init(&all, scratch, nv, ni)) {
+        *ok = false;
+        return GFX_MESH_NONE;
+    }
+    for (int i = 0; i < n; i++) {
+        mb_append(&all, &list[i * stride]);
+    }
+    return mb_upload(&all, g);
+}
+
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font)
 {
     memset(h, 0, sizeof(*h));
@@ -985,6 +1016,27 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
     build_floor_1(b);
     build_floor_2(b);
     place_lights(b);
+#ifdef MG_BAKE
+    {
+        MeshBuilder *parts[HM_COUNT + HOSP_FLOORS * 3 * HOSP_CELLS + HOSP_MAX_SEGS];
+        int np = 0;
+        for (int i = 0; i < HM_COUNT; i++) {
+            parts[np++] = &b->mb[i];
+        }
+        for (int f = 0; f < HOSP_FLOORS; f++) {
+            for (int k = 0; k < 3; k++) {
+                for (int c = 0; c < HOSP_CELLS; c++) {
+                    parts[np++] = &b->cell[f][k][c];
+                }
+            }
+        }
+        for (int i = 0; i < h->seg_count; i++) {
+            parts[np++] = &b->seg[i];
+        }
+        BakeStats bs = bake_world(parts, np, world, lighting_day().key_dir, scratch);
+        mg_log_info("bake: %u vertices in %.0f ms (%s)", bs.verts, (double)bs.ms, bs.from_cache ? "cache" : "computed");
+    }
+#endif
 
     for (int i = 0; i < HM_COUNT; i++) {
         bool chunked = (i >= HM_INT0 && i < HM_INT0 + HOSP_FLOORS) || (i >= HM_GLOSS0 && i < HM_GLOSS0 + HOSP_FLOORS) ||
@@ -993,10 +1045,31 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
             mg_log_error("hospital: mesh group %d overflowed", i);
             ok = false;
         }
+#ifndef MG_RENDER_FULL
+        /* the four sides of a storey's walls and windows share one fade: one mesh each */
+        const bool first_side = (i >= HM_WALL_HI0 && i < HM_WALL_HI0 + HOSP_FLOORS * 4 && (i - HM_WALL_HI0) % 4 == 0) ||
+                                (i >= HM_WIN0 && i < HM_WIN0 + HOSP_FLOORS * 4 && (i - HM_WIN0) % 4 == 0);
+        const bool other_side = !first_side && ((i >= HM_WALL_HI0 && i < HM_WALL_HI0 + HOSP_FLOORS * 4) || (i >= HM_WIN0 && i < HM_WIN0 + HOSP_FLOORS * 4));
+        if (first_side) {
+            h->mesh[i] = upload_merged(&b->mb[i], 4, 1, scratch, g, &ok);
+            continue;
+        }
+        if (other_side) {
+            h->mesh[i] = GFX_MESH_NONE;
+            continue;
+        }
+#endif
         h->mesh[i] = !chunked && b->mb[i].ni > 0 ? mb_upload(&b->mb[i], g) : GFX_MESH_NONE;
     }
     for (int f = 0; f < HOSP_FLOORS; f++) {
         for (int k = 0; k < 3; k++) {
+#ifndef MG_RENDER_FULL
+            /* nothing culls per chunk in the minimal renderer: one mesh per storey and material */
+            h->cell[f][k][0] = upload_merged(&b->cell[f][k][0], HOSP_CELLS, 1, scratch, g, &ok);
+            for (int c = 1; c < HOSP_CELLS; c++) {
+                h->cell[f][k][c] = GFX_MESH_NONE;
+            }
+#else
             for (int c = 0; c < HOSP_CELLS; c++) {
                 MeshBuilder *m = &b->cell[f][k][c];
                 if (m->overflow) {
@@ -1005,14 +1078,40 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
                 }
                 h->cell[f][k][c] = m->ni > 0 ? mb_upload(m, g) : GFX_MESH_NONE;
             }
+#endif
         }
     }
-    for (int i = 0; i < h->seg_count; i++) {
-        if (b->seg[i].overflow) {
-            mg_log_error("hospital: wall piece %d overflowed", i);
-            ok = false;
+    /* wall pieces: one mesh per storey and side of the building; a piece is an index range of it */
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        for (int ext = 0; ext < 2; ext++) {
+            uint32_t nv = 0, ni = 0;
+            for (int i = 0; i < h->seg_count; i++) {
+                if (b->seg[i].overflow) {
+                    mg_log_error("hospital: wall piece %d overflowed", i);
+                    ok = false;
+                }
+                if (h->segs[i].storey == f && (int)h->segs[i].exterior == ext) {
+                    nv += b->seg[i].nv;
+                    ni += b->seg[i].ni;
+                }
+            }
+            h->seg_mesh[f][ext] = GFX_MESH_NONE;
+            if (ni == 0) {
+                continue;
+            }
+            MeshBuilder all;
+            if (!mb_init(&all, scratch, nv, ni)) {
+                ok = false;
+                continue;
+            }
+            for (int i = 0; i < h->seg_count; i++) {
+                if (h->segs[i].storey == f && (int)h->segs[i].exterior == ext) {
+                    h->segs[i].first = mb_append(&all, &b->seg[i]);
+                    h->segs[i].count = b->seg[i].ni;
+                }
+            }
+            h->seg_mesh[f][ext] = mb_upload(&all, g);
         }
-        h->segs[i].mesh = b->seg[i].ni > 0 ? mb_upload(&b->seg[i], g) : GFX_MESH_NONE;
     }
     MeshBuilder mb;
     mb_init(&mb, scratch, 2048, 8192);
@@ -1221,15 +1320,36 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
         float vis = storey_vis(v, f);
         /* wall pieces: the facade ones always, interior ones with the interiors */
         bool interiors_now = storey_vis(v, HOSP_ROOF_STOREY) < 1.0f;
-        for (int i = 0; i < h->seg_count; i++) {
-            const HospSeg *sg = &h->segs[i];
-            float sv = vis * (v->fade ? v->fade[HOSP_FADE_SEG0 + i] : 1.0f);
-            if (sg->storey != f || sg->mesh == GFX_MESH_NONE || sv <= 0.02f || (!sg->exterior && !interiors_now)) {
+        for (int ext = 0; ext < 2; ext++) {
+            if (h->seg_mesh[f][ext] == GFX_MESH_NONE || (!ext && !interiors_now)) {
                 continue;
             }
-            GfxMaterial m = tinted(matte, v, f);
-            m.hide = floorfade_hide(sv);
-            draw_mesh(g, sg->mesh, &m, GFX_DRAW_REFLECT);
+            /* neighbouring pieces at the same fade go out as one range */
+            uint32_t run_first = 0, run_end = 0;
+            float run_vis = -1.0f;
+            for (int i = 0; i <= h->seg_count; i++) {
+                const HospSeg *sg = i < h->seg_count ? &h->segs[i] : NULL;
+                if (sg && (sg->storey != f || (int)sg->exterior != ext || sg->count == 0)) {
+                    continue;
+                }
+                float sv = sg ? vis * (v->fade ? v->fade[HOSP_FADE_SEG0 + i] : 1.0f) : -2.0f;
+                if (sg && sv <= 0.02f) {
+                    sv = -2.0f; /* gone: ends the run, draws nothing */
+                }
+                if (sv == run_vis && sg && sg->first == run_end) {
+                    run_end += sg->count;
+                    continue;
+                }
+                if (run_vis > 0.0f && run_end > run_first) {
+                    GfxMaterial m = tinted(matte, v, f);
+                    m.hide = floorfade_hide(run_vis);
+                    HMM_Mat4 id = HMM_M4D(1.0f);
+                    gfx_draw_range(g, h->seg_mesh[f][ext], run_first, run_end - run_first, &id, &m, GFX_DRAW_REFLECT);
+                }
+                run_vis = sv;
+                run_first = sg ? sg->first : 0;
+                run_end = sg ? sg->first + sg->count : 0;
+            }
         }
         if (!interiors || vis <= 0.02f) {
             continue;

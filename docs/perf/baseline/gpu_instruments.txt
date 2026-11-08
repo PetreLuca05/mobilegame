@@ -1,0 +1,8 @@
+ipad_yard: 60 fps, GPU frame 5.06 ms, busy 30 %, effective 1.54 ms, clock Minimum 99 %
+xml.etree.ElementTree.ParseError: no element found: line 1, column 0
+ipad_lobby: 60 fps, GPU frame 4.81 ms, busy 29 %, effective 1.39 ms, clock Minimum 97 %
+xml.etree.ElementTree.ParseError: no element found: line 1, column 0
+ipad_corridor_f2: 60 fps, GPU frame 6.32 ms, busy 38 %, effective 2.40 ms, clock Minimum 90 %
+xml.etree.ElementTree.ParseError: no element found: line 1, column 0
+ipad_stress200: 60 fps, GPU frame 6.70 ms, busy 40 %, effective 2.71 ms, clock Minimum 88 %
+xml.etree.ElementTree.ParseError: no element found: line 1, column 0

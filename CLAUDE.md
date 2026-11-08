@@ -387,6 +387,33 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 `metal-gpu-intervals` table. Check `gpu-performance-state-intervals`: a GPU at
 "Minimum" clock makes ms look high.
 
+## Performance (PERF-1)
+
+Standing rules and budgets: [docs/PERF_RULES.md](docs/PERF_RULES.md); measurements: [docs/PERF.md](docs/PERF.md).
+
+- Profiler: `PROF_SCOPE("name")` (`engine/core/prof.h`), main thread, compiled out with `-DMG_PROF=OFF` (store archives).
+  Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
+  timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
+  sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`) writes `perf_SCENARIO.json` to
+  Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
+  `CONFIG=Release tools/run_ios.sh`: Debug is `-O0`. `--no-msaa`, `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.
+- Jobs: `app->jobs`, `jobs_run(js, fn, ctx, count, batch)` + `jobs_wait`; workers never touch render state.
+  `--autotest determinism` runs 400 NPCs on 1 and N threads and compares every position.
+- NPC data: `game/npc.h` (`npc_hot_t` one cache line, double-buffered; `npc_cold_t`). `game/stress.c` = dummy crowd,
+  Developer -> Stress 0-400.
+- Renderer: same mesh + pipeline on the main pass = one instanced draw (`shaders/inst.hlsli`, `build_instances` in
+  `gpu.c`) for toon, outline, unlit and ground sprites (`GFX_DRAW_GROUND`). Each has an opaque pipeline with no `clip`
+  and a dithered one used only when 0 < hide < 0.98; hide >= 0.98 is dropped in `gfx_draw`. The draw list is radix-sorted
+  on a u64 key (bucket | kind | mesh or depth | position). Static hospital meshes are merged per storey and material;
+  wall pieces are index ranges of them (`gfx_draw_range`). Keep the `draw_bucket` order (x-ray note above).
+- Avatar LOD: `AvatarPose.lod` 0 full, 1 coarse, 2 body + head; chosen in `crowd_cull_job`, with frustum culling.
+- Frame: main pass + UI pass; the UI pass starts by upscaling the 3D image (`present.frag`). Metal shaders get real
+  `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).
+- `-DMG_BAKE=ON`: prototype that bakes sun shadow + AO into static vertex colours, cached in the pref path. Off: the
+  meshes have too few vertices for it to look right.
+- Thermal state serious or worse: NPC detail radius 22 -> 11 m and MSAA off, logged (`update_thermal` in `game.c`).
+
 ## Conventions
 
 - C11, plain C, small files. No heap allocation in the frame loop: use

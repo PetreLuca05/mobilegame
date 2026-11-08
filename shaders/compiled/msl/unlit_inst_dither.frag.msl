@@ -1,0 +1,72 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+constant spvUnsafeArray<float, 16> _53 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    half4 i_col [[user(locn2)]];
+    half4 i_tint [[user(locn3), flat]];
+    half4 i_params [[user(locn4), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], float4 gl_FragCoord [[position]])
+{
+    PSMain_out out = {};
+    uint2 _178 = uint2(gl_FragCoord.xy) & uint2(3u);
+    if ((((_53[(_178.y * 4u) + _178.x] + 0.5) * 0.0625) - float(in.i_params.w)) < 0.0)
+    {
+        discard_fragment();
+    }
+    out._entryPointOutput = float4(half4(in.i_col.xyz * in.i_tint.xyz, half(1.0)));
+    return out;
+}
+

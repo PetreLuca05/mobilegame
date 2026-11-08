@@ -1,0 +1,122 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+// Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
+template<typename Tx, typename Ty>
+inline Tx mod(Tx x, Ty y)
+{
+    return x - y * floor(x / y);
+}
+
+struct DrawFS
+{
+    float4 u_tint;
+    float4 u_params;
+    float4 u_light_index[2];
+    float4 u_draw_misc;
+};
+
+struct FrameFS
+{
+    float4 u_sun_dir;
+    float4 u_sun_color;
+    float4 u_ambient;
+    float4 u_eye;
+    float4 u_misc;
+    float4 u_fog;
+};
+
+constant spvUnsafeArray<float, 16> _81 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_wpos [[user(locn0)]];
+    float3 i_nrm [[user(locn1)]];
+    float4 i_col [[user(locn2)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _41 [[buffer(0)]], constant FrameFS& _140 [[buffer(1)]], float4 gl_FragCoord [[position]])
+{
+    PSMain_out out = {};
+    do
+    {
+        if (_41.u_draw_misc.x <= 0.0)
+        {
+            break;
+        }
+        uint2 _413 = uint2(gl_FragCoord.xy) & uint2(3u);
+        if ((((_81[(_413.y * 4u) + _413.x] + 0.5) * 0.0625) - _41.u_draw_misc.x) < 0.0)
+        {
+            discard_fragment();
+        }
+        break;
+    } while(false);
+    float3 _340 = in.i_col.xyz * _41.u_tint.xyz;
+    float3 _532;
+    if (_41.u_params.x > 0.0)
+    {
+        float2 _351 = in.i_wpos.xz / float2(_41.u_params.x);
+        float2 _320 = smoothstep(float2(0.4880000054836273193359375) - fast::max(fwidth(_351), float2(9.9999997473787516355514526367188e-05)), float2(0.4880000054836273193359375), abs(fract(_351) - float2(0.5)));
+        float2 _322 = floor(_351);
+        _532 = _340 * ((1.0 - (_41.u_params.y * fast::max(_320.x, _320.y))) * (1.0 - (_41.u_params.z * mod(abs(_322.x + _322.y), 2.0))));
+    }
+    else
+    {
+        _532 = _340;
+    }
+    float _454 = dot(fast::normalize(in.i_nrm), _140.u_sun_dir.xyz);
+    float _491 = fast::max(fwidth(_454), 9.9999997473787516355514526367188e-05);
+    float _505 = fast::max(fwidth(_454), 9.9999997473787516355514526367188e-05);
+    float _485 = (0.550000011920928955078125 * smoothstep(-_491, _491, _454)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _505, 0.449999988079071044921875 + _505, _454));
+    out._entryPointOutput = float4(_532 * mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _485), _140.u_ambient.xyz + (_140.u_sun_color.xyz * _485), float3(fast::clamp(in.i_col.w * _41.u_tint.w, 0.0, 1.0))), 1.0);
+    return out;
+}
+

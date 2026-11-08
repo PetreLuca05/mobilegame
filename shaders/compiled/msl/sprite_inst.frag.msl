@@ -1,0 +1,24 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_nrm [[user(locn1)]];
+    half4 i_tint [[user(locn3), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]])
+{
+    PSMain_out out = {};
+    half _117 = half(1.0 - smoothstep(0.3499999940395355224609375, 1.0, length(in.i_nrm.xy))) * in.i_tint.w;
+    out._entryPointOutput = float4(half4(in.i_tint.xyz * _117, _117));
+    return out;
+}
+

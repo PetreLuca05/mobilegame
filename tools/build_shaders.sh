@@ -36,7 +36,10 @@ for f in "$SRC"/*.vert.hlsl "$SRC"/*.frag.hlsl; do
         "$SC" "$f" -s HLSL -d MSL -t "$stage" -e "$entry" -I "$SRC" --msl-version "$MSL_VERSION" -o "$msl"
     else
         glslangValidator -D -V -S "$gstage" -e "$entry" -I"$SRC" -o "$spv" "$f" >/dev/null
-        spirv-cross "$spv" --msl --msl-version 20100 --msl-decoration-binding --output "$msl"
+        # MSL only: min16float becomes a real half (the SPIR-V stays 32-bit, no Float16 device feature needed)
+        glslangValidator -D -V --hlsl-enable-16bit-types -S "$gstage" -e "$entry" -I"$SRC" -o "$spv.16" "$f" >/dev/null
+        spirv-cross "$spv.16" --msl --msl-version 20100 --msl-decoration-binding --output "$msl"
+        rm -f "$spv.16"
     fi
     echo "  $name -> spv, msl"
 done

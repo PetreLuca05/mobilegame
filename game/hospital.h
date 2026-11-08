@@ -86,12 +86,13 @@ typedef struct HospSeg {
     float x0, x1, z;  /* extent along X, wall centre line */
     int8_t storey;
     bool exterior;    /* south facade: drawn from outside too */
-    GfxMeshId mesh;
+    uint32_t first, count; /* its index range in seg_mesh[storey][exterior] */
 } HospSeg;
 
 typedef struct Hospital {
     GfxMeshId mesh[HM_COUNT];
-    GfxMeshId cell[HOSP_FLOORS][3][HOSP_CELLS]; /* [storey][matte, glossy, floor][chunk] */
+    GfxMeshId cell[HOSP_FLOORS][3][HOSP_CELLS]; /* [storey][matte, glossy, floor][chunk]; minimal: all in chunk 0 */
+    GfxMeshId seg_mesh[HOSP_FLOORS][2];         /* wall pieces of a storey, [interior, exterior], merged */
     GfxMeshId gizmo_sphere, gizmo_cone;
 #ifdef MG_RENDER_FULL
     HospLight lights[HOSP_MAX_LIGHTS];

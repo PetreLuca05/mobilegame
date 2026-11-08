@@ -1,5 +1,7 @@
 #include "mesh.h"
 
+#include <string.h>
+
 #include <math.h>
 
 #include "core/log.h"
@@ -13,6 +15,22 @@ bool mb_init(MeshBuilder *mb, Arena *arena, uint32_t cap_v, uint32_t cap_i)
     mb->nv = mb->ni = 0;
     mb->overflow = (mb->v == NULL || mb->idx == NULL);
     return !mb->overflow;
+}
+
+uint32_t mb_append(MeshBuilder *dst, const MeshBuilder *src)
+{
+    const uint32_t first = dst->ni;
+    if (dst->nv + src->nv > dst->cap_v || dst->ni + src->ni > dst->cap_i) {
+        dst->overflow = true;
+        return first;
+    }
+    memcpy(dst->v + dst->nv, src->v, sizeof(GfxVertex) * src->nv);
+    for (uint32_t i = 0; i < src->ni; i++) {
+        dst->idx[dst->ni + i] = src->idx[i] + dst->nv;
+    }
+    dst->nv += src->nv;
+    dst->ni += src->ni;
+    return first;
 }
 
 void mb_reset(MeshBuilder *mb)

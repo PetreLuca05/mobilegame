@@ -125,7 +125,9 @@ typedef struct Game {
     Autotest autotest;
     PerfRun perf;
     StressCrowd crowd;
-    bool crowd_ok, prof_on;
+    bool crowd_ok, prof_on, no_lod;
+    int thermal, thermal_force; /* thermal_force: --force-thermal N, -1 = ask the OS */
+    double next_thermal_poll;
     uint32_t rendered_entities, rendered_last; /* this frame / the finished one */
     Audio *audio;
     RouteTest route;
@@ -361,6 +363,13 @@ bool game_init(MgApp *app)
     }
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
+    if (has_flag(app->argc, app->argv, "--no-msaa")) {
+        gfx_set_msaa(app->gfx, false);
+    }
+    gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
+    g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
+    const char *force_thermal = arg_value(app->argc, app->argv, "--force-thermal");
+    g->thermal_force = force_thermal ? SDL_atoi(force_thermal) : -1;
     g->logged_fe = -1;
     g->audio = audio_create(&app->perm);
 #ifdef MG_DAYCYCLE_CONTINUOUS
@@ -1028,6 +1037,37 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     app_text_input(app, f->editing_name);
 }
 
+typedef struct CrowdCull {
+    const npc_hot_t *hot;
+    uint8_t *out;     /* per NPC: 255 not drawn, else its LOD */
+    HMM_Mat4 view_proj;
+    float px, pz, near2;
+    int floor;
+    bool lod0_only; /* --no-lod */
+} CrowdCull;
+
+/* storey + frustum + LOD, on the job system: reads the crowd, writes `out` only */
+static void crowd_cull_job(void *ctx, int first, int last, int worker)
+{
+    (void)worker;
+    const CrowdCull *c = (const CrowdCull *)ctx;
+    for (int i = first; i < last; i++) {
+        const npc_hot_t *h = &c->hot[i];
+        c->out[i] = 255;
+        if ((int)h->storey > c->floor) {
+            continue;
+        }
+        HMM_Vec4 clip = HMM_MulM4V4(c->view_proj, HMM_V4(h->x, h->y + 1.0f, h->z, 1.0f));
+        const float w = clip.W * 1.2f; /* margin: an avatar is ~1 m wide */
+        if (clip.W <= 0.0f || clip.X < -w || clip.X > w || clip.Y < -w || clip.Y > w) {
+            continue;
+        }
+        const float dx = h->x - c->px, dz = h->z - c->pz;
+        const bool on_view = (h->storey < 0 ? 0 : (int)h->storey) == c->floor;
+        c->out[i] = c->lod0_only ? 0 : (!on_view ? 2 : (dx * dx + dz * dz <= c->near2 ? 0 : 1));
+    }
+}
+
 /* the stress dummies: every storey up to the view floor, like remote players */
 static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
 {
@@ -1035,22 +1075,48 @@ static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
     const npc_hot_t *hot = p->hot[p->read];
     const float dt = mg_minf(app->frame_dt, 0.1f);
     const float now = (float)g->crowd.tick + alpha;
+    const float near_m = g->thermal >= 2 ? 11.0f : 22.0f; /* hot device: full detail only close by */
+    uint8_t *lods = ARENA_PUSH(&app->frame, uint8_t, (size_t)p->count);
+    if (!lods) {
+        return;
+    }
+    CrowdCull cull = {hot, lods, g->view_proj, g->player.kin.pos.X, g->player.kin.pos.Z, near_m * near_m, floor, g->no_lod};
+    {
+        PROF_SCOPE("npc.cull");
+        jobs_run(app->jobs, crowd_cull_job, &cull, p->count, 64);
+        jobs_wait(app->jobs);
+    }
     uint32_t rendered = 0;
     for (int i = 0; i < p->count; i++) {
-        const npc_hot_t *h = &hot[i];
-        if ((int)h->storey > floor) {
+        if (lods[i] == 255) {
             continue;
         }
+        const npc_hot_t *h = &hot[i];
         /* a slow NPC glides between its updates */
         float w = mg_clampf((now - (float)h->last_tick - 1.0f) / (float)h->rate, 0.0f, 1.0f);
         HMM_Vec3 feet = HMM_V3(h->prev_x + (h->x - h->prev_x) * w, h->y, h->prev_z + (h->z - h->prev_z) * w);
-        AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false};
+        AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
         npc_cold_t *cold = &p->cold[i];
         avatar_animate(&cold->anim, &pose, dt);
-        avatar_draw(app->gfx, &g->avatar_meshes, &cold->look, &pose, &cold->anim, &g->world);
+        avatar_draw(app->gfx, &g->avatar_meshes, &cold->look, &pose, &cold->anim, NULL);
         rendered++;
     }
     g->rendered_entities += rendered;
+}
+
+/* 1 Hz: at "serious" or worse, NPC detail radius halves and MSAA goes off */
+static void update_thermal(Game *g, MgApp *app)
+{
+    if (app->time < g->next_thermal_poll) {
+        return;
+    }
+    g->next_thermal_poll = app->time + 1.0;
+    int t = g->thermal_force >= 0 ? g->thermal_force : device_thermal_state();
+    if ((t >= 2) != (g->thermal >= 2)) {
+        mg_log_warn("thermal: state %d: NPC detail radius %s, MSAA %s", t, t >= 2 ? "11 m" : "22 m", t >= 2 ? "off" : "on");
+        gfx_set_msaa(app->gfx, t < 2);
+    }
+    g->thermal = t;
 }
 
 void game_frame(MgApp *app, float alpha)
@@ -1063,6 +1129,7 @@ void game_frame(MgApp *app, float alpha)
             stress_spawn(&g->crowd, g->nav, want);
         }
     }
+    update_thermal(g, app);
     g->rendered_last = g->rendered_entities;
     g->rendered_entities = 1;
 #ifdef MG_RENDER_FULL

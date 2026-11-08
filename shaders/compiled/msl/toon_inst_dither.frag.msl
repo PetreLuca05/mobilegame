@@ -1,0 +1,115 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+struct FrameFS
+{
+    float4 u_sun_dir;
+    float4 u_sun_color;
+    float4 u_ambient;
+    float4 u_eye;
+    float4 u_misc;
+    float4 u_fog;
+};
+
+constant spvUnsafeArray<float, 16> _72 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_wpos [[user(locn0)]];
+    float3 i_nrm [[user(locn1)]];
+    half4 i_col [[user(locn2)]];
+    half4 i_tint [[user(locn3), flat]];
+    half4 i_params [[user(locn4), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant FrameFS& _132 [[buffer(1)]], float4 gl_FragCoord [[position]])
+{
+    PSMain_out out = {};
+    uint2 _415 = uint2(gl_FragCoord.xy) & uint2(3u);
+    if ((((_72[(_415.y * 4u) + _415.x] + 0.5) * 0.0625) - float(in.i_params.w)) < 0.0)
+    {
+        discard_fragment();
+    }
+    half4 _772;
+    do
+    {
+        half3 _473 = in.i_col.xyz * in.i_tint.xyz;
+        if (float(in.i_params.z) < 0.0)
+        {
+            _772 = half4(_473, half(1.0));
+            break;
+        }
+        float3 _488 = fast::normalize(in.i_nrm);
+        float3 _441 = _488;
+        float3 _495 = fast::normalize(_132.u_eye.xyz - in.i_wpos);
+        float _500 = dot(_488, _132.u_sun_dir.xyz);
+        float _507 = fast::clamp(float(in.i_col.w * in.i_tint.w), 0.0, 1.0);
+        float _605 = dot(_488, _132.u_sun_dir.xyz);
+        float _642 = fast::max(fwidth(_605), 9.9999997473787516355514526367188e-05);
+        float _656 = fast::max(fwidth(_605), 9.9999997473787516355514526367188e-05);
+        float _636 = (0.550000011920928955078125 * smoothstep(-_642, _642, _605)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _656, 0.449999988079071044921875 + _656, _605));
+        float _670 = fast::max(fwidth(_500), 9.9999997473787516355514526367188e-05);
+        float _684 = fast::max(fwidth(_441.y), 9.9999997473787516355514526367188e-05);
+        float _521 = (smoothstep(-_670, _670, _500) * _507) + ((1.0 - _507) * smoothstep((-0.20000000298023223876953125) - _684, (-0.20000000298023223876953125) + _684, _441.y));
+        float _524 = float(in.i_params.y);
+        float _535 = 1.0 - fast::clamp(dot(_488, _495), 0.0, 1.0);
+        float _698 = fast::max(fwidth(_535), 9.9999997473787516355514526367188e-05);
+        float _558 = dot(_488, fast::normalize(_132.u_sun_dir.xyz + _495));
+        float _712 = fast::max(fwidth(_558), 9.9999997473787516355514526367188e-05);
+        float _726 = fast::max(fwidth(_558), 9.9999997473787516355514526367188e-05);
+        half3 _587 = half3(((float3(_473) * mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _636), _132.u_ambient.xyz + (_132.u_sun_color.xyz * _636), float3(_507))) + float3((((((smoothstep(0.62000000476837158203125 - _698, 0.62000000476837158203125 + _698, _535) * fast::clamp(1.0 - (abs(_441.y) * 1.39999997615814208984375), 0.0, 1.0)) * float(in.i_params.x)) * (0.60000002384185791015625 + (0.800000011920928955078125 * _524))) * (0.3499999940395355224609375 + (0.64999997615814208984375 * _521))) * 0.449999988079071044921875) + (((_524 * _521) * (0.5 * (smoothstep(0.949999988079071044921875 - _712, 0.949999988079071044921875 + _712, _558) + smoothstep(0.9900000095367431640625 - _726, 0.9900000095367431640625 + _726, _558)))) * 0.89999997615814208984375))) + float3(_473 * in.i_params.z));
+        _772 = half4(_587, half(1.0));
+        break;
+    } while(false);
+    out._entryPointOutput = float4(_772);
+    return out;
+}
+

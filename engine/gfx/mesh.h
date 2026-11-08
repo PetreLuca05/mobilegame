@@ -18,6 +18,8 @@ typedef HMM_Vec4 (*MeshColorFn)(HMM_Vec3 dir, void *user);
 
 bool mb_init(MeshBuilder *mb, Arena *arena, uint32_t cap_v, uint32_t cap_i);
 void mb_reset(MeshBuilder *mb);
+/* Append src (indices rebased); returns the first index it got in dst. */
+uint32_t mb_append(MeshBuilder *dst, const MeshBuilder *src);
 uint32_t mb_vertex(MeshBuilder *mb, HMM_Vec3 p, HMM_Vec3 n, HMM_Vec4 color);
 void mb_triangle_idx(MeshBuilder *mb, uint32_t a, uint32_t b, uint32_t c);
 

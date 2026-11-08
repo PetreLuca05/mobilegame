@@ -1,0 +1,7 @@
+#include "common.hlsli"
+#include "inst.hlsli"
+
+float4 PSMain(InstOut i) : SV_Target0
+{
+    return min16float4(i.col.rgb * i.tint.rgb, 1.0);
+}

@@ -1,0 +1,67 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct FrameFS
+{
+    float4 u_sun_dir;
+    float4 u_sun_color;
+    float4 u_ambient;
+    float4 u_eye;
+    float4 u_misc;
+    float4 u_fog;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_wpos [[user(locn0)]];
+    float3 i_nrm [[user(locn1)]];
+    half4 i_col [[user(locn2)]];
+    half4 i_tint [[user(locn3), flat]];
+    half4 i_params [[user(locn4), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant FrameFS& _72 [[buffer(1)]])
+{
+    PSMain_out out = {};
+    half4 _674;
+    do
+    {
+        half3 _382 = in.i_col.xyz * in.i_tint.xyz;
+        if (float(in.i_params.z) < 0.0)
+        {
+            _674 = half4(_382, half(1.0));
+            break;
+        }
+        float3 _397 = fast::normalize(in.i_nrm);
+        float3 _350 = _397;
+        float3 _404 = fast::normalize(_72.u_eye.xyz - in.i_wpos);
+        float _409 = dot(_397, _72.u_sun_dir.xyz);
+        float _416 = fast::clamp(float(in.i_col.w * in.i_tint.w), 0.0, 1.0);
+        float _514 = dot(_397, _72.u_sun_dir.xyz);
+        float _551 = fast::max(fwidth(_514), 9.9999997473787516355514526367188e-05);
+        float _565 = fast::max(fwidth(_514), 9.9999997473787516355514526367188e-05);
+        float _545 = (0.550000011920928955078125 * smoothstep(-_551, _551, _514)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _565, 0.449999988079071044921875 + _565, _514));
+        float _579 = fast::max(fwidth(_409), 9.9999997473787516355514526367188e-05);
+        float _593 = fast::max(fwidth(_350.y), 9.9999997473787516355514526367188e-05);
+        float _430 = (smoothstep(-_579, _579, _409) * _416) + ((1.0 - _416) * smoothstep((-0.20000000298023223876953125) - _593, (-0.20000000298023223876953125) + _593, _350.y));
+        float _433 = float(in.i_params.y);
+        float _444 = 1.0 - fast::clamp(dot(_397, _404), 0.0, 1.0);
+        float _607 = fast::max(fwidth(_444), 9.9999997473787516355514526367188e-05);
+        float _467 = dot(_397, fast::normalize(_72.u_sun_dir.xyz + _404));
+        float _621 = fast::max(fwidth(_467), 9.9999997473787516355514526367188e-05);
+        float _635 = fast::max(fwidth(_467), 9.9999997473787516355514526367188e-05);
+        half3 _496 = half3(((float3(_382) * mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _545), _72.u_ambient.xyz + (_72.u_sun_color.xyz * _545), float3(_416))) + float3((((((smoothstep(0.62000000476837158203125 - _607, 0.62000000476837158203125 + _607, _444) * fast::clamp(1.0 - (abs(_350.y) * 1.39999997615814208984375), 0.0, 1.0)) * float(in.i_params.x)) * (0.60000002384185791015625 + (0.800000011920928955078125 * _433))) * (0.3499999940395355224609375 + (0.64999997615814208984375 * _430))) * 0.449999988079071044921875) + (((_433 * _430) * (0.5 * (smoothstep(0.949999988079071044921875 - _621, 0.949999988079071044921875 + _621, _467) + smoothstep(0.9900000095367431640625 - _635, 0.9900000095367431640625 + _635, _467)))) * 0.89999997615814208984375))) + float3(_382 * in.i_params.z));
+        _674 = half4(_496, half(1.0));
+        break;
+    } while(false);
+    out._entryPointOutput = float4(_674);
+    return out;
+}
+

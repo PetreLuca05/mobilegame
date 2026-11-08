@@ -7,7 +7,9 @@
 // u_params: x tile size in metres (0 = plain), y grout darkening, z checker amount
 float4 PSMain(VSOut i) : SV_Target0
 {
+#ifdef FLOOR_DITHER
     dither_clip(i.pos);
+#endif
     float3 base = i.col.rgb * u_tint.rgb;
     float tile = u_params.x;
     if (tile > 0.0)

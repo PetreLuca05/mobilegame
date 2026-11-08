@@ -203,6 +203,24 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
 
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 20, 28, white);
     m->body = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 9, 12, white);
+    m->lod_body[0] = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 4, 7, white);
+    m->lod_body[1] = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 9, 12, white, NULL, NULL);
+    m->lod_head[0] = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 4, 7, white, NULL, NULL);
+    m->lod_head[1] = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_sphere(&mb, HMM_M4D(1.0f), HAND_R, 4, 6, white, NULL, NULL);
+    m->lod_hand = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_sphere_cap(&mb, HMM_M4D(1.0f), HEAD_R * 1.07f, HMM_AngleDeg(88.0f), 5, 10, white);
+    m->lod_hair = mb_upload(&mb, g);
     mb_reset(&mb); /* female: 0.86 m tall, 0.46 m wide, a slightly narrower top */
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB * 0.92f, BODY_RT * 0.9f, BODY_H * 0.955f, 20, 28, white);
     m->body_female = mb_upload(&mb, g);
@@ -454,6 +472,41 @@ static void outlined(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t col
     gfx_draw(dc->g, mesh, &m, &ol, dc->flags);
 }
 
+/* contact shadow: shrinks and fades with height above the ground */
+static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const AvatarPose *p, const ColWorld *world)
+{
+    float ground = p->feet.Y;
+    if (p->flat_ground || (world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground))) {
+        float h = mg_maxf(p->feet.Y - ground, 0.0f);
+        float k = 1.0f / (1.0f + h * 0.8f);
+        HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + 0.02f, p->feet.Z)); /* above decals */
+        sm = HMM_MulM4(sm, HMM_Rotate_RH(HMM_AngleDeg(-90.0f), HMM_V3(1, 0, 0)));
+        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k, 0.46f * k, 1.0f))); /* +10 % for the top-down view */
+        GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, 0.45f * k), GFX_SPRITE_DISC);
+        gfx_draw(g, m->shadow, &sm, &sh, GFX_DRAW_GROUND);
+    }
+}
+
+/* LOD 1 and 2: the same transforms, far fewer parts */
+static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p, HMM_Mat4 root,
+                            HMM_Mat4 body, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
+{
+    const int l = p->lod >= 2 ? 1 : 0;
+    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y, 0)), HMM_Scale(HMM_V3(hs, hs, hs)));
+    if (l == 0) {
+        outlined(dc, m->lod_body[0], body, look->outfit);
+        outlined(dc, m->lod_head[0], head, look->skin);
+        if (look->hair_style != HAIR_NONE) {
+            part(dc, m->lod_hair, head, look->hair, SURF_MATTE);
+        }
+        part(dc, m->lod_hand, compose(root, lh), look->skin, SURF_MATTE);
+        part(dc, m->lod_hand, compose(root, rh), look->skin, SURF_MATTE);
+    } else {
+        part(dc, m->lod_body[1], body, look->outfit, SURF_MATTE);
+        part(dc, m->lod_head[1], head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
+    }
+}
+
 static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                         const AvatarAnim *a, const ColWorld *world, const GfxMaterial *override)
 {
@@ -471,6 +524,15 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd, HMM_V3(1, 0, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side, HMM_V3(0, 0, 1)));
     const bool female = look->body == BODY_FEMALE;
+    if (p->lod > 0 && !override) {
+        const float bh = female ? BODY_H * 0.955f : BODY_H;
+        const float low_hs = female ? 0.956f : 1.0f;
+        const float low_swing = HMM_SinF(phase) * 0.16f * a->swing;
+        draw_avatar_low(&dc, m, look, p, root, body, bh + HEAD_GAP + HEAD_R * low_hs - 2.0f * bob, low_hs,
+                        HMM_V3(-HAND_X, HAND_Y + bob, low_swing), HMM_V3(HAND_X, HAND_Y + bob, -low_swing * 0.6f - 0.04f));
+        draw_contact_shadow(g, m, p, world);
+        return;
+    }
     outlined(&dc, female ? m->body_female : m->body, body, look->outfit);
     /* chest details were modelled on the male body: scale them onto the female one */
     HMM_Mat4 chest = female ? HMM_MulM4(body, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body;
@@ -537,16 +599,8 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     outlined(&dc, m->hand, compose(root, lh), look->skin);
     outlined(&dc, m->hand, compose(root, rh), look->skin);
 
-    /* contact shadow: shrinks and fades with height above the ground */
-    float ground = p->feet.Y;
-    if (!override && world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground)) {
-        float h = mg_maxf(p->feet.Y - ground, 0.0f);
-        float k = 1.0f / (1.0f + h * 0.8f);
-        HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + 0.02f, p->feet.Z)); /* above decals */
-        sm = HMM_MulM4(sm, HMM_Rotate_RH(HMM_AngleDeg(-90.0f), HMM_V3(1, 0, 0)));
-        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k, 0.46f * k, 1.0f))); /* +10 % for the top-down view */
-        GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, 0.45f * k), GFX_SPRITE_DISC);
-        gfx_draw(g, m->shadow, &sm, &sh, 0);
+    if (!override) {
+        draw_contact_shadow(g, m, p, world);
     }
 }
 
