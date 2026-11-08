@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "core/log.h"
+#include "player.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH };
 
@@ -82,7 +83,7 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
             bool ok_move = moved > 6.0f;
             bool ok_sprint = t->max_speed > 6.9f;
             bool ok_yaw = fabsf(dyaw + 25.0f) < 1.5f;
-            bool ok_jump = p->jump_count == t->at_start.jump_count + 1;
+            bool ok_jump = p->jump_count == t->at_start.jump_count + (PLAYER_JUMP_ENABLED ? 1u : 0u);
             bool ok_stop = fabsf(p->player_vel.X) + fabsf(p->player_vel.Z) < 0.01f;
             mg_log_info("autotest touch: moved %.2f m (%s), top speed %.2f (%s), camera yaw %+.1f deg (%s), jumps %u "
                         "(%s), stopped (%s)",

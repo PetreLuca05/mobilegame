@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "core/log.h"
-#include "devroom.h"
+#include "scene.h"
 
 #define STALE_AFTER 3.5      /* s without packets -> drop (keepalive is 1 Hz): gone within 5 s */
 #define SLOT_SETTLE 0.6      /* s after joining before we pick a slot */
@@ -151,18 +151,18 @@ static AvatarLook look_from_meta(const NetPeerMeta *m)
  * the same instant) resolve deterministically: the larger user id moves. */
 static void choose_slot(NetSession *s)
 {
-    bool used[DEVROOM_SPAWNS] = {false};
+    bool used[SCENE_SPAWNS] = {false};
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
         const RemotePlayer *r = &s->remotes[i];
-        if (r->active && r->meta.slot >= 0 && r->meta.slot < DEVROOM_SPAWNS) {
+        if (r->active && r->meta.slot >= 0 && r->meta.slot < SCENE_SPAWNS) {
             used[r->meta.slot] = true;
         }
     }
     int slot = 0;
-    while (slot < DEVROOM_SPAWNS && used[slot]) {
+    while (slot < SCENE_SPAWNS && used[slot]) {
         slot++;
     }
-    if (slot >= DEVROOM_SPAWNS) {
+    if (slot >= SCENE_SPAWNS) {
         slot = 0;
     }
     bool changed = slot != s->slot;

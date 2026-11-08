@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-#include "devroom.h"
+#include "scene.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 
@@ -213,13 +213,13 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
 
 AvatarLook avatar_look_for_slot(int slot)
 {
-    static const AvatarLook looks[DEVROOM_SPAWNS] = {
+    static const AvatarLook looks[SCENE_SPAWNS] = {
         {0xFFD3B0, 0xFF5A5A, 0x5A3A22, 0xFFFFFF, 0},
         {0xE8B48A, 0x4A8BFF, 0x1F1F2A, 0xFFC93C, AVATAR_SUNGLASSES},
         {0xC68A5E, 0x45C46B, 0xF2C14E, 0xFFFFFF, AVATAR_CAT_EARS},
         {0x8D5A3B, 0xFFC93C, 0x2B1A10, 0x4A8BFF, AVATAR_SUNGLASSES | AVATAR_CAT_EARS},
     };
-    if (slot < 0 || slot >= DEVROOM_SPAWNS) {
+    if (slot < 0 || slot >= SCENE_SPAWNS) {
         slot = 0;
     }
     return looks[slot];

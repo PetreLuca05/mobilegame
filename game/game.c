@@ -1,5 +1,6 @@
-/* Step 4: dev room, kinematic player, landscape touch controls, third-person
- * camera, debug HUD and gear menu. Keyboard/mouse also work on desktop. */
+/* Game: scene (hospital or dev room), kinematic player, landscape touch
+ * controls, third-person camera, HUD, settings menu and multiplayer session.
+ * Keyboard/mouse also work on desktop. */
 #include "game.h"
 
 #include "autotest.h"
@@ -7,20 +8,20 @@
 #include "camera_tp.h"
 #include "config.local.h"
 #include "debug_menu.h"
-#include "devroom.h"
 #include "launch_screen.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 #include "net_session.h"
 #include "player.h"
+#include "scene.h"
 #include "scenery.h"
 #include "settings.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
 
 typedef struct Game {
-    DevRoom room;
+    Scene *scene;
     ColWorld world;
     KinematicParams kparams;
     Player player;
@@ -33,6 +34,7 @@ typedef struct Game {
     Ui ui;
     DebugMenu menu;
     GfxMeshId unit_box;
+    GfxMeshId ref_capsule; /* 1.8 m x 0.35 m player-sized ghost for the collider view */
     Scenery scenery;
     AvatarMeshes avatar_meshes;
     AvatarAnim local_anim;
@@ -99,18 +101,21 @@ bool game_init(MgApp *app)
 {
     Game *g = ARENA_PUSH(&app->perm, Game, 1);
     app->game = g;
-    if (!devroom_init(&g->room, app->gfx, &app->perm)) {
+    g->scene = scene_create(app->gfx, &app->perm, &g->world);
+    if (!g->scene) {
         return false;
     }
-    devroom_colliders(&g->room, &g->world);
     kinematic_default_params(&g->kparams);
     settings_default(&g->settings);
     touch_controls_default_config(&g->touch_cfg);
+    if (!PLAYER_JUMP_ENABLED) {
+        g->touch_cfg.jump_size_pt = 0.0f; /* no jump button */
+    }
     touch_controls_reset(&g->touch);
 
-    HMM_Vec3 spawn = g->room.spawns[0];
+    HMM_Vec3 spawn = scene_spawn(g->scene, 0);
     parse_vec3_arg(app->argc, app->argv, "--spawn", &spawn);
-    player_init(&g->player, spawn, 0.0f);
+    player_init(&g->player, spawn, scene_spawn_yaw(g->scene));
     tpcam_init(&g->cam);
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
@@ -123,6 +128,10 @@ bool game_init(MgApp *app)
     mb_init(&mb, &app->perm, 64, 64);
     mb_box(&mb, HMM_M4D(1.0f), HMM_V3(1, 1, 1), HMM_V4(1, 1, 1, 1));
     g->unit_box = mb_upload(&mb, app->gfx);
+    arena_reset_to(&app->perm, mark);
+    mb_init(&mb, &app->perm, 2048, 8192);
+    mb_tapered_capsule(&mb, HMM_M4D(1.0f), 0.35f, 0.35f, 1.8f, 16, 24, HMM_V4(0.92f, 0.92f, 0.95f, 1));
+    g->ref_capsule = mb_upload(&mb, app->gfx);
     arena_reset_to(&app->perm, mark);
     if (!scenery_init(&g->scenery, app->gfx, &app->perm) ||
         !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
@@ -155,6 +164,7 @@ bool game_init(MgApp *app)
 void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
+    scene_tick(g->scene, &g->world, MG_TICK_DT);
     player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
 }
 
@@ -260,7 +270,7 @@ static void draw_colliders(Game *g, GfxContext *gfx, HMM_Vec3 feet)
     }
     HMM_Mat4 pm = HMM_Translate(feet);
     GfxMaterial cap = mat_ghost(HMM_V4(1.0f, 0.85f, 0.2f, 0.5f));
-    gfx_draw(gfx, g->room.ref_capsule, &pm, &cap, 0);
+    gfx_draw(gfx, g->ref_capsule, &pm, &cap, 0);
 }
 
 static void scene_defaults(GfxSceneParams *sp, float time)
@@ -275,21 +285,23 @@ static void scene_defaults(GfxSceneParams *sp, float time)
     sp->time = time;
 }
 
-/* Launch screen: slow orbit around the room, menu on top. */
+/* Launch screen: slow orbit around the scene, menu on top. */
 static void game_frame_launch(Game *g, MgApp *app)
 {
-    float a = (float)app->time * 0.07f + 0.6f;
     GfxSceneParams sp = {0};
-    sp.eye = HMM_V3(HMM_SinF(a) * 15.0f, 7.5f, HMM_CosF(a) * 15.0f);
-    sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(0, 0.5f, 0), HMM_V3(0, 1, 0));
+    HMM_Vec3 target;
+    scene_launch_view(g->scene, (float)app->time, &sp.eye, &target);
+    sp.view = HMM_LookAt_RH(sp.eye, target, HMM_V3(0, 1, 0));
     sp.proj = camera_projection(HMM_AngleDeg(62.0f), app->width_pt / app->height_pt, 0.05f, 400.0f, -0.25f);
     scene_defaults(&sp, (float)app->time);
     gfx_set_scene(app->gfx, &sp);
-    devroom_draw(&g->room, app->gfx, false);
+    SceneView view = {sp.eye, 0, (float)app->time, false};
+    scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
-    for (int i = 0; i < DEVROOM_SPAWNS; i++) { /* the cast, idling on their discs */
+    for (int i = 0; i < SCENE_SPAWNS; i++) { /* the cast, idling on their discs */
         AvatarLook look = i == 0 ? avatar_look_doctor(avatar_look_for_slot(0)) : avatar_look_for_slot(i);
-        AvatarPose pose = {g->room.spawns[i], HMM_PI32 + 0.3f * (float)(i - 1), HMM_V3(0, 0, 0), true, false};
+        AvatarPose pose = {scene_spawn(g->scene, i), scene_spawn_yaw(g->scene) + HMM_PI32 + 0.3f * (float)(i - 1),
+                           HMM_V3(0, 0, 0), true, false};
         avatar_draw(app->gfx, &g->avatar_meshes, &look, &pose, &g->local_anim, &g->world);
     }
     avatar_animate(&g->local_anim, &(AvatarPose){HMM_V3(0, 0, 0), 0, HMM_V3(0, 0, 0), true, false},
@@ -300,7 +312,7 @@ static void game_frame_launch(Game *g, MgApp *app)
     switch (c) {
     case LAUNCH_OFFLINE:
         session_stop(&g->session);
-        player_init(&g->player, g->room.spawns[0], 0.0f);
+        player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
         break;
     case LAUNCH_CREATE_PARTY:
         session_start(&g->session, MODE_PARTY, NULL);
@@ -370,7 +382,7 @@ void game_frame(MgApp *app, float alpha)
         if (g->session.spawn_pending) {
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
-            player_init(&g->player, g->room.spawns[slot], 0.0f);
+            player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
             g->cam.initialized = false;
         }
         g->local_look = session_my_look(&g->session);
@@ -421,7 +433,8 @@ void game_frame(MgApp *app, float alpha)
     scene_defaults(&sp, (float)app->time);
     gfx_set_scene(app->gfx, &sp);
 
-    devroom_draw(&g->room, app->gfx, false);
+    SceneView view = {sp.eye, scene_floor_of(g->scene, feet), (float)app->time, false};
+    scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
                        g->player.kin.jumping};

@@ -47,7 +47,7 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
         }
         float dx = t->x0 - tc->jump_cx, dy = t->y0 - tc->jump_cy;
         float slop = jr + 14.0f; /* generous hit area: thumbs land off-centre */
-        if (tc->jump_touch < 0 && dx * dx + dy * dy <= slop * slop) {
+        if (jr > 0.0f && tc->jump_touch < 0 && dx * dx + dy * dy <= slop * slop) {
             t->owner = TOUCH_OWNER_JUMP;
             tc->jump_touch = i;
         } else if (tc->stick_touch < 0 && t->x0 < w_pt * 0.5f && t->y0 > h_pt * cfg->stick_zone_y) {
@@ -108,6 +108,9 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         ui_circle(g, f, cx, cy, 30.0f, ui_rgba(0xFFFFFF40));
     }
     float jr = cfg->jump_size_pt * 0.5f;
+    if (jr <= 0.0f) {
+        return; /* jump disabled */
+    }
     bool down = tc->jump_touch >= 0;
     ui_circle(g, f, tc->jump_cx, tc->jump_cy, jr, down ? ui_rgba(0xFFFFFF99) : ui_rgba(0xFFFFFF4D));
     ui_circle(g, f, tc->jump_cx, tc->jump_cy, jr - 5.0f, down ? ui_rgba(0x2A6FE0E6) : ui_rgba(0x1E2230B3));

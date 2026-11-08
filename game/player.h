@@ -4,6 +4,12 @@
 
 #include "physics/kinematic.h"
 
+/* Jumping is off for M2; the controller, coyote time and jump buffer stay
+ * intact. Build with -DPLAYER_JUMP_ENABLED=1 to bring it back. */
+#ifndef PLAYER_JUMP_ENABLED
+#define PLAYER_JUMP_ENABLED 0
+#endif
+
 typedef struct Player {
     KinematicState kin;
     HMM_Vec3 prev_pos;  /* position at the previous tick, for interpolation */

@@ -19,7 +19,7 @@ typedef struct TouchControlsConfig {
     float radius_pt;      /* 120 */
     float sprint_at;      /* fraction of radius that counts as "rim" */
     float stick_zone_y;   /* stick starts below this fraction of height (0.35) */
-    float jump_size_pt;   /* 72 */
+    float jump_size_pt;   /* 72; 0 hides the jump button */
 } TouchControlsConfig;
 
 typedef struct TouchControls {

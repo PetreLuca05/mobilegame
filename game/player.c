@@ -26,6 +26,7 @@ void player_set_input(Player *p, float move_x, float move_z, bool sprint, bool j
     p->move_x = move_x;
     p->move_z = move_z;
     p->sprint = sprint;
+    jump_held = jump_held && PLAYER_JUMP_ENABLED;
     if (jump_held && !p->prev_jump_held) {
         p->jump_latch = true;
     }
