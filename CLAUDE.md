@@ -168,6 +168,17 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   the low-wall cutaway; slabs from storey 1 up have the stairwell open
   visually but collide as one box. Rooms have floor-painted labels.
 
+- Floor fade (`engine/gfx/floorfade.c`, `GfxMaterial.hide`): screen-door
+  dither, ordered 4x4 Bayer `dither_clip()` in `common.hlsli` (toon, floor,
+  text, unlit, ghost), driven by `DrawFS.u_draw_misc.x`; draws with hide >
+  0.5 skip the shadow pass. Scene fade slots (`HOSP_FADE_*`): storeys 0-2 +
+  roof, the view floor's upper exterior wall per side (0.25 when the camera
+  is beyond that facade), tree canopies over the player; 350 ms per change,
+  snapped on spawn/teleport/load. Inside the building: storeys above the
+  view floor and the roof go; outside: everything is drawn (interiors only
+  while the roof is not opaque). Indoor lights: view floor and below.
+  Remote avatars above the view floor are not drawn.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

@@ -55,6 +55,7 @@ typedef struct GfxMaterial {
     GfxMaterialKind kind;
     HMM_Vec4 tint;   /* multiplied with vertex colour */
     HMM_Vec4 params; /* per-kind, see material.c */
+    float hide;      /* M5 screen-door fade: 0 drawn .. 1 gone (4x4 Bayer clip); > 0.5 casts no shadow */
 } GfxMaterial;
 
 enum {

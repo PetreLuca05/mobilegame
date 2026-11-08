@@ -27,6 +27,7 @@ float grid(float2 p, float spacing, float width)
 
 float4 PSMain(VSOut i) : SV_Target0
 {
+    dither_clip(i.pos);
     float2 p = i.wpos.xz;
     float major = grid(p, 1.0, u_params.x);
     float minor = grid(p, 0.1, u_params.y) * u_params.z;

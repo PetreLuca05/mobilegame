@@ -18,7 +18,19 @@ cbuffer DrawFS : register(b0, space3)
     float4 u_tint;
     float4 u_params;
     float4 u_light_index[2]; // 8 indices into LightsFS, -1 = none (lit materials)
+    float4 u_draw_misc;      // x hide: screen-door fade 0 drawn .. 1 gone
 };
+
+// M5 floor fade: ordered 4x4 Bayer screen-door, one render-target pixel per
+// cell; no blending, so no sorting and the depth pre-pass stays valid.
+void dither_clip(float4 svpos)
+{
+    if (u_draw_misc.x <= 0.0)
+        return;
+    const float bayer[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5};
+    uint2 p = uint2(svpos.xy) & 3;
+    clip((bayer[p.y * 4 + p.x] + 0.5) / 16.0 - u_draw_misc.x);
+}
 
 cbuffer FrameFS : register(b1, space3)
 {

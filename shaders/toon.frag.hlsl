@@ -15,6 +15,7 @@ SamplerState u_atlas_s : register(s2, space2);
 // u_params: x rim strength, y unlit (1 = flat colour), z emissive boost, w gloss (0 matte .. 1 glossy)
 float4 PSMain(VSOut i) : SV_Target0
 {
+    dither_clip(i.pos);
     float3 base = i.col.rgb * u_tint.rgb;
     if (u_params.y > 0.5)
         return float4(base, 1.0);

@@ -1,7 +1,56 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+struct DrawFS
+{
+    float4 u_tint;
+    float4 u_params;
+    float4 u_light_index[2];
+    float4 u_draw_misc;
+};
 
 struct FrameFS
 {
@@ -13,12 +62,7 @@ struct FrameFS
     float4 u_fog;
 };
 
-struct DrawFS
-{
-    float4 u_tint;
-    float4 u_params;
-    float4 u_light_index[2];
-};
+constant spvUnsafeArray<float, 16> _65 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
 
 struct PSMain_out
 {
@@ -31,11 +75,24 @@ struct PSMain_in
     float3 i_nrm [[user(locn1)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _52 [[buffer(0)]], constant FrameFS& _25 [[buffer(1)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _25 [[buffer(0)]], constant FrameFS& _105 [[buffer(1)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
-    float _131 = _52.u_tint.w * (0.300000011920928955078125 + (0.699999988079071044921875 * powr(1.0 - abs(dot(fast::normalize(in.i_nrm), fast::normalize(_25.u_eye.xyz - in.i_wpos))), 2.0)));
-    out._entryPointOutput = float4(_52.u_tint.xyz * _131, _131);
+    do
+    {
+        if (_25.u_draw_misc.x <= 0.0)
+        {
+            break;
+        }
+        uint2 _219 = uint2(gl_FragCoord.xy) & uint2(3u);
+        if ((((_65[(_219.y * 4u) + _219.x] + 0.5) * 0.0625) - _25.u_draw_misc.x) < 0.0)
+        {
+            discard_fragment();
+        }
+        break;
+    } while(false);
+    float _207 = _25.u_tint.w * (0.300000011920928955078125 + (0.699999988079071044921875 * powr(1.0 - abs(dot(fast::normalize(in.i_nrm), fast::normalize(_105.u_eye.xyz - in.i_wpos))), 2.0)));
+    out._entryPointOutput = float4(_25.u_tint.xyz * _207, _207);
     return out;
 }
 

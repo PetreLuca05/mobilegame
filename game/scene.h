@@ -22,7 +22,7 @@ typedef struct SceneView {
     bool show_triggers; /* debug: draw trigger volumes */
     bool show_lights;   /* debug: light gizmos */
     float lamp_on;      /* day cycle: exterior lamps 0..1 */
-    float storey_vis[4]; /* per storey id 0..3 (3 = roof): 1 drawn .. 0 hidden */
+    const float *fade;  /* the scene's fade slots (FloorFade.vis), NULL = all drawn */
     bool storey_tint;   /* debug: colour meshes by storey id */
 } SceneView;
 
@@ -41,6 +41,8 @@ bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
 void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target);
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v);
+/* M5 floor fade: where each fade slot should go (FloorFade.target). */
+void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye);
 /* Point/spot lights for this frame; returns how many cast shadows. */
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v);
 /* Moving parts (elevator doors) at the fixed tick; may update colliders. */

@@ -1,14 +1,58 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
 
 struct DrawFS
 {
     float4 u_tint;
     float4 u_params;
     float4 u_light_index[2];
+    float4 u_draw_misc;
 };
+
+constant spvUnsafeArray<float, 16> _65 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
 
 struct PSMain_out
 {
@@ -21,14 +65,27 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _62 [[buffer(0)]], texture2d<float> u_atlas [[texture(0)]], sampler u_atlas_sampler [[sampler(0)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _25 [[buffer(0)]], texture2d<float> u_atlas [[texture(0)]], sampler u_atlas_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
-    float4 _128 = u_atlas.sample(u_atlas_sampler, in.i_nrm.xy);
-    float _129 = _128.x;
-    float _133 = fast::max(fwidth(_129), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
-    float _145 = (smoothstep(0.5 - _133, 0.5 + _133, _129) * in.i_col.w) * _62.u_tint.w;
-    out._entryPointOutput = float4((in.i_col.xyz * _62.u_tint.xyz) * _145, _145);
+    do
+    {
+        if (_25.u_draw_misc.x <= 0.0)
+        {
+            break;
+        }
+        uint2 _236 = uint2(gl_FragCoord.xy) & uint2(3u);
+        if ((((_65[(_236.y * 4u) + _236.x] + 0.5) * 0.0625) - _25.u_draw_misc.x) < 0.0)
+        {
+            discard_fragment();
+        }
+        break;
+    } while(false);
+    float4 _203 = u_atlas.sample(u_atlas_sampler, in.i_nrm.xy);
+    float _204 = _203.x;
+    float _208 = fast::max(fwidth(_204), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+    float _220 = (smoothstep(0.5 - _208, 0.5 + _208, _204) * in.i_col.w) * _25.u_tint.w;
+    out._entryPointOutput = float4((in.i_col.xyz * _25.u_tint.xyz) * _220, _220);
     return out;
 }
 

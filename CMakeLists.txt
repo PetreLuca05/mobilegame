@@ -122,6 +122,7 @@ add_library(mg_engine STATIC
   engine/gfx/mesh.c
   engine/gfx/reflection.c
   engine/gfx/shadows.c
+  engine/gfx/floorfade.c
   engine/ui/text.c
   engine/ui/widgets.c
   engine/ui/touch_controls.c

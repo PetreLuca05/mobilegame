@@ -12,6 +12,7 @@
 #include "autotest.h"
 #include "avatar.h"
 #include "camera_td.h"
+#include "gfx/floorfade.h"
 #include "camera_tp.h"
 #include "config.local.h"
 #ifndef MG_VERSION
@@ -52,6 +53,8 @@ typedef struct Game {
     Player player;
     TpCamera cam;          /* MG_CAMERA=thirdperson only */
     TdCamera td;           /* the default camera */
+    FloorFade fade;        /* storeys / wall cutaway / canopies (scene fade slots) */
+    bool fade_snap;
     FlyCamera fly;
     bool fly_mode;
     GameSettings settings;
@@ -189,6 +192,7 @@ bool game_init(MgApp *app)
 
     tpcam_init(&g->cam);
     tdcam_init(&g->td);
+    floorfade_init(&g->fade);
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
@@ -518,6 +522,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
             elevator_place(el, f);
         }
         g->cam.initialized = g->td.initialized = false;
+        g->fade_snap = true;
         break;
     }
     case MENU_MAIN_MENU:
@@ -756,6 +761,7 @@ static void load_step(Game *g, MgApp *app)
         }
         g->next_save = app->time + 30.0;
         g->cam.initialized = g->td.initialized = false;
+        g->fade_snap = true;
         touch_controls_reset(&g->touch);
         if (g->pending_play == 1) {
             session_start(&g->session, MODE_PARTY, NULL);
@@ -953,6 +959,7 @@ void game_frame(MgApp *app, float alpha)
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
             player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
             g->cam.initialized = g->td.initialized = false;
+            g->fade_snap = true;
         }
         if (g->session.profile_new) { /* account loaded or switched */
             g->session.profile_new = false;
@@ -1126,16 +1133,22 @@ void game_frame(MgApp *app, float alpha)
     sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
-    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, {0}, s->show_storeys};
-    /* inside: storeys up to the view floor, no roof; outside: everything
-     * (the third-person camera, fly cam and menus keep the old look) */
+    /* M5 floor fade: inside, storeys above the view floor and the roof
+     * dissolve over 350 ms (the third-person camera and fly cam keep the
+     * building whole) */
     bool inside = scene_indoors(g->scene, feet) && !g->fly_mode;
 #ifdef MG_CAMERA_THIRDPERSON
     inside = false;
 #endif
-    for (int i = 0; i < 4; i++) {
-        view.storey_vis[i] = !inside || (i < 3 && i <= floor) ? 1.0f : 0.0f;
+    scene_fade_targets(g->scene, g->fade.target, floor, inside, feet, sp.eye);
+    if (!g->td.initialized || g->fade_snap) { /* spawn / teleport / load: no fade */
+        floorfade_snap(&g->fade);
+        g->fade_snap = false;
+    } else {
+        floorfade_update(&g->fade, mg_minf(app->frame_dt, 0.1f));
     }
+    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, g->fade.vis,
+                      s->show_storeys};
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
@@ -1145,7 +1158,12 @@ void game_frame(MgApp *app, float alpha)
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
         RemotePlayer *r = &g->session.remotes[i];
-        if (!r->active || !r->visible || (int)r->sample.floor != floor) {
+#ifdef MG_CAMERA_THIRDPERSON
+        bool hidden_storey = (int)r->sample.floor != floor;
+#else
+        bool hidden_storey = (int)r->sample.floor > floor; /* below the view floor: seen through openings */
+#endif
+        if (!r->active || !r->visible || hidden_storey) {
             continue; /* culled by storey, not distance */
         }
         AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,

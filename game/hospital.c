@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "gfx/floorfade.h"
 #include "gfx/material.h"
 #include "core/log.h"
 #include "gfx/mesh.h"
@@ -195,7 +196,7 @@ static void wall(Build *b, const WallSpec *w, const Opening *op, int n)
 /* Exterior wall of storey f in two meshes, split at 0.9 m above its floor
  * (the low-wall cutaway fades only the upper part). */
 #define LOW_WALL 0.9f
-static void split_wall(Build *b, const WallSpec *w, int f, const Opening *op, int n)
+static void split_wall(Build *b, const WallSpec *w, int f, int side, const Opening *op, int n)
 {
     Opening lo[16], hi[16];
     int nl = 0, nh = 0;
@@ -213,10 +214,10 @@ static void split_wall(Build *b, const WallSpec *w, int f, const Opening *op, in
     }
     WallSpec a = *w, c = *w;
     a.grp = HM_WALL_LO0 + f;
-    a.glass_grp = HM_WIN0 + f;
+    a.glass_grp = HM_WIN0 + f * 4 + side;
     a.y1 = w->y0 + LOW_WALL;
-    c.grp = HM_WALL_HI0 + f;
-    c.glass_grp = HM_WIN0 + f;
+    c.grp = HM_WALL_HI0 + f * 4 + side;
+    c.glass_grp = HM_WIN0 + f * 4 + side;
     c.y0 = w->y0 + LOW_WALL;
     wall(b, &a, lo, nl);
     wall(b, &c, hi, nh);
@@ -428,11 +429,12 @@ static void build_yard(Build *b, Hospital *h)
 
     /* trees, benches, lamps */
     static const float trees[6][2] = {{-22, 10}, {-25, -2}, {-21, -13}, {22, -6}, {25, -14}, {-9, 14}};
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < HOSP_TREES; i++) {
         float x = trees[i][0], z = trees[i][1];
+        h->trees[i] = HMM_V3(x, 0.0f, z);
         cyl(b, HM_YARD, x, 0.0f, z, 0.18f, 1.8f, C_TRUNK, 1.0f);
-        sphere(b, HM_YARD, x, 2.7f, z, 1.4f, C_LEAF, 1.0f);
-        sphere(b, HM_YARD, x + 0.6f, 2.2f, z + 0.4f, 0.9f, 0x3DA83A, 1.0f);
+        sphere(b, HM_CANOPY0 + i, x, 2.7f, z, 1.4f, C_LEAF, 1.0f);
+        sphere(b, HM_CANOPY0 + i, x + 0.6f, 2.2f, z + 0.4f, 0.9f, 0x3DA83A, 1.0f);
         blocker(b, x - 0.25f, 0.0f, z - 0.25f, x + 0.25f, 2.0f, z + 0.25f);
     }
     static const float benches[4][3] = {{-4.0f, 12.0f, 0}, {-4.0f, 7.0f, 0}, {-22.0f, 5.0f, 0}, {22.0f, -1.0f, 1}};
@@ -491,7 +493,7 @@ static void build_shell(Build *b)
         }
         WallSpec s = {HM_SHELL, HM_GLOSS_OUT, true, HOSP_X0, HOSP_X1, HOSP_Z1 - WALL_T * 0.5f, WALL_T, y,
                       y + HOSP_STOREY, C_EXTERIOR, F_ALL & ~F_NZ};
-        split_wall(b, &s, f, ns, nn);
+        split_wall(b, &s, f, 0, ns, nn);
         /* north facade: no windows into the shaft void */
         nn = 0;
         for (int k = 0; k < 10; k++) {
@@ -503,25 +505,25 @@ static void build_shell(Build *b)
         WallSpec n = s;
         n.c = HOSP_Z0 + WALL_T * 0.5f;
         n.outdoor = F_ALL & ~F_PZ;
-        split_wall(b, &n, f, ns, nn);
+        split_wall(b, &n, f, 1, ns, nn);
         for (int k = 0; k < 6; k++) {
             ew[ne++] = (Opening){-15.5f + 3.0f * (float)k, 1.6f, 0.9f, 2.3f, OP_WINDOW};
         }
         WallSpec w = {HM_SHELL, HM_GLOSS_OUT, false, HOSP_Z0 + WALL_T, HOSP_Z1 - WALL_T, HOSP_X0 + WALL_T * 0.5f,
                       WALL_T, y, y + HOSP_STOREY, C_EXTERIOR, F_ALL & ~F_PX};
-        split_wall(b, &w, f, ew, ne);
+        split_wall(b, &w, f, 2, ew, ne);
         WallSpec e = w;
         e.c = HOSP_X1 - WALL_T * 0.5f;
         e.outdoor = F_ALL & ~F_NX;
-        split_wall(b, &e, f, ew, ne);
+        split_wall(b, &e, f, 3, ew, ne);
 
         /* blue band under each storey's top */
         float b0 = y + 3.3f, b1 = y + 3.7f, o = 0.06f;
-        int hi = HM_WALL_HI0 + f;
-        box(b, hi, HOSP_X0 - o, b0, HOSP_Z1, HOSP_X1 + o, b1, HOSP_Z1 + o, C_BAND, F_ALL, false);
-        box(b, hi, HOSP_X0 - o, b0, HOSP_Z0 - o, HOSP_X1 + o, b1, HOSP_Z0, C_BAND, F_ALL, false);
-        box(b, hi, HOSP_X0 - o, b0, HOSP_Z0, HOSP_X0, b1, HOSP_Z1, C_BAND, F_ALL, false);
-        box(b, hi, HOSP_X1, b0, HOSP_Z0, HOSP_X1 + o, b1, HOSP_Z1, C_BAND, F_ALL, false);
+        int hi = HM_WALL_HI0 + f * 4;
+        box(b, hi + 0, HOSP_X0 - o, b0, HOSP_Z1, HOSP_X1 + o, b1, HOSP_Z1 + o, C_BAND, F_ALL, false);
+        box(b, hi + 1, HOSP_X0 - o, b0, HOSP_Z0 - o, HOSP_X1 + o, b1, HOSP_Z0, C_BAND, F_ALL, false);
+        box(b, hi + 2, HOSP_X0 - o, b0, HOSP_Z0, HOSP_X0, b1, HOSP_Z1, C_BAND, F_ALL, false);
+        box(b, hi + 3, HOSP_X1, b0, HOSP_Z0, HOSP_X1 + o, b1, HOSP_Z1, C_BAND, F_ALL, false);
 
         /* slab under the storey (ceiling of the one below): drawn with the
          * stairwell open from storey 1 up, collides as one solid box */
@@ -890,6 +892,8 @@ static uint32_t group_caps(int grp, bool indices)
         v = 32768;
     } else if (grp >= HM_WALL_LO0 && grp <= HM_ROOF) {
         v = 8192;
+    } else if (grp >= HM_CANOPY0) {
+        v = 1024;
     } else if (grp == HM_GLOSS_OUT || (grp >= HM_TEXT_OUT && grp < HM_TEXT0 + HOSP_FLOORS)) {
         v = 8192;
     } else if (grp == HM_GROUND || grp == HM_LAMPS || (grp >= HM_FIX0 && grp < HM_FIX0 + HOSP_FLOORS)) {
@@ -1001,14 +1005,32 @@ int hospital_group_storey(int grp)
 {
     for (int f = 0; f < HOSP_FLOORS; f++) {
         if (grp == HM_INT0 + f || grp == HM_GLOSS0 + f || grp == HM_FLOOR0 + f || grp == HM_TEXT0 + f ||
-            grp == HM_WALL_LO0 + f || grp == HM_WALL_HI0 + f || grp == HM_WIN0 + f || grp == HM_SLAB0 + f) {
+            grp == HM_WALL_LO0 + f || (grp >= HM_WALL_HI0 + f * 4 && grp < HM_WALL_HI0 + f * 4 + 4) ||
+            (grp >= HM_WIN0 + f * 4 && grp < HM_WIN0 + f * 4 + 4) || grp == HM_SLAB0 + f) {
             return f;
         }
         if (grp == HM_FIX0 + f) {
             return f + 1; /* ceiling panels: the ceiling of f is the next storey's floor */
         }
     }
-    return grp == HM_ROOF ? HOSP_ROOF_STOREY : -1; /* yard, canopy, outdoor lamps, sign */
+    return grp == HM_ROOF ? HOSP_ROOF_STOREY : -1; /* yard, canopies, outdoor lamps, sign */
+}
+
+void hospital_fade_targets(const Hospital *h, float *target, int view_floor, bool inside, HMM_Vec3 player,
+                           HMM_Vec3 eye)
+{
+    for (int s = 0; s <= HOSP_ROOF_STOREY; s++) {
+        target[HOSP_FADE_STOREY0 + s] = !inside || (s < HOSP_ROOF_STOREY && s <= view_floor) ? 1.0f : 0.0f;
+    }
+    /* camera beyond a facade while the player is inside: see over it */
+    const bool beyond[4] = {eye.Z > HOSP_Z1, eye.Z < HOSP_Z0, eye.X < HOSP_X0, eye.X > HOSP_X1};
+    for (int i = 0; i < 4; i++) {
+        target[HOSP_FADE_WALL0 + i] = inside && beyond[i] ? 0.25f : 1.0f;
+    }
+    for (int i = 0; i < HOSP_TREES; i++) {
+        float dx = player.X - h->trees[i].X - 0.3f, dz = player.Z - h->trees[i].Z - 0.2f;
+        target[HOSP_FADE_TREE0 + i] = dx * dx + dz * dz < 2.0f * 2.0f ? 0.0f : 1.0f;
+    }
 }
 
 /* debug colours by storey id: yard grey, G green, 1 blue, 2 orange, roof magenta */
@@ -1023,14 +1045,35 @@ static GfxMaterial tinted(GfxMaterial m, const HospView *v, int storey)
     return m;
 }
 
-static bool storey_shown(const HospView *v, int storey) { return storey < 0 || v->storey_vis[storey] > 0.02f; }
+static float storey_vis(const HospView *v, int storey)
+{
+    return storey < 0 || !v->fade ? 1.0f : v->fade[HOSP_FADE_STOREY0 + storey];
+}
+
+/* visibility of a mesh group: its storey's, times the cutaway for the view
+ * floor's upper exterior walls, or its canopy's */
+static float group_vis(const HospView *v, int grp)
+{
+    float vis = storey_vis(v, hospital_group_storey(grp));
+    int hi = HM_WALL_HI0 + v->view_floor * 4, win = HM_WIN0 + v->view_floor * 4;
+    if (v->fade && grp >= hi && grp < hi + 4) {
+        vis *= v->fade[HOSP_FADE_WALL0 + grp - hi];
+    } else if (v->fade && grp >= win && grp < win + 4) {
+        vis *= v->fade[HOSP_FADE_WALL0 + grp - win];
+    }
+    if (v->fade && grp >= HM_CANOPY0) {
+        vis *= v->fade[HOSP_FADE_TREE0 + grp - HM_CANOPY0];
+    }
+    return vis;
+}
 
 static void draw_group(const Hospital *h, GfxContext *g, const HospView *v, int grp, const GfxMaterial *mat,
                        uint32_t flags)
 {
-    int st = hospital_group_storey(grp);
-    if (storey_shown(v, st)) {
-        GfxMaterial m = tinted(*mat, v, st);
+    float vis = group_vis(v, grp);
+    if (vis > 0.02f) {
+        GfxMaterial m = tinted(*mat, v, hospital_group_storey(grp));
+        m.hide = floorfade_hide(vis);
         draw_mesh(g, h->mesh[grp], &m, flags);
     }
 }
@@ -1051,19 +1094,28 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
     draw_group(h, g, v, HM_GROUND, &ground, GFX_DRAW_NO_SHADOW);
     draw_group(h, g, v, HM_TEXT_OUT, &text, GFX_DRAW_NO_SHADOW);
     draw_group(h, g, v, HM_ROOF, &matte, GFX_DRAW_REFLECT);
+    for (int i = 0; i < HOSP_TREES; i++) {
+        draw_group(h, g, v, HM_CANOPY0 + i, &matte, GFX_DRAW_REFLECT);
+    }
     /* from outside the roof and the opaque windows hide every interior */
-    bool interiors = v->storey_vis[HOSP_ROOF_STOREY] < 1.0f;
+    bool interiors = storey_vis(v, HOSP_ROOF_STOREY) < 1.0f;
     for (int f = 0; f < HOSP_FLOORS; f++) {
         draw_group(h, g, v, HM_WALL_LO0 + f, &matte, GFX_DRAW_REFLECT);
-        draw_group(h, g, v, HM_WALL_HI0 + f, &matte, GFX_DRAW_REFLECT);
-        draw_group(h, g, v, HM_WIN0 + f, &glossy, GFX_DRAW_REFLECT);
+        for (int side = 0; side < 4; side++) {
+            draw_group(h, g, v, HM_WALL_HI0 + f * 4 + side, &matte, GFX_DRAW_REFLECT);
+        }
+        for (int side = 0; side < 4; side++) {
+            draw_group(h, g, v, HM_WIN0 + f * 4 + side, &glossy, GFX_DRAW_REFLECT);
+        }
         draw_group(h, g, v, HM_SLAB0 + f, &matte, GFX_DRAW_REFLECT);
-        if (!interiors || !storey_shown(v, f)) {
+        float vis = storey_vis(v, f);
+        if (!interiors || vis <= 0.02f) {
             continue;
         }
         /* only the view floor reflects */
         GfxMaterial inside = tinted(mat_floor_plain(HMM_V4(1, 1, 1, 1), f == floor ? 0.35f : 0.0f), v, f);
         GfxMaterial mt = tinted(matte, v, f), gl = tinted(glossy, v, f);
+        inside.hide = mt.hide = gl.hide = floorfade_hide(vis);
         for (int c = 0; c < HOSP_CELLS; c++) {
             draw_mesh(g, h->cell[f][0][c], &mt, GFX_DRAW_REFLECT);
             draw_mesh(g, h->cell[f][1][c], &gl, GFX_DRAW_REFLECT);
@@ -1088,8 +1140,8 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
 
 static bool light_relevant(const HospLight *hl, int floor, HMM_Vec3 eye)
 {
-    if (!hl->exterior && hl->floor != floor) {
-        return false; /* indoor lights: the camera's storey only */
+    if (!hl->exterior && hl->floor > floor) {
+        return false; /* indoor lights: the view floor and below (above is faded) */
     }
     HMM_Vec3 d = HMM_SubV3(hl->light.pos, eye);
     return HMM_DotV3(d, d) < 40.0f * 40.0f;

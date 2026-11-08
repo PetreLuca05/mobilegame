@@ -44,6 +44,7 @@ typedef struct DrawItem {
     HMM_Mat4 normal;
     HMM_Vec4 tint;
     HMM_Vec4 params;
+    float hide;
     float sort;
     GfxMeshId mesh;
     uint8_t kind;
@@ -60,6 +61,7 @@ typedef struct DrawFSUniforms {
     HMM_Vec4 tint;
     HMM_Vec4 params;
     HMM_Vec4 lights[2]; /* 8 light indices as floats, -1 = none */
+    HMM_Vec4 misc;      /* x hide (screen-door fade) */
 } DrawFSUniforms;
 
 /* fragment b2: the frame's light list (see shaders/lighting.hlsli) */
@@ -869,6 +871,7 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     }
     d->tint = mat->tint;
     d->params = mat->params;
+    d->hide = mat->hide;
     d->mesh = mesh;
     d->kind = (uint8_t)mat->kind;
     d->flags = (uint8_t)flags;
@@ -1028,7 +1031,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             }
         }
         DrawVSUniforms vu = {d->model, d->normal};
-        DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}};
+        DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}, HMM_V4(d->hide, 0, 0, 0)};
         for (int k = 0; k < GFX_LIGHTS_PER_DRAW; k++) {
             fu.lights[k / 4].Elements[k % 4] = (float)d->lights[k];
         }
@@ -1170,7 +1173,7 @@ bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg)
 
 static bool casts_shadow(const DrawItem *d)
 {
-    return (d->kind == GFX_MAT_TOON || d->kind == GFX_MAT_UNLIT) &&
+    return (d->kind == GFX_MAT_TOON || d->kind == GFX_MAT_UNLIT) && d->hide <= 0.5f &&
            !(d->flags & (GFX_DRAW_NO_SHADOW | GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN));
 }
 

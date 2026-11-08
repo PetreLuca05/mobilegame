@@ -67,14 +67,16 @@ void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
 
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
 {
-    HospView hv = {v->floor, {0}, v->storey_tint, v->show_triggers, v->lamp_on};
-    for (int i = 0; i <= HOSP_FLOORS; i++) {
-        hv.storey_vis[i] = v->storey_vis[i];
-    }
+    HospView hv = {v->floor, v->fade, v->storey_tint, v->show_triggers, v->lamp_on};
     hospital_draw(&s->h, g, &hv);
     if (v->show_lights) {
         hospital_draw_light_gizmos(&s->h, g, v->floor);
     }
+}
+
+void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
+{
+    hospital_fade_targets(&s->h, target, view_floor, inside, player, eye);
 }
 
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v)

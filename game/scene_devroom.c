@@ -70,6 +70,11 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
     devroom_draw(&s->room, g, false);
 }
 
+void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
+{
+    (void)s, (void)target, (void)view_floor, (void)inside, (void)player, (void)eye; /* one storey: nothing fades */
+}
+
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
     (void)s;

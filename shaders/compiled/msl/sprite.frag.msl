@@ -8,6 +8,7 @@ struct DrawFS
     float4 u_tint;
     float4 u_params;
     float4 u_light_index[2];
+    float4 u_draw_misc;
 };
 
 struct PSMain_out
