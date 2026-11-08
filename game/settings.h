@@ -15,6 +15,8 @@ typedef struct GameSettings {
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
     bool show_nav;          /* debug: walkability grid + last path */
+    bool show_profiler;     /* debug: scopes and counters on the HUD */
+    float stress_count;     /* debug: wandering dummy avatars, 0..400 */
     bool haptics;           /* marker taps (iOS) */
     bool marker_sounds;
     bool test_markers;      /* debug: scatter markers to tap */

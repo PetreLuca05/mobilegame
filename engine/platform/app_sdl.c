@@ -1,3 +1,4 @@
+#include "core/prof.h"
 #include "app.h"
 
 #include "core/log.h"
@@ -55,6 +56,7 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
 #if defined(MG_PLATFORM_DESKTOP)
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "1"); /* left mouse acts as a finger */
 #endif
+    prof_init();
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         mg_log_error("SDL_Init failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -143,6 +145,7 @@ SDL_AppResult app_iterate(void *appstate)
         return SDL_APP_SUCCESS;
     }
 
+    prof_frame_begin();
     update_metrics(app);
     arena_reset(&app->frame);
 
@@ -150,6 +153,7 @@ SDL_AppResult app_iterate(void *appstate)
     app->ticks_this_frame = ticks;
     for (int i = 0; i < ticks; i++) {
         if (app->cb->tick) {
+            PROF_SCOPE("tick");
             app->cb->tick(app);
         }
     }
@@ -165,8 +169,10 @@ SDL_AppResult app_iterate(void *appstate)
     double wait1 = mg_time_now();
     if (have_frame) {
         if (app->cb->frame) {
+            PROF_SCOPE("frame");
             app->cb->frame(app, fixedstep_alpha(&app->clock));
         }
+        PROF_SCOPE("render");
         gfx_frame_end(app->gfx);
     }
     if (capture) {
@@ -174,6 +180,7 @@ SDL_AppResult app_iterate(void *appstate)
     }
     double t1 = mg_time_now();
     smooth(&app->cpu_ms, (float)(((t1 - t0) - (wait1 - wait0)) * 1000.0));
+    prof_frame_end((double)dt);
     app->frame_index++;
     input_begin_frame(&app->input); /* clear per-frame edges after the game saw them */
     return SDL_APP_CONTINUE;

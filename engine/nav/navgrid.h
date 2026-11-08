@@ -86,6 +86,9 @@ void nav_service(NavWorld *n, double budget_ms);
 NavStatus nav_poll(NavWorld *n, uint32_t id, NavPath *path, bool *partial);
 void nav_cancel(NavWorld *n, uint32_t id);
 /* Reachable at all? O(1), from the region labels; no path is computed. */
+/* A random walkable spot of a grid (0 ground, 1.. upper storeys) connected to
+ * the car; storey -1 outdoors. False if none was found in a few tries. */
+bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos, int *storey);
 bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey);
 
 typedef struct NavStats {

@@ -127,6 +127,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
 #endif
+        ui_toggle(ui, "Profiler", x, y, cw, &s->show_profiler);
+        y += 44.0f;
+        ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Stress");
+        y += 22.0f;
+        ui_slider(ui, "Dummy avatars##stress", x, y, cw, &s->stress_count, 0.0f, 400.0f, "%.0f");
+        y += step;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Markers");
         y += 22.0f;
         ui_toggle(ui, "Test markers", x, y, cw, &s->test_markers);

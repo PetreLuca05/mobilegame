@@ -10,6 +10,7 @@ set_property(CACHE MG_PLATFORM PROPERTY STRINGS desktop ios android)
 set(MG_BUNDLE_ID "ro.docvex.mobilegame" CACHE STRING "Application identifier")
 set(MG_IOS_TEAM_ID "" CACHE STRING "Apple development team ID for code signing")
 option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
+option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store builds)" ON)
 # Needs the "Sign In with Apple" capability on the App ID (see CLAUDE.md);
 # without it the provisioning profile rejects the entitlement.
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
@@ -126,6 +127,7 @@ add_library(mg_engine STATIC
   engine/core/assets.c
   engine/core/log.c
   engine/core/png_write.c
+  engine/core/prof.c
   engine/nav/navgrid.c
   engine/nav/astar.c
   engine/core/time.c
@@ -144,6 +146,7 @@ add_library(mg_engine STATIC
   engine/ui/floorpeek.c
   engine/ui/marker_hud.c
   engine/ui/hud.c
+  engine/ui/prof_hud.c
   engine/platform/secure_store.c
   engine/platform/google_auth.c
   engine/net/ws_client.c
@@ -178,13 +181,16 @@ endif()
 # --metal-capture: one-frame .gputrace (Apple only)
 if(APPLE)
   enable_language(OBJC)
-  target_sources(mg_engine PRIVATE platform/apple/metal_capture.m)
-  set_source_files_properties(platform/apple/metal_capture.m PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_sources(mg_engine PRIVATE platform/apple/metal_capture.m platform/apple/device_stats.m)
+  set_source_files_properties(platform/apple/metal_capture.m platform/apple/device_stats.m PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
   target_link_libraries(mg_engine PUBLIC "-framework Metal" "-framework Foundation")
 else()
-  target_sources(mg_engine PRIVATE engine/platform/metal_capture_stub.c)
+  target_sources(mg_engine PRIVATE engine/platform/metal_capture_stub.c engine/platform/device_stats_stub.c)
 endif()
 target_compile_options(mg_engine PRIVATE ${MG_WARNINGS})
+if(MG_PROF)
+  target_compile_definitions(mg_engine PUBLIC MG_PROF=1)
+endif()
 string(TOUPPER "${MG_PLATFORM}" MG_PLATFORM_UPPER)
 target_compile_definitions(mg_engine PUBLIC MG_PLATFORM_${MG_PLATFORM_UPPER}=1)
 if(MG_GPU_DEBUG)
@@ -204,6 +210,8 @@ set(MG_GAME_SOURCES
   game/nav_debug.c
   game/markers.c
   game/autonav.c
+  game/perf_run.c
+  game/stress.c
   game/stats.c
   game/player.c
   game/camera_td.c

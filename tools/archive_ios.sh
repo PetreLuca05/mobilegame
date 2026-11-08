@@ -23,7 +23,7 @@ if [[ "${1:-}" == "--upload" ]]; then
 fi
 [[ -f config.local.h ]] || { echo "config.local.h missing: copy config.local.h.example and fill it in" >&2; exit 1; }
 
-cmake -S . -B "$BUILD" -G Xcode -DMG_PLATFORM=ios -DCMAKE_SYSTEM_NAME=iOS \
+cmake -S . -B "$BUILD" -G Xcode -DMG_PLATFORM=ios -DCMAKE_SYSTEM_NAME=iOS -DMG_PROF=OFF \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_OSX_ARCHITECTURES=arm64 -DMG_IOS_TEAM_ID="$TEAM"
 xcodebuild -project "$BUILD/mobilegame.xcodeproj" -scheme mobilegame -configuration Release \
     -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" -allowProvisioningUpdates "${AUTH[@]}" \

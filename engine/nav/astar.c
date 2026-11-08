@@ -340,6 +340,36 @@ bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Ve
            regions_connect(n, gfrom, gto, a, b, ca, cb);
 }
 
+bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos, int *storey)
+{
+    if (grid < 0 || grid >= n->grid_count) {
+        return false;
+    }
+    const NavGrid *g = &n->grids[grid];
+    NavCell car;
+    if (!nearest_walkable(g, (n->car[0] + n->car[2]) * 0.5f, (n->car[1] + n->car[3]) * 0.5f, &car)) {
+        return false;
+    }
+    const uint16_t want = cell_label(g, g->region, car);
+    uint32_t x = *rng ? *rng : 1u;
+    for (int tries = 0; tries < 256; tries++) {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        NavCell c = {(int)(x % (uint32_t)g->d.cols), (int)((x >> 12) % (uint32_t)g->d.rows)};
+        const int i = c.z * g->d.cols + c.x;
+        if ((g->flags[i] & NAV_WALKABLE) && !(g->flags[i] & (NAV_ELEVATOR | NAV_NEAR_WALL)) && g->region[i] == want) {
+            NavPoint p = point_at(g, c, grid);
+            *pos = p.pos;
+            *storey = p.storey;
+            *rng = x;
+            return true;
+        }
+    }
+    *rng = x;
+    return false;
+}
+
 /* ------------------------------------------------------------- synchronous */
 
 int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_pos, int to_storey, NavPath *path)

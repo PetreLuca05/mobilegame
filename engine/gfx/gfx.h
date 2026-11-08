@@ -135,6 +135,10 @@ typedef struct GfxStats {
     int shadowed_lights;     /* spot/point lights with a shadow tile this frame */
 #endif
     float main_cpu_ms;       /* CPU time encoding the main pass */
+    uint32_t tris, instances, pipe_binds, tex_binds, uniform_bytes, passes;
+    /* Approximate GPU time, submit -> fence on a helper thread (SDL GPU has no
+     * timestamps; includes queueing). 0 until gfx_set_gpu_timing. */
+    float gpu_main_ms, gpu_ui_ms;
     uint32_t width_px, height_px;
     int msaa;
     const char *backend; /* "metal", "vulkan", ... */
@@ -191,5 +195,7 @@ float gfx_default_render_scale(void);
 /* Drop GPU work while the app is in the background (iOS forbids it). */
 void gfx_set_paused(GfxContext *g, bool paused);
 void gfx_get_stats(const GfxContext *g, GfxStats *out);
+/* Submit 3D and UI separately with fences to time them (profiler / perf runs). */
+void gfx_set_gpu_timing(GfxContext *g, bool on);
 
 #endif

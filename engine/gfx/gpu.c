@@ -12,6 +12,7 @@
 #include "core/assets.h"
 #include "core/log.h"
 #include "core/png_write.h"
+#include "core/prof.h"
 #include "core/time.h"
 #include "gfx.h"
 #include "material.h"
@@ -21,7 +22,7 @@
 #endif
 
 #define GFX_MAX_MESHES 256
-#define GFX_MAX_DRAWS 2048
+#define GFX_MAX_DRAWS 16384
 #define GFX_VB_BYTES (8u << 20)
 #define GFX_IB_BYTES (4u << 20)
 #define GFX_MAX_UI_QUADS 8192
@@ -134,7 +135,19 @@ typedef struct ShaderCacheEntry {
     SDL_GPUShader *shader;
 } ShaderCacheEntry;
 
+#define GPU_TIMING_RING 8
+typedef struct GpuTimingSlot {
+    SDL_GPUFence *main_fence, *ui_fence;
+    double submitted;
+} GpuTimingSlot;
+
 struct GfxContext {
+    bool gpu_timing;
+    SDL_Thread *timing_thread;
+    SDL_Semaphore *timing_sem;
+    SDL_AtomicInt timing_quit, timing_head, timing_tail;
+    SDL_AtomicInt gpu_main_us, gpu_ui_us;
+    GpuTimingSlot timing[GPU_TIMING_RING];
     SDL_GPUDevice *dev;
     SDL_Window *win;
     SDL_GPUShaderFormat shader_fmt;
@@ -771,10 +784,53 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     return true;
 }
 
+/* Waits for each frame's fences so the render loop never has to. */
+static int SDLCALL gpu_timing_thread(void *arg)
+{
+    GfxContext *g = (GfxContext *)arg;
+    for (;;) {
+        SDL_WaitSemaphore(g->timing_sem);
+        if (SDL_GetAtomicInt(&g->timing_quit)) {
+            return 0;
+        }
+        int tail = SDL_GetAtomicInt(&g->timing_tail);
+        GpuTimingSlot *t = &g->timing[tail % GPU_TIMING_RING];
+        SDL_WaitForGPUFences(g->dev, true, &t->main_fence, 1);
+        double main_done = mg_time_now();
+        SDL_WaitForGPUFences(g->dev, true, &t->ui_fence, 1);
+        double ui_done = mg_time_now();
+        SDL_ReleaseGPUFence(g->dev, t->main_fence);
+        SDL_ReleaseGPUFence(g->dev, t->ui_fence);
+        SDL_SetAtomicInt(&g->gpu_main_us, (int)((main_done - t->submitted) * 1e6));
+        SDL_SetAtomicInt(&g->gpu_ui_us, (int)((ui_done - main_done) * 1e6));
+        SDL_SetAtomicInt(&g->timing_tail, tail + 1);
+    }
+}
+
+void gfx_set_gpu_timing(GfxContext *g, bool on)
+{
+#ifdef MG_PROF
+    if (on && !g->timing_thread) {
+        g->timing_sem = SDL_CreateSemaphore(0);
+        g->timing_thread = SDL_CreateThread(gpu_timing_thread, "gpu-timing", g);
+    }
+    g->gpu_timing = on && g->timing_thread;
+#else
+    (void)g;
+    (void)on;
+#endif
+}
+
 void gfx_shutdown(GfxContext *g)
 {
     if (!g || !g->dev) {
         return;
+    }
+    if (g->timing_thread) {
+        SDL_SetAtomicInt(&g->timing_quit, 1);
+        SDL_SignalSemaphore(g->timing_sem);
+        SDL_WaitThread(g->timing_thread, NULL);
+        SDL_DestroySemaphore(g->timing_sem);
     }
     SDL_WaitForGPUIdle(g->dev);
     release_targets(g);
@@ -1122,6 +1178,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         if (pipe != bound_pipe) {
             SDL_BindGPUGraphicsPipeline(pass, pipe);
             bound_pipe = pipe;
+            g->stats.pipe_binds++;
         }
         if (bound != d->kind) {
             bound = d->kind;
@@ -1140,6 +1197,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             if (d->kind == GFX_MAT_TEXT) {
                 SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas ? g->ui_atlas : g->dummy_tex, g->ui_sampler};
                 SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+                g->stats.tex_binds++;
             }
         }
         DrawVSUniforms vu = {d->model, d->normal};
@@ -1154,6 +1212,9 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         const GfxMeshRec *m = &g->meshes[d->mesh];
         SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);
         count++;
+        g->stats.tris += m->index_count / 3;
+        g->stats.instances++;
+        g->stats.uniform_bytes += (uint32_t)(sizeof(vu) + sizeof(fu));
     }
     return count;
 }
@@ -1735,6 +1796,9 @@ void gfx_frame_end(GfxContext *g)
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_quads;
+    g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
+    g->stats.gpu_main_ms = (float)SDL_GetAtomicInt(&g->gpu_main_us) * 0.001f;
+    g->stats.gpu_ui_ms = (float)SDL_GetAtomicInt(&g->gpu_ui_us) * 0.001f;
 #ifdef MG_RENDER_FULL
     g->stats.lights = g->light_count;
 #endif
@@ -1768,7 +1832,10 @@ void gfx_frame_end(GfxContext *g)
         SDL_EndGPUCopyPass(cp);
     }
 
-    sort_draws(g);
+    {
+        PROF_SCOPE("render.sort");
+        sort_draws(g);
+    }
 #ifdef MG_RENDER_FULL
     pack_lights(g);
     select_lights(g);
@@ -1814,8 +1881,16 @@ void gfx_frame_end(GfxContext *g)
     }
 #endif
 
+    /* with timing on, the 3D passes get their own command buffer and fence */
+    SDL_GPUCommandBuffer *swap_cmd = NULL;
+    if (g->gpu_timing && scaled && !shot &&
+        SDL_GetAtomicInt(&g->timing_head) - SDL_GetAtomicInt(&g->timing_tail) < GPU_TIMING_RING) {
+        swap_cmd = g->cmd;
+        g->cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    }
     if (g->preview_on) {
         render_preview(g);
+        g->stats.passes++;
     }
 
     /* main pass */
@@ -1841,22 +1916,36 @@ void gfx_frame_end(GfxContext *g)
     dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
     dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
     SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
+    g->stats.passes++;
     draw_sky(g, pass, g->pipes[TARGET_MAIN].sky, &inv_vp, s->eye);
 #ifdef MG_RENDER_FULL
     push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, s->reflection_strength);
 #else
     push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, 0.0f);
 #endif
-    g->stats.draws = draw_list(g, pass, TARGET_MAIN, false);
+    {
+        PROF_SCOPE("render.encode");
+        g->stats.draws = draw_list(g, pass, TARGET_MAIN, false);
+    }
 
     if (scaled) {
         /* upscale the 3D image to the swapchain, then draw UI at native size */
         SDL_EndGPURenderPass(pass);
         if (g->panel_count > 0) {
             blur_scene(g, rw, rh);
+            g->stats.passes += 2;
         }
+        SDL_GPUFence *main_fence = NULL;
+        double main_submit = 0.0;
+        if (swap_cmd) {
+            main_submit = mg_time_now();
+            main_fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g->cmd);
+            g->cmd = swap_cmd;
+        }
+        g->timing[SDL_GetAtomicInt(&g->timing_head) % GPU_TIMING_RING] = (GpuTimingSlot){main_fence, NULL, main_submit};
         if (!shot) {
             blit_scene_to_swap(g, rw, rh);
+            g->stats.passes++;
         }
         SDL_GPUColorTargetInfo uti;
         SDL_zero(uti);
@@ -1864,6 +1953,7 @@ void gfx_frame_end(GfxContext *g)
         uti.load_op = SDL_GPU_LOADOP_LOAD;
         uti.store_op = SDL_GPU_STOREOP_STORE;
         pass = SDL_BeginGPURenderPass(g->cmd, &uti, 1, NULL);
+        g->stats.passes++;
     }
 
     g->ui_px_w = shot ? rw : g->swap_w;
@@ -1881,6 +1971,9 @@ void gfx_frame_end(GfxContext *g)
         SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
         SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas, g->ui_sampler};
         SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+        g->stats.pipe_binds++;
+        g->stats.tex_binds++;
+        g->stats.uniform_bytes += (uint32_t)sizeof(screen);
         float k = (float)g->ui_px_w / g->ui_w_pt; /* pt -> px */
         SDL_Rect full = {0, 0, (int)g->ui_px_w, (int)g->ui_px_h};
         for (uint32_t i = 0; i < g->ui_batch_count; i++) {
@@ -1900,6 +1993,8 @@ void gfx_frame_end(GfxContext *g)
             }
             SDL_SetGPUScissor(pass, &r);
             SDL_DrawGPUIndexedPrimitives(pass, b->count * 6, 1, b->first * 6, 0, 0);
+            g->stats.draws++;
+            g->stats.tris += b->count * 2;
         }
     }
     if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
@@ -1915,7 +2010,14 @@ void gfx_frame_end(GfxContext *g)
         save_screenshot(g, rw, rh);
         return;
     }
-    SDL_SubmitGPUCommandBuffer(g->cmd);
+    if (swap_cmd) {
+        int head = SDL_GetAtomicInt(&g->timing_head);
+        g->timing[head % GPU_TIMING_RING].ui_fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g->cmd);
+        SDL_SetAtomicInt(&g->timing_head, head + 1);
+        SDL_SignalSemaphore(g->timing_sem);
+    } else {
+        SDL_SubmitGPUCommandBuffer(g->cmd);
+    }
     g->cmd = NULL;
 }
 

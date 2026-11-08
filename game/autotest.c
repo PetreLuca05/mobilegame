@@ -45,7 +45,8 @@ bool autotest_starts_in_game(int argc, char **argv)
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
                    SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0 ||
                    SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0 ||
-                   SDL_strcmp(argv[i + 1], "markers") == 0;
+                   SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 ||
+                   SDL_strcmp(argv[i + 1], "stress200") == 0;
         }
     }
     return false;

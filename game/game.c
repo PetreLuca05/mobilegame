@@ -15,6 +15,11 @@
 #endif
 #include "platform/google_auth.h"
 #include "autotest.h"
+#include "core/prof.h"
+#include "perf_run.h"
+#include "platform/device_stats.h"
+#include "stress.h"
+#include "ui/prof_hud.h"
 #include "avatar.h"
 #include "camera_td.h"
 #include "gfx/floorfade.h"
@@ -121,6 +126,10 @@ typedef struct Game {
     int pending_play;      /* what LOADING leads to: 0 new game, 1 create room, 2 join room, 3 continue */
     char status[96];
     Autotest autotest;
+    PerfRun perf;
+    StressCrowd crowd;
+    bool crowd_ok, prof_on;
+    uint32_t rendered_entities, rendered_last; /* this frame / the finished one */
     Audio *audio;
     RouteTest route;
     Stats stats;
@@ -212,6 +221,7 @@ static bool ensure_world(Game *g, MgApp *app)
     g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
     if (g->scene) {
         g->nav = scene_nav_bake(g->scene, &app->perm, &g->world);
+        g->crowd_ok = g->nav && stress_init(&g->crowd, &app->perm);
         if (g->nav) {
             mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
         }
@@ -312,7 +322,8 @@ bool game_init(MgApp *app)
 
     /* --autotest offline: an unresolvable host behaves like airplane mode */
     const char *atest = arg_value(app->argc, app->argv, "--autotest");
-    const bool no_network = atest && SDL_strcmp(atest, "offline") == 0;
+    perf_run_init(&g->perf, app->argc, app->argv);
+    const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active);
     NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
@@ -351,6 +362,7 @@ bool game_init(MgApp *app)
             return false;
         }
         HMM_Vec3 spawn = scene_spawn(g->scene, 0);
+        perf_run_spawn(&g->perf, &spawn);
         parse_vec3_arg(app->argc, app->argv, "--spawn", &spawn);
         player_init(&g->player, spawn, scene_spawn_yaw(g->scene));
         g->playing = true;
@@ -407,7 +419,12 @@ void game_tick(MgApp *app)
         g->player.kin.pos.Y = el->car_y + g->ride_offset;
         g->player.kin.vel = HMM_V3(0, 0, 0);
     } else {
+        PROF_SCOPE("kinematic");
         player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
+    }
+    if (g->crowd_ok && g->nav) {
+        PROF_SCOPE("npc");
+        stress_tick(&g->crowd, g->nav, MG_TICK_DT);
     }
     stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
     if (g->offline_play && scene_indoors(g->scene, g->player.kin.pos)) { /* rooms visited: storey x chunk */
@@ -1018,10 +1035,37 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     app_text_input(app, f->editing_name);
 }
 
+/* the stress dummies: every storey up to the view floor, like remote players */
+static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
+{
+    const StressCrowd *c = &g->crowd;
+    const float dt = mg_minf(app->frame_dt, 0.1f);
+    uint32_t rendered = 0;
+    for (int i = 0; i < c->count; i++) {
+        if ((int)c->storey[i] > floor) {
+            continue;
+        }
+        HMM_Vec3 feet = HMM_V3(c->prev_x[i] + (c->x[i] - c->prev_x[i]) * alpha, c->y[i], c->prev_z[i] + (c->z[i] - c->prev_z[i]) * alpha);
+        AvatarPose pose = {feet, c->yaw[i], HMM_V3(c->vx[i], 0.0f, c->vz[i]), true, false, c->storey[i] >= 0, false};
+        avatar_animate(&c->anims[i], &pose, dt);
+        avatar_draw(app->gfx, &g->avatar_meshes, &c->looks[i], &pose, &c->anims[i], &g->world);
+        rendered++;
+    }
+    g->rendered_entities += rendered;
+}
+
 void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
+    if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
+        const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
+        if (want != g->crowd.count) {
+            stress_spawn(&g->crowd, g->nav, want);
+        }
+    }
+    g->rendered_last = g->rendered_entities;
+    g->rendered_entities = 1;
 #ifdef MG_RENDER_FULL
     apply_tier(g, app);
 #endif
@@ -1067,6 +1111,13 @@ void game_frame(MgApp *app, float alpha)
                                : -1};
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
+    {
+        PerfSample ps;
+        gfx_get_stats(app->gfx, &ps.gs);
+        ps.sim = (uint32_t)g->crowd.count + 1;
+        ps.rendered = g->rendered_last;
+        perf_run_update(&g->perf, app, &probe, &ato, &ps);
+    }
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
     if (g->start_time == 0.0) {
         g->start_time = app->time;
@@ -1128,6 +1179,7 @@ void game_frame(MgApp *app, float alpha)
         uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
                                   (g->player.sprint ? REP_SPRINTING : 0) |
                                   (el && elevator_busy(el) ? REP_RIDING : 0));
+        PROF_SCOPE("net.poll");
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
                        (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
         if (el) { /* someone riding from our landing: their doors close here too */
@@ -1145,6 +1197,7 @@ void game_frame(MgApp *app, float alpha)
             g->session.spawn_pending = false;
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
             HMM_Vec3 at = scene_spawn(g->scene, slot);
+            perf_run_spawn(&g->perf, &at);
             parse_vec3_arg(app->argc, app->argv, "--spawn", &at); /* desktop tests: --spawn wins */
             player_init(&g->player, at, scene_spawn_yaw(g->scene));
             g->cam.initialized = g->td.initialized = false;
@@ -1359,6 +1412,7 @@ void game_frame(MgApp *app, float alpha)
             app->quit_requested = true;
         }
         if (g->nav) {
+            PROF_SCOPE("nav.service");
             nav_service(g->nav, NAV_BUDGET_MS);
         }
         if (g->nav && autonav_active(&g->autonav)) {
@@ -1369,6 +1423,7 @@ void game_frame(MgApp *app, float alpha)
                              el && elevator_contains(el, g->player.kin.pos, g->kparams.radius),
                              el && elevator_busy(el), el ? el->car_floor : 0};
             AutonavOut ao;
+            PROF_SCOPE("autonav");
             autonav_update(&g->autonav, g->nav, &ac, &ao);
             g->auto_x = ao.move_x;
             g->auto_z = ao.move_z;
@@ -1377,6 +1432,7 @@ void game_frame(MgApp *app, float alpha)
             }
         }
         if (g->nav) {
+            PROF_SCOPE("markers");
             markers_update(g, app, feet);
         }
         g->touch.auto_dot = g->autonav.state == AUTONAV_WALKING;
@@ -1385,6 +1441,7 @@ void game_frame(MgApp *app, float alpha)
         } else if (route) {
             player_set_input(&g->player, rx, rz, false, false);
         } else {
+            PROF_SCOPE("input");
             update_player_input(g, app);
         }
 #ifdef MG_CAMERA_THIRDPERSON
@@ -1444,7 +1501,10 @@ void game_frame(MgApp *app, float alpha)
 #ifdef MG_RENDER_FULL
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
 #endif
-    scene_draw(g->scene, app->gfx, &view);
+    {
+        PROF_SCOPE("render.cull");
+        scene_draw(g->scene, app->gfx, &view);
+    }
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     if (g->nav) {
         const char *at = arg_value(app->argc, app->argv, "--autotest");
@@ -1535,6 +1595,10 @@ void game_frame(MgApp *app, float alpha)
         }
 #endif
     }
+    if (g->crowd_ok && g->crowd.count > 0) {
+        PROF_SCOPE("npc.draw");
+        draw_crowd(g, app, floor, alpha);
+    }
     if (s->show_colliders) {
         draw_colliders(g, app->gfx, feet);
     }
@@ -1567,6 +1631,17 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+    if (s->show_profiler != g->prof_on && !g->perf.active) {
+        g->prof_on = s->show_profiler;
+        prof_set_enabled(g->prof_on);
+        gfx_set_gpu_timing(app->gfx, g->prof_on);
+    }
+    if (s->show_profiler) {
+        ProfHudInfo ph = {gs.draws, gs.tris, gs.instances, gs.pipe_binds, gs.tex_binds, gs.uniform_bytes, gs.passes,
+                          (uint32_t)g->crowd.count + 1, g->rendered_last, gs.gpu_main_ms, gs.gpu_ui_ms,
+                          device_thermal_state(), device_resident_mb()};
+        prof_hud_draw(app->gfx, &app->font, app->width_pt - app->safe_right - 330.0f, app->safe_top + 56.0f, &ph);
+    }
 #ifdef MG_RENDER_FULL
     if (s->show_lights) {
         char line[96];
@@ -1713,7 +1788,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         float x, z;
         int st;
         const char *at = arg_value(app->argc, app->argv, "--autotest");
-        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : -1);
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active ? 0 : -1));
         if (one && SDL_sscanf(one, "%f,%f,%d", &x, &z, &st) == 3) {
             marker_add(ms, HMM_V3(x, scene_floor_y(g->scene, level_of(st)), z), st, MARKER_OBJECTIVE, 0xFF9F0AFF);
         }
@@ -1870,9 +1945,9 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
 static bool run_nav_queue_check(Game *g)
 {
     static const struct { float fx, fz; int fs; float tx, tz; int ts; } r[8] = {
-        {-20.0f, 10.0f, -1, 20.0f, 10.0f, -1},   {20.0f, 10.0f, -1, -10.0f, -13.0f, 0},  {-20.0f, 10.0f, -1, 10.0f, -13.0f, 0},
+        {0.0f, 17.0f, -1, -10.4f, -4.0f, 0},     {20.0f, 10.0f, -1, -10.0f, -13.0f, 0},  {-20.0f, 10.0f, -1, 10.0f, -13.0f, 0},
         {0.0f, 17.0f, -1, 10.4f, -3.0f, 2},      {-10.4f, -3.0f, 2, 20.0f, 10.0f, -1},   {20.0f, 10.0f, -1, -10.4f, -3.0f, 2},
-        {-10.0f, -13.0f, 0, 10.0f, -13.0f, 0},   {10.0f, -12.4f, 2, -20.0f, 10.0f, -1},
+        {0.0f, 17.0f, -1, 10.4f, -4.0f, 0},      {10.0f, -12.4f, 2, -20.0f, 10.0f, -1},
     };
     nav_cache_clear(g->nav);
     nav_stats_reset(g->nav);
