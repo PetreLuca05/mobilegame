@@ -20,7 +20,7 @@
 #define C_GLASS 0xA8D4F0
 #define C_ROOF 0xCFD6DD
 #define C_FLOOR 0xE8ECF0
-#define C_WALL 0xFFFFFF
+#define C_WALL 0xF4EFE6 /* warm off-white: a subtle step from the cool floor */
 #define C_DOOR 0x2F6FB7
 #define C_STEEL 0xB8C2CC
 #define C_DARK 0x23262E
