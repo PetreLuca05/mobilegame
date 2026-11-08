@@ -141,6 +141,14 @@ static int join(const char *room, const char *profile, double seconds)
             case NET_EV_ROOM_FULL:
                 printf("[%s] room full\n", profile);
                 break;
+            case NET_EV_PROFILE:
+                printf("[%s] profile \"%s\" skin %u/%u/%u, %d sessions, %.0f m\n", profile, e.profile.display_name,
+                       e.profile.skin.palette, e.profile.skin.hair, e.profile.skin.accessory, e.profile.stats.sessions,
+                       (double)e.profile.stats.distance_m);
+                break;
+            case NET_EV_ACCOUNT_ERROR:
+                printf("[%s] account error: %s\n", profile, e.text);
+                break;
             }
         }
         double now = (double)SDL_GetTicksNS() * 1e-9;

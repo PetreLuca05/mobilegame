@@ -21,6 +21,7 @@
 #include "scene.h"
 #include "scenery.h"
 #include "settings.h"
+#include "stats.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
 
@@ -51,6 +52,9 @@ typedef struct Game {
     Autotest autotest;
     Audio *audio;
     RouteTest route;
+    Stats stats;
+    NetProfile profile;    /* our account (name, skin, guest/Google) */
+    bool profile_loaded;
     int last_ride_count; /* elevator rides already counted */
 } Game;
 
@@ -145,13 +149,14 @@ bool game_init(MgApp *app)
         !avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
         return false;
     }
-    g->local_look = avatar_look_doctor(avatar_look_for_slot(0));
+    g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
 
     const char *profile = arg_value(app->argc, app->argv, "--profile");
     NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
+    net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     const char *party = arg_value(app->argc, app->argv, "--party");
     if (party) {
         session_start(&g->session, MODE_PARTY, party);
@@ -187,8 +192,13 @@ void game_tick(MgApp *app)
             g->cam.pivot.Y += dy;
         }
         audio_ding(g->audio);
+        g->stats.rides++;
+        stats_reset_position(&g->stats);
     }
     player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
+    if (!g->launch.active) {
+        stats_tick(&g->stats, g->player.kin.pos, MG_TICK_DT);
+    }
 }
 
 static void update_fly_camera(Game *g, MgApp *app)
@@ -332,7 +342,7 @@ static void game_frame_launch(Game *g, MgApp *app)
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     for (int i = 0; i < SCENE_SPAWNS; i++) { /* the cast, idling on their discs */
-        AvatarLook look = i == 0 ? avatar_look_doctor(avatar_look_for_slot(0)) : avatar_look_for_slot(i);
+        AvatarLook look = i == 0 ? session_my_look(&g->session) : avatar_look_for_slot(i);
         AvatarPose pose = {scene_spawn(g->scene, i), scene_spawn_yaw(g->scene) + HMM_PI32 + 0.3f * (float)(i - 1),
                            HMM_V3(0, 0, 0), true, false};
         avatar_draw(app->gfx, &g->avatar_meshes, &look, &pose, &g->local_anim, &g->world);
@@ -431,6 +441,18 @@ void game_frame(MgApp *app, float alpha)
             int slot = g->session.slot < 0 ? 0 : g->session.slot;
             player_init(&g->player, scene_spawn(g->scene, slot), scene_spawn_yaw(g->scene));
             g->cam.initialized = false;
+        }
+        if (g->session.profile_new) { /* account loaded or switched */
+            g->session.profile_new = false;
+            g->profile = g->session.profile;
+            g->profile_loaded = true;
+            stats_loaded(&g->stats, &g->profile.stats, app->time);
+            session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+        }
+        g->stats.rooms = g->session.rooms_joined;
+        if (stats_flush_due(&g->stats, app->time)) {
+            NetStats t = stats_totals(&g->stats);
+            net_save_stats(g->net, &t);
         }
         g->local_look = session_my_look(&g->session);
         SDL_snprintf(g->status, sizeof(g->status), "%s", g->session.status_text);
@@ -564,9 +586,18 @@ void game_event(MgApp *app, const SDL_Event *e)
     (void)e;
 }
 
+static void flush_stats(Game *g)
+{
+    if (g->stats.loaded) {
+        NetStats t = stats_totals(&g->stats);
+        net_save_stats(g->net, &t);
+    }
+}
+
 void game_pause(MgApp *app)
 {
     Game *g = (Game *)app->game;
+    flush_stats(g);
     touch_controls_reset(&g->touch);
     player_set_input(&g->player, 0, 0, false, false);
     session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
@@ -583,6 +614,7 @@ void game_quit(MgApp *app)
 {
     Game *g = (Game *)app->game;
     if (g && g->net) {
+        flush_stats(g); /* the network thread finishes pending writes before it exits */
         session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
         net_destroy(g->net); /* sends phx_leave before closing */
         g->net = NULL;

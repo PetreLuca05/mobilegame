@@ -50,6 +50,14 @@ typedef struct NetSession {
     char status_text[96];
     int rtt_ms;
     uint32_t sent, received;
+    /* identity sent in Presence */
+    char my_name[NET_NAME_LEN];
+    NetSkin my_skin;
+    /* account events, picked up by the game */
+    NetProfile profile;
+    bool profile_new;      /* a NET_EV_PROFILE arrived since the game last looked */
+    char account_error[96];
+    int rooms_joined;      /* rooms joined this run (stats) */
 } NetSession;
 
 void session_init(NetSession *s, NetTransport *net);
@@ -66,5 +74,7 @@ int session_player_count(const NetSession *s);
 const char *session_mode_label(const NetSession *s, char *buf, size_t cap);
 void session_random_code(char out[5]);
 AvatarLook session_my_look(const NetSession *s);
+/* Name + skin sent in Presence; re-broadcast at once when joined. */
+void session_set_identity(NetSession *s, const char *name, NetSkin skin);
 
 #endif

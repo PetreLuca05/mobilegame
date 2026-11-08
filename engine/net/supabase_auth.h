@@ -27,6 +27,9 @@ typedef struct SupaAuth {
     char access_token[2048];
     char refresh_token[256];
     char user_id[NET_ID_LEN];
+    bool is_anonymous;      /* guest; false once Google is linked */
+    char email[64];         /* from the linked Google identity */
+    char name[NET_NAME_LEN]; /* Google profile name (user_metadata), "" for guests */
     double expires_at;   /* net-thread clock, seconds */
     double retry_at;
     uint32_t token_version; /* bumps whenever access_token changes */

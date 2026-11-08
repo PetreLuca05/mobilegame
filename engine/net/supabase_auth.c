@@ -93,6 +93,16 @@ static bool take_session(SupaAuth *a, const char *body, size_t len)
         snprintf(a->access_token, sizeof(a->access_token), "%s", at->valuestring);
         snprintf(a->refresh_token, sizeof(a->refresh_token), "%s", rt->valuestring);
         snprintf(a->user_id, sizeof(a->user_id), "%s", uid->valuestring);
+        const cJSON *anon = cJSON_GetObjectItemCaseSensitive(user, "is_anonymous");
+        const cJSON *email = cJSON_GetObjectItemCaseSensitive(user, "email");
+        const cJSON *meta = cJSON_GetObjectItemCaseSensitive(user, "user_metadata");
+        const cJSON *full = meta ? cJSON_GetObjectItemCaseSensitive(meta, "name") : NULL;
+        if (!cJSON_IsString(full) && meta) {
+            full = cJSON_GetObjectItemCaseSensitive(meta, "full_name");
+        }
+        a->is_anonymous = !cJSON_IsFalse(anon); /* missing = treat as guest */
+        snprintf(a->email, sizeof(a->email), "%s", cJSON_IsString(email) ? email->valuestring : "");
+        snprintf(a->name, sizeof(a->name), "%s", cJSON_IsString(full) ? full->valuestring : "");
         a->expires_at = (double)SDL_GetTicks() / 1000.0 + (cJSON_IsNumber(exp) ? exp->valuedouble : 3600.0);
         a->token_version++;
     }

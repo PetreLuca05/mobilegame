@@ -18,6 +18,7 @@
 #include "net_transport.h"
 #include "platform/secure_store.h"
 #include "supabase_auth.h"
+#include "supabase_rest.h"
 #include "ws_client.h"
 
 #define CMD_CAPACITY 64
@@ -26,7 +27,17 @@
 #define CA_STORAGE (512 * 1024)
 #define BACKOFF_STEPS 6
 
-typedef enum NetCmdType { CMD_JOIN, CMD_LEAVE, CMD_META, CMD_STATE, CMD_BACKGROUND, CMD_QUIT } NetCmdType;
+typedef enum NetCmdType {
+    CMD_JOIN,
+    CMD_LEAVE,
+    CMD_META,
+    CMD_STATE,
+    CMD_BACKGROUND,
+    CMD_QUIT,
+    CMD_ACCOUNT,
+    CMD_PROFILE_SAVE,
+    CMD_STATS_SAVE,
+} NetCmdType;
 
 typedef struct NetCmd {
     NetCmdType type;
@@ -36,6 +47,7 @@ typedef struct NetCmd {
     uint8_t data[NET_STATE_MAX];
     uint16_t len;
     bool flag;
+    NetStats stats;
 } NetCmd;
 
 typedef struct Peer {
@@ -89,6 +101,15 @@ struct NetTransport {
     uint32_t sent_token_version;
     Peer peers[MAX_PEERS];
     char line[8192]; /* outgoing message scratch */
+    /* account: profile + stats over PostgREST */
+    SupaRest rest;
+    bool want_account;
+    char loaded_uid[NET_ID_LEN]; /* user whose profile was last loaded */
+    bool profile_pending;        /* name/skin waiting to be written */
+    NetPeerMeta profile_save;
+    bool stats_pending;
+    NetStats stats_save;
+    char rest_body[1024];
 };
 
 const char *net_status_name(NetStatus s)
@@ -188,16 +209,46 @@ static void send_join(NetTransport *n)
     n->sent_token_version = n->auth.token_version;
 }
 
+/* JSON string body (no quotes): escapes quotes, backslashes and controls. */
+static void json_escape(char *out, size_t cap, const char *s)
+{
+    size_t o = 0;
+    for (; *s && o + 7 < cap; s++) {
+        unsigned char ch = (unsigned char)*s;
+        if (ch == '"' || ch == '\\') {
+            out[o++] = '\\';
+            out[o++] = (char)ch;
+        } else if (ch < 0x20) {
+            o += (size_t)snprintf(out + o, cap - o, "\\u%04x", ch);
+        } else {
+            out[o++] = (char)ch;
+        }
+    }
+    out[o] = 0;
+}
+
+static void read_skin(const cJSON *skin, NetSkin *out)
+{
+    const cJSON *p = cJSON_GetObjectItemCaseSensitive(skin, "palette");
+    const cJSON *h = cJSON_GetObjectItemCaseSensitive(skin, "hair");
+    const cJSON *a = cJSON_GetObjectItemCaseSensitive(skin, "accessory");
+    out->palette = cJSON_IsNumber(p) ? (uint8_t)p->valuedouble : out->palette;
+    out->hair = cJSON_IsNumber(h) ? (uint8_t)h->valuedouble : out->hair;
+    out->accessory = cJSON_IsNumber(a) ? (uint8_t)a->valuedouble : out->accessory;
+}
+
 static void send_track(NetTransport *n)
 {
     const NetPeerMeta *m = &n->me;
+    char name[NET_NAME_LEN * 2];
+    json_escape(name, sizeof(name), m->name);
     n->ref++;
     int len = snprintf(n->line, sizeof(n->line),
                        "{\"topic\":\"realtime:%s\",\"event\":\"presence\",\"payload\":{\"type\":\"presence\","
-                       "\"event\":\"track\",\"payload\":{\"n\":\"%s\",\"p\":[%u,%u,%u,%u],\"a\":%u,\"s\":%d}},"
-                       "\"ref\":\"%d\",\"join_ref\":\"%d\"}",
-                       n->topic, m->name, (unsigned)m->palette[0], (unsigned)m->palette[1], (unsigned)m->palette[2],
-                       (unsigned)m->palette[3], (unsigned)m->accessories, m->slot, n->ref, n->join_ref);
+                       "\"event\":\"track\",\"payload\":{\"name\":\"%s\",\"skin\":{\"palette\":%u,\"hair\":%u,"
+                       "\"accessory\":%u},\"slot\":%d}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                       n->topic, name, (unsigned)m->skin.palette, (unsigned)m->skin.hair, (unsigned)m->skin.accessory,
+                       m->slot, n->ref, n->join_ref);
     send_line(n, len);
     n->track_sent = true;
 }
@@ -285,20 +336,15 @@ static void parse_meta(const cJSON *metas, NetPeerMeta *m)
     if (!meta) {
         return;
     }
-    const cJSON *name = cJSON_GetObjectItemCaseSensitive(meta, "n");
-    const cJSON *pal = cJSON_GetObjectItemCaseSensitive(meta, "p");
-    const cJSON *acc = cJSON_GetObjectItemCaseSensitive(meta, "a");
-    const cJSON *slot = cJSON_GetObjectItemCaseSensitive(meta, "s");
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(meta, "name");
+    const cJSON *skin = cJSON_GetObjectItemCaseSensitive(meta, "skin");
+    const cJSON *slot = cJSON_GetObjectItemCaseSensitive(meta, "slot");
     if (cJSON_IsString(name)) {
         snprintf(m->name, sizeof(m->name), "%s", name->valuestring);
     }
-    if (cJSON_IsArray(pal)) {
-        for (int i = 0; i < 4 && i < cJSON_GetArraySize(pal); i++) {
-            const cJSON *v = cJSON_GetArrayItem(pal, i);
-            m->palette[i] = cJSON_IsNumber(v) ? (uint32_t)v->valuedouble : 0;
-        }
+    if (cJSON_IsObject(skin)) {
+        read_skin(skin, &m->skin);
     }
-    m->accessories = cJSON_IsNumber(acc) ? (uint32_t)acc->valuedouble : 0;
     m->slot = cJSON_IsNumber(slot) ? (int)slot->valuedouble : -1;
 }
 
@@ -592,7 +638,162 @@ static void process_commands(NetTransport *n)
         case CMD_QUIT:
             SDL_SetAtomicInt(&n->quit, 1);
             break;
+        case CMD_ACCOUNT:
+            n->want_account = true;
+            break;
+        case CMD_PROFILE_SAVE:
+            n->profile_save = c.meta;
+            n->profile_pending = true;
+            break;
+        case CMD_STATS_SAVE:
+            n->stats_save = c.stats;
+            n->stats_pending = true;
+            break;
         }
+    }
+}
+
+/* Sign in if needed (shared by rooms and the account). Status changes are
+ * only reported while a room is wanted. */
+static bool ensure_auth(NetTransport *n, bool report)
+{
+    if (supa_auth_ready(&n->auth)) {
+        return true;
+    }
+    if (n->auth.state == AUTH_IDLE) {
+        if (report) {
+            set_status(n, NET_SIGNING_IN, NULL);
+        }
+        supa_auth_start(&n->auth, &n->mgr, n->now);
+    } else if (n->auth.state == AUTH_FAILED) {
+        if (n->auth.retry_at == 0.0) { /* report once, retry every 10 s */
+            n->auth.retry_at = n->now + 10.0;
+            char msg[96];
+            snprintf(msg, sizeof(msg), "sign-in failed: %.78s", n->auth.error);
+            if (report) {
+                set_status(n, NET_FAILED, msg);
+            }
+        } else if (n->now >= n->auth.retry_at) {
+            n->auth.retry_at = 0.0;
+            if (report) {
+                set_status(n, NET_SIGNING_IN, NULL);
+            }
+            supa_auth_start(&n->auth, &n->mgr, n->now);
+        }
+    }
+    return false;
+}
+
+/* ------------------------------------------------------------- account */
+
+static void account_error(NetTransport *n, const char *what, int status)
+{
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_ACCOUNT_ERROR;
+    e.value = status;
+    snprintf(e.text, sizeof(e.text), "%s (HTTP %d)", what, status);
+    push_event(n, &e);
+    mg_log_warn("account: %s", e.text);
+}
+
+/* [{"display_name":..,"skin":{..},"stats":{..}}] */
+static void profile_loaded(void *user, int status, const char *body, size_t len)
+{
+    NetTransport *n = (NetTransport *)user;
+    if (status != 200) {
+        n->loaded_uid[0] = 0; /* retry on the next drive */
+        account_error(n, "profile load failed", status);
+        return;
+    }
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_PROFILE;
+    NetProfile *p = &e.profile;
+    snprintf(p->user_id, sizeof(p->user_id), "%s", n->auth.user_id);
+    snprintf(p->display_name, sizeof(p->display_name), "Player");
+    p->skin = (NetSkin){0, 1, 3};
+    p->guest = n->auth.is_anonymous;
+    snprintf(p->email, sizeof(p->email), "%s", n->auth.email);
+    cJSON *j = cJSON_ParseWithLength(body, len);
+    const cJSON *row = cJSON_IsArray(j) ? cJSON_GetArrayItem(j, 0) : NULL;
+    if (row) {
+        const cJSON *name = cJSON_GetObjectItemCaseSensitive(row, "display_name");
+        const cJSON *skin = cJSON_GetObjectItemCaseSensitive(row, "skin");
+        const cJSON *st = cJSON_GetObjectItemCaseSensitive(row, "stats");
+        if (cJSON_IsArray(st)) {
+            st = cJSON_GetArrayItem(st, 0);
+        }
+        if (cJSON_IsString(name)) {
+            snprintf(p->display_name, sizeof(p->display_name), "%s", name->valuestring);
+        }
+        if (cJSON_IsObject(skin)) {
+            read_skin(skin, &p->skin);
+        }
+        if (cJSON_IsObject(st)) {
+#define NUM(field, key) do { const cJSON *v = cJSON_GetObjectItemCaseSensitive(st, key); \
+            if (cJSON_IsNumber(v)) { p->stats.field = (__typeof__(p->stats.field))v->valuedouble; } } while (0)
+            NUM(sessions, "sessions");
+            NUM(play_seconds, "play_seconds");
+            NUM(distance_m, "distance_m");
+            NUM(elevator_rides, "elevator_rides");
+            NUM(rooms_joined, "rooms_joined");
+#undef NUM
+        }
+    }
+    cJSON_Delete(j);
+    mg_log_info("account: %s %.8s... \"%s\", %d sessions", p->guest ? "guest" : "linked", p->user_id,
+                p->display_name, p->stats.sessions);
+    push_event(n, &e);
+}
+
+static void profile_saved(void *user, int status, const char *body, size_t len)
+{
+    (void)body;
+    (void)len;
+    if (status < 200 || status >= 300) {
+        account_error((NetTransport *)user, "profile save failed", status);
+    }
+}
+
+static void stats_saved(void *user, int status, const char *body, size_t len)
+{
+    (void)body;
+    (void)len;
+    if (status < 200 || status >= 300) {
+        account_error((NetTransport *)user, "stats save failed", status);
+    }
+}
+
+static void drive_account(NetTransport *n)
+{
+    if (!n->want_account || n->cfg.public_test || !ensure_auth(n, n->want_room) || n->rest.busy) {
+        return;
+    }
+    char path[160];
+    if (strcmp(n->loaded_uid, n->auth.user_id) != 0) {
+        snprintf(n->loaded_uid, sizeof(n->loaded_uid), "%s", n->auth.user_id);
+        snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*)", n->auth.user_id);
+        rest_call(&n->rest, &n->mgr, n->auth.access_token, "GET", path, NULL, profile_loaded, n);
+    } else if (n->profile_pending) {
+        char name[NET_NAME_LEN * 2];
+        json_escape(name, sizeof(name), n->profile_save.name);
+        const NetSkin *k = &n->profile_save.skin;
+        snprintf(n->rest_body, sizeof(n->rest_body),
+                 "{\"display_name\":\"%s\",\"skin\":{\"palette\":%u,\"hair\":%u,\"accessory\":%u}}", name,
+                 (unsigned)k->palette, (unsigned)k->hair, (unsigned)k->accessory);
+        snprintf(path, sizeof(path), "profiles?id=eq.%s", n->auth.user_id);
+        n->profile_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
+                                        profile_saved, n);
+    } else if (n->stats_pending) {
+        const NetStats *s = &n->stats_save;
+        snprintf(n->rest_body, sizeof(n->rest_body),
+                 "{\"sessions\":%d,\"play_seconds\":%d,\"distance_m\":%.1f,\"elevator_rides\":%d,"
+                 "\"rooms_joined\":%d,\"last_seen_at\":\"now\"}",
+                 s->sessions, s->play_seconds, (double)s->distance_m, s->elevator_rides, s->rooms_joined);
+        snprintf(path, sizeof(path), "stats?user_id=eq.%s", n->auth.user_id);
+        n->stats_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
+                                      stats_saved, n);
     }
 }
 
@@ -611,22 +812,7 @@ static void drive(NetTransport *n)
         snprintf(n->auth.access_token, sizeof(n->auth.access_token), "public");
         n->auth.state = AUTH_OK;
     }
-    if (!supa_auth_ready(&n->auth)) {
-        if (n->auth.state == AUTH_IDLE) {
-            set_status(n, NET_SIGNING_IN, NULL);
-            supa_auth_start(&n->auth, &n->mgr, n->now);
-        } else if (n->auth.state == AUTH_FAILED) {
-            if (n->auth.retry_at == 0.0) { /* report once, retry every 10 s */
-                n->auth.retry_at = n->now + 10.0;
-                char msg[96];
-                snprintf(msg, sizeof(msg), "sign-in failed: %.78s", n->auth.error);
-                set_status(n, NET_FAILED, msg);
-            } else if (n->now >= n->auth.retry_at) {
-                n->auth.retry_at = 0.0;
-                set_status(n, NET_SIGNING_IN, NULL);
-                supa_auth_start(&n->auth, &n->mgr, n->now);
-            }
-        }
+    if (!ensure_auth(n, true)) {
         return;
     }
     {
@@ -670,7 +856,16 @@ static int net_thread(void *arg)
         process_commands(n);
         supa_auth_update(&n->auth, &n->mgr, n->now);
         drive(n);
-        mg_mgr_poll(&n->mgr, n->want_room ? 5 : 20);
+        drive_account(n);
+        mg_mgr_poll(&n->mgr, n->want_room || n->rest.busy ? 5 : 20);
+    }
+    /* last profile/stats writes before closing (bounded) */
+    for (int i = 0; i < 300 && n->want_account && supa_auth_ready(&n->auth) &&
+                    (n->rest.busy || n->profile_pending || n->stats_pending);
+         i++) {
+        n->now = (double)SDL_GetTicksNS() * 1e-9;
+        drive_account(n);
+        mg_mgr_poll(&n->mgr, 5);
     }
     if (n->joined) {
         send_leave(n);
@@ -712,6 +907,7 @@ NetTransport *net_create(Arena *perm, const NetConfig *cfg)
     secure_store_init(&n->store, n->profile);
     net_endpoint_init(&n->ep, n->host, n->ca_storage, CA_STORAGE);
     supa_auth_init(&n->auth, &n->store, &n->ep, n->anon_key);
+    rest_init(&n->rest, &n->ep, n->anon_key);
     ws_init(&n->ws, n->ws_buf);
     n->lock = SDL_CreateMutex();
     SDL_SetAtomicInt(&n->status, NET_OFFLINE);
@@ -828,5 +1024,41 @@ void net_set_background(NetTransport *n, bool background)
     memset(&c, 0, sizeof(c));
     c.type = CMD_BACKGROUND;
     c.flag = background;
+    push_cmd(n, &c);
+}
+
+void net_account_start(NetTransport *n)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_ACCOUNT;
+    push_cmd(n, &c);
+}
+
+void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *skin)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_PROFILE_SAVE;
+    snprintf(c.meta.name, sizeof(c.meta.name), "%s", display_name);
+    c.meta.skin = *skin;
+    push_cmd(n, &c);
+}
+
+void net_save_stats(NetTransport *n, const NetStats *totals)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_STATS_SAVE;
+    c.stats = *totals;
     push_cmd(n, &c);
 }

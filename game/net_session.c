@@ -9,6 +9,8 @@
 #define STALE_AFTER 3.5      /* s without packets -> drop (keepalive is 1 Hz): gone within 5 s */
 #define SLOT_SETTLE 0.6      /* s after joining before we pick a slot */
 
+static void fill_meta(NetSession *s);
+
 void session_init(NetSession *s, NetTransport *net)
 {
     memset(s, 0, sizeof(*s));
@@ -16,6 +18,18 @@ void session_init(NetSession *s, NetTransport *net)
     s->slot = 0;
     s->rtt_ms = -1;
     SDL_snprintf(s->status_text, sizeof(s->status_text), "offline");
+    SDL_snprintf(s->my_name, sizeof(s->my_name), "Player");
+    s->my_skin = AVATAR_DEFAULT_SKIN;
+}
+
+void session_set_identity(NetSession *s, const char *name, NetSkin skin)
+{
+    SDL_snprintf(s->my_name, sizeof(s->my_name), "%s", name);
+    s->my_skin = skin;
+    fill_meta(s);
+    if (s->status == NET_JOINED) {
+        net_set_meta(s->net, &s->me); /* re-track: peers update within one presence diff */
+    }
 }
 
 void session_random_code(char out[5])
@@ -28,25 +42,12 @@ void session_random_code(char out[5])
 
 static void fill_meta(NetSession *s)
 {
-    AvatarLook look = avatar_look_doctor(avatar_look_for_slot(s->slot < 0 ? 0 : s->slot));
-    char tail[5] = "----";
-    size_t n = strlen(s->self_id);
-    if (n >= 4) {
-        memcpy(tail, s->self_id + n - 4, 4);
-    }
-    SDL_snprintf(s->me.name, sizeof(s->me.name), "Player %s", tail);
-    s->me.palette[0] = look.skin;
-    s->me.palette[1] = look.outfit;
-    s->me.palette[2] = look.hair;
-    s->me.palette[3] = look.accent;
-    s->me.accessories = look.accessories;
+    SDL_snprintf(s->me.name, sizeof(s->me.name), "%s", s->my_name);
+    s->me.skin = s->my_skin;
     s->me.slot = s->slot;
 }
 
-AvatarLook session_my_look(const NetSession *s)
-{
-    return avatar_look_doctor(avatar_look_for_slot(s->slot < 0 ? 0 : s->slot));
-}
+AvatarLook session_my_look(const NetSession *s) { return avatar_look_from_skin(s->my_skin); }
 
 static void clear_remotes(NetSession *s) { memset(s->remotes, 0, sizeof(s->remotes)); }
 
@@ -134,18 +135,7 @@ static RemotePlayer *find_remote(NetSession *s, const char *id, bool create)
     return NULL;
 }
 
-static AvatarLook look_from_meta(const NetPeerMeta *m)
-{
-    AvatarLook l = avatar_look_for_slot(m->slot);
-    if (m->palette[0] || m->palette[1]) {
-        l.skin = m->palette[0];
-        l.outfit = m->palette[1];
-        l.hair = m->palette[2];
-        l.accent = m->palette[3];
-        l.accessories = m->accessories;
-    }
-    return l;
-}
+static AvatarLook look_from_meta(const NetPeerMeta *m) { return avatar_look_from_skin(m->skin); }
 
 /* Lowest slot no peer claims. Ties (two players picked the same slot in
  * the same instant) resolve deterministically: the larger user id moves. */
@@ -202,6 +192,14 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         s->joined_at = now;
         s->slot_announced = false;
         SDL_snprintf(s->status_text, sizeof(s->status_text), "in %s", s->topic);
+        s->rooms_joined++;
+        break;
+    case NET_EV_PROFILE:
+        s->profile = e->profile;
+        s->profile_new = true;
+        break;
+    case NET_EV_ACCOUNT_ERROR:
+        SDL_snprintf(s->account_error, sizeof(s->account_error), "%s", e->text);
         break;
     case NET_EV_PEER_JOIN: {
         RemotePlayer *r = find_remote(s, e->peer, true);

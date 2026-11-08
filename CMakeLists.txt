@@ -118,6 +118,7 @@ add_library(mg_engine STATIC
   engine/net/ws_client.c
   engine/net/supabase_auth.c
   engine/net/supabase_rt.c
+  engine/net/supabase_rest.c
   engine/net/replication.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
@@ -139,6 +140,7 @@ set(MG_GAME_SOURCES
   game/elevator.c
   game/floor_menu.c
   game/route_test.c
+  game/stats.c
   game/player.c
   game/camera_tp.c
   game/debug_menu.c

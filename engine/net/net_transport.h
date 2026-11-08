@@ -1,6 +1,8 @@
 /* Network transport interface used by the game. The current backend is
- * Supabase Realtime (supabase_rt.c): anonymous auth, one private channel per
- * room, Broadcast for player state and Presence for who is in the room.
+ * Supabase (supabase_rt.c): guest (anonymous) auth that can be linked to
+ * Google, one private Realtime channel per room with Broadcast for player
+ * state and Presence for who is in the room, and the player's profile and
+ * stats rows over PostgREST (supabase_rest.c).
  * A different backend only has to implement these functions.
  *
  * All I/O runs on a network thread; these calls only touch fixed-size,
@@ -27,13 +29,39 @@ typedef enum NetStatus {
     NET_FAILED,         /* gave up (bad config, auth disabled, room refused) */
 } NetStatus;
 
-/* Presence payload: what other players need to draw us. */
+/* Avatar choice, indices into the game's tables (profiles.skin). */
+typedef struct NetSkin {
+    uint8_t palette;   /* 8 presets */
+    uint8_t hair;      /* 6 caps */
+    uint8_t accessory; /* 5 */
+} NetSkin;
+
+/* Presence payload {name, skin:{palette,hair,accessory}, slot}: what other
+ * players need to draw us. */
 typedef struct NetPeerMeta {
     char name[NET_NAME_LEN];
-    uint32_t palette[4];   /* skin, outfit, hair, accent (0xRRGGBB) */
-    uint32_t accessories;
+    NetSkin skin;
     int slot;              /* spawn disc / colour slot, -1 = not chosen yet */
 } NetPeerMeta;
+
+/* Totals as stored in public.stats. */
+typedef struct NetStats {
+    int sessions;
+    int play_seconds;
+    float distance_m;
+    int elevator_rides;
+    int rooms_joined;
+} NetStats;
+
+/* The signed-in player's account (profiles + stats rows). */
+typedef struct NetProfile {
+    char user_id[NET_ID_LEN];
+    char display_name[NET_NAME_LEN];
+    NetSkin skin;
+    NetStats stats;
+    bool guest;            /* anonymous user, not linked to Google yet */
+    char email[64];        /* Google account, "" for guests */
+} NetProfile;
 
 typedef enum NetEventType {
     NET_EV_STATUS,      /* value = NetStatus, text = detail */
@@ -43,6 +71,8 @@ typedef enum NetEventType {
     NET_EV_PEER_STATE,  /* peer + data[len] (replication payload) */
     NET_EV_RTT,         /* value = round trip to the server in ms */
     NET_EV_ROOM_FULL,   /* value = players already in the room */
+    NET_EV_PROFILE,     /* profile = our account, loaded or switched (sign-in / Google link) */
+    NET_EV_ACCOUNT_ERROR, /* text = what failed (load, save, link) */
 } NetEventType;
 
 typedef struct NetEvent {
@@ -53,6 +83,7 @@ typedef struct NetEvent {
     uint8_t data[NET_STATE_MAX];
     uint16_t len;
     char text[96];
+    NetProfile profile;
 } NetEvent;
 
 typedef struct NetConfig {
@@ -86,5 +117,13 @@ const char *net_status_name(NetStatus s);
 
 /* App lifecycle: leave the room while backgrounded, rejoin on foreground. */
 void net_set_background(NetTransport *n, bool background);
+
+/* Account: sign in (guest if nothing stored) and load profile + stats once;
+ * answers with NET_EV_PROFILE. */
+void net_account_start(NetTransport *n);
+/* Write-through of name/skin (coalesced; the newest value wins). */
+void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *skin);
+/* Store stats totals (coalesced; one PATCH in flight). */
+void net_save_stats(NetTransport *n, const NetStats *totals);
 
 #endif
