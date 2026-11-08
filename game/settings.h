@@ -11,7 +11,7 @@ typedef struct GameSettings {
     bool invert_y;
     float cam_distance;     /* 3.2 m */
     float cam_pitch_deg;    /* -20; slider value applied to the camera */
-    float fov_deg;          /* 70 */
+    float fov_deg;          /* 55 (landscape) */
     float dead_zone_pt;     /* 60 */
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
@@ -36,7 +36,7 @@ static inline void settings_default(GameSettings *s)
     s->invert_y = false;
     s->cam_distance = 3.2f;
     s->cam_pitch_deg = -20.0f;
-    s->fov_deg = 70.0f;
+    s->fov_deg = 55.0f;
     s->dead_zone_pt = 60.0f;
     s->show_colliders = false;
     s->show_triggers = false;

@@ -39,6 +39,7 @@ typedef enum NetCmdType {
     CMD_STATS_SAVE,
     CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
     CMD_SIGN_OUT,
+    CMD_QUIET,
 } NetCmdType;
 
 typedef struct NetCmd {
@@ -88,6 +89,7 @@ struct NetTransport {
     int max_players;
     bool want_room;
     bool background;
+    bool quiet; /* offline play: no new sign-in attempt after a failure */
     bool joined;
     bool track_sent;
     int ref;
@@ -641,6 +643,9 @@ static void process_commands(NetTransport *n)
                 send_state(n, c.data, c.len);
             }
             break;
+        case CMD_QUIET:
+            n->quiet = c.flag;
+            break;
         case CMD_BACKGROUND:
             n->background = c.flag;
             if (c.flag && n->ws.c) {
@@ -701,7 +706,7 @@ static bool ensure_auth(NetTransport *n, bool report)
             if (report) {
                 set_status(n, NET_FAILED, msg);
             }
-        } else if (n->now >= n->auth.retry_at) {
+        } else if (n->now >= n->auth.retry_at && !n->quiet) {
             n->auth.retry_at = 0.0;
             if (report) {
                 set_status(n, NET_SIGNING_IN, NULL);
@@ -1088,6 +1093,18 @@ void net_set_background(NetTransport *n, bool background)
     memset(&c, 0, sizeof(c));
     c.type = CMD_BACKGROUND;
     c.flag = background;
+    push_cmd(n, &c);
+}
+
+void net_set_quiet(NetTransport *n, bool quiet)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_QUIET;
+    c.flag = quiet;
     push_cmd(n, &c);
 }
 

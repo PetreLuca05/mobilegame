@@ -74,7 +74,7 @@ void prefs_load(Prefs *p, const char *profile)
         g->invert_y = flag(s, "invert_y", g->invert_y);
         g->cam_distance = num(s, "cam_distance", g->cam_distance);
         g->cam_pitch_deg = num(s, "cam_pitch", g->cam_pitch_deg);
-        g->fov_deg = num(s, "fov", g->fov_deg);
+        g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
         g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
         g->render_scale = num(s, "render_scale", g->render_scale);
         g->tier_override = (int)num(s, "tier", (float)g->tier_override);

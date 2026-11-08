@@ -55,6 +55,7 @@ struct MgApp {
     int argc;
     char **argv;
     double quit_after;
+    double capture_at; /* --metal-capture [S]: capture the frame at S s (0 = off) */
     bool log_events;
 };
 

@@ -46,6 +46,13 @@ void route_test_init(RouteTest *t, int argc, char **argv)
     }
 }
 
+void route_test_start(RouteTest *t)
+{
+    memset(t, 0, sizeof(*t));
+    t->active = true;
+    t->best_dist = 1e9f;
+}
+
 static void finish(RouteTest *t, bool ok, const char *why)
 {
     t->done = true;

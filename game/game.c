@@ -3,6 +3,8 @@
  * Keyboard/mouse also work on desktop. */
 #include "game.h"
 
+#include <stdlib.h> /* _Exit: autotest save */
+
 #include "audio/audio.h"
 #include "world/daycycle.h"
 #include "platform/google_auth.h"
@@ -92,6 +94,7 @@ typedef struct Game {
     bool stats_queued;     /* this run's stats are (partly) in prefs.stats_queue */
     NetStats queued;       /* what of this run is already in the queue */
     bool offline_play;     /* New Game / Continue: saves, no room */
+    int logged_fe;         /* last front-end screen written to the log */
     double next_save;
     SaveGame save;         /* loaded on Continue; progress kept here */
     uint32_t save_play_base, save_rides_base;
@@ -241,7 +244,7 @@ bool game_init(MgApp *app)
     }
     /* the front end comes first unless a test flag already chose to play */
     bool play_now = party || has_flag(app->argc, app->argv, "--world") || has_flag(app->argc, app->argv, "--offline") ||
-                    has_flag(app->argc, app->argv, "--autotest") || arg_value(app->argc, app->argv, "--spawn") ||
+                    autotest_starts_in_game(app->argc, app->argv) || arg_value(app->argc, app->argv, "--spawn") ||
                     arg_value(app->argc, app->argv, "--cam") || has_flag(app->argc, app->argv, "--menu") ||
                     has_flag(app->argc, app->argv, "--colliders");
     const char *fe_arg = arg_value(app->argc, app->argv, "--frontend"); /* desktop: start on a screen */
@@ -272,6 +275,7 @@ bool game_init(MgApp *app)
     }
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
+    g->logged_fe = -1;
     g->audio = audio_create(&app->perm);
     daycycle_init(&g->day);
     g->settings.follow_clock = true;
@@ -421,6 +425,7 @@ static void leave_play(Game *g, MgApp *app)
     session_stop(&g->session);
     g->playing = false;
     g->offline_play = false;
+    net_set_quiet(g->net, false);
     g->play_paused = false;
     g->menu.open = false;
     g->fe.depth = 0;
@@ -697,6 +702,7 @@ static void load_step(Game *g, MgApp *app)
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
         g->offline_play = g->pending_play == 0 || g->pending_play == 3;
+        net_set_quiet(g->net, g->offline_play);
         g->save_play_base = g->save_rides_base = 0;
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
             player_init(&g->player, g->save.pos, g->save.yaw);
@@ -853,9 +859,35 @@ void game_frame(MgApp *app, float alpha)
     s->time_of_day = (float)g->day.t;
     g->day_state = daycycle_state(&g->day, (float)g->day.t);
     g->lamp_on = g->day_state.lamp_on;
-    AutotestProbe probe = {g->player.kin.pos, g->player.kin.vel, HMM_ToDeg(g->cam.yaw), g->player.kin.jump_count,
-                           g->touch.sprint, 1};
-    autotest_update(&g->autotest, app, &probe);
+    Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
+    AutotestProbe probe = {g->player.kin.pos,
+                           g->player.kin.vel,
+                           HMM_ToDeg(g->cam.yaw),
+                           g->player.kin.jump_count,
+                           g->touch.sprint,
+                           1,
+                           &g->ui,
+                           (int)g->fe.state,
+                           g->playing,
+                           g->playing ? scene_floor_of(g->scene, g->player.kin.pos) : 0,
+                           probe_el && elevator_busy(probe_el),
+                           SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
+                           g->route.active && !g->route.done ? g->route.step : -1};
+    AutotestOut ato;
+    autotest_update(&g->autotest, app, &probe, &ato);
+    if (ato.start_route) {
+        route_test_start(&g->route);
+    }
+    if (ato.kill) { /* like a swipe-kill: the app is backgrounded (saves), then gone */
+        game_pause(app);
+        _Exit(0);
+    }
+    if ((int)g->fe.state != g->logged_fe) { /* screen changes, for device logs */
+        static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU",
+                                            "SETTINGS", "FREE_ROAM", "LOADING", "PLAY"};
+        g->logged_fe = (int)g->fe.state;
+        mg_log_info("frontend: %s", names[g->logged_fe]);
+    }
 
     /* network: events, remote buffers, our state at the adaptive rate */
     {

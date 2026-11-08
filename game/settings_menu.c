@@ -57,7 +57,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         cx = x2;
         cy = sliders_top;
     }
-    ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 50.0f, 100.0f, "%.0f" TEXT_DEGREE);
+    ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 45.0f, 75.0f, "%.0f" TEXT_DEGREE);
     cy += step;
     ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 100.0f, "%.0f pt");
     cy += step;

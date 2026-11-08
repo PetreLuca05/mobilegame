@@ -19,6 +19,12 @@ typedef struct Ui {
     int active_touch;
     bool clip_on;       /* inside a scroll region: taps outside it are ignored */
     float clip[4];
+    /* tappable widgets of the last frame (self-tests tap them by id) */
+    struct {
+        uint32_t key;
+        float x, y, w, h;
+    } seen[128];
+    int seen_count;
 } Ui;
 
 /* Scroll region state (keep it across frames). */
@@ -50,6 +56,9 @@ bool ui_toggle(Ui *ui, const char *label, float x, float y, float w, bool *value
 /* A-Z keypad with backspace (9 columns, 3 rows of `key_h`). Edits a
  * NUL-terminated code of at most max_len letters. Returns the height used. */
 float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float key_h, char *code, int max_len);
+/* Centre of a widget drawn last frame, by its "##id" suffix (or the whole
+ * id when there is none); false if it was not drawn or was scrolled away. */
+bool ui_find(const Ui *ui, const char *key, float *x, float *y);
 /* Pressed state of a button-like region without drawing (icons). */
 bool ui_hit_area(Ui *ui, const char *id, float x, float y, float w, float h, bool *held);
 

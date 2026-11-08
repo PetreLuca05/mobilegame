@@ -113,6 +113,13 @@ static bool resolve(const char *host, int port, char *out, size_t cap)
     return ok;
 }
 
+/* Every connection attempt is logged ("net: attempt"; offline play must make none). */
+static void log_attempt(const char *kind, const char *method, const NetEndpoint *ep, const char *path)
+{
+    size_t plen = strcspn(path, "?"); /* the query can carry keys */
+    mg_log_info("net: attempt %s %s %s%.*s", kind, method, ep->host, (int)plen, path);
+}
+
 /* Open the TCP leg: straight to the server, or to the proxy. */
 static struct mg_connection *open_stream(struct mg_mgr *mgr, const NetEndpoint *ep, mg_event_handler_t fn,
                                          void *user, bool *via_proxy)
@@ -420,6 +427,7 @@ bool ws_connect(WsClient *ws, struct mg_mgr *mgr, const NetEndpoint *ep, const c
     ws->proxy_ok = false;
     ws->msg_active = false;
     ws->state = WS_CONNECTING;
+    log_attempt("WS", "GET", ep, path);
     ws->c = open_stream(mgr, ep, ws_fn, ws, &ws->via_proxy);
     if (!ws->c) {
         ws->state = WS_CLOSED;
@@ -631,6 +639,7 @@ bool https_request(HttpRequest *r, struct mg_mgr *mgr, const NetEndpoint *ep, co
         return false;
     }
     r->request_len = (size_t)n;
+    log_attempt("HTTPS", method, ep, path);
     r->c = open_stream(mgr, ep, http_fn, r, &r->via_proxy);
     if (!r->c) {
         r->done = true;

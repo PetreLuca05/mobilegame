@@ -3,18 +3,38 @@
 #include <math.h>
 
 #include "core/log.h"
+#include "frontend.h"
 #include "player.h"
 
-enum { AUTOTEST_NONE, AUTOTEST_TOUCH };
+enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE };
+
+static int kind_of(int argc, char **argv)
+{
+    static const char *const names[] = {"touch", "onboarding", "save", "continue"};
+    for (int i = 1; i + 1 < argc; i++) {
+        for (int k = 0; k < 4 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+            if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
+                return AUTOTEST_TOUCH + k;
+            }
+        }
+    }
+    return AUTOTEST_NONE;
+}
 
 void autotest_init(Autotest *t, int argc, char **argv)
 {
     *t = (Autotest){0};
+    t->kind = kind_of(argc, argv);
+}
+
+bool autotest_starts_in_game(int argc, char **argv)
+{
     for (int i = 1; i + 1 < argc; i++) {
-        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "touch") == 0) {
-            t->kind = AUTOTEST_TOUCH;
+        if (SDL_strcmp(argv[i], "--autotest") == 0) {
+            return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0;
         }
     }
+    return false;
 }
 
 static void finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt)
@@ -99,8 +119,171 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
     return false;
 }
 
-bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p)
+/* ------------------------------------------------------------ menu scripts */
+
+typedef struct TapStep {
+    int state;       /* FeState the step waits for */
+    const char *key; /* widget to tap (ui_find) */
+    bool look;       /* the tap must change the avatar */
+} TapStep;
+
+static const TapStep k_onboarding[] = {
+    {FE_WELCOME, "guest", false},   {FE_USERNAME, "name_ok", false}, {FE_CREATOR, "crtab0", false},
+    {FE_CREATOR, "cr0_0_1", true},  {FE_CREATOR, "crtab1", false},   {FE_CREATOR, "cr1_0_3", true},
+    {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "cr2_0_2", true},   {FE_CREATOR, "cr2_1_4", true},
+    {FE_CREATOR, "crtab3", false},  {FE_CREATOR, "cr3_0_1", true},   {FE_CREATOR, "crtab4", false},
+    {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
+};
+static const TapStep k_new_game[] = {{FE_MAIN_MENU, "menurow0", false}};
+static const TapStep k_overwrite[] = {{FE_MAIN_MENU, "ow_new", false}};
+static const TapStep k_continue[] = {{FE_MAIN_MENU, "menurow1", false}};
+
+static bool fail(Autotest *t, const char *what, const char *detail)
 {
+    mg_log_error("autotest %s: FAILED at step %d: %s", what, t->step, detail);
+    mg_log_info("AUTOTEST FAILED");
+    t->passed = false;
+    return true;
+}
+
+/* Tap the steps in order: wait for the screen, find the widget, finger down,
+ * up 0.1 s later, settle 0.6 s. Returns true when every step is done. */
+static bool run_taps(Autotest *t, MgApp *app, const AutotestProbe *p, const TapStep *steps, int count,
+                     const char *what, bool *failed)
+{
+    *failed = false;
+    if (t->step >= count) {
+        return true;
+    }
+    const TapStep *s = &steps[t->step];
+    double now = app->time;
+    if (t->step_start == 0.0) {
+        t->step_start = now;
+    }
+    if (t->finger_down) {
+        if (now >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, (SDL_FingerID)t->finger_down, t->tap_x, t->tap_y);
+            t->finger_down = 0;
+            t->wait_until = now + 0.6;
+        }
+        return false;
+    }
+    if (now < t->wait_until) {
+        return false;
+    }
+    if (t->wait_until > 0.0) { /* a tap finished: check it, next step */
+        t->wait_until = 0.0;
+        if (s->look) {
+            if (p->skin_hash == t->skin_before) {
+                *failed = fail(t, what, "the avatar did not change");
+                return false;
+            }
+            t->skin_changes++;
+        }
+        mg_log_info("autotest %s: tapped %s", what, s->key);
+        t->step++;
+        t->step_start = now;
+        return t->step >= count;
+    }
+    if (now - t->step_start > 10.0) {
+        char why[96];
+        SDL_snprintf(why, sizeof(why), "no \"%s\" (screen %d, want %d)", s->key, p->fe_state, s->state);
+        *failed = fail(t, what, why);
+        return false;
+    }
+    float x, y;
+    if (p->fe_state == s->state && ui_find(p->ui, s->key, &x, &y)) {
+        t->skin_before = p->skin_hash;
+        t->tap_x = x;
+        t->tap_y = y;
+        t->finger_down = 20 + t->step;
+        finger(app, SDL_EVENT_FINGER_DOWN, (SDL_FingerID)t->finger_down, x, y);
+        t->wait_until = now + 0.1;
+    }
+    return false;
+}
+
+static bool run_onboarding(Autotest *t, MgApp *app, const AutotestProbe *p)
+{
+    bool failed;
+    if (!run_taps(t, app, p, k_onboarding, (int)MG_ARRAY_COUNT(k_onboarding), "onboarding", &failed)) {
+        return failed;
+    }
+    if (p->fe_state != FE_MAIN_MENU) {
+        return app->time - t->step_start > 5.0 ? fail(t, "onboarding", "not on the main menu after Done") : false;
+    }
+    mg_log_info("autotest onboarding: on the main menu, %d look changes", t->skin_changes);
+    mg_log_info("AUTOTEST PASSED");
+    t->passed = true;
+    return true;
+}
+
+static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out)
+{
+    bool failed;
+    float x, y;
+    switch (t->stage) {
+    case 0: /* New Game */
+        if (!run_taps(t, app, p, k_new_game, 1, "save", &failed)) {
+            return failed;
+        }
+        t->stage = 1;
+        return false;
+    case 1:
+        if (p->playing) {
+            out->start_route = true;
+            t->stage = 3;
+            t->step_start = app->time;
+        } else if (p->fe_state == FE_MAIN_MENU && ui_find(p->ui, "ow_new", &x, &y)) {
+            t->step = 0; /* a save exists: confirm the overwrite */
+            t->stage = 2;
+        } else if (app->time - t->step_start > 20.0) {
+            return fail(t, "save", "New Game did not start");
+        }
+        return false;
+    case 2:
+        if (!run_taps(t, app, p, k_overwrite, 1, "save", &failed)) {
+            return failed;
+        }
+        t->stage = 1;
+        return false;
+    default:
+        break;
+    }
+    /* the route's first ride goes to floor 2; stop once off the car there */
+    if (p->floor == 2 && !p->riding && p->route_step > 8) {
+        mg_log_info("autotest save: on floor 2 at (%.2f, %.2f, %.2f), killing the app", p->player_pos.X,
+                    p->player_pos.Y, p->player_pos.Z);
+        mg_log_info("AUTOTEST PASSED");
+        t->passed = true;
+        out->kill = true;
+        return true;
+    }
+    return app->time - t->step_start > 90.0 || p->route_step < 0 ? fail(t, "save", "never reached floor 2") : false;
+}
+
+static bool run_continue(Autotest *t, MgApp *app, const AutotestProbe *p)
+{
+    bool failed;
+    if (!run_taps(t, app, p, k_continue, 1, "continue", &failed)) {
+        return failed;
+    }
+    if (!p->playing) {
+        return app->time - t->step_start > 20.0 ? fail(t, "continue", "Continue did not start") : false;
+    }
+    if (app->time - t->step_start < 1.0) { /* let the elevator place the car */
+        return false;
+    }
+    mg_log_info("autotest continue: floor %d at (%.2f, %.2f, %.2f)", p->floor, p->player_pos.X, p->player_pos.Y,
+                p->player_pos.Z);
+    t->passed = p->floor == 2;
+    mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
+    return true;
+}
+
+bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out)
+{
+    *out = (AutotestOut){0};
     if (t->kind == AUTOTEST_NONE || t->done) {
         return false;
     }
@@ -112,9 +295,24 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p)
         t->max_speed = fmaxf(t->max_speed, hs);
     }
     double el = app->time - t->start;
-    if (t->kind == AUTOTEST_TOUCH && run_touch(t, app, p, el)) {
+    bool finished = false;
+    switch (t->kind) {
+    case AUTOTEST_TOUCH:
+        finished = run_touch(t, app, p, el);
+        break;
+    case AUTOTEST_ONBOARDING:
+        finished = run_onboarding(t, app, p);
+        break;
+    case AUTOTEST_SAVE:
+        finished = run_save(t, app, p, out);
+        break;
+    default:
+        finished = run_continue(t, app, p);
+        break;
+    }
+    if (finished) {
         t->done = true;
-        app->quit_requested = true;
+        app->quit_requested = !out->kill;
     }
     return t->done;
 }

@@ -1,7 +1,11 @@
 # Mobilegame — engine, hospital, lighting, onboarding (M1-M4)
 
-C11 engine for iOS / Android phones and iPad (landscape only) on SDL3 + SDL3 GPU,
-with a desktop target for fast iteration. Multiplayer over Supabase Realtime;
+C11 engine for iOS / Android phones and iPad on SDL3 + SDL3 GPU, with a desktop
+target for fast iteration. Current focus: desktop + iOS (Android code still
+builds in CI but is not verified). **Landscape only**: LandscapeLeft +
+LandscapeRight everywhere (SDL hint + Info.plist), never portrait; lay out
+for a short, wide screen and respect `app->safe_*` on both sides (notch /
+Dynamic Island flips sides with the rotation, home indicator at the bottom). Multiplayer over Supabase Realtime;
 accounts (guest, linkable to Google), profiles and stats over Supabase.
 
 ## Layout
@@ -34,6 +38,7 @@ Desktop (Linux: Vulkan; macOS: Metal):
 tools/run_desktop.sh                     # configure + build + run
 cmake -S . -B build/desktop -G Ninja -DMG_PLATFORM=desktop && cmake --build build/desktop
 build/desktop/mobilegame --quit-after 10 # auto-exit, handy for scripted runs
+MG_WINDOW=ipad build/desktop/mobilegame  # 1180x820 iPad aspect (default 844x390 iPhone)
 ```
 Headless Linux (CI / cloud): `Xvfb :99 &` then `DISPLAY=:99 build/desktop/mobilegame`
 (Mesa lavapipe provides Vulkan; `import -window root shot.png` for screenshots).
@@ -44,12 +49,8 @@ MG_IOS_TEAM_ID=<team id> tools/run_ios.sh         # build, install, launch on th
 MG_IOS_TEAM_ID=<team id> tools/run_ios.sh --open  # just generate build/ios/mobilegame.xcodeproj and open Xcode
 ```
 
-Android (SDK with `ndk;27.3.13750724` = r27d, `cmake;3.31.6`, `platforms;android-35`):
-```
-tools/run_android.sh                     # assembleDebug, adb install, launch, logcat
-cd platform/android && ./gradlew assembleDebug
-```
-APK: `platform/android/app/build/outputs/apk/debug/app-debug.apk`
+Android is not built locally for now (the `android` GitHub workflow still
+builds `platform/android`; see git history for the local commands).
 
 Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [--apk]`
 (Play internal testing; needs `platform/android/keystore.properties`), and the
@@ -59,7 +60,11 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route`, `--public-test`, `--skin P,H,A` (local only, not saved).
+`--autotest touch|route|onboarding|save|continue`, `--public-test`, `--skin P,H,A`
+(local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
+to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).
+Args also work on a phone: `xcrun devicectl device process launch --console
+--terminate-existing --device iPhone ro.docvex.mobilegame --autotest onboarding`.
 Any of the first group skips the launch screen. iOS: `MG_IOS_DEVICE=ipad|iphone|<id>`
 picks the device for `tools/run_ios.sh`.
 
@@ -166,6 +171,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   `last_mode`, `last_room`, `profile_cache` {name, skin, stale},
   `stats_queue` {sessions, play_seconds, distance_m, elevator_rides,
   rooms_joined} (offline play, added on the next load). Written atomically.
+- Offline play sets `net_set_quiet`: after a failed sign-in (airplane mode)
+  the network thread makes no new attempts until the player leaves play.
   Sign-out keeps settings + save, clears the cache and `onboarding_done`.
 - `save_slot0.bin` (offline New Game / Continue): "MGS1", version u32,
   pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
@@ -217,6 +224,20 @@ build/desktop/mobilegame --party ABCD --profile b --demo-walk --window-pos 600,9
 (fails on snags, a misplaced floor menu or a ride that is not ~1.9 s).
 Both need a display (Xvfb on headless Linux).
 `build/desktop/mg_nettest profile PROFILE [NAME P H A]` reads/writes an account.
+Menu scripts tap real widgets by id (`ui_find`), on desktop or device:
+`--autotest onboarding` (fresh prefs: Welcome -> guest -> Username -> Creator,
+a tile per tab + Randomise -> Done -> Main menu), `--autotest save` (New
+Game, route walk + ride to floor 2, background + hard exit) then
+`--autotest continue` (back on floor 2). Logs carry `frontend: <SCREEN>`,
+`session: ... joined/left` and every connection as `net: attempt ...`.
+
+GPU time on a phone: `--metal-capture` writes a .gputrace, but `devicectl
+device copy from` fails on its symlinks; use Instruments instead:
+`xcrun xctrace record --template 'Metal System Trace' --device <UDID from
+xctrace list devices> --time-limit 10s --output x.trace --launch --
+ro.docvex.mobilegame --offline --time 19`, then export the
+`metal-gpu-intervals` table. Check `gpu-performance-state-intervals`: a GPU at
+"Minimum" clock makes ms look high.
 
 ## Conventions
 

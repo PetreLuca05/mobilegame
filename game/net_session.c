@@ -206,6 +206,9 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         if (r) {
             r->meta = e->meta;
             r->look = look_from_meta(&e->meta);
+            const NetSkin *k = &e->meta.skin;
+            mg_log_info("session: %.8s \"%s\" joined (body %d, skin %d, hair %d colour %d, suit %d)", e->peer,
+                        e->meta.name, k->body, k->skin, k->hair, k->hair_color, k->suit);
         }
         check_slot_conflict(s);
         break;
@@ -214,6 +217,7 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         RemotePlayer *r = find_remote(s, e->peer, false);
         if (r) {
             r->active = false;
+            mg_log_info("session: %.8s left", e->peer);
         }
         break;
     }
@@ -224,8 +228,9 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         }
         if (st.flags & REP_LEAVING) {
             RemotePlayer *gone = find_remote(s, e->peer, false);
-            if (gone) {
+            if (gone && gone->active) {
                 gone->active = false;
+                mg_log_info("session: %.8s left (goodbye packet)", e->peer);
             }
             break;
         }

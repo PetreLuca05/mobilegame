@@ -318,7 +318,7 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
               strlen(f->name) < 2 ? str("username_short") : str("username_rule"));
     y += 34.0f;
     char label[48];
-    SDL_snprintf(label, sizeof(label), "%s##username", str("continue"));
+    SDL_snprintf(label, sizeof(label), "%s##name_ok", str("continue"));
     bool go = ui_button(ui, label, x, y, cw, 52.0f, ok);
     spin_drag(f, app, 0.0f, w * 0.5f);
     if ((go || ed == UI_EDIT_DONE) && ok) {
@@ -447,8 +447,8 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 40.0f, 18.0f, ui_rgba(0xFFFFFFFF), str("overwrite_q"));
         float bw = (dw - 48.0f) * 0.5f;
         char c1[48], c2[48];
-        SDL_snprintf(c1, sizeof(c1), "%s##ow", str("cancel"));
-        SDL_snprintf(c2, sizeof(c2), "%s##ow", str("new_game"));
+        SDL_snprintf(c1, sizeof(c1), "%s##ow_cancel", str("cancel"));
+        SDL_snprintf(c2, sizeof(c2), "%s##ow_new", str("new_game"));
         if (ui_button(ui, c1, dx + 16.0f, dy + dh - 64.0f, bw, 48.0f, false)) {
             f->confirm_new = false;
         }

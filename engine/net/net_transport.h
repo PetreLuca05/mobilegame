@@ -125,6 +125,9 @@ const char *net_status_name(NetStatus s);
 
 /* App lifecycle: leave the room while backgrounded, rejoin on foreground. */
 void net_set_background(NetTransport *n, bool background);
+/* Offline play: after a failed sign-in (no network) make no new attempts
+ * until quiet is cleared, so airplane mode stays silent. */
+void net_set_quiet(NetTransport *n, bool quiet);
 
 /* Account: sign in (guest if nothing stored) and load profile + stats once;
  * answers with NET_EV_PROFILE. */

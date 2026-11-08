@@ -17,6 +17,8 @@ typedef struct RouteTest {
 } RouteTest;
 
 void route_test_init(RouteTest *t, int argc, char **argv);
+/* Start walking now (autotest save: after New Game). */
+void route_test_start(RouteTest *t);
 /* Per frame. Fills the move direction (world XZ) and returns true while the
  * test drives the player. `menu_shown` = the floor menu is up this frame. */
 bool route_test_update(RouteTest *t, double now, HMM_Vec3 feet, int floor, Elevator *el, bool menu_shown,

@@ -56,5 +56,8 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- --metal-capture: write a .gputrace without Xcode attached -->
+	<key>MetalCaptureEnabled</key>
+	<true/>
 </dict>
 </plist>

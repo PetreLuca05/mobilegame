@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include "core/log.h"
+#include "metal_capture.h"
 
 #define MG_PERM_ARENA_BYTES (96u << 20)
 #define MG_FRAME_ARENA_BYTES (4u << 20)
@@ -41,6 +42,8 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--quit-after") == 0 && i + 1 < argc) {
             app->quit_after = SDL_atof(argv[++i]);
+        } else if (SDL_strcmp(argv[i], "--metal-capture") == 0) {
+            app->capture_at = i + 1 < argc && SDL_atof(argv[i + 1]) > 0.0 ? SDL_atof(argv[++i]) : 6.0;
         } else if (SDL_strcmp(argv[i], "--log-events") == 0) {
             app->log_events = true;
         }
@@ -151,6 +154,12 @@ SDL_AppResult app_iterate(void *appstate)
         }
     }
 
+    /* one frame into a .gputrace (Xcode shows its GPU time) */
+    bool capture = app->capture_at > 0.0 && (double)SDL_GetTicks() * 0.001 > app->capture_at;
+    if (capture) {
+        app->capture_at = 0.0;
+        capture = metal_capture_begin("frame");
+    }
     double wait0 = mg_time_now();
     bool have_frame = gfx_frame_begin(app->gfx);
     double wait1 = mg_time_now();
@@ -159,6 +168,9 @@ SDL_AppResult app_iterate(void *appstate)
             app->cb->frame(app, fixedstep_alpha(&app->clock));
         }
         gfx_frame_end(app->gfx);
+    }
+    if (capture) {
+        metal_capture_end();
     }
     double t1 = mg_time_now();
     smooth(&app->cpu_ms, (float)(((t1 - t0) - (wait1 - wait0)) * 1000.0));

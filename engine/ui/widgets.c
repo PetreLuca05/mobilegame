@@ -45,6 +45,7 @@ void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
     ui->gfx = gfx;
     ui->font = font;
     ui->in = in;
+    ui->seen_count = 0;
     if (ui->active_id && (ui->active_touch < 0 || !ui->in->touches[ui->active_touch].active)) {
         /* touch ended last frame: releases are handled by the widget this frame */
         if (ui->active_touch < 0 || !ui->in->touches[ui->active_touch].ended) {
@@ -88,8 +89,40 @@ void ui_label(Ui *ui, float x, float y, float size, UiColor c, const char *text)
 }
 
 /* Generic press/release tracking. Returns true on release inside. */
-static bool track(Ui *ui, uint32_t id, float x, float y, float w, float h, bool *held)
+static void remember(Ui *ui, const char *label, float x, float y, float w, float h)
 {
+    const char *hash = strstr(label, "##");
+    float cx = x + w * 0.5f, cy = y + h * 0.5f;
+    bool clipped = ui->clip_on && (cx < ui->clip[0] || cx > ui->clip[0] + ui->clip[2] || cy < ui->clip[1] ||
+                                   cy > ui->clip[1] + ui->clip[3]);
+    if (clipped || ui->seen_count >= (int)MG_ARRAY_COUNT(ui->seen)) {
+        return;
+    }
+    int i = ui->seen_count++;
+    ui->seen[i].key = hash_label(hash ? hash + 2 : label);
+    ui->seen[i].x = x;
+    ui->seen[i].y = y;
+    ui->seen[i].w = w;
+    ui->seen[i].h = h;
+}
+
+bool ui_find(const Ui *ui, const char *key, float *x, float *y)
+{
+    uint32_t k = hash_label(key);
+    for (int i = ui->seen_count - 1; i >= 0; i--) { /* topmost first */
+        if (ui->seen[i].key == k) {
+            *x = ui->seen[i].x + ui->seen[i].w * 0.5f;
+            *y = ui->seen[i].y + ui->seen[i].h * 0.5f;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool track(Ui *ui, const char *label, float x, float y, float w, float h, bool *held)
+{
+    uint32_t id = hash_label(label);
+    remember(ui, label, x, y, w, h);
     int t = claim(ui, x, y, w, h);
     if (t >= 0) {
         ui->active_id = id;
@@ -112,13 +145,13 @@ static bool track(Ui *ui, uint32_t id, float x, float y, float w, float h, bool 
 
 bool ui_hit_area(Ui *ui, const char *id, float x, float y, float w, float h, bool *held)
 {
-    return track(ui, hash_label(id), x, y, w, h, held);
+    return track(ui, id, x, y, w, h, held);
 }
 
 bool ui_button(Ui *ui, const char *label, float x, float y, float w, float h, bool highlighted)
 {
     bool held;
-    bool clicked = track(ui, hash_label(label), x, y, w, h, &held);
+    bool clicked = track(ui, label, x, y, w, h, &held);
     UiColor bg = held ? k_ui_theme.button_down : (highlighted ? k_ui_theme.accent : k_ui_theme.button);
     ui_round_rect(ui->gfx, ui->font, x, y, w, h, mg_minf(12.0f, h * 0.5f), bg);
     char vis[64];
@@ -167,7 +200,7 @@ bool ui_toggle(Ui *ui, const char *label, float x, float y, float w, bool *value
 {
     const float h = 36.0f;
     bool held;
-    bool clicked = track(ui, hash_label(label), x, y, w, h, &held);
+    bool clicked = track(ui, label, x, y, w, h, &held);
     if (clicked) {
         *value = !*value;
     }
