@@ -395,7 +395,7 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 ## Interaction (M8)
 
 - `game/interact.h`: `ia_add` / `ia_remove` / `ia_set_pos` / `ia_set_flags` (NPCs, wall buttons, markers, the lift). A 10 Hz scan through the spatial hash picks one active target (enter 2.0 m, exit 2.5 m, in front of the player unless `IA_FACING_FREE`).
-- `game/preview_panel.c`: the bottom-left card. `gfx_inset_begin` / `gfx_inset_end` draw a small 3D picture inside the main pass with its own viewport, camera and depth range (no render target). Tap-only through `TouchControls.targets`; a drag starting on it goes to the stick. Desktop: E.
+- `game/preview_panel.c`: the bottom-right card. `gfx_inset_begin` / `gfx_inset_end` draw a small 3D picture inside the main pass with its own viewport, camera and depth range (no render target). Tap-only through `TouchControls.targets`. Desktop: E.
 
 ## NPCs (M7)
 

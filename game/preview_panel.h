@@ -1,6 +1,6 @@
-/* M8: the bottom-left panel with a live 3D preview of the active interactable. The model and the
+/* M8: the bottom-right panel with a live 3D preview of the active interactable. The model and the
  * panel's background are drawn in the main pass (depth-range viewports); label and rim are UI.
- * Tap-only: a drag that starts on it belongs to the stick. */
+ * Tap-only, through the touch targets. */
 #ifndef MG_PREVIEW_PANEL_H
 #define MG_PREVIEW_PANEL_H
 

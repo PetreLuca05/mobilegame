@@ -2173,7 +2173,6 @@ void game_frame(MgApp *app, float alpha)
     if (g->nav) {
         markers_hud(g, app, floor, feet, menu_shown);
     }
-    g->touch.hide_hint = g->ia_ok && preview_panel_visible(&g->panel); /* the card sits where the resting stick is */
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
                         app->safe_bottom);
     frontend_toast_draw(&g->fe, &g->ui, app);
@@ -2483,6 +2482,11 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
     if (floor_menu_up) {
         const float fm[4] = {w - app->safe_right - 192.0f, app->safe_top + 64.0f, 180.0f, 200.0f};
         memcpy(res + rc * 4, fm, sizeof(fm));
+        rc++;
+    }
+    if (g->ia_ok && preview_panel_visible(&g->panel)) {
+        const float card[4] = {g->panel.x, g->panel.y, g->panel.size, g->panel.size};
+        memcpy(res + rc * 4, card, sizeof(card));
         rc++;
     }
     if (frontend_toast_active(&g->fe, app->time)) {

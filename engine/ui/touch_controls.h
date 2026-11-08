@@ -38,7 +38,6 @@ typedef struct TouchControls {
     bool sprint;
     float camera_dx, camera_dy; /* pt dragged this frame (camera_zone) */
     bool jump_held;
-    bool hide_hint;            /* no resting stick (the preview panel is there) */
     bool auto_dot;             /* navigation is driving: small dot in the stick's resting spot */
     /* marker tap targets (44 pt squares, set by the game), tested before the
      * zones. A touch on one is the marker's only if it ends within 250 ms and

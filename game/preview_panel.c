@@ -68,7 +68,7 @@ void preview_panel_update(PreviewPanel *p, const Interact *ia, float dt, const u
     const float k = f->h >= 600.0f ? 1.3f : 1.0f;
     p->size = PANEL_PT * k;
     const float ease = 1.0f - (1.0f - p->slide) * (1.0f - p->slide);
-    p->x = ui_safe_left(f) + UI_MARGIN + f->corner - (1.0f - ease) * (p->size + UI_MARGIN + ui_safe_left(f) + 8.0f);
+    p->x = ui_safe_right(f) - UI_MARGIN - f->corner - p->size + (1.0f - ease) * (p->size + UI_MARGIN + f->inset_r + 8.0f);
     p->y = ui_safe_bottom(f) - UI_MARGIN - f->corner - p->size;
 }
 

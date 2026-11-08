@@ -142,7 +142,7 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         ui_circle(g, f, tc->stick_ox, tc->stick_oy, cfg->dead_zone_pt, ui_rgba(0xFFFFFF1A));
         UiColor knob = tc->sprint ? ui_rgba(0xFFB347E6) : ui_rgba(0xFFFFFFC8);
         ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, r * 0.283f, knob);
-    } else if (!tc->hide_hint) {
+    } else {
         /* resting hint where a left thumb usually lands */
         float cx = safe_left + 16.0f + r * 0.75f;
         float cy = h_pt - safe_bottom - 16.0f - r * 0.75f;
