@@ -19,7 +19,10 @@ typedef enum AutonavState {
 typedef struct Autonav {
     AutonavState state;
     NavPath path;
-    int next;            /* point being walked to */
+    int next;            /* point being walked to, -1 until a path has arrived */
+    struct NavWorld *nav;
+    uint32_t req;        /* path request in flight, 0 none */
+    bool partial;        /* `path` is the first leg of a search still running */
     HMM_Vec3 target;
     int target_storey;
     uint32_t marker_id;  /* who asked (0 = desktop click) */

@@ -122,7 +122,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   (+0.28, +0.819, +0.50), elevation 55 deg: the wall faces the north-looking
   camera sees point south (+Z, dot 0.50 = lit step), north faces and west
   faces are dark, east faces the middle step, so rooms read as boxes. Indoor
-  faces step on the same vector (`cel_light_day`). Lamps are emissive meshes at
+  faces step on the same vector (`cel_light_day`). Both are decisions, not
+  defaults: the lit faces are the ones the camera sees, and the toon-ramp
+  scales stay x 0.5 / x 0.72 (the literal constants blow out). Lamps are emissive meshes at
   a constant 0.3 (`LAMP_DAY_EMISSIVE`), no switching.
 - `-DMG_DAYCYCLE=continuous` compiles the old device-clock cycle
   (`daycycle.c`, `assets/daycycle.json`, moon, stars, time rows, `--time`) for
@@ -233,6 +235,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   `nav_find_path(n, from, from_storey, to, to_storey, &path)`: points tagged
   with storey (-1 yard), `ride_at` / `ride_from` / `ride_to` for the car;
   `NAV_UNREACHABLE` if nothing walkable within 1 m or not connected.
+  Doors are 1.2 m wide = 2 walkable cells after the capsule inflation.
+  The game does not call that directly: `nav_request` + `nav_service(n, 1 ms)`
+  (once per frame, one search at a time, all requests share the budget) +
+  `nav_poll` (READY / UNREACHABLE release the request; PENDING can hand over a
+  partial path with the first string-pulled waypoint, which is what the
+  player starts walking on). Last 16 room-to-room paths cached (rooms =
+  areas bounded by door cells). `nav_can_reach` answers O(1) from region labels.
 - Debug: Developer -> Nav grid / desktop `--nav` (red blocked, green free,
   olive near walls, yellow narrow, blue car; yellow line = last path). Desktop
   right-click (no drag) on the floor. `--autotest nav` checks every room

@@ -17,11 +17,22 @@ static float flat_dist(HMM_Vec3 a, HMM_Vec3 b)
     return sqrtf(dx * dx + dz * dz);
 }
 
+/* Queue a search; the path lands in autonav_update. Reachability is answered
+ * now from the region labels, so a marker can refuse at once. */
 static bool plan(Autonav *a, struct NavWorld *nav, const AutonavCtx *c)
 {
-    if (nav_find_path(nav, c->feet, c->storey, a->target, a->target_storey, &a->path) != 0) {
+    if (!nav_can_reach(nav, c->feet, c->storey, a->target, a->target_storey)) {
         return false;
     }
+    nav_cancel(nav, a->req);
+    a->nav = nav;
+    a->partial = false;
+    a->req = nav_request(nav, c->feet, c->storey, a->target, a->target_storey, true);
+    return a->req != 0;
+}
+
+static void path_arrived(Autonav *a, const AutonavCtx *c)
+{
     /* the search may have snapped the target to the nearest free cell (a spot
      * on a table): walk to where the path really ends */
     if (flat_dist(a->path.pts[a->path.count - 1].pos, a->target) > 0.25f) {
@@ -30,7 +41,6 @@ static bool plan(Autonav *a, struct NavWorld *nav, const AutonavCtx *c)
     a->next = a->path.count > 1 ? 1 : 0;
     a->stuck_pos = c->feet;
     a->stuck_since = c->now;
-    return true;
 }
 
 bool autonav_go(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, HMM_Vec3 target, int target_storey,
@@ -40,6 +50,9 @@ bool autonav_go(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, HMM_Vec3 
     a->target_storey = target_storey;
     a->marker_id = marker_id;
     a->repathed = false;
+    a->path.count = 0;
+    a->path.ride_at = -1;
+    a->next = -1;
     if (!plan(a, nav, c)) {
         a->state = AUTONAV_FAILED;
         return false;
@@ -48,14 +61,28 @@ bool autonav_go(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, HMM_Vec3 
     return true;
 }
 
+static void drop_request(Autonav *a)
+{
+    if (a->req && a->nav) {
+        nav_cancel(a->nav, a->req);
+    }
+    a->req = 0;
+    a->partial = false;
+}
+
 void autonav_cancel(Autonav *a)
 {
     if (autonav_active(a)) {
+        drop_request(a);
         a->state = AUTONAV_CANCELLED;
     }
 }
 
-void autonav_clear(Autonav *a) { a->state = AUTONAV_IDLE; }
+void autonav_clear(Autonav *a)
+{
+    drop_request(a);
+    a->state = AUTONAV_IDLE;
+}
 
 bool autonav_active(const Autonav *a)
 {
@@ -89,6 +116,35 @@ void autonav_update(Autonav *a, struct NavWorld *nav, const AutonavCtx *c, Auton
     case AUTONAV_WALKING:
         break;
     default:
+        return;
+    }
+
+    if (a->req) {
+        bool partial;
+        NavStatus st = nav_poll(nav, a->req, &a->path, &partial);
+        if (st == NAV_STATUS_READY) {
+            a->req = 0;
+            a->partial = false;
+            path_arrived(a, c);
+        } else if (st != NAV_STATUS_PENDING) {
+            a->req = 0;
+            a->state = AUTONAV_FAILED;
+            return;
+        } else if (partial) {
+            a->partial = true;
+            a->next = 1;
+        }
+        if (a->req && !a->partial) {
+            return; /* nothing to walk along yet */
+        }
+    }
+    if (a->partial) { /* towards the first waypoint while the search finishes */
+        HMM_Vec3 wp = a->path.pts[a->next].pos;
+        float left = flat_dist(c->feet, wp);
+        if (left > REACH_CAR) {
+            out->move_x = (wp.X - c->feet.X) / left;
+            out->move_z = (wp.Z - c->feet.Z) / left;
+        }
         return;
     }
 

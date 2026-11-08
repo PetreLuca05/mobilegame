@@ -1106,8 +1106,6 @@ void game_frame(MgApp *app, float alpha)
     if (ato.nav_go && g->nav) {
         AutonavCtx ac = {g->player.kin.pos, probe.nav_storey, app->time, false, false, 0};
         autonav_go(&g->autonav, g->nav, &ac, ato.nav_pos, ato.nav_to, 0);
-        g->nav_path = g->autonav.path;
-        g->nav_path_ok = true;
     }
     if (ato.start_route) {
         route_test_start(&g->route);
@@ -1360,6 +1358,9 @@ void game_frame(MgApp *app, float alpha)
         if (g->route.done) {
             app->quit_requested = true;
         }
+        if (g->nav) {
+            nav_service(g->nav, NAV_BUDGET_MS);
+        }
         if (g->nav && autonav_active(&g->autonav)) {
             if (g->menu.open) {
                 autonav_cancel(&g->autonav);
@@ -1463,11 +1464,9 @@ void game_frame(MgApp *app, float alpha)
                 }
                 AutonavCtx ac = {feet, from, app->time, false, false, 0};
                 int to = floor == 0 && !(nav_flags_at(g->nav, 0, hit.X, hit.Z) & NAV_OUTDOOR) ? 0 : floor;
-                g->nav_path_ok = autonav_go(&g->autonav, g->nav, &ac, hit, to, 0);
-                g->nav_path = g->autonav.path;
-                mg_log_info("nav: walk to (%.1f, %.1f) floor %d: %s, %d points, %.1f m, %.2f ms", (double)hit.X,
-                            (double)hit.Z, floor, g->nav_path_ok ? "ok" : "unreachable", g->nav_path.count,
-                            (double)g->nav_path.length, (double)nav_path_ms(g->nav));
+                bool ok = autonav_go(&g->autonav, g->nav, &ac, hit, to, 0);
+                mg_log_info("nav: walk to (%.1f, %.1f) floor %d: %s", (double)hit.X, (double)hit.Z, floor,
+                            ok ? "ok" : "unreachable");
             }
         }
         markers_draw(&g->markers, app->gfx, g->fade.vis, floor, (float)app->time, g->avatar_meshes.shadow);
@@ -1490,7 +1489,7 @@ void game_frame(MgApp *app, float alpha)
         }
         if (s->show_nav) {
             nav_debug_draw(&g->nav_debug, app->gfx, &app->perm, g->nav, floor, g->unit_box,
-                           g->nav_path_ok ? &g->nav_path : NULL, true);
+                           autonav_active(&g->autonav) ? &g->autonav.path : (g->nav_path_ok ? &g->nav_path : NULL), true);
         }
     }
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
@@ -1695,9 +1694,9 @@ static bool spawn_test_marker(Game *g, HMM_Vec3 feet)
             const marker_t *m = &g->markers.m[i];
             clear = !m->id || level_of(m->storey) != level_of(storey) || HMM_LenSqrV3(HMM_SubV3(p, m->pos)) > 1.5f * 1.5f;
         }
-        NavPath probe; /* islands (behind the rope) are out */
+        /* islands (behind the rope) are out */
         int from = scene_indoors(g->scene, feet) ? scene_floor_of(g->scene, feet) : -1;
-        if (!clear || nav_find_path(g->nav, feet, from, p, storey, &probe) != 0) {
+        if (!clear || !nav_can_reach(g->nav, feet, from, p, storey)) {
             continue;
         }
         return marker_add(&g->markers, p, storey, MARKER_TEST, colours[g->markers.next_id % 8]) != 0;
@@ -1867,6 +1866,61 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
 
 /* --autotest nav: every room reachable from the gate, cross-storey paths go
  * through the car, the stairwell is not reachable. Logs timings, then quits. */
+/* 8 requests at once through the queue, the longest ones there are */
+static bool run_nav_queue_check(Game *g)
+{
+    static const struct { float fx, fz; int fs; float tx, tz; int ts; } r[8] = {
+        {-20.0f, 10.0f, -1, 20.0f, 10.0f, -1},   {20.0f, 10.0f, -1, -10.0f, -13.0f, 0},  {-20.0f, 10.0f, -1, 10.0f, -13.0f, 0},
+        {0.0f, 17.0f, -1, 10.4f, -3.0f, 2},      {-10.4f, -3.0f, 2, 20.0f, 10.0f, -1},   {20.0f, 10.0f, -1, -10.4f, -3.0f, 2},
+        {-10.0f, -13.0f, 0, 10.0f, -13.0f, 0},   {10.0f, -12.4f, 2, -20.0f, 10.0f, -1},
+    };
+    nav_cache_clear(g->nav);
+    nav_stats_reset(g->nav);
+    uint32_t id[8];
+    bool ok = true;
+    for (int i = 0; i < 8; i++) {
+        HMM_Vec3 a = HMM_V3(r[i].fx, scene_floor_y(g->scene, r[i].fs < 0 ? 0 : r[i].fs), r[i].fz);
+        HMM_Vec3 b = HMM_V3(r[i].tx, scene_floor_y(g->scene, r[i].ts < 0 ? 0 : r[i].ts), r[i].tz);
+        id[i] = nav_request(g->nav, a, r[i].fs, b, r[i].ts, false);
+    }
+    int frames = 0, left = 8, partials = 0;
+    while (left > 0 && frames < 600) {
+        nav_service(g->nav, NAV_BUDGET_MS);
+        frames++;
+        for (int i = 0; i < 8; i++) {
+            if (id[i]) {
+                bool partial;
+                NavStatus st = nav_poll(g->nav, id[i], &g->nav_path, &partial);
+                partials += partial;
+                if (st != NAV_STATUS_PENDING) {
+                    ok = ok && st == NAV_STATUS_READY;
+                    id[i] = 0;
+                    left--;
+                }
+            }
+        }
+    }
+    NavStats st = nav_stats(g->nav);
+    /* the same room pairs again: answered from the cache */
+    uint32_t before = st.cache_hits;
+    for (int i = 0; i < 8; i++) {
+        HMM_Vec3 a = HMM_V3(r[i].fx, scene_floor_y(g->scene, r[i].fs < 0 ? 0 : r[i].fs), r[i].fz);
+        HMM_Vec3 b = HMM_V3(r[i].tx, scene_floor_y(g->scene, r[i].ts < 0 ? 0 : r[i].ts), r[i].tz);
+        uint32_t q = nav_request(g->nav, a, r[i].fs, b, r[i].ts, false);
+        nav_service(g->nav, NAV_BUDGET_MS);
+        for (int f = 0; f < 600 && nav_poll(g->nav, q, &g->nav_path, NULL) == NAV_STATUS_PENDING; f++) {
+            nav_service(g->nav, NAV_BUDGET_MS);
+        }
+    }
+    uint32_t hits = nav_stats(g->nav).cache_hits - before;
+    /* a slice checks the clock every 24 cells: allow it a little over */
+    ok = ok && left == 0 && st.worst_frame_ms <= NAV_BUDGET_MS * 1.25f && hits > 0;
+    mg_log_info("nav queue: 8 requests in %d frames, longest path %.2f ms, worst frame %.2f ms (budget %.1f), %d partial, "
+                "cache %u/8 on the second round: %s",
+                frames, (double)st.longest_ms, (double)st.worst_frame_ms, (double)NAV_BUDGET_MS, partials, hits, ok ? "ok" : "FAIL");
+    return ok;
+}
+
 static void run_nav_check(Game *g, MgApp *app)
 {
     static const struct { const char *name; float x, z; int storey; bool reachable; } k[] = {
@@ -1899,6 +1953,7 @@ static void run_nav_check(Game *g, MgApp *app)
                 g->nav_path.ride_to, (double)g->nav_path.length);
     g->nav_path_ok = false;
     mg_log_info("nav: bake %.1f ms, slowest path %.2f ms", (double)nav_bake_ms(g->nav), (double)worst);
+    all = run_nav_queue_check(g) && all;
     mg_log_info("AUTOTEST %s", all ? "PASSED" : "FAILED");
     app->quit_requested = true;
 }
