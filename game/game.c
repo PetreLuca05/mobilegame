@@ -8,7 +8,6 @@
 #include "avatar.h"
 #include "camera_tp.h"
 #include "config.local.h"
-#include "debug_menu.h"
 #include "elevator.h"
 #include "floor_menu.h"
 #include "launch_screen.h"
@@ -21,6 +20,7 @@
 #include "scene.h"
 #include "scenery.h"
 #include "settings.h"
+#include "settings_menu.h"
 #include "stats.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
@@ -37,7 +37,9 @@ typedef struct Game {
     TouchControlsConfig touch_cfg;
     TouchControls touch;
     Ui ui;
-    DebugMenu menu;
+    SettingsMenu menu;
+    AvatarAnim preview_anim;
+    char account_msg[96];
     GfxMeshId unit_box;
     GfxMeshId ref_capsule; /* 1.8 m x 0.35 m player-sized ghost for the collider view */
     Scenery scenery;
@@ -55,6 +57,8 @@ typedef struct Game {
     Stats stats;
     NetProfile profile;    /* our account (name, skin, guest/Google) */
     bool profile_loaded;
+    bool skin_override;    /* desktop --skin P,H,A: local only, never saved */
+    NetSkin override_skin;
     int last_ride_count; /* elevator rides already counted */
 } Game;
 
@@ -133,6 +137,8 @@ bool game_init(MgApp *app)
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
+    const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
+    g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
 
     size_t mark = arena_mark(&app->perm);
     MeshBuilder mb;
@@ -150,12 +156,23 @@ bool game_init(MgApp *app)
         return false;
     }
     g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
+    g->profile.skin = AVATAR_DEFAULT_SKIN;
+    g->profile.guest = true;
+    const char *skin_arg = arg_value(app->argc, app->argv, "--skin");
+    int sp_, sh_, sa_;
+    if (skin_arg && SDL_sscanf(skin_arg, "%d,%d,%d", &sp_, &sh_, &sa_) == 3) {
+        g->skin_override = true;
+        g->override_skin = (NetSkin){(uint8_t)sp_, (uint8_t)sh_, (uint8_t)sa_};
+        g->profile.skin = g->override_skin;
+    }
+    SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "Player");
 
     const char *profile = arg_value(app->argc, app->argv, "--profile");
     NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
+    session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     const char *party = arg_value(app->argc, app->argv, "--party");
     if (party) {
@@ -264,12 +281,18 @@ static void update_player_input(Game *g, MgApp *app)
 static void handle_menu_action(Game *g, MenuAction a)
 {
     switch (a) {
-    case MENU_JOIN:
-        session_start(&g->session, MODE_PARTY, g->settings.room_code);
+    case MENU_SKIN:
+    case MENU_NAME:
+        if (a == MENU_NAME) {
+            SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", g->menu.name);
+        }
+        /* applies at once, written through to profiles, re-sent in Presence */
+        session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+        net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
         break;
-    case MENU_NEW_ROOM:
-        session_start(&g->session, MODE_PARTY, NULL);
-        SDL_snprintf(g->settings.room_code, sizeof(g->settings.room_code), "%s", g->session.room_code);
+    case MENU_GOOGLE:
+    case MENU_SIGN_OUT:
+        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Google sign-in arrives in the next step");
         break;
     case MENU_DISCONNECT:
         session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
@@ -446,6 +469,9 @@ void game_frame(MgApp *app, float alpha)
             g->session.profile_new = false;
             g->profile = g->session.profile;
             g->profile_loaded = true;
+            if (g->skin_override) {
+                g->profile.skin = g->override_skin;
+            }
             stats_loaded(&g->stats, &g->profile.stats, app->time);
             session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
         }
@@ -471,9 +497,24 @@ void game_frame(MgApp *app, float alpha)
         game_frame_launch(g, app);
         return;
     }
-    MenuAction action = debug_menu(&g->menu, &g->ui, s, app->width_pt, app->height_pt, app->safe_left,
-                                   app->safe_top, app->safe_right, app->safe_bottom, g->status);
+    SettingsAccount acct = {g->profile.display_name, g->profile.email, g->profile.guest || !g->profile_loaded,
+                            false, false, g->session.account_error[0] ? g->session.account_error : g->account_msg};
+    MenuAction action = settings_menu(&g->menu, &g->ui, s, &g->profile.skin, &acct, app->width_pt, app->height_pt,
+                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, action);
+    app_text_input(app, g->menu.open && g->menu.editing_name);
+    if (g->menu.preview_visible) { /* the avatar turning slowly in the Skin tab */
+        GfxSceneParams pc = {0};
+        pc.eye = HMM_V3(0.0f, 1.35f, -3.7f);
+        pc.view = HMM_LookAt_RH(pc.eye, HMM_V3(0.0f, 1.0f, 0.0f), HMM_V3(0, 1, 0));
+        pc.proj = camera_projection(HMM_AngleDeg(34.0f), 1.0f, 0.05f, 50.0f, 0.0f);
+        gfx_preview(app->gfx, &pc, g->menu.preview_x, g->menu.preview_y, g->menu.preview_size, 14.0f,
+                    HMM_V4(0.16f, 0.19f, 0.26f, 1.0f));
+        AvatarPose pv = {HMM_V3(0, 0, 0), (float)app->time * 0.6f, HMM_V3(0, 0, 0), true, false, false, true};
+        avatar_animate(&g->preview_anim, &pv, mg_minf(app->frame_dt, 0.1f));
+        AvatarLook look = avatar_look_from_skin(g->profile.skin);
+        avatar_draw(app->gfx, &g->avatar_meshes, &look, &pv, &g->preview_anim, NULL);
+    }
     Elevator *el = scene_elevator(g->scene);
     const bool riding = el && elevator_busy(el);
     bool menu_shown = false;
@@ -512,8 +553,8 @@ void game_frame(MgApp *app, float alpha)
         if (g->route.done) {
             app->quit_requested = true;
         }
-        if (riding) {
-            player_set_input(&g->player, 0, 0, false, false); /* locked for the ride */
+        if (riding || g->menu.open) {
+            player_set_input(&g->player, 0, 0, false, false); /* locked for the ride / behind the menu */
         } else if (route) {
             player_set_input(&g->player, rx, rz, false, false);
         } else {
@@ -532,7 +573,7 @@ void game_frame(MgApp *app, float alpha)
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
-                       g->player.kin.jumping};
+                       g->player.kin.jumping, scene_indoors(g->scene, feet), false};
     avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
@@ -541,7 +582,7 @@ void game_frame(MgApp *app, float alpha)
             continue; /* culled by storey, not distance */
         }
         AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,
-                         (r->sample.flags & REP_JUMPING) != 0};
+                         (r->sample.flags & REP_JUMPING) != 0, scene_indoors(g->scene, r->pos), false};
         avatar_animate(&r->anim, &rp, mg_minf(app->frame_dt, 0.1f));
         avatar_draw(app->gfx, &g->avatar_meshes, &r->look, &rp, &r->anim, &g->world);
     }

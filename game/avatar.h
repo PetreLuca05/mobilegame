@@ -32,7 +32,7 @@ typedef struct AvatarLook {
 #define AVATAR_DEFAULT_SKIN ((NetSkin){0, HAIR_SHORT, ACC_MASK})
 
 typedef struct AvatarMeshes {
-    GfxMeshId body, head, hair, eye, nose, mouth, hand, decal, glasses, ear, shadow;
+    GfxMeshId body, head, hair[AVATAR_HAIRS], eye, nose, mouth, hand, decal, glasses, ear, shadow;
     GfxMeshId mask, scope, vneck, cross;
 } AvatarMeshes;
 
@@ -52,6 +52,8 @@ typedef struct AvatarPose {
     HMM_Vec3 vel;
     bool grounded;
     bool jumping;
+    bool indoors; /* indoor lighting, like the building's interior */
+    bool preview; /* settings preview camera only, no shadow */
 } AvatarPose;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);

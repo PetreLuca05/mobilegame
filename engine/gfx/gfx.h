@@ -60,6 +60,7 @@ typedef struct GfxMaterial {
 enum {
     GFX_DRAW_REFLECT = 1u << 0, /* also render into the planar reflection */
     GFX_DRAW_NO_MAIN = 1u << 1, /* reflection only */
+    GFX_DRAW_PREVIEW = 1u << 2, /* settings preview camera only (see gfx_preview) */
 };
 
 typedef struct GfxSceneParams {
@@ -106,6 +107,15 @@ GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
  * quarter resolution, mixed towards tint.rgb by tint.a, rounded corners.
  * Drawn before (under) all UI quads. Up to 4 per frame. */
 void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float radius, HMM_Vec4 tint);
+/* Clip the UI quads that follow to a rect (pt) until gfx_ui_clip_off. */
+void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
+void gfx_ui_clip_off(GfxContext *g);
+/* Render this frame's GFX_DRAW_PREVIEW draws with a second camera into an
+ * offscreen square, shown at (x, y) `size` pt wide with rounded corners,
+ * over the UI quads (keep other UI out of that square). Lighting comes from
+ * the main scene. */
+void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, float size, float radius,
+                 HMM_Vec4 background);
 void gfx_frame_end(GfxContext *g);
 
 /* Render the 3D scene at a fraction of native resolution (0.5..1) and

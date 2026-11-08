@@ -8,6 +8,7 @@ struct PanelFS
     float4 u_rect;
     float4 u_params;
     float4 u_tint;
+    float4 u_mode;
 };
 
 struct PSMain_out
@@ -18,11 +19,13 @@ struct PSMain_out
 fragment PSMain_out PSMain(constant PanelFS& _20 [[buffer(0)]], texture2d<float> u_blur [[texture(0)]], sampler u_blur_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
-    float2 _146 = _20.u_rect.zw * 0.5;
-    float2 _160 = abs((gl_FragCoord.xy / float2(_20.u_params.y)) - (_20.u_rect.xy + _146)) - (_146 - float2(_20.u_params.x));
-    float2 _131 = _160;
-    float _179 = fast::clamp(0.5 - (((length(fast::max(_160, float2(0.0))) + fast::min(fast::max(_131.x, _131.y), 0.0)) - _20.u_params.x) * _20.u_params.y), 0.0, 1.0);
-    out._entryPointOutput = float4(mix(u_blur.sample(u_blur_sampler, (gl_FragCoord.xy * _20.u_params.zw)).xyz, _20.u_tint.xyz, float3(_20.u_tint.w)) * _179, _179);
+    float2 _162 = gl_FragCoord.xy / float2(_20.u_params.y);
+    float2 _166 = _20.u_rect.zw * 0.5;
+    float2 _180 = abs(_162 - (_20.u_rect.xy + _166)) - (_166 - float2(_20.u_params.x));
+    float2 _150 = _180;
+    float _199 = fast::clamp(0.5 - (((length(fast::max(_180, float2(0.0))) + fast::min(fast::max(_150.x, _150.y), 0.0)) - _20.u_params.x) * _20.u_params.y), 0.0, 1.0);
+    float3 _236 = mix(u_blur.sample(u_blur_sampler, select(gl_FragCoord.xy * _20.u_params.zw, (_162 - _20.u_rect.xy) / _20.u_rect.zw, bool2(_20.u_mode.x > 0.5))).xyz, _20.u_tint.xyz, float3(_20.u_tint.w)) * _199;
+    out._entryPointOutput = float4(_236, _199);
     return out;
 }
 

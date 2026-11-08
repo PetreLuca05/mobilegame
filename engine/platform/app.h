@@ -62,5 +62,7 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
 SDL_AppResult app_iterate(void *appstate);
 SDL_AppResult app_event(void *appstate, SDL_Event *e);
 void app_quit(void *appstate, SDL_AppResult result);
+/* Show / hide the on-screen keyboard; typed text arrives in input.text. */
+void app_text_input(MgApp *app, bool on);
 
 #endif

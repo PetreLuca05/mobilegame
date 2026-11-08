@@ -1,5 +1,6 @@
 #include "widgets.h"
 
+#include <math.h>
 #include <string.h>
 
 const UiTheme k_ui_theme = {
@@ -61,7 +62,9 @@ static int claim_as(Ui *ui, float x, float y, float w, float h, int owner)
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
         MgTouch *t = &ui->in->touches[i];
         bool free = t->owner == MG_TOUCH_FREE || (owner == UI_TOUCH_OWNER && t->owner == UI_BLOCK_OWNER);
-        if (t->began && free && inside(t, x, y, w, h, true)) {
+        bool visible = !ui->clip_on || (t->x0 >= ui->clip[0] && t->x0 <= ui->clip[0] + ui->clip[2] &&
+                                        t->y0 >= ui->clip[1] && t->y0 <= ui->clip[1] + ui->clip[3]);
+        if (t->began && free && visible && inside(t, x, y, w, h, true)) {
             t->owner = owner;
             return i;
         }
@@ -202,4 +205,96 @@ float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float 
         }
     }
     return 3.0f * (key_h + gap);
+}
+
+float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, bool horizontal)
+{
+    if (s->touch > 0 && !ui->in->touches[s->touch - 1].active) {
+        s->touch = 0;
+    }
+    for (int i = 0; s->touch == 0 && i < MG_MAX_TOUCHES; i++) {
+        MgTouch *t = &ui->in->touches[i];
+        if (!t->active || t->owner == UI_SCROLL_OWNER || t->x0 < x || t->x0 > x + w || t->y0 < y || t->y0 > y + h) {
+            continue;
+        }
+        float moved = horizontal ? t->x - t->x0 : t->y - t->y0;
+        float across = horizontal ? t->y - t->y0 : t->x - t->x0;
+        if (fabsf(moved) > 10.0f && fabsf(moved) > fabsf(across)) {
+            s->touch = i + 1;
+            s->grab = s->offset + (horizontal ? t->x0 : t->y0);
+            t->owner = UI_SCROLL_OWNER;
+            if (ui->active_touch == i) { /* it was pressing a button: cancel that */
+                ui->active_id = 0;
+                ui->active_touch = -1;
+            }
+        }
+    }
+    if (s->touch > 0) {
+        const MgTouch *t = &ui->in->touches[s->touch - 1];
+        s->offset = s->grab - (horizontal ? t->x : t->y);
+    }
+    float max_off = mg_maxf(s->content - (horizontal ? w : h), 0.0f);
+    s->offset = mg_clampf(s->offset, 0.0f, max_off);
+    gfx_ui_clip(ui->gfx, x, y, w, h);
+    ui->clip_on = true;
+    ui->clip[0] = x;
+    ui->clip[1] = y;
+    ui->clip[2] = w;
+    ui->clip[3] = h;
+    return s->offset;
+}
+
+void ui_scroll_end(Ui *ui, UiScroll *s, float viewport, float content)
+{
+    (void)viewport;
+    s->content = content;
+    gfx_ui_clip_off(ui->gfx);
+    ui->clip_on = false;
+}
+
+int ui_text_field(Ui *ui, const char *id, float x, float y, float w, float h, char *buf, int cap, bool *editing,
+                  const char *allowed)
+{
+    int result = UI_EDIT_NONE;
+    bool held;
+    if (ui_hit_area(ui, id, x, y, w, h, &held) && !*editing) {
+        *editing = true;
+        result = UI_EDIT_STARTED;
+    }
+    if (*editing) {
+        /* a new touch anywhere else ends editing */
+        for (int i = 0; i < MG_MAX_TOUCHES; i++) {
+            const MgTouch *t = &ui->in->touches[i];
+            if (t->began && !inside(t, x, y, w, h, true)) {
+                *editing = false;
+                result = UI_EDIT_DONE;
+            }
+        }
+        size_t len = strlen(buf);
+        for (const char *c = ui->in->text; *editing && *c; c++) {
+            if (strchr(allowed, *c) && len + 1 < (size_t)cap) {
+                buf[len++] = *c;
+                buf[len] = 0;
+                result = UI_EDIT_CHANGED;
+            }
+        }
+        if (*editing && ui->in->key_pressed[SDL_SCANCODE_BACKSPACE] && len > 0) {
+            buf[--len] = 0;
+            result = UI_EDIT_CHANGED;
+        }
+        if (*editing && (ui->in->key_pressed[SDL_SCANCODE_RETURN] || ui->in->key_pressed[SDL_SCANCODE_KP_ENTER])) {
+            *editing = false;
+            result = UI_EDIT_DONE;
+        }
+    }
+    ui_round_rect(ui->gfx, ui->font, x, y, w, h, 10.0f, *editing ? ui_rgba(0xFFFFFF33) : k_ui_theme.button);
+    if (*editing) {
+        ui_round_rect(ui->gfx, ui->font, x, y + h - 3.0f, w, 3.0f, 1.5f, k_ui_theme.accent);
+    }
+    float size = mg_minf(18.0f, h * 0.5f);
+    float tw = text_draw(ui->gfx, ui->font, x + 12.0f, y + (h - size * 1.2f) * 0.5f, size, k_ui_theme.text, buf);
+    if (*editing) { /* caret */
+        ui_rect(ui->gfx, ui->font, x + 13.0f + tw, y + h * 0.25f, 2.0f, h * 0.5f, k_ui_theme.text);
+    }
+    return result;
 }

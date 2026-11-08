@@ -232,3 +232,15 @@ void app_quit(void *appstate, SDL_AppResult result)
     }
     /* perm arena memory is released with the process */
 }
+
+void app_text_input(MgApp *app, bool on)
+{
+    if (!app->window || on == SDL_TextInputActive(app->window)) {
+        return;
+    }
+    if (on) {
+        SDL_StartTextInput(app->window);
+    } else {
+        SDL_StopTextInput(app->window);
+    }
+}

@@ -22,6 +22,8 @@
 #define GFX_MAX_UI_QUADS 8192
 #define GFX_MAX_SHADERS 32
 #define GFX_MAX_PANELS 4
+#define GFX_MAX_UI_BATCHES 64
+#define GFX_PREVIEW_PX 512
 
 typedef struct GfxMeshRec {
     uint32_t first_index;
@@ -78,6 +80,13 @@ typedef struct BlurPanel {
     HMM_Vec4 tint;
 } BlurPanel;
 
+/* Run of UI quads sharing one clip rectangle. */
+typedef struct UiBatch {
+    uint32_t first, count;
+    bool clipped;
+    float clip[4]; /* x, y, w, h in pt */
+} UiBatch;
+
 typedef struct ShaderCacheEntry {
     const char *name;
     SDL_GPUShader *shader;
@@ -101,6 +110,14 @@ struct GfxContext {
     BlurPanel panels[GFX_MAX_PANELS];
     uint32_t panel_count;
     bool keep_scaled; /* once a panel needed the offscreen scene, keep it (no target churn) */
+    UiBatch ui_batches[GFX_MAX_UI_BATCHES];
+    uint32_t ui_batch_count;
+    /* settings preview: second camera into an offscreen square */
+    bool preview_on;
+    GfxSceneParams preview_scene;
+    float preview_rect[4]; /* x, y, size, corner radius (pt) */
+    HMM_Vec4 preview_bg;
+    SDL_GPUTexture *preview_color, *preview_msaa, *preview_depth;
     ShaderCacheEntry shaders[GFX_MAX_SHADERS];
     uint32_t shader_count;
 
@@ -600,6 +617,12 @@ void gfx_shutdown(GfxContext *g)
     }
     SDL_WaitForGPUIdle(g->dev);
     release_targets(g);
+    SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
+        if (pv[i]) {
+            SDL_ReleaseGPUTexture(g->dev, pv[i]);
+        }
+    }
     for (int t = 0; t < TARGET_COUNT; t++) {
         for (int k = 0; k < GFX_MAT_COUNT; k++) {
             if (g->pipes[t].mat[k]) {
@@ -689,6 +712,9 @@ bool gfx_frame_begin(GfxContext *g)
     g->draw_count = 0;
     g->ui_quads = 0;
     g->panel_count = 0;
+    g->ui_batch_count = 1;
+    g->ui_batches[0] = (UiBatch){0, 0, false, {0, 0, 0, 0}};
+    g->preview_on = false;
     g->in_frame = false;
     if (g->paused) {
         return false;
@@ -742,7 +768,39 @@ GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count)
     }
     GfxUiVertex *v = &g->ui_verts[g->ui_quads * 4];
     g->ui_quads += quad_count;
+    g->ui_batches[g->ui_batch_count - 1].count += quad_count;
     return v;
+}
+
+static void ui_new_batch(GfxContext *g, bool clipped, float x, float y, float w, float h)
+{
+    UiBatch *b = &g->ui_batches[g->ui_batch_count - 1];
+    if (b->count > 0) {
+        if (g->ui_batch_count >= GFX_MAX_UI_BATCHES) {
+            return;
+        }
+        b = &g->ui_batches[g->ui_batch_count++];
+    }
+    *b = (UiBatch){g->ui_quads, 0, clipped, {x, y, w, h}};
+}
+
+void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h) { ui_new_batch(g, true, x, y, w, h); }
+
+void gfx_ui_clip_off(GfxContext *g) { ui_new_batch(g, false, 0, 0, 0, 0); }
+
+void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, float size, float radius,
+                 HMM_Vec4 background)
+{
+    if (!g->in_frame) {
+        return;
+    }
+    g->preview_on = true;
+    g->preview_scene = *camera;
+    g->preview_rect[0] = x;
+    g->preview_rect[1] = y;
+    g->preview_rect[2] = size;
+    g->preview_rect[3] = radius;
+    g->preview_bg = background;
 }
 
 /* Opaque draws grouped by material, then sprites far-to-near. */
@@ -802,7 +860,7 @@ static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipe
     SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
 }
 
-static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target)
+static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bool preview)
 {
     SDL_GPUBufferBinding vbb = {g->vb, 0};
     SDL_GPUBufferBinding ibb = {g->ib, 0};
@@ -812,6 +870,9 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target)
     uint32_t count = 0;
     for (uint32_t i = 0; i < g->draw_count; i++) {
         const DrawItem *d = &g->draws[g->order[i]];
+        if (((d->flags & GFX_DRAW_PREVIEW) != 0) != preview) {
+            continue;
+        }
         if (target == TARGET_REFL) {
             if (!(d->flags & GFX_DRAW_REFLECT) || d->kind == GFX_MAT_FLOOR) {
                 continue;
@@ -878,6 +939,67 @@ static void blur_scene(GfxContext *g, uint32_t rw, uint32_t rh)
     }
 }
 
+static void draw_preview_image(GfxContext *g, SDL_GPURenderPass *pass)
+{
+    const float *r = g->preview_rect;
+    float px_per_pt = (float)g->swap_w / g->ui_w_pt;
+    SDL_BindGPUGraphicsPipeline(pass, g->panel_pipe);
+    SDL_GPUTextureSamplerBinding tsb = {g->preview_color, g->linear_clamp};
+    SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+    HMM_Vec4 ndc = HMM_V4(r[0] / g->ui_w_pt * 2.0f - 1.0f, 1.0f - r[1] / g->ui_h_pt * 2.0f,
+                          (r[0] + r[2]) / g->ui_w_pt * 2.0f - 1.0f, 1.0f - (r[1] + r[2]) / g->ui_h_pt * 2.0f);
+    struct {
+        HMM_Vec4 rect, params, tint, mode;
+    } fu = {HMM_V4(r[0], r[1], r[2], r[2]), HMM_V4(r[3], px_per_pt, 0, 0), HMM_V4(0, 0, 0, 0), HMM_V4(1, 0, 0, 0)};
+    SDL_PushGPUVertexUniformData(g->cmd, 0, &ndc, sizeof(ndc));
+    SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
+    SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
+}
+
+/* Second camera: draws flagged GFX_DRAW_PREVIEW into a square texture. */
+static void render_preview(GfxContext *g)
+{
+    if (!g->preview_color) {
+        const SDL_GPUTextureUsageFlags rt = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        g->preview_color = make_texture(g, g->color_fmt, GFX_PREVIEW_PX, GFX_PREVIEW_PX, rt, SDL_GPU_SAMPLECOUNT_1);
+        if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
+            g->preview_msaa = make_texture(g, g->color_fmt, GFX_PREVIEW_PX, GFX_PREVIEW_PX,
+                                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
+        }
+        g->preview_depth = make_texture(g, g->depth_fmt, GFX_PREVIEW_PX, GFX_PREVIEW_PX,
+                                        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
+    }
+    if (!g->preview_color || !g->preview_depth || (g->msaa != SDL_GPU_SAMPLECOUNT_1 && !g->preview_msaa)) {
+        return;
+    }
+    SDL_GPUColorTargetInfo cti;
+    SDL_zero(cti);
+    cti.clear_color = (SDL_FColor){g->preview_bg.X, g->preview_bg.Y, g->preview_bg.Z, 1.0f};
+    cti.load_op = SDL_GPU_LOADOP_CLEAR;
+    if (g->preview_msaa) {
+        cti.texture = g->preview_msaa;
+        cti.store_op = SDL_GPU_STOREOP_RESOLVE;
+        cti.resolve_texture = g->preview_color;
+    } else {
+        cti.texture = g->preview_color;
+        cti.store_op = SDL_GPU_STOREOP_STORE;
+    }
+    SDL_GPUDepthStencilTargetInfo dti;
+    SDL_zero(dti);
+    dti.texture = g->preview_depth;
+    dti.clear_depth = 1.0f;
+    dti.load_op = SDL_GPU_LOADOP_CLEAR;
+    dti.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
+    const GfxSceneParams *c = &g->preview_scene;
+    HMM_Mat4 vp = HMM_MulM4(c->proj, c->view);
+    push_frame_uniforms(g, &vp, c->eye, (float)GFX_PREVIEW_PX, (float)GFX_PREVIEW_PX, 0.0f);
+    draw_list(g, rp, TARGET_MAIN, true);
+    SDL_EndGPURenderPass(rp);
+}
+
 static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
 {
     if (!g->blur_a) {
@@ -892,9 +1014,10 @@ static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
         HMM_Vec4 ndc = HMM_V4(p->x / g->ui_w_pt * 2.0f - 1.0f, 1.0f - p->y / g->ui_h_pt * 2.0f,
                               (p->x + p->w) / g->ui_w_pt * 2.0f - 1.0f, 1.0f - (p->y + p->h) / g->ui_h_pt * 2.0f);
         struct {
-            HMM_Vec4 rect, params, tint;
+            HMM_Vec4 rect, params, tint, mode;
         } fu = {HMM_V4(p->x, p->y, p->w, p->h),
-                HMM_V4(p->radius, px_per_pt, 1.0f / (float)g->swap_w, 1.0f / (float)g->swap_h), p->tint};
+                HMM_V4(p->radius, px_per_pt, 1.0f / (float)g->swap_w, 1.0f / (float)g->swap_h), p->tint,
+                HMM_V4(0, 0, 0, 0)};
         SDL_PushGPUVertexUniformData(g->cmd, 0, &ndc, sizeof(ndc));
         SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
         SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
@@ -922,7 +1045,7 @@ void gfx_frame_end(GfxContext *g)
     uint32_t rh = (uint32_t)((float)g->swap_h * g->render_scale + 0.5f);
     rw = rw > 0 ? rw : 1;
     rh = rh > 0 ? rh : 1;
-    g->keep_scaled = g->keep_scaled || g->panel_count > 0;
+    g->keep_scaled = g->keep_scaled || g->panel_count > 0 || g->preview_on;
     const bool scaled = rw != g->swap_w || rh != g->swap_h || g->keep_scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
@@ -976,8 +1099,12 @@ void gfx_frame_end(GfxContext *g)
         float refl_h = (float)(g->target_h / 2 > 0 ? g->target_h / 2 : 1);
         draw_sky(g, rp, g->pipes[TARGET_REFL].sky, &rv.sky_inv_vp, rv.eye);
         push_frame_uniforms(g, &rv.view_proj, rv.eye, refl_w, refl_h, 0.0f);
-        g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL);
+        g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL, false);
         SDL_EndGPURenderPass(rp);
+    }
+
+    if (g->preview_on) {
+        render_preview(g);
     }
 
     /* main pass */
@@ -1005,7 +1132,7 @@ void gfx_frame_end(GfxContext *g)
     SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
     draw_sky(g, pass, g->pipes[TARGET_MAIN].sky, &inv_vp, s->eye);
     push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, s->reflection_strength);
-    g->stats.draws = draw_list(g, pass, TARGET_MAIN);
+    g->stats.draws = draw_list(g, pass, TARGET_MAIN, false);
 
     if (scaled) {
         /* upscale the 3D image to the swapchain, then draw UI at native size */
@@ -1045,7 +1172,32 @@ void gfx_frame_end(GfxContext *g)
         SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
         SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas, g->ui_sampler};
         SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
-        SDL_DrawGPUIndexedPrimitives(pass, g->ui_quads * 6, 1, 0, 0, 0);
+        float k = (float)g->swap_w / g->ui_w_pt; /* pt -> px */
+        SDL_Rect full = {0, 0, (int)g->swap_w, (int)g->swap_h};
+        for (uint32_t i = 0; i < g->ui_batch_count; i++) {
+            const UiBatch *b = &g->ui_batches[i];
+            if (b->count == 0) {
+                continue;
+            }
+            SDL_Rect r = full;
+            if (b->clipped) {
+                r = (SDL_Rect){(int)(b->clip[0] * k), (int)(b->clip[1] * k), (int)(b->clip[2] * k + 0.5f),
+                               (int)(b->clip[3] * k + 0.5f)};
+                SDL_Rect out;
+                r = SDL_GetRectIntersection(&r, &full, &out) ? out : (SDL_Rect){0, 0, 0, 0};
+                if (r.w <= 0 || r.h <= 0) {
+                    continue;
+                }
+            }
+            SDL_SetGPUScissor(pass, &r);
+            SDL_DrawGPUIndexedPrimitives(pass, b->count * 6, 1, b->first * 6, 0, 0);
+        }
+    }
+    if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
+        /* over the panel it sits in (no UI is drawn on top of the preview) */
+        SDL_Rect full = {0, 0, (int)g->swap_w, (int)g->swap_h};
+        SDL_SetGPUScissor(pass, &full);
+        draw_preview_image(g, pass);
     }
     SDL_EndGPURenderPass(pass);
     SDL_SubmitGPUCommandBuffer(g->cmd);

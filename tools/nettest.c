@@ -4,6 +4,7 @@
  * Two `join` instances with different PROFILEs must see each other. */
 #include <SDL3/SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "config.local.h"
@@ -169,6 +170,46 @@ static int join(const char *room, const char *profile, double seconds)
     return states > 0 ? 0 : 1;
 }
 
+/* Load the account of `profile`; with a name, write name + skin and exit
+ * (the network thread flushes the PATCH before it stops). */
+static int account(const char *profile, const char *name, int pal, int hair, int acc)
+{
+    Arena perm;
+    static uint8_t mem[4u << 20];
+    arena_init(&perm, mem, sizeof(mem));
+    NetConfig cfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile, 25, 0, false};
+    NetTransport *n = net_create(&perm, &cfg);
+    if (!n) {
+        return 2;
+    }
+    net_account_start(n);
+    double start = (double)SDL_GetTicksNS() * 1e-9;
+    int rc = 1;
+    while ((double)SDL_GetTicksNS() * 1e-9 - start < 15.0 && rc == 1) {
+        NetEvent e;
+        while (net_poll(n, &e)) {
+            if (e.type == NET_EV_PROFILE) {
+                printf("[%s] %s \"%s\" skin %u/%u/%u, %d sessions, %.0f m, %d rides\n", profile,
+                       e.profile.guest ? "guest" : e.profile.email, e.profile.display_name, e.profile.skin.palette,
+                       e.profile.skin.hair, e.profile.skin.accessory, e.profile.stats.sessions,
+                       (double)e.profile.stats.distance_m, e.profile.stats.elevator_rides);
+                if (name) {
+                    NetSkin skin = {(uint8_t)pal, (uint8_t)hair, (uint8_t)acc};
+                    net_save_profile(n, name, &skin);
+                    printf("[%s] saving \"%s\" skin %d/%d/%d\n", profile, name, pal, hair, acc);
+                }
+                rc = 0;
+            } else if (e.type == NET_EV_ACCOUNT_ERROR) {
+                printf("[%s] account error: %s\n", profile, e.text);
+                rc = 3;
+            }
+        }
+        SDL_Delay(20);
+    }
+    net_destroy(n);
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     SDL_Init(0);
@@ -179,6 +220,13 @@ int main(int argc, char **argv)
         g_public = argc >= 6 && strcmp(argv[5], "--public") == 0;
         return join(argv[2], argv[3], SDL_atof(argv[4]));
     }
-    fprintf(stderr, "usage: mg_nettest probe | join ROOM PROFILE SECONDS [--public]\n");
+    if (argc >= 3 && strcmp(argv[1], "profile") == 0) {
+        if (argc >= 7) {
+            return account(argv[2], argv[3], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+        }
+        return account(argv[2], NULL, 0, 0, 0);
+    }
+    fprintf(stderr, "usage: mg_nettest probe | join ROOM PROFILE SECONDS [--public] |\n"
+                    "       profile PROFILE [NAME PALETTE HAIR ACCESSORY]\n");
     return 2;
 }
