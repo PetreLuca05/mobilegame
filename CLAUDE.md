@@ -61,7 +61,7 @@ Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
 `--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|offline|freeroam-create|freeroam-join CODE|screenshot NAME`,
-`--menu pause`, `--markers N` and `--marker x,z,storey` (not saved),
+`--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
 to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).

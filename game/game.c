@@ -74,6 +74,8 @@ typedef struct Game {
     uint32_t active_marker; /* the one auto-nav is walking to, 0 none */
     double marker_spawn_at; /* test markers: no new one before this */
     uint32_t markers_reached;
+    bool log_remote;
+    double next_remote_log;
     bool marker_args_done;
     int marker_override;    /* --markers N / autotest, -1 = use the setting */
     MarkerHudIn hud_in[MARKER_HUD_MAX];
@@ -263,6 +265,7 @@ bool game_init(MgApp *app)
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
     g->settings.show_nav = has_flag(app->argc, app->argv, "--nav");
+    g->log_remote = has_flag(app->argc, app->argv, "--log-remote");
 #ifdef MG_RENDER_FULL
     g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
     const char *tier_arg = arg_value(app->argc, app->argv, "--tier");
@@ -1516,6 +1519,12 @@ void game_frame(MgApp *app, float alpha)
 #endif
         if (!r->active || !r->visible || hidden_storey) {
             continue; /* culled by storey, not distance */
+        }
+        if (g->log_remote && app->time >= g->next_remote_log) { /* --log-remote: what a peer really sends */
+            mg_log_info("remote: pos %.1f %.1f %.1f speed %.2f m/s sprint bit %d floor %d", (double)r->pos.X, (double)r->pos.Y,
+                        (double)r->pos.Z, (double)HMM_LenV3(r->sample.vel), (r->sample.flags & REP_SPRINTING) != 0,
+                        (int)r->sample.floor);
+            g->next_remote_log = app->time + 1.0;
         }
         AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,
                          (r->sample.flags & REP_JUMPING) != 0, scene_indoors(g->scene, r->pos), false};
