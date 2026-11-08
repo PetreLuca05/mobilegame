@@ -89,14 +89,20 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
     sp.eye = HMM_V3(tx, 1.75f, -dist);
     sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(tx, 1.3f, 0.0f), HMM_V3(0, 1, 0));
     sp.proj = camera_projection(fov, aspect, 0.05f, 40.0f, 0.0f);
+#ifdef MG_RENDER_FULL
     sp.sun_dir = HMM_NormV3(HMM_V3(-0.3f, 0.8f, -0.6f)); /* soft fill from the front */
     sp.sun_color = HMM_V3(0.16f, 0.16f, 0.18f);
+#else /* no spotlight: the key light is the overhead lamp */
+    sp.sun_dir = HMM_NormV3(HMM_V3(0.0f, 1.0f, 0.42f));
+    sp.sun_color = HMM_V3(0.62f, 0.6f, 0.56f);
+#endif
     sp.ambient = HMM_V3(0.42f, 0.44f, 0.5f);
     sp.sky_horizon = mg_rgb(0x2A2F3A);
     sp.sky_zenith = mg_rgb(0x1E222B);
     sp.time = (float)app->time;
     gfx_set_scene(g, &sp);
 
+#ifdef MG_RENDER_FULL
     GfxLight spot = {GFX_LIGHT_SPOT,
                      HMM_V3(0.0f, 3.3f, -1.3f),
                      HMM_NormV3(HMM_V3(0.0f, -1.0f, 0.42f)),
@@ -108,6 +114,7 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
                      true,
                      900};
     gfx_add_light(g, &spot);
+#endif
     HMM_Mat4 id = HMM_M4D(1.0f);
     GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.15f);
     gfx_draw(g, f->room, &id, &matte, 0);

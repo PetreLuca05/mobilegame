@@ -791,9 +791,15 @@ static void build_floor_2(Build *b)
 
 /* ------------------------------------------------------------------ lights */
 
-static void light(Build *b, int floor, bool exterior, GfxLightType type, HMM_Vec3 pos, float range, uint32_t hex,
+/* A lamp: in MG_RENDER=minimal only its glowing ceiling panel (emissive,
+ * lights nothing); MG_RENDER=full also adds the point/spot light. */
+#ifndef MG_RENDER_FULL
+enum { GFX_LIGHT_POINT, GFX_LIGHT_SPOT };
+#endif
+static void light(Build *b, int floor, bool exterior, int type, HMM_Vec3 pos, float range, uint32_t hex,
                   float intensity, float half_angle_deg, bool shadow)
 {
+#ifdef MG_RENDER_FULL
     Hospital *h = b->h;
     if (h->light_count >= HOSP_MAX_LIGHTS) {
         return;
@@ -814,6 +820,9 @@ static void light(Build *b, int floor, bool exterior, GfxLightType type, HMM_Vec
     hl->floor = floor;
     hl->exterior = exterior;
     h->light_count++;
+#else
+    (void)type, (void)range, (void)hex, (void)intensity, (void)half_angle_deg, (void)shadow;
+#endif
     if (!exterior && floor >= 0) { /* a glowing panel on the ceiling above it */
         float y = (float)floor * HOSP_STOREY + INT_H;
         box(b, HM_FIX0 + floor, pos.X - 0.35f, y - 0.05f, pos.Z - 0.35f, pos.X + 0.35f, y - 0.005f, pos.Z + 0.35f,
@@ -974,7 +983,11 @@ bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, 
     mb_reset(&mb);
     mb_cone(&mb, HMM_M4D(1.0f), 1.0f, 1.0f, 20, HMM_V4(1, 1, 1, 1));
     h->gizmo_cone = mb_upload(&mb, g);
+#ifdef MG_RENDER_FULL
     mg_log_info("hospital: %d colliders, %d lights", world->count, h->light_count);
+#else
+    mg_log_info("hospital: %d colliders", world->count);
+#endif
     arena_reset_to(scratch, mark);
     h->door_open[0] = 1.0f; /* the car waits on G */
     hospital_apply_doors(h, world);
@@ -1086,7 +1099,8 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
     GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), floor == 0 ? 0.25f : 0.0f);
     GfxMaterial text = mat_text(HMM_V4(1, 1, 1, 1));
     GfxMaterial lamps = mat_toon_emissive(HMM_V4(1, 1, 1, 1), 0.15f + 1.6f * v->lamp_on);
-    GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), 1.4f);
+    /* ceiling panels glow by night, faintly by day (emissive only: they light nothing) */
+    GfxMaterial panels = mat_toon_emissive(HMM_V4(1, 1, 1, 0), 0.25f + 1.15f * v->lamp_on);
     draw_group(h, g, v, HM_SHELL, &matte, GFX_DRAW_REFLECT);
     draw_group(h, g, v, HM_YARD, &matte, GFX_DRAW_REFLECT);
     draw_group(h, g, v, HM_GLOSS_OUT, &glossy, GFX_DRAW_REFLECT);
@@ -1139,6 +1153,7 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
     }
 }
 
+#ifdef MG_RENDER_FULL
 static bool light_relevant(const HospLight *hl, int floor, HMM_Vec3 focus)
 {
     if (!hl->exterior && hl->floor > floor) {
@@ -1203,3 +1218,4 @@ void hospital_draw_light_gizmos(const Hospital *h, GfxContext *g, int floor)
         }
     }
 }
+#endif

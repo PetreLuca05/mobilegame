@@ -24,14 +24,16 @@ typedef struct GameSettings {
     float dead_zone_pt;     /* 60 */
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
-    bool show_lights;       /* light gizmos + light counts */
     bool follow_clock;      /* day cycle follows the device's local time */
     float time_of_day;      /* hours, shown / set by the Time slider */
     float time_speed;       /* 1, 60, 600 */
+#ifdef MG_RENDER_FULL
+    bool show_lights;       /* light gizmos + light counts */
     int tier_override;      /* 0 auto (RAM), 1 low, 2 high */
     bool shadows_on;
     bool show_cascades;     /* colour per sun cascade */
     bool freeze_shadows;
+#endif
     bool sound_on;
     int teleport_floor;     /* MENU_TELEPORT target */
     float render_scale;     /* 3D resolution vs native (UI stays native) */
@@ -59,10 +61,12 @@ static inline void settings_default(GameSettings *s)
     s->show_colliders = false;
     s->show_triggers = false;
     s->teleport_floor = 0;
+#ifdef MG_RENDER_FULL
     s->tier_override = 0;
     s->shadows_on = true;
     s->show_cascades = false;
     s->freeze_shadows = false;
+#endif
     s->sound_on = true;
     s->render_scale = gfx_default_render_scale();
     s->room_code[0] = 0;

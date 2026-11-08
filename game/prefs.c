@@ -85,8 +85,10 @@ void prefs_load(Prefs *p, const char *profile)
         g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
         g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
         g->render_scale = num(s, "render_scale", g->render_scale);
+#ifdef MG_RENDER_FULL
         g->tier_override = (int)num(s, "tier", (float)g->tier_override);
         g->shadows_on = flag(s, "shadows", g->shadows_on);
+#endif
         g->sound_on = flag(s, "sound", g->sound_on);
     }
     p->onboarding_done = flag(j, "onboarding_done", false);
@@ -147,8 +149,10 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddNumberToObject(s, "fov", g->fov_deg);
     cJSON_AddNumberToObject(s, "dead_zone", g->dead_zone_pt);
     cJSON_AddNumberToObject(s, "render_scale", g->render_scale);
+#ifdef MG_RENDER_FULL
     cJSON_AddNumberToObject(s, "tier", g->tier_override);
     cJSON_AddBoolToObject(s, "shadows", g->shadows_on);
+#endif
     cJSON_AddBoolToObject(s, "sound", g->sound_on);
     cJSON_AddBoolToObject(j, "onboarding_done", p->onboarding_done);
     cJSON_AddStringToObject(j, "auth_provider", p->auth_provider);

@@ -69,9 +69,11 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
 {
     HospView hv = {v->floor, v->fade, v->storey_tint, v->show_triggers, v->lamp_on};
     hospital_draw(&s->h, g, &hv);
+#ifdef MG_RENDER_FULL
     if (v->show_lights) {
         hospital_draw_light_gizmos(&s->h, g, v->floor);
     }
+#endif
 }
 
 void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
@@ -79,10 +81,12 @@ void scene_fade_targets(const Scene *s, float *target, int view_floor, bool insi
     hospital_fade_targets(&s->h, target, view_floor, inside, player, eye);
 }
 
+#ifdef MG_RENDER_FULL
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
     return hospital_lights(&s->h, g, v->floor, v->focus, v->lamp_on);
 }
+#endif
 
 void scene_tick(Scene *s, ColWorld *world, float dt)
 {

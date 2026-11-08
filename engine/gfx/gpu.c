@@ -14,8 +14,10 @@
 #include "core/time.h"
 #include "gfx.h"
 #include "material.h"
-#include "shadows.h"
+#ifdef MG_RENDER_FULL
 #include "reflection.h"
+#include "shadows.h"
+#endif
 
 #define GFX_MAX_MESHES 256
 #define GFX_MAX_DRAWS 2048
@@ -49,7 +51,9 @@ typedef struct DrawItem {
     GfxMeshId mesh;
     uint8_t kind;
     uint8_t flags;
+#ifdef MG_RENDER_FULL
     int8_t lights[GFX_LIGHTS_PER_DRAW]; /* indices into the frame's light list, -1 = none */
+#endif
 } DrawItem;
 
 typedef struct DrawVSUniforms {
@@ -64,6 +68,7 @@ typedef struct DrawFSUniforms {
     HMM_Vec4 misc;      /* x hide (screen-door fade) */
 } DrawFSUniforms;
 
+#ifdef MG_RENDER_FULL
 /* fragment b2: the frame's light list (see shaders/lighting.hlsli) */
 typedef struct LightsFSUniforms {
     HMM_Vec4 count;                     /* x = lights */
@@ -78,6 +83,8 @@ typedef struct LightsFSUniforms {
     HMM_Vec4 shadow_rect[GFX_SHADOW_SLOTS]; /* atlas uv offset xy, scale zw */
     HMM_Vec4 atlas_params;              /* xy 1/atlas size */
 } LightsFSUniforms;
+
+#endif /* MG_RENDER_FULL */
 
 typedef struct FrameFSUniforms {
     HMM_Vec4 sun_dir;
@@ -96,7 +103,11 @@ typedef struct SkyFSUniforms {
     HMM_Vec4 sun, moon, stars;
 } SkyFSUniforms;
 
+#ifdef MG_RENDER_FULL
 enum { TARGET_MAIN, TARGET_REFL, TARGET_COUNT };
+#else
+enum { TARGET_MAIN, TARGET_COUNT }; /* minimal: no reflection pass */
+#endif
 enum { LAYOUT_NONE, LAYOUT_MESH, LAYOUT_UI };
 
 typedef struct PipelineSet {
@@ -170,8 +181,10 @@ struct GfxContext {
 
     SDL_GPUTexture *msaa_color;
     SDL_GPUTexture *depth;
+#ifdef MG_RENDER_FULL
     SDL_GPUTexture *refl_color;
     SDL_GPUTexture *refl_depth;
+#endif
     SDL_GPUTexture *dummy_tex;
     SDL_GPUTexture *scene_tex; /* resolved 3D image when rendering below native size */
     SDL_GPUTexture *blur_a, *blur_b; /* quarter-res blurred copy of the scene for panels */
@@ -186,6 +199,7 @@ struct GfxContext {
     bool paused;
     GfxSceneParams scene;
 
+#ifdef MG_RENDER_FULL
     /* shadows */
     GfxShadowConfig shadow_cfg;
     SDL_GPUTextureFormat shadow_fmt;
@@ -204,13 +218,16 @@ struct GfxContext {
     uint32_t light_count;
     int lights_per_draw;
     LightsFSUniforms light_ubo;
+#endif
     DrawItem *draws;
     uint16_t *order;
     uint32_t draw_count;
     GfxStats stats;
 };
 
+#ifdef MG_RENDER_FULL
 static void release_shadow_maps(GfxContext *g);
+#endif
 
 /* ---------------------------------------------------------------- shaders */
 
@@ -363,7 +380,11 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
 static bool create_pipelines(GfxContext *g)
 {
     for (int t = 0; t < TARGET_COUNT; t++) {
+#ifdef MG_RENDER_FULL
         const bool refl = (t == TARGET_REFL);
+#else
+        const bool refl = false;
+#endif
         const SDL_GPUTextureFormat fmt = refl ? g->refl_fmt : g->color_fmt;
         const SDL_GPUSampleCount samples = refl ? SDL_GPU_SAMPLECOUNT_1 : g->msaa;
         /* the mirror flips winding, so the reflection pass treats CW as front */
@@ -435,6 +456,7 @@ static bool create_pipelines(GfxContext *g)
     panel.fs = load_shader(g, "panel.frag", 1, 1);
     panel.blend = true;
     g->panel_pipe = make_pipeline(g, &panel);
+#ifdef MG_RENDER_FULL
     PipeDesc sh = {
         .vs = load_shader(g, "mesh.vert", 2, 0),
         .fs = load_shader(g, "shadow.frag", 0, 0),
@@ -456,9 +478,12 @@ static bool create_pipelines(GfxContext *g)
     tc.depth_bias = false;
     tc.depth_always = true;
     g->tile_clear_pipe = make_pipeline(g, &tc);
+    if (!g->shadow_pipe || !g->tile_clear_pipe) {
+        return false;
+    }
+#endif
     release_shaders(g);
-    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL &&
-           g->shadow_pipe != NULL && g->tile_clear_pipe != NULL;
+    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -485,8 +510,11 @@ static SDL_GPUTexture *make_texture(GfxContext *g, SDL_GPUTextureFormat fmt, uin
 
 static void release_targets(GfxContext *g)
 {
-    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth,  &g->refl_color, &g->refl_depth,
-                             &g->scene_tex,  &g->blur_a, &g->blur_b};
+    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->scene_tex, &g->blur_a, &g->blur_b,
+#ifdef MG_RENDER_FULL
+                             &g->refl_color, &g->refl_depth,
+#endif
+    };
     for (size_t i = 0; i < MG_ARRAY_COUNT(ts); i++) {
         if (*ts[i]) {
             SDL_ReleaseGPUTexture(g->dev, *ts[i]);
@@ -507,6 +535,7 @@ static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
         g->msaa_color = make_texture(g, g->color_fmt, w, h, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
     }
     g->depth = make_texture(g, g->depth_fmt, w, h, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
+#ifdef MG_RENDER_FULL
     uint32_t rw = w / 2 > 0 ? w / 2 : 1;
     uint32_t rh = h / 2 > 0 ? h / 2 : 1;
     g->refl_color = make_texture(g, g->refl_fmt, rw, rh,
@@ -514,6 +543,10 @@ static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
                                  SDL_GPU_SAMPLECOUNT_1);
     g->refl_depth = make_texture(g, g->depth_fmt, rw, rh, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
                                  SDL_GPU_SAMPLECOUNT_1);
+    if (!g->refl_color || !g->refl_depth) {
+        return false;
+    }
+#endif
     if (scaled) {
         g->scene_tex = make_texture(g, g->color_fmt, w, h,
                                     SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -526,8 +559,16 @@ static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
                              SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER, SDL_GPU_SAMPLECOUNT_1);
         }
     }
-    return g->depth && g->refl_color && g->refl_depth && (g->msaa == SDL_GPU_SAMPLECOUNT_1 || g->msaa_color) &&
-           (!scaled || g->scene_tex);
+    /* every GPU texture the 3D path owns (no shadow or reflection targets in minimal) */
+    mg_log_info("gfx: targets %ux%u: depth%s%s%s", w, h, g->msaa_color ? ", msaa colour" : "",
+                scaled ? ", scene + 2 blur" : "",
+#ifdef MG_RENDER_FULL
+                ", reflection colour + depth"
+#else
+                ""
+#endif
+    );
+    return g->depth && (g->msaa == SDL_GPU_SAMPLECOUNT_1 || g->msaa_color) && (!scaled || g->scene_tex);
 }
 
 /* ------------------------------------------------------------------- init */
@@ -627,12 +668,14 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->color_fmt = SDL_GetGPUSwapchainTextureFormat(g->dev, window);
     g->refl_fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     g->depth_fmt = pick_depth_format(g->dev);
+#ifdef MG_RENDER_FULL
     /* shadow maps: sampled depth, D16 where it can be a sampled target */
     g->shadow_fmt = SDL_GPUTextureSupportsFormat(g->dev, SDL_GPU_TEXTUREFORMAT_D16_UNORM, SDL_GPU_TEXTURETYPE_2D,
                                                  SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET |
                                                      SDL_GPU_TEXTUREUSAGE_SAMPLER)
                         ? SDL_GPU_TEXTUREFORMAT_D16_UNORM
                         : SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+#endif
     g->msaa = SDL_GPU_SAMPLECOUNT_1;
     if (SDL_GPUTextureSupportsSampleCount(g->dev, g->color_fmt, SDL_GPU_SAMPLECOUNT_4) &&
         SDL_GPUTextureSupportsSampleCount(g->dev, g->depth_fmt, SDL_GPU_SAMPLECOUNT_4)) {
@@ -688,25 +731,29 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     sci.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     sci.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     g->linear_clamp = SDL_CreateGPUSampler(g->dev, &sci);
+#ifdef MG_RENDER_FULL
     sci.min_filter = SDL_GPU_FILTER_NEAREST;
     sci.mag_filter = SDL_GPU_FILTER_NEAREST;
     g->point_clamp = SDL_CreateGPUSampler(g->dev, &sci);
+#endif
     g->ui_sampler = g->linear_clamp;
 
     const uint32_t white = 0xFFFFFFFFu;
     g->dummy_tex = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 1, 1, SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                 SDL_GPU_SAMPLECOUNT_1);
+#ifdef MG_RENDER_FULL
     GfxShadowConfig shadows = {true, 2048, 4096, 2048, 8, 2, false, false};
     if (!g->point_clamp || !gfx_set_shadows(g, &shadows)) {
         return false;
     }
+    g->lights_per_draw = GFX_LIGHTS_PER_DRAW;
+#endif
     if (!g->linear_clamp || !g->dummy_tex) {
         return false;
     }
     upload_texture(g, g->dummy_tex, &white, 1, 1, 4);
     g->stats.backend = g->backend;
     g->render_scale = 1.0f;
-    g->lights_per_draw = GFX_LIGHTS_PER_DRAW;
     *out = g;
     return true;
 }
@@ -718,6 +765,7 @@ void gfx_shutdown(GfxContext *g)
     }
     SDL_WaitForGPUIdle(g->dev);
     release_targets(g);
+#ifdef MG_RENDER_FULL
     release_shadow_maps(g);
     if (g->shadow_pipe) {
         SDL_ReleaseGPUGraphicsPipeline(g->dev, g->shadow_pipe);
@@ -728,6 +776,7 @@ void gfx_shutdown(GfxContext *g)
     if (g->point_clamp) {
         SDL_ReleaseGPUSampler(g->dev, g->point_clamp);
     }
+#endif
     SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth};
     for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
         if (pv[i]) {
@@ -835,7 +884,9 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_batch_count = 1;
     g->ui_batches[0] = (UiBatch){0, 0, false, {0, 0, 0, 0}};
     g->preview_on = false;
+#ifdef MG_RENDER_FULL
     g->light_count = 0;
+#endif
     g->in_frame = false;
     if (g->paused) {
         return false;
@@ -968,6 +1019,9 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
     f.fog = HMM_V4V(g->scene.fog_color, g->scene.fog_density);
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
+#ifndef MG_RENDER_FULL
+    (void)reflection;
+#else
     if (target_w == (float)GFX_PREVIEW_PX && reflection == 0.0f && g->preview_on && g->preview_lit == false) {
         /* settings preview: the avatar alone, no scene lights or shadows */
         float saved_count = g->light_ubo.count.X, saved_csm = g->light_ubo.csm_params.W;
@@ -979,6 +1033,7 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
         return;
     }
     SDL_PushGPUFragmentUniformData(g->cmd, 2, &g->light_ubo, sizeof(g->light_ubo));
+#endif
 }
 
 static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipeline *pipe,
@@ -1010,16 +1065,22 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         if (((d->flags & GFX_DRAW_PREVIEW) != 0) != preview) {
             continue;
         }
+#ifdef MG_RENDER_FULL
         if (target == TARGET_REFL) {
             if (!(d->flags & GFX_DRAW_REFLECT) || d->kind == GFX_MAT_FLOOR) {
                 continue;
             }
-        } else if (d->flags & GFX_DRAW_NO_MAIN) {
+        } else
+#else
+        (void)target;
+#endif
+        if (d->flags & GFX_DRAW_NO_MAIN) {
             continue;
         }
         if (bound != d->kind) {
             SDL_BindGPUGraphicsPipeline(pass, g->pipes[target].mat[d->kind]);
             bound = d->kind;
+#ifdef MG_RENDER_FULL
             SDL_GPUTextureSamplerBinding shadow_maps[3] = {
                 {g->csm[0], g->point_clamp}, {g->csm[1], g->point_clamp}, {g->atlas, g->point_clamp}};
             if (d->kind == GFX_MAT_FLOOR) {
@@ -1029,16 +1090,20 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
                 SDL_BindGPUFragmentSamplers(pass, 0, tsb, 4);
             } else if (d->kind == GFX_MAT_TOON) {
                 SDL_BindGPUFragmentSamplers(pass, 0, shadow_maps, 3);
-            } else if (d->kind == GFX_MAT_TEXT) {
+            } else
+#endif
+            if (d->kind == GFX_MAT_TEXT) {
                 SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas ? g->ui_atlas : g->dummy_tex, g->ui_sampler};
                 SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
             }
         }
         DrawVSUniforms vu = {d->model, d->normal};
         DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}, HMM_V4(d->hide, 0, 0, 0)};
+#ifdef MG_RENDER_FULL
         for (int k = 0; k < GFX_LIGHTS_PER_DRAW; k++) {
             fu.lights[k / 4].Elements[k % 4] = (float)d->lights[k];
         }
+#endif
         SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
         SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
         const GfxMeshRec *m = &g->meshes[d->mesh];
@@ -1048,6 +1113,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     return count;
 }
 
+#ifdef MG_RENDER_FULL
 bool gfx_add_light(GfxContext *g, const GfxLight *light)
 {
     if (!g->in_frame || g->light_count >= GFX_MAX_LIGHTS) {
@@ -1428,6 +1494,8 @@ static void render_atlas(GfxContext *g)
 }
 
 /* Quarter-res copy of the finished 3D image, blurred H then V (blur_a). */
+#endif /* MG_RENDER_FULL */
+
 static void blur_scene(GfxContext *g, uint32_t rw, uint32_t rh)
 {
     if (!g->blur_a || !g->blur_b) {
@@ -1565,7 +1633,9 @@ void gfx_frame_end(GfxContext *g)
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_quads;
+#ifdef MG_RENDER_FULL
     g->stats.lights = g->light_count;
+#endif
     uint32_t rw = (uint32_t)((float)g->swap_w * g->render_scale + 0.5f);
     uint32_t rh = (uint32_t)((float)g->swap_h * g->render_scale + 0.5f);
     rw = rw > 0 ? rw : 1;
@@ -1596,6 +1666,7 @@ void gfx_frame_end(GfxContext *g)
     }
 
     sort_draws(g);
+#ifdef MG_RENDER_FULL
     pack_lights(g);
     select_lights(g);
     g->frame_no++;
@@ -1604,12 +1675,14 @@ void gfx_frame_end(GfxContext *g)
     render_cascades(g);
     render_atlas(g);
     g->stats.shadow_cpu_ms = (float)((mg_time_now() - sh0) * 1000.0);
+#endif
     double main0 = mg_time_now();
     const GfxSceneParams *s = &g->scene;
     HMM_Mat4 view_proj = HMM_MulM4(s->proj, s->view);
     HMM_Mat4 inv_vp = HMM_InvGeneralM4(view_proj);
     SDL_FColor horizon = {s->sky_horizon.X, s->sky_horizon.Y, s->sky_horizon.Z, 1.0f};
 
+#ifdef MG_RENDER_FULL
     /* reflection pass */
     if (s->reflection_strength > 0.0f) {
         ReflectionView rv;
@@ -1636,6 +1709,7 @@ void gfx_frame_end(GfxContext *g)
         g->stats.reflect_draws = draw_list(g, rp, TARGET_REFL, false);
         SDL_EndGPURenderPass(rp);
     }
+#endif
 
     if (g->preview_on) {
         render_preview(g);
@@ -1665,7 +1739,11 @@ void gfx_frame_end(GfxContext *g)
     dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
     SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
     draw_sky(g, pass, g->pipes[TARGET_MAIN].sky, &inv_vp, s->eye);
+#ifdef MG_RENDER_FULL
     push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, s->reflection_strength);
+#else
+    push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, 0.0f);
+#endif
     g->stats.draws = draw_list(g, pass, TARGET_MAIN, false);
 
     if (scaled) {

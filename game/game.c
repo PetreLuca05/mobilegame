@@ -94,11 +94,13 @@ typedef struct Game {
     RouteTest route;
     Stats stats;
     DayCycle day;
+#ifdef MG_RENDER_FULL
     int tier;              /* 1 low, 2 high (applied) */
     GfxShadowConfig shadow_cfg; /* last applied */
-    DayState day_state;
-    float lamp_on;        /* exterior lamps, from the day cycle */
     int shadowed_lights;  /* shadow-casting lights this frame */
+#endif
+    DayState day_state;
+    float lamp_on;        /* lamps glow (emissive), from the day cycle */
     NetProfile profile;    /* our account (name, skin, guest/Google) */
     bool profile_loaded;
     GoogleAuth *google;
@@ -212,10 +214,12 @@ bool game_init(MgApp *app)
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
+#ifdef MG_RENDER_FULL
     g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
     const char *tier_arg = arg_value(app->argc, app->argv, "--tier");
     g->settings.tier_override = tier_arg ? (SDL_strcmp(tier_arg, "low") == 0 ? 1 : 2) : 0;
     g->settings.shadows_on = !has_flag(app->argc, app->argv, "--no-shadows");
+#endif
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
     const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
     g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
@@ -605,7 +609,9 @@ static void scene_defaults(GfxSceneParams *sp, float time, const DayState *d)
     sp->moon_disc = d->moon_disc;
     sp->stars = d->stars;
     sp->reflection_y = 0.0f;
+#ifdef MG_RENDER_FULL
     sp->reflection_strength = 1.0f;
+#endif
     sp->time = time;
 }
 
@@ -640,6 +646,7 @@ static void draw_room_badge(Game *g, MgApp *app)
     }
 }
 
+#ifdef MG_RENDER_FULL
 /* GPU tier from RAM (A12-class phones have <= 4 GB, A15+ 6 GB+) unless
  * overridden; sets shadow sizes, caps and lights per draw. */
 static void apply_tier(Game *g, MgApp *app)
@@ -661,6 +668,7 @@ static void apply_tier(Game *g, MgApp *app)
         gfx_set_lights_per_draw(app->gfx, tier == 2 ? 8 : 4);
     }
 }
+#endif
 
 /* What Settings -> Account shows. */
 static SettingsAccount account_view(Game *g)
@@ -925,7 +933,9 @@ void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
+#ifdef MG_RENDER_FULL
     apply_tier(g, app);
+#endif
     g->day.follow_device = s->follow_clock;
     g->day.speed = s->time_speed;
     daycycle_update(&g->day, app->time, mg_minf(app->frame_dt, 0.25f));
@@ -1183,7 +1193,7 @@ void game_frame(MgApp *app, float alpha)
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     scene_defaults(&sp, (float)app->time, &g->day_state);
     sp.reflection_y = scene_floor_y(g->scene, floor);
-#ifndef MG_CAMERA_THIRDPERSON
+#if !defined(MG_CAMERA_THIRDPERSON) && defined(MG_RENDER_FULL)
     sp.shadow_focus = g->fly_mode ? 0.0f : g->td.distance; /* cascades: 8 m / 30 m past the player */
 #endif
     gfx_set_scene(app->gfx, &sp);
@@ -1207,9 +1217,20 @@ void game_frame(MgApp *app, float alpha)
 #else
     const HMM_Vec3 focus = g->fly_mode ? sp.eye : feet;
 #endif
-    SceneView view = {sp.eye, focus, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, g->fade.vis,
-                      s->show_storeys};
+    SceneView view = {.eye = sp.eye,
+                      .focus = focus,
+                      .floor = floor,
+                      .time = (float)app->time,
+                      .show_triggers = s->show_triggers,
+#ifdef MG_RENDER_FULL
+                      .show_lights = s->show_lights,
+#endif
+                      .lamp_on = g->lamp_on,
+                      .fade = g->fade.vis,
+                      .storey_tint = s->show_storeys};
+#ifdef MG_RENDER_FULL
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
+#endif
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
@@ -1277,6 +1298,7 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+#ifdef MG_RENDER_FULL
     if (s->show_lights) {
         char line[96];
         SDL_snprintf(line, sizeof(line), "%s tier  lights %u (shadowed %d)  shadow %.2f ms / %u views  main %.2f ms (CPU)",
@@ -1285,6 +1307,7 @@ void game_frame(MgApp *app, float alpha)
         text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 150.0f, 14.0f,
                          ui_rgba(0xFFFFFFFF), line);
     }
+#endif
     draw_room_badge(g, app);
 }
 

@@ -68,18 +68,22 @@ enum {
 /* HM_INT*, HM_GLOSS* and HM_FLOOR* are split into HOSP_CELLS chunks each, so
  * every chunk draw gets the few lights near it. */
 
+#ifdef MG_RENDER_FULL
 typedef struct HospLight {
     GfxLight light;
     int floor;     /* storey, -1 = outside */
     bool exterior; /* follows the day cycle's lamp-on factor */
 } HospLight;
+#endif
 
 typedef struct Hospital {
     GfxMeshId mesh[HM_COUNT];
     GfxMeshId cell[HOSP_FLOORS][3][HOSP_CELLS]; /* [storey][matte, glossy, floor][chunk] */
     GfxMeshId gizmo_sphere, gizmo_cone;
+#ifdef MG_RENDER_FULL
     HospLight lights[HOSP_MAX_LIGHTS];
     int light_count;
+#endif
     GfxMeshId door_panel; /* one 1.0 x 2.4 x 0.06 m elevator door leaf */
     GfxMeshId trigger;    /* unit cube for the debug trigger view */
     HMM_Vec3 spawns[HOSP_SPAWNS];
@@ -114,7 +118,9 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v);
 /* Add this frame's lights: exterior ones scaled by lamp_on, interior ones of
  * `floor` and below (storeys above are faded), nothing beyond 35 m from
  * `focus` (the player). Returns how many cast shadows. */
+#ifdef MG_RENDER_FULL
 int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 focus, float lamp_on);
 void hospital_draw_light_gizmos(const Hospital *h, GfxContext *g, int floor);
+#endif
 
 #endif

@@ -15,6 +15,12 @@ option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
 set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
 set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
+set(MG_RENDER "minimal" CACHE STRING
+    "Renderer: minimal (one directional light, no shadows/lights/reflection) | full (M3 path, reference only)")
+set_property(CACHE MG_RENDER PROPERTY STRINGS minimal full)
+if(MG_RENDER STREQUAL "full")
+  add_compile_definitions(MG_RENDER_FULL=1)
+endif()
 set(MG_CAMERA "topdown" CACHE STRING "Game camera: topdown (M5) | thirdperson (M1-M4, engine tests only)")
 set_property(CACHE MG_CAMERA PROPERTY STRINGS topdown thirdperson)
 if(MG_CAMERA STREQUAL "thirdperson")
@@ -120,8 +126,6 @@ add_library(mg_engine STATIC
   engine/gfx/gpu.c
   engine/gfx/material.c
   engine/gfx/mesh.c
-  engine/gfx/reflection.c
-  engine/gfx/shadows.c
   engine/gfx/floorfade.c
   engine/ui/text.c
   engine/ui/widgets.c
@@ -149,6 +153,9 @@ elseif(MG_PLATFORM STREQUAL "android")
   target_sources(mg_engine PRIVATE engine/platform/google_auth_android.c)
 else()
   target_sources(mg_engine PRIVATE engine/platform/google_auth_stub.c)
+endif()
+if(MG_RENDER STREQUAL "full")
+  target_sources(mg_engine PRIVATE engine/gfx/shadows.c engine/gfx/reflection.c)
 endif()
 # --metal-capture: one-frame .gputrace (Apple only)
 if(APPLE)

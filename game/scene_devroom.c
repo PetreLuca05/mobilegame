@@ -75,6 +75,7 @@ void scene_fade_targets(const Scene *s, float *target, int view_floor, bool insi
     (void)s, (void)target, (void)view_floor, (void)inside, (void)player, (void)eye; /* one storey: nothing fades */
 }
 
+#ifdef MG_RENDER_FULL
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
     (void)s;
@@ -82,6 +83,7 @@ int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
     (void)v;
     return 0;
 }
+#endif
 
 void scene_tick(Scene *s, ColWorld *world, float dt)
 {

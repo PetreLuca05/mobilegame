@@ -67,6 +67,7 @@ enum {
     GFX_DRAW_DYNAMIC = 1u << 4,   /* moves (avatars): dirties cached shadow tiles it touches */
 };
 
+#ifdef MG_RENDER_FULL /* the M3 lighting path (MG_RENDER=full, reference only) */
 /* Shadow maps (M3). Sun/moon: 2 cascades (0-12 m, 12-45 m from the eye;
  * with GfxSceneParams.shadow_focus set: up to focus + 8 m, then to
  * focus + 30 m, so a top-down camera 16 m away does not waste cascade 0). Spot and
@@ -97,6 +98,8 @@ typedef struct GfxLight {
     bool cast_shadow;
     uint32_t id;           /* stable per light (shadow caching) */
 } GfxLight;
+#endif
+
 
 typedef struct GfxSceneParams {
     HMM_Mat4 view;
@@ -113,8 +116,10 @@ typedef struct GfxSceneParams {
     HMM_Vec4 moon_disc;
     float stars;          /* 0..1 */
     float reflection_y;   /* height of the mirror plane */
+#ifdef MG_RENDER_FULL
     float shadow_focus;   /* eye-to-player distance for the cascade splits, 0 = fixed 12 / 45 m */
     float reflection_strength; /* 0 disables the reflection pass */
+#endif
     float time;
 } GfxSceneParams;
 
@@ -122,11 +127,13 @@ typedef struct GfxStats {
     uint32_t draws;
     uint32_t reflect_draws;
     uint32_t ui_quads;
+#ifdef MG_RENDER_FULL
     uint32_t lights;
     uint32_t shadow_views;   /* depth views rendered this frame (cascades + tiles) */
     float shadow_cpu_ms;     /* CPU time encoding them (SDL GPU has no timestamps) */
-    float main_cpu_ms;       /* CPU time encoding the main + reflection passes */
     int shadowed_lights;     /* spot/point lights with a shadow tile this frame */
+#endif
+    float main_cpu_ms;       /* CPU time encoding the main pass */
     uint32_t width_px, height_px;
     int msaa;
     const char *backend; /* "metal", "vulkan", ... */
@@ -147,12 +154,14 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
               uint32_t flags);
 /* UI coordinate space size in points (window pixels / display scale). */
 void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt);
+#ifdef MG_RENDER_FULL
 /* Lights for this frame (after gfx_frame_begin). False when the list is full. */
 bool gfx_add_light(GfxContext *g, const GfxLight *light);
 /* 4 on low-tier GPUs, 8 on high (default 8). */
 void gfx_set_lights_per_draw(GfxContext *g, int n);
 /* (Re)allocates shadow textures when sizes change; call outside a frame. */
 bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg);
+#endif
 /* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
 /* Frosted panel behind this frame's UI: the 3D image under it, blurred at
