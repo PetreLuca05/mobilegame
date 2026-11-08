@@ -615,7 +615,17 @@ static void account_loaded(Game *g, MgApp *app)
             g->fe.depth = 0;
             g->fe.state = FE_MAIN_MENU;
         } else {
-            SDL_snprintf(g->fe.name, sizeof(g->fe.name), "%s", g->profile.google_name);
+            /* prefill: the provider's name (first word), else Player#### */
+            int n = 0;
+            for (const char *c = g->profile.google_name; *c && *c != ' ' && n < 16; c++) {
+                if (SDL_isalnum((unsigned char)*c) || *c == '_') {
+                    g->fe.name[n++] = *c;
+                }
+            }
+            g->fe.name[n] = 0;
+            if (n < 2) {
+                SDL_snprintf(g->fe.name, sizeof(g->fe.name), "Player%04d", (int)SDL_rand(10000));
+            }
             frontend_go(&g->fe, FE_USERNAME);
         }
     }
