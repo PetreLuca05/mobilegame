@@ -45,6 +45,9 @@ bool npc_world_init(NpcWorld *w, Arena *perm, RoomGraph *rooms, struct NavWorld 
 /* Fill the roster in its steady state from `seed`; density 0..1. */
 void npc_world_start(NpcWorld *w, uint32_t seed, float density);
 void npc_world_stop(NpcWorld *w);
+/* n plain wanderers scattered over the map, no roster (--autotest npcs-bench). */
+void npc_world_bench(NpcWorld *w, int n, uint32_t seed);
+uint32_t npc_world_hash(const NpcWorld *w);
 void npc_tick(NpcWorld *w, JobSystem *jobs, Arena *scratch, const NpcPlayer *player, float dt);
 
 /* Hooks for later milestones. Returns the id, 0 if it failed. */

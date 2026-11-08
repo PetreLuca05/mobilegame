@@ -5,7 +5,8 @@
 #include "core/log.h"
 #include "prefs.h"
 
-#define SAVE_BYTES 48
+#define SAVE_BYTES 52
+#define SAVE_BYTES_V2 48
 
 static void put32(uint8_t *p, uint32_t v)
 {
@@ -51,6 +52,7 @@ bool save_write(const SaveGame *s, const char *profile)
     put32(b + 32, s->elevator_rides);
     put32(b + 36, (uint32_t)s->visited_rooms);
     put32(b + 40, (uint32_t)(s->visited_rooms >> 32));
+    put32(b + 48, s->npc_seed);
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     bool ok = SDL_SaveFile(tmp, b, sizeof(b)) && SDL_RenamePath(tmp, path);
     if (!ok) {
@@ -64,7 +66,7 @@ bool save_read(SaveGame *s, const char *profile)
     char path[512];
     size_t len = 0;
     uint8_t *b = prefs_path(profile, "save_slot0.bin", path, sizeof(path)) ? SDL_LoadFile(path, &len) : NULL;
-    bool ok = b && len >= SAVE_BYTES && SDL_memcmp(b, "MGS1", 4) == 0 && get32(b + 4) >= 1 && get32(b + 4) <= SAVE_VERSION;
+    bool ok = b && len >= SAVE_BYTES_V2 && SDL_memcmp(b, "MGS1", 4) == 0 && get32(b + 4) >= 1 && get32(b + 4) <= SAVE_VERSION;
     if (ok) {
         s->version = get32(b + 4);
         s->pos = HMM_V3(getf(b + 8), getf(b + 12), getf(b + 16));
@@ -73,6 +75,7 @@ bool save_read(SaveGame *s, const char *profile)
         s->play_seconds = get32(b + 28);
         s->elevator_rides = get32(b + 32);
         s->visited_rooms = (uint64_t)get32(b + 36) | ((uint64_t)get32(b + 40) << 32);
+        s->npc_seed = s->version >= 3 && len >= SAVE_BYTES ? get32(b + 48) : 0;
     }
     SDL_free(b);
     return ok;

@@ -436,7 +436,7 @@ void game_tick(MgApp *app)
         PROF_SCOPE("kinematic");
         player_tick(&g->player, &g->kparams, &g->world, MG_TICK_DT);
     }
-    if (g->npcs_ok && g->npcs_on && g->nav) {
+    if (g->npcs_ok && g->npcs_on && g->nav && !g->settings.freeze_npcs) {
         PROF_SCOPE("npc.roster");
         const HMM_Vec3 pp = g->player.kin.pos;
         NpcPlayer np = {pp.X, pp.Z, g->player.kin.vel.X, g->player.kin.vel.Z, scene_indoors(g->scene, pp) ? scene_floor_of(g->scene, pp) : 0};
@@ -481,8 +481,11 @@ static void update_fly_camera(Game *g, MgApp *app)
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
 static void run_nav_check(Game *g, MgApp *app);
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha);
+static void npc_autotest_check(Game *g, MgApp *app);
 static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name);
 static void run_determinism_check(Game *g, MgApp *app);
+static void run_npc_bench(Game *g, MgApp *app);
+static uint32_t npc_seed_for(Game *g);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
 static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
@@ -490,27 +493,13 @@ static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y
 
 /* X-ray silhouette colour: the avatar's accent at full saturation x 0.85
  * (grey accents stay grey), so players can tell each other apart. */
-static HMM_Vec4 xray_color(uint32_t accent)
-{
-    float r = (float)((accent >> 16) & 255) / 255.0f, gr = (float)((accent >> 8) & 255) / 255.0f,
-          b = (float)(accent & 255) / 255.0f;
-    float mx = mg_maxf(r, mg_maxf(gr, b)), mn = mg_minf(r, mg_minf(gr, b));
-    if (mx - mn > 0.05f) { /* stretch to S = 1, keep hue and value */
-        float k = mx / (mx - mn);
-        r = (r - mn) * k;
-        gr = (gr - mn) * k;
-        b = (b - mn) * k;
-    }
-    return HMM_V4(r * 0.85f, gr * 0.85f, b * 0.85f, 1.0f);
-}
-
 /* M5-X: the hidden parts of an avatar - a 2 px dark rim, then the flat
  * accent fill (both dithered 60 %, depth GREATER; `always` ignores depth). */
 static void draw_xray(Game *g, MgApp *app, const AvatarLook *look, const AvatarPose *pose, const AvatarAnim *anim,
                       bool always)
 {
     GfxMaterial rim = mat_xray(HMM_V4(0.0f, 0.0f, 0.0f, 1.0f), true, always);
-    GfxMaterial fill = mat_xray(xray_color(look->accent), false, always);
+    GfxMaterial fill = mat_xray(HMM_V4(0.0f, 0.0f, 0.0f, 1.0f), false, always); /* always black, never the player's colour */
     avatar_draw_with(app->gfx, &g->avatar_meshes, look, pose, anim, &rim);
     avatar_draw_with(app->gfx, &g->avatar_meshes, look, pose, anim, &fill);
 }
@@ -1126,6 +1115,27 @@ static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
     g->rendered_entities += rendered;
 }
 
+static uint32_t hash_text(const char *t)
+{
+    uint32_t h = 2166136261u;
+    while (*t) {
+        h = (h ^ (uint8_t)*t++) * 16777619u;
+    }
+    return h | 1u;
+}
+
+/* Everyone in a room derives the same roster from its name; offline it is the save's */
+static uint32_t npc_seed_for(Game *g)
+{
+    if (!g->offline_play && g->session.mode != MODE_OFFLINE && g->session.topic[0]) {
+        return hash_text(g->session.topic);
+    }
+    if (!g->save.npc_seed) {
+        g->save.npc_seed = (uint32_t)SDL_GetPerformanceCounter() | 1u;
+    }
+    return g->save.npc_seed;
+}
+
 /* M7 roster: culled and given a LOD on the job system, drawn on the main thread */
 static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
 {
@@ -1153,9 +1163,19 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
             feet.Z += (c->seat_z - feet.Z) * c->sit_t;
         }
         AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
+        pose.sit = c->pose == POSE_SIT ? c->sit_t : 0.0f;
+        pose.lying = c->pose == POSE_BED ? c->sit_t : 0.0f;
+        pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
+        pose.sway = c->pose == POSE_MOP ? 0.12f * HMM_SinF((float)app->time * 3.0f + (float)i) : 0.0f;
+        pose.hide = c->fade < 1.0f ? 1.0f - c->fade : 0.0f;
         avatar_animate(&c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
         g->rendered_entities++;
+        if (g->settings.show_packages && (h->storey < 0 ? 0 : (int)h->storey) == floor) { /* debug only: name tags are for real players */
+            char label[64];
+            SDL_snprintf(label, sizeof(label), "%s %d.%d", g->npcs.data.archetypes[c->archetype].name, c->step, c->phase);
+            name_tag(g, app, HMM_AddV3(feet, HMM_V3(0.0f, c->pose == POSE_BED ? 1.0f : 2.0f, 0.0f)), label);
+        }
     }
 }
 
@@ -1199,9 +1219,22 @@ void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
-    if (g->npcs_ok && g->playing && !g->npcs_on && !arg_value(app->argc, app->argv, "--autotest")) {
-        g->npcs_on = true; /* other autotests keep the world empty, so their numbers stay comparable */
-        npc_world_start(&g->npcs, app->clock.tick | 1u, 1.0f);
+    if (g->npcs_ok && g->playing) {
+        /* other autotests keep the world empty, so their numbers stay comparable */
+        const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
+        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "npcs") == 0 || (g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0));
+        if (!at_kind || roster_test) {
+            const uint32_t seed = npc_seed_for(g);
+            const float density = roster_test ? 1.0f : s->npc_density;
+            if (!g->npcs_on || seed != g->npcs.seed || density != g->npcs.density || s->respawn_npcs) {
+                s->respawn_npcs = false;
+                g->npcs_on = true;
+                npc_world_start(&g->npcs, seed, density);
+            }
+        }
+    } else if (g->npcs_ok && g->npcs_on) {
+        g->npcs_on = false;
+        npc_world_stop(&g->npcs);
     }
     if (g->crowd_ok && g->playing) { /* slider or scenario: spawn or remove dummies between frames */
         const int want = g->perf.active ? perf_run_stress_count(&g->perf) : (int)s->stress_count;
@@ -1264,6 +1297,7 @@ void game_frame(MgApp *app, float alpha)
         ps.rendered = g->rendered_last;
         ps.nav_bytes = g->nav ? nav_memory_bytes(g->nav) : 0;
         ps.npc_bytes = sizeof(npc_hot_t) * 2u * NPC_MAX + sizeof(npc_cold_t) * NPC_MAX;
+        npc_autotest_check(g, app);
         perf_run_update(&g->perf, app, &probe, &ato, &ps);
     }
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
@@ -1646,6 +1680,9 @@ void game_frame(MgApp *app, float alpha)
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     if (g->nav) {
         const char *at = arg_value(app->argc, app->argv, "--autotest");
+        if (at && SDL_strcmp(at, "npcs-bench") == 0 && g->npcs_ok) {
+            run_npc_bench(g, app);
+        }
         if (at && SDL_strcmp(at, "determinism") == 0 && g->crowd_ok) {
             run_determinism_check(g, app);
         }
@@ -2172,6 +2209,80 @@ static void run_determinism_check(Game *g, MgApp *app)
     mg_log_info("AUTOTEST %s", same && used[1] > 1 ? "PASSED" : "FAILED");
     stress_reset(&g->crowd, g->nav);
     app->quit_requested = true;
+}
+
+/* --autotest npcs-bench: the real NPC sim at 44 and 200 wanderers, 1 thread against all of them */
+static void run_npc_bench(Game *g, MgApp *app)
+{
+    enum { TICKS = 1800 };
+    static const int sizes[2] = {44, 200};
+    const NpcPlayer view = {0.0f, -3.0f, 0.0f, 0.0f, 0};
+    bool same = true;
+    for (int s = 0; s < 2; s++) {
+        double ms[2];
+        uint32_t hash[2];
+        int used[2];
+        int threads[2] = {1, JOBS_MAX_THREADS};
+        for (int run = 0; run < 2; run++) {
+            jobs_limit_threads(app->jobs, threads[run]);
+            used[run] = jobs_thread_count(app->jobs);
+            npc_world_bench(&g->npcs, sizes[s], 0xC0FFEEu);
+            double t0 = mg_time_now();
+            for (int t = 0; t < TICKS; t++) {
+                size_t mark = arena_mark(&app->frame);
+                npc_tick(&g->npcs, app->jobs, &app->frame, &view, MG_TICK_DT);
+                arena_reset_to(&app->frame, mark);
+            }
+            ms[run] = (mg_time_now() - t0) * 1000.0 / (double)TICKS;
+            hash[run] = npc_world_hash(&g->npcs);
+        }
+        same = same && hash[0] == hash[1];
+        mg_log_info("npc bench: %d NPCs: %d thread(s) %.3f ms per tick, %d thread(s) %.3f ms per tick, positions %s", g->npcs.pool.count, used[0], ms[0],
+                    used[1], ms[1], hash[0] == hash[1] ? "identical" : "DIFFERENT");
+    }
+    npc_world_stop(&g->npcs);
+    mg_log_info("AUTOTEST %s", same ? "PASSED" : "FAILED");
+    app->quit_requested = true;
+}
+
+/* --autotest npcs, every second: the roster rules */
+static void npc_autotest_check(Game *g, MgApp *app)
+{
+    static double next;
+    static int min_alive = 1 << 20;
+    if (!g->perf.active || SDL_strcmp(g->perf.scenario, "npcs") != 0 || !g->npcs_on || !g->perf.recording) {
+        return;
+    }
+    const NpcWorld *w = &g->npcs;
+    if (app->time >= next) {
+        next = app->time + 1.0;
+        const NpcPool *p = &w->pool;
+        const npc_hot_t *hot = p->hot[p->read];
+        min_alive = p->count < min_alive ? p->count : min_alive;
+        for (int i = 0; i < p->count && !g->perf.why_failed[0]; i++) {
+            const npc_hot_t *h = &hot[i];
+            const npc_cold_t *c = &p->cold[i];
+            if (!(nav_flags_at(w->nav, h->storey < 0 ? 0 : h->storey, h->x, h->z) & NAV_WALKABLE)) {
+                SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "%s off the grid at (%.1f, %.1f) storey %d", c->name, (double)h->x, (double)h->z, h->storey);
+            }
+            if (c->age == AGE_CHILD && c->phase != NPC_PHASE_FADE_OUT) { /* a leaving parent takes the child along */
+                const int room = room_at(w->rooms, h->x, h->z, h->storey);
+                const RoomType t = room >= 0 ? w->rooms->rooms[room].type : ROOM_YARD;
+                if (npc_index_by_id(w, c->leader_id) < 0 || (t != ROOM_LOBBY && t != ROOM_WARD && t != ROOM_YARD)) {
+                    SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "child %s alone or in a %d room", c->name, (int)t);
+                }
+            }
+        }
+        if (min_alive < 44 && !g->perf.why_failed[0]) {
+            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "only %d NPCs alive", min_alive);
+        }
+        if (w->stats.stuck_events > 0 && !g->perf.why_failed[0]) {
+            SDL_snprintf(g->perf.why_failed, sizeof(g->perf.why_failed), "%u NPCs stuck for more than 2 s", w->stats.stuck_events);
+        }
+    }
+    SDL_snprintf(g->perf.extra_json, sizeof(g->perf.extra_json),
+                 "\"npc\": {\"alive\": %d, \"min_alive\": %d, \"max_alive\": %u, \"spawned\": %u, \"despawned\": %u, \"stuck_events\": %u, \"path_requests\": %u}",
+                 w->pool.count, min_alive, w->stats.max_alive, w->stats.spawned, w->stats.despawned, w->stats.stuck_events, w->stats.path_requests);
 }
 
 static void run_nav_check(Game *g, MgApp *app)

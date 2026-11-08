@@ -53,6 +53,17 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step;
     ui_toggle(ui, str("show_stats"), cx, cy, cw, &s->show_stats);
     cy += 44.0f;
+    ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, str("npc_density"));
+    cy += 22.0f;
+    static const float npc_d[3] = {0.0f, 0.5f, 1.0f};
+    static const char *const npc_d_keys[3] = {"npc_off##den", "npc_low##den", "npc_normal##den"};
+    const float third = (cw - 16.0f) / 3.0f;
+    for (int i = 0; i < 3; i++) {
+        if (ui_button(ui, str(npc_d_keys[i]), cx + (float)i * (third + 8.0f), cy, third, 40.0f, s->npc_density == npc_d[i])) {
+            s->npc_density = npc_d[i];
+        }
+    }
+    cy += 52.0f;
     ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
     cy += 44.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
@@ -126,6 +137,14 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += 44.0f;
         ui_toggle(ui, "Show slots", x, y, cw, &s->show_slots);
         y += 44.0f;
+        ui_toggle(ui, "Show NPC packages", x, y, cw, &s->show_packages);
+        y += 44.0f;
+        ui_toggle(ui, "Freeze NPCs", x, y, cw, &s->freeze_npcs);
+        y += 44.0f;
+        if (ui_button(ui, "Respawn NPCs##npc", x, y, cw, 40.0f, false)) {
+            s->respawn_npcs = true;
+        }
+        y += 52.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Stress");
         y += 22.0f;
         ui_slider(ui, "Dummy avatars##stress", x, y, cw, &s->stress_count, 0.0f, 400.0f, "%.0f");

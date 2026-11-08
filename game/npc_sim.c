@@ -15,7 +15,6 @@
 #define AVOID_TIME 1.5f
 #define AVOID_DIST 0.7f
 #define YIELD_DIST 1.5f
-#define PUSH_DIST 0.45f
 #define STUCK_TIME 2.0f
 #define STUCK_MOVE 0.2f
 #define ACCEL 6.0f
@@ -300,6 +299,51 @@ void npc_world_stop(NpcWorld *w)
     w->running = false;
 }
 
+void npc_world_bench(NpcWorld *w, int n, uint32_t seed)
+{
+    npc_world_stop(w);
+    w->seed = w->rng = seed;
+    w->tick = 0;
+    w->next_id = 0;
+    memset(w->target, 0, sizeof(w->target));
+    memset(&w->stats, 0, sizeof(w->stats));
+    w->running = true;
+    const int arch = npc_archetype_find(&w->data, "wanderer");
+    for (int i = 0; i < n; i++) {
+        if (!npc_spawn(w, arch, 0, false, 0, NPC_FLAG_BENCH)) {
+            break;
+        }
+        NpcPool *p = &w->pool;
+        npc_hot_t *h = &p->hot[p->read][p->count - 1];
+        npc_cold_t *c = &p->cold[p->count - 1];
+        HMM_Vec3 at;
+        int storey = 0;
+        if (nav_random_point(w->nav, (int)(npc_rand(&w->rng) % 3u), &w->rng, &at, &storey)) {
+            h->x = h->prev_x = c->home_x = c->stuck_x = at.X;
+            h->z = h->prev_z = c->home_z = c->stuck_z = at.Z;
+            h->y = at.Y;
+            h->storey = (int8_t)storey;
+        }
+        c->fade = 1.0f;
+        c->phase = NPC_PHASE_START;
+        npc_sync_buffers(w, p->count - 1);
+    }
+}
+
+uint32_t npc_world_hash(const NpcWorld *w)
+{
+    const npc_hot_t *hot = w->pool.hot[w->pool.read];
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < w->pool.count; i++) {
+        const float v[2] = {hot[i].x, hot[i].z};
+        const uint8_t *b = (const uint8_t *)v;
+        for (size_t k = 0; k < sizeof(v); k++) {
+            h = (h ^ b[k]) * 16777619u;
+        }
+    }
+    return h;
+}
+
 /* ------------------------------------------------------------- steering */
 
 typedef struct SteerCtx {
@@ -309,6 +353,20 @@ typedef struct SteerCtx {
 } SteerCtx;
 
 static bool walkable(const NpcWorld *w, int storey, float x, float z) { return (nav_flags_at(w->nav, storey < 0 ? 0 : storey, x, z) & NAV_WALKABLE) != 0; }
+
+/* every 12 cm along the line: can a body walk it? */
+static bool line_walkable(const NpcWorld *w, int storey, float x0, float z0, float x1, float z1)
+{
+    const float dx = x1 - x0, dz = z1 - z0;
+    const int steps = (int)(sqrtf(dx * dx + dz * dz) / 0.12f) + 1;
+    for (int i = 1; i <= steps; i++) {
+        const float t = (float)i / (float)steps;
+        if (!walkable(w, storey, x0 + dx * t, z0 + dz * t)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 /* last tick's state of everyone, this NPC's next state */
 static void steer_one(const SteerCtx *s, int i)
@@ -326,19 +384,10 @@ static void steer_one(const SteerCtx *s, int i)
     o->prev_x = r->x;
     o->prev_z = r->z;
     o->last_tick = s->tick;
-    c->squash = mg_maxf(c->squash - dt / 0.15f, 0.0f);
     const NpcPlayer *pl = &W->player;
     const int grid = r->storey < 0 ? 0 : r->storey;
     const bool same_floor = grid == pl->view_floor;
     const float tpx = pl->x - r->x, tpz = pl->z - r->z, pd2 = tpx * tpx + tpz * tpz;
-    if (same_floor && pd2 < PUSH_DIST * PUSH_DIST && pd2 > 1e-4f) { /* never resists the player */
-        const float inv = 1.0f / sqrtf(pd2), nx = r->x - tpx * inv * 0.2f, nz = r->z - tpz * inv * 0.2f;
-        if (walkable(W, r->storey, nx, nz)) {
-            o->x = nx;
-            o->z = nz;
-        }
-        c->squash = 1.0f;
-    }
     if (r->state != MOVE_WALK) {
         o->vx = o->vz = 0.0f;
         return;
@@ -353,7 +402,14 @@ static void steer_one(const SteerCtx *s, int i)
     float dx = wp->pos.X - o->x, dz = wp->pos.Z - o->z;
     float d2 = dx * dx + dz * dz;
     const bool last = r->next == path->count - 1;
-    if (d2 < ARRIVE_RADIUS * ARRIVE_RADIUS) {
+    /* a waypoint counts once the next leg is walkable from here; else keep closing in on it */
+    const bool next_clear = last || line_walkable(W, r->storey, o->x, o->z, path->pts[r->next + 1].pos.X, path->pts[r->next + 1].pos.Z);
+    /* the forced radius covers one whole step: at 1/6 rate a step is 16 cm and would jump over a smaller one */
+    const float forced = mg_maxf(0.12f, r->speed * dt * 1.2f);
+    /* corner cutting can carry us past a waypoint: past it with the next leg open counts as reached */
+    const bool past = !last && next_clear &&
+                      (o->x - wp->pos.X) * (path->pts[r->next + 1].pos.X - wp->pos.X) + (o->z - wp->pos.Z) * (path->pts[r->next + 1].pos.Z - wp->pos.Z) > 0.0f;
+    if ((d2 < ARRIVE_RADIUS * ARRIVE_RADIUS && next_clear) || d2 < forced * forced || past || (c->stuck_t > 1.0f && d2 < 0.5f * 0.5f)) {
         o->storey = wp->storey;
         o->next = (int16_t)(r->next + 1);
         if (last) {
@@ -366,8 +422,10 @@ static void steer_one(const SteerCtx *s, int i)
         dz = wp->pos.Z - o->z;
         d2 = dx * dx + dz * dz;
     }
+    const float wlen = sqrtf(d2 > 1e-6f ? d2 : 1e-6f), direct_x = dx / wlen, direct_z = dz / wlen;
     /* look ahead: start the corner early */
-    if (o->next + 1 < path->count && d2 < LOOK_AHEAD * LOOK_AHEAD) {
+    if (o->next + 1 < path->count && d2 < LOOK_AHEAD * LOOK_AHEAD &&
+        line_walkable(W, r->storey, o->x, o->z, path->pts[o->next + 1].pos.X, path->pts[o->next + 1].pos.Z)) {
         const NavPoint *nx = &path->pts[o->next + 1];
         const float k = 1.0f - sqrtf(d2) / LOOK_AHEAD;
         dx += (nx->pos.X - wp->pos.X) * k * 0.6f;
@@ -375,8 +433,17 @@ static void steer_one(const SteerCtx *s, int i)
     }
     const float len = sqrtf(dx * dx + dz * dz);
     float ux = len > 1e-4f ? dx / len : 0.0f, uz = len > 1e-4f ? dz / len : -1.0f;
+    if (!line_walkable(W, r->storey, o->x, o->z, o->x + ux * 0.5f, o->z + uz * 0.5f)) { /* no cutting this corner */
+        ux = direct_x;
+        uz = direct_z;
+    }
     float speed = r->speed;
+    if (!next_clear && d2 < ARRIVE_RADIUS * ARRIVE_RADIUS) { /* a blind corner: slow down or we circle the waypoint */
+        speed *= mg_maxf(0.25f, sqrtf(d2) / ARRIVE_RADIUS);
+    }
     float sx = 0.0f, sz = 0.0f;
+    bool door_wait = false;
+    const bool door_ahead = (nav_flags_at(W->nav, grid, o->x + ux * 0.6f, o->z + uz * 0.6f) & NAV_DOOR) != 0;
     if (r->lod == 0) { /* other storeys only follow their path */
         uint16_t near[MAX_NEIGHBOURS];
         const int count = spatial_query(&W->grid, r->storey, r->x, r->z, SEPARATE_RADIUS, near, MAX_NEIGHBOURS);
@@ -390,7 +457,19 @@ static void steer_one(const SteerCtx *s, int i)
             if (o2 >= SEPARATE_RADIUS * SEPARATE_RADIUS || o2 < 1e-4f) {
                 continue;
             }
-            const float dist = sqrtf(o2), weight = 1.0f - dist / SEPARATE_RADIUS;
+            if (door_ahead && near[k] < i && ox * ux + oz * uz < 0.0f) {
+                door_wait = true; /* a doorway takes one at a time: the lower index goes first */
+            }
+            const float dist = sqrtf(o2);
+
+            if (other->vx == 0.0f && other->vz == 0.0f && last && d2 < 2.5f * 2.5f) {
+                continue; /* the last few steps to a claimed slot: nobody standing holds us up (the queue's front) */
+            }
+            if (other->vx == 0.0f && other->vz == 0.0f && -ox * ux - oz * uz > 0.5f * dist && dist < 1.0f) {
+                sx += -uz * 0.8f; /* someone standing dead ahead: go round on the right */
+                sz += ux * 0.8f;
+            }
+            const float weight = 1.0f - dist / SEPARATE_RADIUS;
             sx += ox / dist * weight;
             sz += oz / dist * weight;
             /* unaligned avoidance: where will we be closest? */
@@ -407,6 +486,11 @@ static void steer_one(const SteerCtx *s, int i)
                     }
                 }
             }
+        }
+        const float back = sx * ux + sz * uz; /* neighbours steer us aside, they never hold us back */
+        if (back < 0.0f) {
+            sx -= ux * back;
+            sz -= uz * back;
         }
         const float slen2 = sx * sx + sz * sz, cap = r->speed * 0.5f;
         if (slen2 > cap * cap) {
@@ -427,6 +511,9 @@ static void steer_one(const SteerCtx *s, int i)
     } else if (pd2 > (YIELD_DIST + 0.5f) * (YIELD_DIST + 0.5f)) {
         c->yield_t = 0.0f;
     }
+    if (door_wait) {
+        speed = 0.0f;
+    }
     float tvx = ux * speed + sx, tvz = uz * speed + sz;
     const float dvx = tvx - r->vx, dvz = tvz - r->vz, dv2 = dvx * dvx + dvz * dvz, maxdv = ACCEL * dt;
     if (dv2 > maxdv * maxdv) {
@@ -437,8 +524,13 @@ static void steer_one(const SteerCtx *s, int i)
     o->vx = tvx;
     o->vz = tvz;
     float nx = o->x + tvx * dt, nz = o->z + tvz * dt;
-    if (!walkable(W, r->storey, nx, nz)) { /* slide along the free axis */
-        if (walkable(W, r->storey, nx, o->z)) {
+    if (!walkable(W, r->storey, nx, nz)) {
+        /* cutting a corner or pushed by a neighbour: the waypoint itself is always in line of sight */
+        const float step = r->speed * dt, wx = o->x + direct_x * step, wz = o->z + direct_z * step;
+        if (walkable(W, r->storey, wx, wz)) {
+            nx = wx;
+            nz = wz;
+        } else if (walkable(W, r->storey, nx, o->z)) { /* slide along the free axis */
             nz = o->z;
         } else if (walkable(W, r->storey, o->x, nz)) {
             nx = o->x;
@@ -446,6 +538,16 @@ static void steer_one(const SteerCtx *s, int i)
             nx = o->x;
             nz = o->z;
         }
+    }
+    /* wedged against something: ask for a new path now rather than after the stuck time */
+    if (nx == o->x && nz == o->z && !door_wait && speed > 0.0f) {
+        c->blocked_t += dt;
+        if (c->blocked_t > 0.5f) {
+            c->blocked_t = 0.0f;
+            o->state = MOVE_NEED_PATH;
+        }
+    } else {
+        c->blocked_t = 0.0f;
     }
     o->x = nx;
     o->z = nz;
@@ -457,7 +559,7 @@ static void steer_one(const SteerCtx *s, int i)
         c->stuck_x = nx;
         c->stuck_z = nz;
         c->stuck_t = 0.0f;
-    } else if (c->yield_t <= 0.0f) {
+    } else if (c->yield_t <= 0.0f && !door_wait) {
         c->stuck_t += dt;
         if (c->stuck_t > STUCK_TIME) {
             c->stuck_t = 0.0f;
@@ -495,7 +597,9 @@ static void path_phase(NpcWorld *w)
             NavStatus st = nav_poll(w->nav, NAV_CLASS_NPC, h->req, &c->path, NULL);
             if (st == NAV_STATUS_READY) {
                 h->req = 0;
-                h->next = c->path.count > 1 ? 1 : 0;
+                /* from off-centre, start at the path's own first cell */
+                const float fx = c->path.count ? c->path.pts[0].pos.X - h->x : 0.0f, fz = c->path.count ? c->path.pts[0].pos.Z - h->z : 0.0f;
+                h->next = c->path.count > 1 && fx * fx + fz * fz < 0.15f * 0.15f ? 1 : 0;
                 h->state = MOVE_WALK;
                 c->stuck_x = h->x;
                 c->stuck_z = h->z;
@@ -506,6 +610,8 @@ static void path_phase(NpcWorld *w)
             }
         } else if (h->state == MOVE_STUCK) {
             w->stats.stuck_events++;
+            mg_log_warn("npc: %s (%s) stuck at (%.2f, %.2f) storey %d, leg %d/%d, goal (%.2f, %.2f)", c->name, w->data.archetypes[c->archetype].name,
+                        (double)h->x, (double)h->z, h->storey, h->next, c->path.count, (double)c->goal_x, (double)c->goal_z);
             if (++c->stuck_count >= 2) {
                 c->stuck_count = 0;
                 h->state = MOVE_ARRIVED; /* give up on this step */

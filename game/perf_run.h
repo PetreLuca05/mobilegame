@@ -26,6 +26,8 @@ typedef struct PerfRun {
     char scenario[24];
     char run_id[24];   /* --perf-run-id: tools/perf_run.sh checks it comes back */
     bool stamped;
+    char why_failed[160]; /* set by the game (--autotest npcs): the run ends FAILED */
+    char extra_json[320]; /* one more line in the JSON */
     PerfSample last;
     double seconds, start, record_start;
     int wp, wp_count, failed;

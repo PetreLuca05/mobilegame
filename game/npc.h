@@ -48,8 +48,8 @@ typedef struct npc_cold_t {
     char name[24];
     float goal_x, goal_z;
     float home_x, home_z;
-    float stuck_x, stuck_z, stuck_t;
-    float yield_t, squash;
+    float stuck_x, stuck_z, stuck_t, blocked_t;
+    float yield_t;
     float timer, interrupt_t, fade;
     float sit_t;          /* 0 standing at the slot .. 1 on the seat */
     float seat_x, seat_z, seat_yaw;

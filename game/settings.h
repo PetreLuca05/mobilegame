@@ -20,6 +20,10 @@ typedef struct GameSettings {
     bool show_stats;        /* the fps / position text, top left */
     bool show_profiler;     /* debug: scopes and counters on the HUD */
     bool show_slots;        /* debug: NPC slots */
+    bool show_packages;     /* debug: archetype + step over each NPC */
+    bool freeze_npcs;       /* debug */
+    bool respawn_npcs;      /* debug: one shot */
+    float npc_density;      /* 0 off, 0.5 low, 1 normal */
     float stress_count;     /* debug: wandering dummy avatars, 0..400 */
     bool haptics;           /* marker taps (iOS) */
     bool marker_sounds;
@@ -57,6 +61,7 @@ static inline void settings_default(GameSettings *s)
     s->invert_y = false;
     s->show_storeys = false;
     s->show_stats = true;
+    s->npc_density = 1.0f;
     s->td_fov_deg = CAM_FOV_DEG;
     s->td_distance = CAM_DISTANCE;
     s->td_pitch_deg = CAM_PITCH_DEG;

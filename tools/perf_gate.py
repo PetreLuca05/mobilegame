@@ -12,7 +12,7 @@ import os
 import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs"]
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
@@ -31,7 +31,7 @@ def load(path, problems):
 def metrics(d, g):
     s = {x["name"]: x for x in d["scopes"]}
     avg = lambda n: s.get(n, {}).get("avg", 0.0)
-    m = {"cpu_tick_ms": avg("tick") + avg("frame"), "npc_ms": avg("npc"), "render_ms": avg("render"), "draws": d["counters"]["draws"]["avg"],
+    m = {"cpu_tick_ms": avg("tick") + avg("frame"), "npc_ms": avg("npc") + avg("npc.roster"), "render_ms": avg("render"), "draws": d["counters"]["draws"]["avg"],
          "heap_allocs": d["heap_allocs"], "memory_mb": d["resident_mb_max"], "dropped": d["dropped"], "thermal": d["thermal_worst"]}
     m["gpu_effective_ms"] = g["effective_ms"] if g else None
     return m
@@ -58,7 +58,9 @@ def main():
             if m["thermal"] > 1:
                 problems.append(f"{dev} {sc}: thermal state {m['thermal']} above fair")
             if compare:
-                rd, rg = load(f"{ref}/{dev}_{sc}.json", problems), load(f"{ref}/{dev}_{sc}_gpu.json", problems)
+                # a scenario newer than the reference has nothing to regress against; the new run is still required
+                has_ref = os.path.exists(f"{ref}/{dev}_{sc}.json")
+                rd, rg = (load(f"{ref}/{dev}_{sc}.json", problems), load(f"{ref}/{dev}_{sc}_gpu.json", problems)) if has_ref else (None, None)
                 if rd and rg:
                     r = metrics(rd, rg)
                     for name, noise in ABS_NOISE.items():

@@ -97,32 +97,37 @@ static int32_t heap_pop(NavSearchMem *m, int *n)
     return top;
 }
 
-/* Line of sight on the grid: every cell a thin line crosses is walkable. */
+/* Line of sight on the grid: every cell the line between two cell centres
+ * touches is walkable, including both neighbours when it passes exactly through a corner. */
 static bool line_clear(const NavGrid *g, NavCell a, NavCell b)
 {
-    int dx = abs(b.x - a.x), dz = abs(b.z - a.z);
-    int sx = a.x < b.x ? 1 : -1, sz = a.z < b.z ? 1 : -1;
-    int err = dx - dz, x = a.x, z = a.z;
-    while (x != b.x || z != b.z) {
-        if (!walkable(g, x, z)) {
-            return false;
-        }
-        int e2 = 2 * err;
-        if (e2 > -dz && e2 < dx) { /* diagonal step: both side cells must be free too */
+    const int dx = abs(b.x - a.x), dz = abs(b.z - a.z), sx = a.x < b.x ? 1 : -1, sz = a.z < b.z ? 1 : -1;
+    int x = a.x, z = a.z, ix = 0, iz = 0;
+    if (!walkable(g, x, z)) {
+        return false;
+    }
+    while (ix < dx || iz < dz) {
+        const int side = (1 + 2 * ix) * dz - (1 + 2 * iz) * dx;
+        if (side == 0) {
             if (!walkable(g, x + sx, z) || !walkable(g, x, z + sz)) {
                 return false;
             }
-        }
-        if (e2 > -dz) {
-            err -= dz;
             x += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
             z += sz;
+            ix++;
+            iz++;
+        } else if (side < 0) {
+            x += sx;
+            ix++;
+        } else {
+            z += sz;
+            iz++;
+        }
+        if (!walkable(g, x, z)) {
+            return false;
         }
     }
-    return walkable(g, b.x, b.z);
+    return true;
 }
 
 static NavPoint point_at(const NavGrid *g, NavCell c, int storey)

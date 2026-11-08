@@ -1,6 +1,7 @@
 #include "avatar.h"
 #include "player.h"
 
+#include <string.h>
 #include <math.h>
 
 #include "scene.h"
@@ -204,6 +205,20 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 20, 28, white);
     m->body = mb_upload(&mb, g);
     mb_reset(&mb);
+    mb_cylinder(&mb, HMM_M4D(1.0f), 0.018f, 0.86f, 8, white); /* cane: shaft + handle */
+    mb_cylinder(&mb, HMM_MulM4(HMM_Translate(HMM_V3(0, 0.86f, 0)), HMM_Rotate_RH(HMM_AngleDeg(90.0f), HMM_V3(1, 0, 0))), 0.02f, 0.12f, 8, white);
+    m->cane = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_cylinder(&mb, HMM_M4D(1.0f), 0.3f, 0.025f, 20, white); /* sun hat: brim + crown */
+    mb_cylinder(&mb, HMM_Translate(HMM_V3(0, 0.025f, 0)), 0.17f, 0.1f, 16, white);
+    m->hat = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_cylinder(&mb, HMM_M4D(1.0f), 0.09f, 0.16f, 12, white);
+    m->bucket = mb_upload(&mb, g);
+    mb_reset(&mb);
+    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.035f, 0.005f, 0.005f), dark);
+    m->brow = mb_upload(&mb, g);
+    mb_reset(&mb);
     mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 9, 12, white);
     m->lod_body[0] = mb_upload(&mb, g);
     mb_reset(&mb);
@@ -362,6 +377,7 @@ AvatarLook avatar_look_from_skin(NetSkin s)
 {
     const Suit *suit = &k_suits[clampu(s.suit, AVATAR_SUITS)];
     AvatarLook l;
+    memset(&l, 0, sizeof(l));
     l.skin = k_skin_colors[clampu(s.skin, AVATAR_SKIN_COLORS)];
     l.hair = k_hair_colors[clampu(s.hair_color, AVATAR_HAIR_COLORS)];
     l.outfit = suit->outfit;
@@ -445,6 +461,7 @@ typedef struct DrawCtx {
     uint32_t flags;  /* GFX_DRAW_* for every part */
     float outdoor;   /* tint alpha: 1 sun, 0 indoor light */
     const GfxMaterial *override; /* ghost / x-ray pass: every part with this */
+    float hide;      /* screen-door fade of the whole avatar */
 } DrawCtx;
 
 static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, Surface surf)
@@ -458,6 +475,7 @@ static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, 
     GfxMaterial mat = surf == SURF_FLAT     ? mat_toon_flat(c)
                       : surf == SURF_GLOSSY ? mat_toon_glossy(c, 0.35f, 1.0f)
                                             : mat_toon(c, 0.3f);
+    mat.hide = dc->hide;
     gfx_draw(dc->g, mesh, &m, &mat, dc->flags);
 }
 
@@ -469,11 +487,12 @@ static void outlined(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t col
         return;
     }
     GfxMaterial ol = mat_outline(mg_rgb(OUTLINE_COLOR));
+    ol.hide = dc->hide;
     gfx_draw(dc->g, mesh, &m, &ol, dc->flags);
 }
 
 /* contact shadow: shrinks and fades with height above the ground */
-static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const AvatarPose *p, const ColWorld *world)
+static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const AvatarPose *p, const ColWorld *world, float scale)
 {
     float ground = p->feet.Y;
     if (p->flat_ground || (world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground))) {
@@ -481,7 +500,7 @@ static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const Avat
         float k = 1.0f / (1.0f + h * 0.8f);
         HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + 0.02f, p->feet.Z)); /* above decals */
         sm = HMM_MulM4(sm, HMM_Rotate_RH(HMM_AngleDeg(-90.0f), HMM_V3(1, 0, 0)));
-        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k, 0.46f * k, 1.0f))); /* +10 % for the top-down view */
+        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k * scale, 0.46f * k * scale, 1.0f))); /* +10 % for the top-down view */
         GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, 0.45f * k), GFX_SPRITE_DISC);
         gfx_draw(g, m->shadow, &sm, &sh, GFX_DRAW_GROUND);
     }
@@ -489,12 +508,12 @@ static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const Avat
 
 /* LOD 1 and 2: the same transforms, far fewer parts */
 static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p, HMM_Mat4 root,
-                            HMM_Mat4 body, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
+                            HMM_Mat4 body, HMM_Mat4 body_s, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
 {
     const int l = p->lod >= 2 ? 1 : 0;
     HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y, 0)), HMM_Scale(HMM_V3(hs, hs, hs)));
     if (l == 0) {
-        outlined(dc, m->lod_body[0], body, look->outfit);
+        outlined(dc, m->lod_body[0], body_s, look->outfit);
         outlined(dc, m->lod_head[0], head, look->skin);
         if (look->hair_style != HAIR_NONE) {
             part(dc, m->lod_hair, head, look->hair, SURF_MATTE);
@@ -502,7 +521,7 @@ static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const Avat
         part(dc, m->lod_hand, compose(root, lh), look->skin, SURF_MATTE);
         part(dc, m->lod_hand, compose(root, rh), look->skin, SURF_MATTE);
     } else {
-        part(dc, m->lod_body[1], body, look->outfit, SURF_MATTE);
+        part(dc, m->lod_body[1], body_s, look->outfit, SURF_MATTE);
         part(dc, m->lod_head[1], head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
     }
 }
@@ -514,28 +533,58 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
                         override        ? GFX_DRAW_NO_SHADOW
                         : p->preview    ? GFX_DRAW_PREVIEW
                                         : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC,
-                        p->indoors ? 0.0f : 1.0f, override};
+                        p->indoors ? 0.0f : 1.0f, override, p->hide};
     HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(p->yaw, HMM_V3(0, 1, 0)));
     const float phase = a->stride * (2.0f * HMM_PI32 / 1.6f); /* one bob cycle per 0.8 m step */
     float bob = (0.02f * HMM_SinF(phase * 2.0f)) * a->swing + 0.008f * HMM_SinF(a->idle_t * 2.4f) * (1.0f - a->swing);
 
+    /* ages: proportion, posture and motion (players are always adults) */
+    float sw = 1.0f, sh = 1.0f, head_k = 1.0f, base = BODY_BASE, tilt = 0.0f, hand_dy = 0.0f, eye_k = 1.0f;
+    if (look->age == AVATAR_CHILD) {
+        sw = 0.75f;
+        sh = 0.60f;
+        head_k = 0.92f;
+        base = 0.32f;
+        tilt = HMM_AngleDeg(-4.0f);
+        eye_k = 1.2f;
+        bob *= 1.5f;
+    } else if (look->age == AVATAR_ELDER) {
+        sw = sh = 0.95f;
+        base = 0.46f;
+        tilt = HMM_AngleDeg(6.0f);
+        hand_dy = -0.08f;
+        eye_k = 0.9f;
+        bob *= 0.5f;
+    }
+    base -= 0.25f * p->sit + 0.3f * p->crouch;
+    if (p->lying > 0.0f) { /* on the mattress, head at the pillow end */
+        root = HMM_MulM4(root, HMM_Translate(HMM_V3(0.0f, 0.62f * p->lying, -0.98f * p->lying)));
+        root = HMM_MulM4(root, HMM_Rotate_RH(HMM_AngleDeg(80.0f) * p->lying, HMM_V3(1, 0, 0)));
+        bob *= 0.4f;
+    }
+    if (p->sway != 0.0f) {
+        root = HMM_MulM4(root, HMM_Rotate_RH(p->sway, HMM_V3(0, 0, 1)));
+    }
+
     /* body: floats 0.5 m up, tilts about its base */
-    HMM_Mat4 body = compose(root, HMM_V3(0, BODY_BASE + bob, 0));
-    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd, HMM_V3(1, 0, 0)));
+    HMM_Mat4 body = compose(root, HMM_V3(0, base + bob, 0));
+    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd - tilt, HMM_V3(1, 0, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side, HMM_V3(0, 0, 1)));
+    const HMM_Mat4 body_s = HMM_MulM4(body, HMM_Scale(HMM_V3(sw, sh, sw)));
     const bool female = look->body == BODY_FEMALE;
     if (p->lod > 0 && !override) {
-        const float bh = female ? BODY_H * 0.955f : BODY_H;
-        const float low_hs = female ? 0.956f : 1.0f;
+        const float bh = (female ? BODY_H * 0.955f : BODY_H) * sh;
+        const float low_hs = (female ? 0.956f : 1.0f) * head_k;
         const float low_swing = HMM_SinF(phase) * 0.16f * a->swing;
-        draw_avatar_low(&dc, m, look, p, root, body, bh + HEAD_GAP + HEAD_R * low_hs - 2.0f * bob, low_hs,
-                        HMM_V3(-HAND_X, HAND_Y + bob, low_swing), HMM_V3(HAND_X, HAND_Y + bob, -low_swing * 0.6f - 0.04f));
-        draw_contact_shadow(g, m, p, world);
+        const float low_hand_y = HAND_Y * sh + hand_dy + bob + base - BODY_BASE;
+        draw_avatar_low(&dc, m, look, p, root, body, body_s, bh + HEAD_GAP + HEAD_R * low_hs - 2.0f * bob, low_hs,
+                        HMM_V3(-HAND_X * sw, low_hand_y, low_swing), HMM_V3(HAND_X * sw, low_hand_y, -low_swing * 0.6f - 0.04f));
+        draw_contact_shadow(g, m, p, world, look->age == AVATAR_CHILD ? 0.75f : 1.0f);
         return;
     }
-    outlined(&dc, female ? m->body_female : m->body, body, look->outfit);
+    outlined(&dc, female ? m->body_female : m->body, body_s, look->outfit);
     /* chest details were modelled on the male body: scale them onto the female one */
-    HMM_Mat4 chest = female ? HMM_MulM4(body, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body;
+    HMM_Mat4 chest = female ? HMM_MulM4(body_s, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body_s;
     const bool coat = look->outfit_style == OUTFIT_COAT;
     if (look->outfit_style != OUTFIT_PLAIN) {
         part(&dc, m->vneck, chest, look->trim, SURF_MATTE);
@@ -554,13 +603,13 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     } else if (look->decal == DECAL_POCKET) {
         part(&dc, m->pocket, chest, look->outfit == 0xF5F7FA || look->outfit == 0xF2F2F2 ? 0xE6E9EE : look->accent,
              SURF_MATTE);
-    } else if (look->accessory != ACC_STETHOSCOPE) {
+    } else if (look->decal != DECAL_NONE && look->accessory != ACC_STETHOSCOPE) {
         part(&dc, m->decal, compose(chest, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
     }
 
     /* head rides on the body top, bobbing in opposite phase; smaller on the female body */
-    const float body_h = female ? BODY_H * 0.955f : BODY_H;
-    const float hs = female ? 0.956f : 1.0f; /* 0.43 m head */
+    const float body_h = (female ? BODY_H * 0.955f : BODY_H) * sh;
+    const float hs = (female ? 0.956f : 1.0f) * head_k; /* 0.43 m head */
     HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob, 0));
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));
     outlined(&dc, m->head, head, look->skin);
@@ -570,10 +619,19 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     const float eye_y = 0.03f, eye_x = 0.075f;
     const float fz = -HEAD_R * 0.93f;
     if (look->accessory == ACC_SUNGLASSES) {
-        part(&dc, m->glasses, compose(head, HMM_V3(0, eye_y, fz - 0.012f)), 0x23222B, SURF_GLOSSY);
+        part(&dc, m->glasses, compose(head, HMM_V3(0, eye_y, fz - 0.012f)), (look->extras & AVATAR_EXTRA_READING_GLASSES) ? 0x8FA3B8 : 0x23222B,
+             SURF_GLOSSY);
     } else {
-        part(&dc, m->eye, compose(head, HMM_V3(-eye_x, eye_y, fz + 0.004f)), 0x23222B, SURF_FLAT);
-        part(&dc, m->eye, compose(head, HMM_V3(eye_x, eye_y, fz + 0.004f)), 0x23222B, SURF_FLAT);
+        const HMM_Mat4 eye_s = HMM_Scale(HMM_V3(eye_k, eye_k, 1.0f));
+        part(&dc, m->eye, HMM_MulM4(compose(head, HMM_V3(-eye_x, eye_y, fz + 0.004f)), eye_s), 0x23222B, SURF_FLAT);
+        part(&dc, m->eye, HMM_MulM4(compose(head, HMM_V3(eye_x, eye_y, fz + 0.004f)), eye_s), 0x23222B, SURF_FLAT);
+    }
+    if (look->age == AVATAR_ELDER) {
+        part(&dc, m->brow, compose(head, HMM_V3(-eye_x, eye_y + 0.05f, fz + 0.004f)), 0x8A8A8A, SURF_FLAT);
+        part(&dc, m->brow, compose(head, HMM_V3(eye_x, eye_y + 0.05f, fz + 0.004f)), 0x8A8A8A, SURF_FLAT);
+    }
+    if (look->extras & AVATAR_EXTRA_HAT) {
+        part(&dc, m->hat, compose(head, HMM_V3(0, HEAD_R * 0.82f, 0)), 0xE8D8A0, SURF_MATTE);
     }
     if (look->accessory == ACC_MASK) { /* the mask covers nose and mouth */
         outlined(&dc, m->mask, head, MASK_COLOR);
@@ -593,14 +651,22 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     /* hands: hip height, swing fore/aft while walking, both rise on jumps */
     float swing = HMM_SinF(phase) * 0.16f * a->swing;
     float lift = a->raise * 0.5f;
-    float spread = HAND_X + a->raise * 0.08f;
-    HMM_Vec3 lh = HMM_V3(-spread, HAND_Y + lift + bob, swing);
-    HMM_Vec3 rh = HMM_V3(spread, HAND_Y + lift + bob, -swing * 0.6f - 0.04f);
+    float spread = (HAND_X + a->raise * 0.08f) * sw;
+    const float hand_y = HAND_Y * sh + hand_dy + lift + bob + base - BODY_BASE;
+    const float lap = -0.2f * p->sit; /* seated: hands forward on the lap */
+    HMM_Vec3 lh = HMM_V3(-spread * (1.0f - 0.45f * p->sit), hand_y, swing + lap);
+    HMM_Vec3 rh = HMM_V3(spread * (1.0f - 0.45f * p->sit), hand_y, -swing * 0.6f - 0.04f + lap);
     outlined(&dc, m->hand, compose(root, lh), look->skin);
     outlined(&dc, m->hand, compose(root, rh), look->skin);
+    if ((look->extras & AVATAR_EXTRA_CANE) && p->sit <= 0.0f && p->lying <= 0.0f) {
+        part(&dc, m->cane, compose(root, HMM_V3(spread + 0.03f, 0.0f, -0.08f)), 0x6B4A2E, SURF_MATTE);
+    }
+    if ((look->extras & AVATAR_EXTRA_BUCKET) && p->lying <= 0.0f) {
+        part(&dc, m->bucket, compose(root, HMM_V3(lh.X, lh.Y - 0.24f, lh.Z)), 0x9AA0A6, SURF_MATTE);
+    }
 
-    if (!override) {
-        draw_contact_shadow(g, m, p, world);
+    if (!override && p->lying <= 0.0f) {
+        draw_contact_shadow(g, m, p, world, look->age == AVATAR_CHILD ? 0.75f : 1.0f);
     }
 }
 

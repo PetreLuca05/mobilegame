@@ -197,8 +197,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   wall, door frames - the x-ray covers those).
 - X-ray silhouettes (M5-X, `shaders/xray*.hlsl`, `GFX_MAT_XRAY_RIM` /
   `GFX_MAT_XRAY`, `mat_xray`): the parts of an avatar hidden behind
-  geometry show as the real model in its accent colour (full saturation
-  x 0.85), dithered 60 %, with a 2 px pure-black rim (mesh pushed out along
+  geometry show as the real model in solid black,
+  dithered 60 %, with a 2 px pure-black rim (mesh pushed out along
   its normals, drawn first). Depth GREATER, no depth write. Draw order
   (`draw_bucket`): solid world -> x-ray -> avatars (`GFX_DRAW_DYNAMIC`) ->
   dithered geometry (`hide` > 0). Keep this order. The x-ray must run before
@@ -395,6 +395,19 @@ ro.docvex.mobilegame --offline --time 19`, then export the
   walks to. Developer -> Show slots.
 - `assets/npcs.json`: archetypes and roster coefficients; `assets/npc_names.json`: names. Rows with `"enabled": false` are
   reserved data (night shift) and ignored; there is no time-of-day logic.
+- Sim (`game/npc_sim.c`): `npc_tick` on the fixed tick; steering runs on the job system, reading last tick and writing this
+  tick; paths (`NAV_CLASS_NPC`, at most 2 requests and 2 finished per tick) and packages (`game/npc_pkg.c`) run on the main
+  thread in index order. Packages compile to step lists (goto, post, sit, bed, queue, wander, escort, leave). Rates: every
+  tick near the player on the view floor, 1/3 far, 1/6 on other storeys (path following only).
+- Hooks: `npc_spawn`, `npc_despawn`, `npc_set_package`, `npc_find`, `on_arrived`, `on_package_changed`.
+- Roster: computed from the room graph in `compute_targets` (47 today), steady-state at start, refilled as people leave.
+  NPCs are not replicated: the seed is the room topic's hash online and `npc_seed` in the save offline (v3).
+- Ages and roles: `AvatarLook.age` / `extras`, `AvatarPose.sit` / `lying` / `crouch` / `sway` / `hide` (`game/npc_look.c`).
+- Players walk straight through NPCs; NPCs side-step. Name tags are for real players only; NPC names wait for interaction (M8).
+- Settings -> NPC density (`npc_density`). Developer: Show slots, Show NPC packages, Freeze NPCs, Respawn NPCs.
+- `--autotest npcs [S]` (default 300 s, also a perf scenario): at least 44 alive, no NPC stuck over 2 s, none off the grid,
+  children escorted and only in allowed rooms, route completed. `--autotest npcs-bench`: real sim at 44 and 200 NPCs on 1 and
+  all threads, positions compared. Other autotests run with no NPCs so their numbers stay comparable.
 
 ## Performance (PERF-1)
 

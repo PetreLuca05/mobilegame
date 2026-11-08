@@ -24,7 +24,12 @@ enum { OUTFIT_PLAIN, OUTFIT_COAT, OUTFIT_SCRUBS };
 enum { HAIR_NONE, HAIR_SHORT, HAIR_BOB, HAIR_BUN, HAIR_SPIKY, HAIR_CURLY };
 enum { ACC_NONE, ACC_SUNGLASSES, ACC_CAT_EARS, ACC_MASK, ACC_STETHOSCOPE };
 enum { BODY_MALE, BODY_FEMALE };
-enum { DECAL_CROSS, DECAL_POCKET, DECAL_BADGE };
+enum { DECAL_CROSS, DECAL_POCKET, DECAL_BADGE, DECAL_NONE };
+enum { AVATAR_ADULT, AVATAR_CHILD, AVATAR_ELDER };
+#define AVATAR_EXTRA_CANE 1u
+#define AVATAR_EXTRA_HAT 2u
+#define AVATAR_EXTRA_BUCKET 4u
+#define AVATAR_EXTRA_READING_GLASSES 8u /* lighter lenses than the sunglasses */
 
 typedef struct AvatarLook {
     uint32_t skin, outfit, hair, accent; /* 0xRRGGBB */
@@ -34,6 +39,8 @@ typedef struct AvatarLook {
     uint8_t outfit_style; /* OUTFIT_* */
     uint8_t hair_style;   /* HAIR_* */
     uint8_t accessory;    /* ACC_* */
+    uint8_t age;          /* AVATAR_ADULT (players) / CHILD / ELDER: proportions and motion */
+    uint8_t extras;       /* AVATAR_EXTRA_* */
 } AvatarLook;
 
 /* The default character: male doctor, white coat, short dark hair, mask. */
@@ -45,6 +52,7 @@ typedef struct AvatarMeshes {
     GfxMeshId body_female;
     /* LOD1 (~40 % of the triangles, one hair cap, no face), LOD2 (body + head) */
     GfxMeshId lod_body[2], lod_head[2], lod_hand, lod_hair;
+    GfxMeshId cane, hat, bucket, brow;
 } AvatarMeshes;
 
 /* Animation state, advanced once per rendered frame. */
@@ -67,6 +75,12 @@ typedef struct AvatarPose {
     bool preview; /* settings preview camera only, no shadow */
     bool flat_ground; /* feet are on the floor: no ray cast for the contact shadow (NPCs) */
     uint8_t lod;      /* 0 full, 1 coarse, 2 body + head */
+    /* NPC poses (all 0 for players) */
+    float sit;        /* 0 standing .. 1 seated: body lowered, hands on the lap */
+    float lying;      /* 0 .. 1 in bed: pitched 80 degrees */
+    float crouch;     /* 0 .. 1: lowered, hands down */
+    float sway;       /* side-to-side (mopping), radians */
+    float hide;       /* screen-door fade: spawning in or leaving */
 } AvatarPose;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);

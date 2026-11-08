@@ -55,6 +55,10 @@
     {"name": "child", "type": "visitor", "age": [1, 0, 0], "speed": 1.9, "look": "civilian", "storeys": [0, 1],
      "packages": [{"kind": "escort"}]},
 
+    {"name": "wanderer", "type": "bench", "age": [0, 1, 0], "speed": 1.6, "look": "civilian", "storeys": [0],
+     "_comment": "autotest only: a plain wanderer, never in the roster",
+     "packages": [{"kind": "wander", "radius": 8}]},
+
     {"name": "night_guard", "enabled": false, "type": "staff", "age": [0, 1, 0], "speed": 1.6, "look": "security", "storeys": [-1],
      "_comment": "reserved: night shift",
      "packages": [{"kind": "post", "tags": ["ENTRANCE_IN"]}]},

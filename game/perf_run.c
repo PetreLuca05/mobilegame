@@ -28,6 +28,7 @@ static const Scenario k_scenarios[] = {
     {"yard", -12.0f, 0.1f, 10.0f, 0, 0.0f, {{-20.0f, 10.0f, -1}, {20.0f, 10.0f, -1}}, 2},
     {"lobby", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2},
     {"corridor_f2", -10.4f, 8.1f, -3.0f, 0, 0.0f, {{10.4f, -3.0f, 2}, {-10.4f, -3.0f, 2}}, 2},
+    {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
 
@@ -54,9 +55,9 @@ void perf_run_init(PerfRun *p, int argc, char **argv)
         if (SDL_strcmp(argv[i], "--autotest") != 0) {
             continue;
         }
-        if (SDL_strcmp(argv[i + 1], "stress200") == 0) {
-            SDL_snprintf(p->scenario, sizeof(p->scenario), "stress200");
-            p->seconds = i + 2 < argc && argv[i + 2][0] != '-' ? SDL_atof(argv[i + 2]) : 180.0;
+        if (SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0) {
+            SDL_snprintf(p->scenario, sizeof(p->scenario), "%s", argv[i + 1]);
+            p->seconds = i + 2 < argc && argv[i + 2][0] != '-' ? SDL_atof(argv[i + 2]) : (argv[i + 1][0] == 's' ? 180.0 : 300.0);
         } else if (SDL_strcmp(argv[i + 1], "perf") == 0 && i + 2 < argc) {
             SDL_snprintf(p->scenario, sizeof(p->scenario), "%s", argv[i + 2]);
             p->seconds = i + 3 < argc && argv[i + 3][0] != '-' ? SDL_atof(argv[i + 3]) : 60.0;
@@ -150,6 +151,9 @@ static void write_report(const PerfRun *p, MgApp *app)
             MB(gm.mesh_vb_reserved), MB(gm.mesh_ib_reserved), MB(gm.mesh_vb_used), MB(gm.mesh_ib_used), MB(gm.ui_buffers), MB(gm.instance_buffers),
             MB(app->perm.size), MB(app->perm.used), MB(app->perm.peak), MB(app->frame.peak), MB(p->last.nav_bytes), MB(p->last.npc_bytes));
 #undef MB
+    }
+    if (p->extra_json[0]) {
+        PUT("%s,\n", p->extra_json);
     }
     PUT("\"counters\": {\n");
     for (int i = 0; i < PERF_FIELDS; i++) {
@@ -247,7 +251,10 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     if (app->time - p->record_start >= p->seconds) {
         p->done = true;
         write_report(p, app);
-        mg_log_info("AUTOTEST PASSED");
+        if (p->why_failed[0]) {
+            mg_log_error("autotest %s: %s", p->scenario, p->why_failed);
+        }
+        mg_log_info("AUTOTEST %s", p->why_failed[0] ? "FAILED" : "PASSED");
         app->quit_requested = true;
     }
 }

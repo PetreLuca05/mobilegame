@@ -6,7 +6,7 @@
 #include "core/arena.h"
 #include "core/mg_types.h"
 
-#define NPC_ARCHETYPES 16
+#define NPC_ARCHETYPES 18
 #define NPC_PACKAGES 3
 #define NPC_STEPS 8
 #define NPC_NAME_POOL 64
