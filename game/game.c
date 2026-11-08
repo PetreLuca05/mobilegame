@@ -1400,6 +1400,9 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         avatar_animate(&c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
         g->rendered_entities++;
+        if (g->settings.show_npc_paths && h->state == MOVE_WALK) {
+            markers_draw_path(&g->markers, app->gfx, &c->path, h->next, feet, floor, 0xFFD166FFu, 1.0f);
+        }
         if (g->settings.show_packages && (h->storey < 0 ? 0 : (int)h->storey) == floor) { /* debug only: name tags are for real players */
             char label[64];
             SDL_snprintf(label, sizeof(label), "%s %d.%d", g->npcs.data.archetypes[c->archetype].name, c->step, c->phase);

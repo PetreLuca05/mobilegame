@@ -401,10 +401,14 @@ ro.docvex.mobilegame --offline --time 19`, then export the
   tick near the player on the view floor, 1/3 far, 1/6 on other storeys (path following only).
 - Hooks: `npc_spawn`, `npc_despawn`, `npc_set_package`, `npc_find`, `on_arrived`, `on_package_changed`.
 - Roster: computed from the room graph in `compute_targets` (47 today), steady-state at start, refilled as people leave.
-  NPCs are not replicated: the seed is the room topic's hash online and `npc_seed` in the save offline (v3).
+  NPCs are not replicated: the seed is the room topic's hash online and `npc_seed` in the save offline (v4, with `npc_tick`).
+- The sim depends only on seed and tick (see `docs/M7.md`): never read the player or the frame rate in it. Reactions to the
+  local player and idle touches belong in `draw_npcs`. Late joiners and Continue replay from the seed (`npc_catch_up`, 1 ms per
+  frame); tick 0 of a room is the earliest `npc_epoch` in Presence. `--npc-seed N`, `--npc-sync-log` (hash every 600 ticks),
+  `--autotest npcs-save` then `npcs-continue`.
 - Ages and roles: `AvatarLook.age` / `extras`, `AvatarPose.sit` / `lying` / `crouch` / `sway` / `hide` (`game/npc_look.c`).
 - Players walk straight through NPCs; NPCs side-step. Name tags are for real players only; NPC names wait for interaction (M8).
-- Settings -> NPC density (`npc_density`). Developer: Show slots, Show NPC packages, Freeze NPCs, Respawn NPCs.
+- Settings -> NPC density (`npc_density`). Developer: Show slots, Show NPC packages, Show NPC paths, Freeze NPCs, Respawn NPCs. Low density draws half and simulates all.
 - `--autotest npcs [S]` (default 300 s, also a perf scenario): at least 44 alive, no NPC stuck over 2 s, none off the grid,
   children escorted and only in allowed rooms, route completed. `--autotest npcs-bench`: real sim at 44 and 200 NPCs on 1 and
   all threads, positions compared. Other autotests run with no NPCs so their numbers stay comparable.

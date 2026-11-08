@@ -207,6 +207,10 @@ Perf gate passed on all five scenarios (raw files in `docs/perf/m7/`). The 47-NP
 
 Real NPC sim, 1 thread against 6, iPad (`--autotest npcs-bench`, positions identical): 44 NPCs 0.008 / 0.013 ms per tick, 200 NPCs 0.021 / 0.027 ms. Dispatch costs more than it saves at these sizes, so the job system gives no speed-up yet.
 
+Decision: the dispatch stays, with a threshold (`JOBS_MIN_NPCS` 100): NPC steering and culling run on one thread below 100 NPCs and on the job system above it.
+
+Every NPC updates every tick (viewer-based update rates would make clients differ): 0.08 ms for the 47-NPC roster on the iPad.
+
 Two late-frame allocation sources were removed for this gate: uploads now use a fixed ring of preallocated buffers, and SDL's GPU pools are filled at startup. The gate now also fails on dropped frames. `docs/perf/after/` gained the `npcs` scenario as its reference.
 
 ## Reproducing

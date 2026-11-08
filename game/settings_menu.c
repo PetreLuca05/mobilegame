@@ -139,6 +139,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += 44.0f;
         ui_toggle(ui, "Show NPC packages", x, y, cw, &s->show_packages);
         y += 44.0f;
+        ui_toggle(ui, "Show NPC paths", x, y, cw, &s->show_npc_paths);
+        y += 44.0f;
         ui_toggle(ui, "Freeze NPCs", x, y, cw, &s->freeze_npcs);
         y += 44.0f;
         if (ui_button(ui, "Respawn NPCs##npc", x, y, cw, 40.0f, false)) {

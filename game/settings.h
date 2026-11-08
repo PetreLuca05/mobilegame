@@ -21,6 +21,7 @@ typedef struct GameSettings {
     bool show_profiler;     /* debug: scopes and counters on the HUD */
     bool show_slots;        /* debug: NPC slots */
     bool show_packages;     /* debug: archetype + step over each NPC */
+    bool show_npc_paths;    /* debug */
     bool freeze_npcs;       /* debug */
     bool respawn_npcs;      /* debug: one shot */
     float npc_density;      /* 0 off, 0.5 low, 1 normal */
