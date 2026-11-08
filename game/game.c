@@ -1984,8 +1984,12 @@ void game_frame(MgApp *app, float alpha)
     }
     SettingsAccount acct = account_view(g);
     g->menu.in_room = g->session.mode != MODE_OFFLINE;
+    const bool stats_was = s->show_stats;
     MenuAction action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt,
                                       app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, app->corner_clearance, g->status);
+    if (s->show_stats != stats_was) {
+        save_prefs(g); /* per device, and a kill must not lose it */
+    }
     handle_menu_action(g, app, action);
     poll_sign_in(g, app);
     app_text_input(app, g->menu.open && g->menu.editing_name);
@@ -2329,7 +2333,7 @@ void game_frame(MgApp *app, float alpha)
     hud.main_ms = gs.main_cpu_ms;
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
-    if (s->show_stats) {
+    if (s->show_stats && !g->perf.active) { /* perf numbers never include the overlay */
         /* beside the lift panel while it is open */
         const float hud_x = g->lift_panel_ok && g->lift_panel.slide > 0.0f ? g->lift_panel.x + g->lift_panel.w + 10.0f : app->safe_left + 10.0f + app->corner_clearance;
         hud_draw(app->gfx, &app->font, hud_x, app->safe_top + 8.0f, &hud);

@@ -144,6 +144,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
         y += 44.0f;
 #endif
+        ui_toggle(ui, "Performance stats##dev_perf", x, y, cw, &s->show_stats);
+        y += 44.0f;
         ui_toggle(ui, "Force elevator panel", x, y, cw, &s->force_lift_panel);
         y += 44.0f;
         ui_toggle(ui, "Show safe rect", x, y, cw, &s->show_safe_rect);
@@ -264,11 +266,11 @@ static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float
 /* ------------------------------------------------------------------ panel */
 
 /* In-game pause: a centred card, at most 420 pt wide. */
-static MenuAction pause_card(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
+static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_pt, float h_pt)
 {
     MenuAction action = MENU_NONE;
     const float row = 50.0f, pad = 18.0f;
-    const int rows = m->in_room ? 4 : 3;
+    const int rows = m->in_room ? 5 : 4;
     const float cw = mg_minf(420.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
     const float x = (w_pt - cw) * 0.5f, top = (h_pt - ch) * 0.5f;
     ui_block(ui, 0, 0, w_pt, h_pt);
@@ -288,6 +290,9 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
         m->card = false;
         m->from_card = true;
     }
+    y += row + 8.0f;
+    SDL_snprintf(label, sizeof(label), "%s##p_perf", str("performance_row"));
+    ui_toggle(ui, label, bx, y + 7.0f, bw, &s->show_stats);
     y += row + 8.0f;
     SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
@@ -337,7 +342,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     }
 
     if (m->card) {
-        return pause_card(m, ui, w_pt, h_pt);
+        return pause_card(m, ui, s, w_pt, h_pt);
     }
 
     /* full screen, two columns: back + title + tabs left (35 %), content right (65 %) */

@@ -213,7 +213,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   walls"; Developer -> "X-ray always". Toon outlines are pure black.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
-- Prefs keys: `perf_hud` (Settings -> "Show performance stats", the top-left text), `td_fov`, `td_distance`, `td_pitch` (Settings sliders), `show_own_name`
+- Prefs keys: `perf_hud` (default off; Pause -> Performance, Settings -> "Show performance stats", Developer -> "Performance stats"; the top-left text, saved at once), `td_fov`, `td_distance`, `td_pitch` (Settings sliders), `show_own_name`
   (the M5 camera keys are ignored and dropped on the next write).
 
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).

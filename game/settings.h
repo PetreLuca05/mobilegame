@@ -64,7 +64,7 @@ static inline void settings_default(GameSettings *s)
     s->pitch_deg_per_pt = 0.2f;
     s->invert_y = false;
     s->show_storeys = false;
-    s->show_stats = true;
+    s->show_stats = false;
     s->npc_density = 1.0f;
     s->chat_bubbles = 2;
     s->td_fov_deg = CAM_FOV_DEG;
