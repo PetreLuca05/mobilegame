@@ -203,10 +203,12 @@ bool game_init(MgApp *app)
     g->profile.skin = AVATAR_DEFAULT_SKIN;
     g->profile.guest = true;
     const char *skin_arg = arg_value(app->argc, app->argv, "--skin");
-    int sp_, sh_, sa_;
-    if (skin_arg && SDL_sscanf(skin_arg, "%d,%d,%d", &sp_, &sh_, &sa_) == 3) {
+    int v[6];
+    if (skin_arg && SDL_sscanf(skin_arg, "%d,%d,%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) {
+        /* --skin body,skin,hair,hair_color,suit,accessory */
         g->skin_override = true;
-        g->override_skin = (NetSkin){.palette = (uint8_t)sp_, .hair = (uint8_t)sh_, .accessory = (uint8_t)sa_};
+        g->override_skin = (NetSkin){.body = (uint8_t)v[0], .skin = (uint8_t)v[1], .hair = (uint8_t)v[2],
+                                     .hair_color = (uint8_t)v[3], .suit = (uint8_t)v[4], .accessory = (uint8_t)v[5]};
         g->profile.skin = g->override_skin;
     }
     SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "Player");
