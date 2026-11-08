@@ -117,6 +117,7 @@ add_library(mg_engine STATIC
   engine/core/arena.c
   engine/core/assets.c
   engine/core/log.c
+  engine/core/png_write.c
   engine/core/time.c
   engine/platform/app_sdl.c
   engine/platform/input_touch.c

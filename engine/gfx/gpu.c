@@ -11,6 +11,7 @@
 
 #include "core/assets.h"
 #include "core/log.h"
+#include "core/png_write.h"
 #include "core/time.h"
 #include "gfx.h"
 #include "material.h"
@@ -198,6 +199,8 @@ struct GfxContext {
     uint32_t swap_w, swap_h;
     bool in_frame;
     bool paused;
+    char shot_path[512]; /* screenshot after this frame ("" = none) */
+    uint32_t ui_px_w, ui_px_h; /* pixel size of the target the UI is drawn into */
     GfxSceneParams scene;
 
 #ifdef MG_RENDER_FULL
@@ -987,16 +990,21 @@ void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, 
     g->preview_bg = background;
 }
 
-/* Bucket 0: the world (grouped by material, sprites far-to-near); 1: the
- * x-ray passes, tested against the world's depth only; 2: avatars
+/* Bucket 0: the solid world (grouped by material, sprites far-to-near);
+ * 1: the x-ray passes, tested against the solid world's depth only; 2: avatars
  * (GFX_DRAW_DYNAMIC), which then paint over the x-ray wherever they are
- * visible - so an avatar's own parts never x-ray through each other. */
+ * visible - so an avatar's own parts never x-ray through each other; 3:
+ * dithered (fading) geometry, so a faded wall's remaining pixels neither
+ * trigger the x-ray nor hide the player behind it. */
 static int draw_bucket(const DrawItem *d)
 {
     if (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) {
         return 1;
     }
-    return (d->flags & GFX_DRAW_DYNAMIC) ? 2 : 0;
+    if (d->flags & GFX_DRAW_DYNAMIC) {
+        return 2;
+    }
+    return d->hide > 0.0f ? 3 : 0;
 }
 
 static void sort_draws(GfxContext *g)
@@ -1567,7 +1575,7 @@ static void blur_scene(GfxContext *g, uint32_t rw, uint32_t rh)
 static void draw_preview_image(GfxContext *g, SDL_GPURenderPass *pass)
 {
     const float *r = g->preview_rect;
-    float px_per_pt = (float)g->swap_w / g->ui_w_pt;
+    float px_per_pt = (float)g->ui_px_w / g->ui_w_pt;
     SDL_BindGPUGraphicsPipeline(pass, g->panel_pipe);
     SDL_GPUTextureSamplerBinding tsb = {g->preview_color, g->linear_clamp};
     SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
@@ -1630,7 +1638,7 @@ static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
     if (!g->blur_a) {
         return;
     }
-    float px_per_pt = (float)g->swap_w / g->ui_w_pt;
+    float px_per_pt = (float)g->ui_px_w / g->ui_w_pt;
     SDL_BindGPUGraphicsPipeline(pass, g->panel_pipe);
     SDL_GPUTextureSamplerBinding tsb = {g->blur_a, g->linear_clamp};
     SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
@@ -1641,7 +1649,7 @@ static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
         struct {
             HMM_Vec4 rect, params, tint, mode;
         } fu = {HMM_V4(p->x, p->y, p->w, p->h),
-                HMM_V4(p->radius, px_per_pt, 1.0f / (float)g->swap_w, 1.0f / (float)g->swap_h), p->tint,
+                HMM_V4(p->radius, px_per_pt, 1.0f / (float)g->ui_px_w, 1.0f / (float)g->ui_px_h), p->tint,
                 HMM_V4(0, 0, 0, 0)};
         SDL_PushGPUVertexUniformData(g->cmd, 0, &ndc, sizeof(ndc));
         SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
@@ -1655,6 +1663,63 @@ void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float 
         return;
     }
     g->panels[g->panel_count++] = (BlurPanel){x, y, w, h, radius, tint};
+}
+
+static void blit_scene_to_swap(GfxContext *g, uint32_t rw, uint32_t rh)
+{
+    SDL_GPUBlitInfo blit;
+    SDL_zero(blit);
+    blit.source.texture = g->scene_tex;
+    blit.source.w = rw;
+    blit.source.h = rh;
+    blit.destination.texture = g->swap;
+    blit.destination.w = g->swap_w;
+    blit.destination.h = g->swap_h;
+    blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    blit.filter = SDL_GPU_FILTER_LINEAR;
+    SDL_BlitGPUTexture(g->cmd, &blit);
+}
+
+/* The finished frame (3D + UI, in scene_tex at the render size) -> PNG:
+ * our own texture, so the swapchain's storage orientation (it differs
+ * between iOS devices) does not matter. Waits for the GPU: stalls this frame. */
+static void save_screenshot(GfxContext *g, uint32_t w, uint32_t h)
+{
+    SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, w * h * 4, 0};
+    SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(g->dev, &tci);
+    bool ok = false;
+    if (tb) {
+        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+        SDL_GPUTextureRegion src = {g->scene_tex, 0, 0, 0, 0, 0, w, h, 1};
+        SDL_GPUTextureTransferInfo dst = {tb, 0, w, h};
+        SDL_DownloadFromGPUTexture(cp, &src, &dst);
+        SDL_EndGPUCopyPass(cp);
+        SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g->cmd);
+        g->cmd = NULL;
+        if (fence && SDL_WaitForGPUFences(g->dev, true, &fence, 1)) {
+            const uint8_t *px = (const uint8_t *)SDL_MapGPUTransferBuffer(g->dev, tb, false);
+            bool bgra = g->color_fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM ||
+                        g->color_fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB;
+            ok = px && png_write_rgb(g->shot_path, px, w, h, w * 4, bgra);
+            SDL_UnmapGPUTransferBuffer(g->dev, tb);
+        }
+        if (fence) {
+            SDL_ReleaseGPUFence(g->dev, fence);
+        }
+    }
+    if (g->cmd) {
+        SDL_SubmitGPUCommandBuffer(g->cmd);
+        g->cmd = NULL;
+    }
+    if (tb) {
+        SDL_ReleaseGPUTransferBuffer(g->dev, tb);
+    }
+    if (ok) {
+        mg_log_info("gfx: screenshot %ux%u -> %s", w, h, g->shot_path);
+    } else {
+        mg_log_warn("gfx: screenshot failed: %s", SDL_GetError());
+    }
+    g->shot_path[0] = 0;
 }
 
 void gfx_frame_end(GfxContext *g)
@@ -1673,7 +1738,8 @@ void gfx_frame_end(GfxContext *g)
     uint32_t rh = (uint32_t)((float)g->swap_h * g->render_scale + 0.5f);
     rw = rw > 0 ? rw : 1;
     rh = rh > 0 ? rh : 1;
-    g->keep_scaled = g->keep_scaled || g->panel_count > 0 || g->preview_on;
+    const bool shot = g->shot_path[0] != 0; /* this frame's 3D + UI go to scene_tex first */
+    g->keep_scaled = g->keep_scaled || g->panel_count > 0 || g->preview_on || shot;
     const bool scaled = rw != g->swap_w || rh != g->swap_h || g->keep_scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
@@ -1785,25 +1851,19 @@ void gfx_frame_end(GfxContext *g)
         if (g->panel_count > 0) {
             blur_scene(g, rw, rh);
         }
-        SDL_GPUBlitInfo blit;
-        SDL_zero(blit);
-        blit.source.texture = g->scene_tex;
-        blit.source.w = rw;
-        blit.source.h = rh;
-        blit.destination.texture = g->swap;
-        blit.destination.w = g->swap_w;
-        blit.destination.h = g->swap_h;
-        blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
-        blit.filter = SDL_GPU_FILTER_LINEAR;
-        SDL_BlitGPUTexture(g->cmd, &blit);
+        if (!shot) {
+            blit_scene_to_swap(g, rw, rh);
+        }
         SDL_GPUColorTargetInfo uti;
         SDL_zero(uti);
-        uti.texture = g->swap;
+        uti.texture = shot ? g->scene_tex : g->swap;
         uti.load_op = SDL_GPU_LOADOP_LOAD;
         uti.store_op = SDL_GPU_STOREOP_STORE;
         pass = SDL_BeginGPURenderPass(g->cmd, &uti, 1, NULL);
     }
 
+    g->ui_px_w = shot ? rw : g->swap_w;
+    g->ui_px_h = shot ? rh : g->swap_h;
     if (scaled && g->panel_count > 0 && g->ui_w_pt > 0.0f) {
         draw_panels(g, pass);
     }
@@ -1817,8 +1877,8 @@ void gfx_frame_end(GfxContext *g)
         SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
         SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas, g->ui_sampler};
         SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
-        float k = (float)g->swap_w / g->ui_w_pt; /* pt -> px */
-        SDL_Rect full = {0, 0, (int)g->swap_w, (int)g->swap_h};
+        float k = (float)g->ui_px_w / g->ui_w_pt; /* pt -> px */
+        SDL_Rect full = {0, 0, (int)g->ui_px_w, (int)g->ui_px_h};
         for (uint32_t i = 0; i < g->ui_batch_count; i++) {
             const UiBatch *b = &g->ui_batches[i];
             if (b->count == 0) {
@@ -1840,14 +1900,24 @@ void gfx_frame_end(GfxContext *g)
     }
     if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
         /* over the panel it sits in (no UI is drawn on top of the preview) */
-        SDL_Rect full = {0, 0, (int)g->swap_w, (int)g->swap_h};
+        SDL_Rect full = {0, 0, (int)g->ui_px_w, (int)g->ui_px_h};
         SDL_SetGPUScissor(pass, &full);
         draw_preview_image(g, pass);
     }
     SDL_EndGPURenderPass(pass);
     g->stats.main_cpu_ms = (float)((mg_time_now() - main0) * 1000.0);
+    if (shot) {
+        blit_scene_to_swap(g, rw, rh);
+        save_screenshot(g, rw, rh);
+        return;
+    }
     SDL_SubmitGPUCommandBuffer(g->cmd);
     g->cmd = NULL;
+}
+
+void gfx_request_screenshot(GfxContext *g, const char *path)
+{
+    SDL_snprintf(g->shot_path, sizeof(g->shot_path), "%s", path);
 }
 
 void gfx_get_stats(const GfxContext *g, GfxStats *out) { *out = g->stats; }

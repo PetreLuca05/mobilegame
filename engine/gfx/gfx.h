@@ -179,6 +179,9 @@ void gfx_ui_clip_off(GfxContext *g);
 void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, float size, float radius,
                  HMM_Vec4 background);
 void gfx_frame_end(GfxContext *g);
+/* Save the next finished frame (3D + UI, native size) as a PNG at `path`
+ * (GPU readback; stalls that frame). Debug / autotests. */
+void gfx_request_screenshot(GfxContext *g, const char *path);
 
 /* Render the 3D scene at a fraction of native resolution (0.5..1) and
  * upscale; UI stays native. Cuts fill cost on older phones. */

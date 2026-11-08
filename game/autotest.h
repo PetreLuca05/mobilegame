@@ -5,6 +5,11 @@
  *   save        Main menu -> New Game, walk + ride to floor 2 (route test),
  *               then background + hard exit, like a swipe-kill
  *   continue    Main menu -> Continue; passes when back on the saved floor
+ *   stickdir    stick up/right/down/left walk north/east/south/west
+ *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
+ * Any script can take a picture with AutotestOut.screenshot; any run can add
+ * timed ones with --screenshot-at S:NAME[,S:NAME...] (Documents on iOS,
+ * the pref path on desktop; pull with xcrun devicectl device copy from).
  * Menus are tapped by widget id (ui_find), so they work on phones too
  * (xcrun devicectl device process launch ... --autotest onboarding). */
 #ifndef MG_AUTOTEST_H
@@ -33,6 +38,7 @@ typedef struct AutotestProbe {
 typedef struct AutotestOut {
     bool start_route; /* save: start walking the route test */
     bool kill;        /* save: background (saves) and exit at once */
+    char screenshot[48]; /* save this frame as <name>.png ("" = none) */
 } AutotestOut;
 
 typedef struct Autotest {
@@ -50,6 +56,7 @@ typedef struct Autotest {
     float tap_x, tap_y;
     uint32_t skin_before;
     int skin_changes;
+    char shot_name[48];  /* screenshot kind */
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

@@ -57,6 +57,8 @@ typedef struct Game {
     TdCamera td;           /* the default camera */
     FloorFade fade;        /* storeys / wall cutaway / canopies (scene fade slots) */
     bool riding;           /* in the moving elevator car */
+    double start_time;     /* first frame, for --screenshot-at */
+    uint32_t shots_taken;  /* --screenshot-at entries done (bit per entry) */
     uint32_t occl_frames, occl_hidden, occl_lost; /* route test: indoor frames / behind a wall / ... with no x-ray */
     FloorPeek peek;
     int peek_view;         /* storey the floor peek shows, -1 = the player's */
@@ -971,6 +973,39 @@ void game_frame(MgApp *app, float alpha)
                            g->route.active && !g->route.done ? g->route.step : -1};
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
+    /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
+    if (g->start_time == 0.0) {
+        g->start_time = app->time;
+    }
+    const char *shots = arg_value(app->argc, app->argv, "--screenshot-at");
+    int entry = 0;
+    for (const char *p = shots; p && *p && !ato.screenshot[0] && entry < 32; entry++) {
+        const char *colon = SDL_strchr(p, ':'), *comma = SDL_strchr(p, ',');
+        if (!colon) {
+            break;
+        }
+        int len = comma ? (int)(comma - colon - 1) : (int)SDL_strlen(colon + 1);
+        bool due = app->time - g->start_time >= SDL_atof(p) && !(g->shots_taken & (1u << entry));
+        if (due) {
+            SDL_snprintf(ato.screenshot, sizeof(ato.screenshot), "%.*s", len, colon + 1);
+            g->shots_taken |= 1u << entry;
+        }
+        p = comma ? comma + 1 : NULL;
+    }
+    if (ato.screenshot[0]) {
+        char path[640];
+#if defined(SDL_PLATFORM_IOS)
+        const char *dir = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
+        size_t dl = dir ? SDL_strlen(dir) : 0;
+        SDL_snprintf(path, sizeof(path), "%s%s%s.png", dir ? dir : ".", dl && dir[dl - 1] == '/' ? "" : "/",
+                     ato.screenshot);
+#else
+        char *dir = SDL_GetPrefPath("docvex", "mobilegame");
+        SDL_snprintf(path, sizeof(path), "%s%s.png", dir ? dir : "", ato.screenshot);
+        SDL_free(dir);
+#endif
+        gfx_request_screenshot(app->gfx, path);
+    }
     if (ato.start_route) {
         route_test_start(&g->route);
     }

@@ -60,7 +60,8 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue`, `--public-test`, `--skin P,H,A`
+`--autotest touch|route|onboarding|save|continue|stickdir|screenshot NAME`,
+`--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
 to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).
 Args also work on a phone: `xcrun devicectl device process launch --console
@@ -162,20 +163,17 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   (the ceiling of f is f + 1), so the view floor draws without a ceiling.
   New meshes must go into a tagged group (Developer -> Storey colours /
   `--storeys`: yard grey, G green, 1 blue, 2 orange, roof magenta).
-  Exterior walls are split at 0.9 m (`HM_WALL_LO*` / `HM_WALL_HI*`) for
-  the low-wall cutaway; slabs from storey 1 up have the stairwell open
+  Slabs from storey 1 up have the stairwell open
   visually but collide as one box. Rooms have floor-painted labels.
 
 - Floor fade (`engine/gfx/floorfade.c`, `GfxMaterial.hide`): screen-door
   dither, ordered 4x4 Bayer `dither_clip()` in `common.hlsli` (toon, floor,
   text, unlit, ghost), driven by `DrawFS.u_draw_misc.x`; draws with hide >
-  0.5 skip the shadow pass. Scene fade slots (`HOSP_FADE_*`): storeys 0-2 +
-  roof, the view floor's upper exterior wall per side (0.25 when the camera
-  is beyond that facade), tree canopies over the player; 350 ms per change,
+  0.5 skip the shadow pass (full). Scene fade slots (`HOSP_FADE_*`): storeys
+  0-2 + roof, tree canopies over the player, wall pieces; 350 ms per change,
   snapped on spawn/teleport/load. Inside the building: storeys above the
   view floor and the roof go; outside: everything is drawn (interiors only
-  while the roof is not opaque). Indoor lights: view floor and below.
-  Remote avatars above the view floor are not drawn.
+  while the roof is not opaque). Remote avatars above the view floor are not drawn.
 
 - Elevator ride (`game/elevator.c`): doors 0.4 s, car travels 0.6 s per
   storey (ease in-out, `car_y`), ding, doors 0.4 s = 1.4 s / 2.0 s. The
@@ -197,9 +195,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   geometry show as the real model in its accent colour (full saturation
   x 0.85), dithered 60 %, with a 2 px pure-black rim (mesh pushed out along
   its normals, drawn first). Depth GREATER, no depth write. Draw order
-  (`sort_draws` buckets): world -> x-ray -> avatars (`GFX_DRAW_DYNAMIC`), so
-  the x-ray only tests the world's depth and the visible avatar paints over
-  it - an avatar's own parts never show through each other. Eligible: the
+  (`draw_bucket`): solid world -> x-ray -> avatars (`GFX_DRAW_DYNAMIC`) ->
+  dithered geometry (`hide` > 0). Keep this order. The x-ray must run before
+  the avatars: it then tests only the world's depth and the visible avatar
+  paints over it; drawn after them, an avatar's own parts count as "in
+  front" (head under hair) and x-ray through each other. Dithered geometry
+  goes last so a faded wall's remaining pixels don't trigger the x-ray or
+  hide the player. Eligible: the
   local player and remote players on the view floor; the floor-peek ghost
   is the same pass with depth ignored. Only meshes drawn with
   `avatar_draw_with(..., mat_xray(...))` are x-rayed: to keep a mesh out,
@@ -208,19 +210,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 - Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
   edge; holding a row views that storey, a tap keeps it for the hold time
   (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the
-  fades follow the peeked storey. On a hidden storey the local avatar is a
-  dithered ghost drawn on the peeked plan; behind walls a capsule x-ray
-  (`GFX_MAT_XRAY`: depth GREATER, drawn last) shows where the player is.
-  Desktop `--peek F`.
+  fades follow the peeked storey. On a hidden storey the local avatar is
+  the x-ray silhouette drawn on the peeked plan with depth ignored. Desktop `--peek F`.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
 - Prefs keys (M5): `show_floor_peek`, `floor_peek_hold`, `show_own_name`
   (the M5 camera keys are ignored and dropped on the next write).
 
-- Lighting retune (M5): lights culled 35 m from the player (not the eye),
-  indoor lights of storeys above the view floor culled, the view floor's
-  reflection 25 % (the open ceiling mirrors sky). Rim light unchanged: from
-  62 deg the avatar body is side-facing and the ring-free rule holds.
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
 
 ## Front end, accounts and persistence (M4)
@@ -310,6 +306,16 @@ a tile per tab + Randomise -> Done -> Main menu), `--autotest save` (New
 Game, route walk + ride to floor 2, background + hard exit) then
 `--autotest continue` (back on floor 2). Logs carry `frontend: <SCREEN>`,
 `session: ... joined/left` and every connection as `net: attempt ...`.
+
+Screenshots (works on phones): `--autotest screenshot NAME` (3 s settle, then
+quit), `--screenshot-at S:NAME,...` in any run, or `AutotestOut.screenshot`
+inside a script. The frame (3D + UI, at the render size) goes through the
+game's own scene texture - the swapchain's storage orientation differs
+between iOS devices - to `NAME.png` in Documents on iOS, the pref path on
+desktop. Pull with `xcrun devicectl device copy from --device iPhone
+--domain-type appDataContainer --domain-identifier ro.docvex.mobilegame
+--source Documents/NAME.png --destination out.png`. Party codes are 4 letters
+(a digit is refused by RLS).
 
 GPU measurement rule: iOS clocks the GPU down when frames are light, so
 raw ms is meaningless on its own. Per scene and device report GPU frame ms,

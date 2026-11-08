@@ -6,13 +6,14 @@
 #include "frontend.h"
 #include "player.h"
 
-enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR };
+enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
+       AUTOTEST_SCREENSHOT };
 
 static int kind_of(int argc, char **argv)
 {
-    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir"};
+    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 5 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 6 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -25,6 +26,11 @@ void autotest_init(Autotest *t, int argc, char **argv)
 {
     *t = (Autotest){0};
     t->kind = kind_of(argc, argv);
+    for (int i = 1; i + 2 < argc; i++) {
+        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "screenshot") == 0) {
+            SDL_snprintf(t->shot_name, sizeof(t->shot_name), "%s", argv[i + 2]);
+        }
+    }
 }
 
 bool autotest_starts_in_game(int argc, char **argv)
@@ -32,7 +38,7 @@ bool autotest_starts_in_game(int argc, char **argv)
     for (int i = 1; i + 1 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") == 0) {
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
-                   SDL_strcmp(argv[i + 1], "stickdir") == 0;
+                   SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0;
         }
     }
     return false;
@@ -361,6 +367,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_STICKDIR:
         finished = run_stickdir(t, app, p, el);
+        break;
+    case AUTOTEST_SCREENSHOT: /* let the scene settle, shoot, quit a second later */
+        if (t->stage == 0 && el > 3.0) {
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", t->shot_name[0] ? t->shot_name : "shot");
+            t->stage = 1;
+        }
+        if (t->stage == 1 && el > 4.0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
         break;
     default:
         finished = run_continue(t, app, p);
