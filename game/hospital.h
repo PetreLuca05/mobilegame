@@ -21,6 +21,7 @@
 #define HOSP_FADE_STOREY0 0 /* storeys 0..2 and the roof (3) */
 #define HOSP_FADE_WALL0 4   /* upper exterior wall of the view floor: S, N, W, E (low-wall cutaway) */
 #define HOSP_FADE_TREE0 8   /* tree canopies */
+#define HOSP_FADE_IWALL 14  /* upper part of the view floor's east-west partitions (camera faces north) */
 
 /* building footprint */
 #define HOSP_X0 (-15.0f)
@@ -58,7 +59,8 @@ enum {
     HM_SLAB0 = HM_WIN0 + HOSP_FLOORS * 4,    /* slab under storey f (its floor, ceiling of f-1) */
     HM_ROOF = HM_SLAB0 + HOSP_FLOORS,        /* roof slab + parapet (storey 3) */
     HM_CANOPY0,                              /* one per tree: fades when the player stands under it */
-    HM_COUNT = HM_CANOPY0 + HOSP_TREES,
+    HM_IWALL_HI0 = HM_CANOPY0 + HOSP_TREES,  /* east-west interior walls above 0.9 m, per storey */
+    HM_COUNT = HM_IWALL_HI0 + HOSP_FLOORS,
 };
 /* Storey ids: -1 yard (always drawn), 0..2 storeys, 3 roof. Every mesh group
  * has one (hospital_group_storey); a slab, ceiling panel or car ceiling
@@ -88,6 +90,7 @@ typedef struct Hospital {
     GfxMeshId trigger;    /* unit cube for the debug trigger view */
     HMM_Vec3 spawns[HOSP_SPAWNS];
     HMM_Vec3 trees[HOSP_TREES];
+    uint8_t see_through[COL_MAX_BOXES / 8]; /* collider bits: wall parts the view cuts away */
     int door_box[HOSP_FLOORS][2]; /* collider index of each door leaf (left, right) */
     float door_open[HOSP_FLOORS]; /* 0 closed .. 1 open, set by the elevator */
 } Hospital;
@@ -104,6 +107,8 @@ typedef struct HospView {
 
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font);
 int hospital_group_storey(int grp);
+/* Collider of a wall part above 0.9 m that the top-down view cuts away. */
+bool hospital_box_cut_away(const Hospital *h, int box);
 /* Targets for the fade slots: storeys above the view floor and the roof go
  * when the player is inside; the view floor's upper exterior walls drop to
  * 0.25 where the camera looks over them from outside; canopies over the

@@ -186,6 +186,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   pivot follows, so the view floor and the fades switch as it passes each
   slab. No fade to black; Developer -> Teleport stays instant.
 
+- Occlusion (M5-S): with north up, every east-west interior wall stands
+  between camera and player, so their upper part (`HM_IWALL_HI*`, above
+  0.9 m; colliders unchanged) dithers to 25 % on the view floor, like the
+  exterior low-wall cutaway. `--autotest route` logs "occlusion: player
+  hidden behind walls in N %" (ray from under the ceiling to the chest,
+  ignoring cut-away parts): 59 % before, 10 % after (elevator front wall,
+  door frames - the x-ray covers those).
 - Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
   edge; holding a row views that storey, a tap keeps it for the hold time
   (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the

@@ -57,6 +57,7 @@ typedef struct Game {
     TdCamera td;           /* the default camera */
     FloorFade fade;        /* storeys / wall cutaway / canopies (scene fade slots) */
     bool riding;           /* in the moving elevator car */
+    uint32_t occl_frames, occl_hidden; /* route test: indoor frames / player hidden behind a wall */
     FloorPeek peek;
     int peek_view;         /* storey the floor peek shows, -1 = the player's */
     char peek_label[4][2];
@@ -1141,6 +1142,35 @@ void game_frame(MgApp *app, float alpha)
         float rx, rz;
         bool route = route_test_update(&g->route, app->time, g->player.kin.pos, scene_floor_of(g->scene, feet), el,
                                        menu_shown, &rx, &rz);
+        if (g->route.active && !g->route.done && scene_indoors(g->scene, feet) && !g->riding) {
+            /* occlusion survey: thin ray from just under the ceiling (on the
+             * camera ray) to the chest; slabs of faded storeys don't count */
+            HMM_Vec3 chest = HMM_AddV3(feet, HMM_V3(0, 1.0f, 0));
+            HMM_Vec3 eye = g->td.pivot;
+            eye = HMM_SubV3(eye, HMM_MulV3F(camera_forward(g->td.yaw, g->td.pitch), g->td.distance));
+            float top = scene_floor_y(g->scene, scene_floor_of(g->scene, feet)) + 3.6f;
+            float k = (top - chest.Y) / mg_maxf(eye.Y - chest.Y, 0.01f);
+            HMM_Vec3 start = HMM_AddV3(chest, HMM_MulV3F(HMM_SubV3(eye, chest), k));
+            ColHit hit;
+            g->occl_frames++;
+            for (int step = 0; step < 8; step++) { /* walk through cut-away wall parts */
+                ColCapsule ray = {start, start, 0.04f};
+                HMM_Vec3 to = HMM_SubV3(chest, start);
+                if (!col_capsule_sweep(&g->world, &ray, to, 0.0f, &hit) || hit.t >= 0.92f) {
+                    break;
+                }
+                if (!scene_box_cut_away(g->scene, hit.box)) {
+                    g->occl_hidden++;
+                    break;
+                }
+                start = HMM_AddV3(start, HMM_MulV3F(to, hit.t + 0.4f / mg_maxf(HMM_LenV3(to), 0.4f)));
+            }
+        }
+        if (g->route.done && g->occl_frames) {
+            mg_log_info("occlusion: player hidden behind walls in %.0f %% of %u indoor frames",
+                        100.0 * g->occl_hidden / g->occl_frames, g->occl_frames);
+            g->occl_frames = 0;
+        }
         if (g->route.done) {
             app->quit_requested = true;
         }

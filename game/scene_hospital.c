@@ -76,6 +76,8 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
 #endif
 }
 
+bool scene_box_cut_away(const Scene *s, int box) { return hospital_box_cut_away(&s->h, box); }
+
 void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
 {
     hospital_fade_targets(&s->h, target, view_floor, inside, player, eye);
