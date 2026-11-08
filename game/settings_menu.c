@@ -96,19 +96,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     y = mg_maxf(cy, left_end) + 6.0f;
 
 
-    float bw = (w - 16.0f) / 3.0f;
-    char main_menu_label[64];
-    SDL_snprintf(main_menu_label, sizeof(main_menu_label), "%s##home", str("save_and_menu"));
-    if (ui_button(ui, "Disconnect", x, y, bw, 44.0f, false)) {
-        *action = MENU_DISCONNECT;
-        m->open = false;
-    }
-    if (ui_button(ui, main_menu_label, x + bw + 8.0f, y, bw, 44.0f, false)) {
-        *action = MENU_MAIN_MENU;
-        m->open = false;
-    }
-    if (ui_button(ui, m->dev_open ? "Developer -##dev" : "Developer +##dev", x + 2.0f * (bw + 8.0f), y, bw, 44.0f,
-                  m->dev_open)) {
+    if (ui_button(ui, m->dev_open ? "Developer -##dev" : "Developer +##dev", x, y, cw, 44.0f, m->dev_open)) {
         m->dev_open = !m->dev_open;
     }
     y += 56.0f;
@@ -236,6 +224,47 @@ static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float
 
 /* ------------------------------------------------------------------ panel */
 
+/* In-game pause: a centred card, at most 420 pt wide. */
+static MenuAction pause_card(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
+{
+    MenuAction action = MENU_NONE;
+    const float row = 50.0f, pad = 18.0f;
+    const int rows = m->in_room ? 4 : 3;
+    const float cw = mg_minf(420.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
+    const float x = (w_pt - cw) * 0.5f, top = (h_pt - ch) * 0.5f;
+    ui_block(ui, 0, 0, w_pt, h_pt);
+    ui_rect(ui->gfx, ui->font, 0, 0, w_pt, h_pt, ui_rgba(0x00000080));
+    ui_panel(ui, x, top, cw, ch);
+    text_draw_centered(ui->gfx, ui->font, x + cw * 0.5f, top + pad + 14.0f, 24.0f, k_ui_theme.text, str("pause_title"));
+    float y = top + pad + 40.0f, bx = x + pad, bw = cw - 2.0f * pad;
+    char label[64];
+    SDL_snprintf(label, sizeof(label), "%s##p_resume", str("resume"));
+    if (ui_button(ui, label, bx, y, bw, row, true)) {
+        m->open = false;
+        m->card = false;
+    }
+    y += row + 8.0f;
+    SDL_snprintf(label, sizeof(label), "%s##p_settings", str("settings_row"));
+    if (ui_button(ui, label, bx, y, bw, row, false)) {
+        m->card = false;
+        m->from_card = true;
+    }
+    y += row + 8.0f;
+    SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
+    if (ui_button(ui, label, bx, y, bw, row, false)) {
+        action = MENU_MAIN_MENU;
+        m->open = false;
+        m->card = false;
+    }
+    y += row + 8.0f;
+    if (m->in_room && ui_button(ui, "Disconnect##p_disc", bx, y, bw, row, false)) {
+        action = MENU_DISCONNECT;
+        m->open = false;
+        m->card = false;
+    }
+    return action;
+}
+
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
                          float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
                          const char *status)
@@ -248,6 +277,8 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         float gx = w_pt - safe_r - 12.0f - gs, gy = safe_t + 8.0f;
         if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {
             m->open = true;
+            m->card = true;
+            m->from_card = false;
             SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
         }
         ui_circle(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f, gs * 0.5f,
@@ -264,6 +295,10 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
     }
 
+    if (m->card) {
+        return pause_card(m, ui, w_pt, h_pt);
+    }
+
     /* full screen, two columns: back + title + tabs left (35 %), content right (65 %) */
     const float pad = 16.0f;
     ui_block(ui, 0, 0, w_pt, h_pt); /* modal: nothing reaches the game */
@@ -273,10 +308,16 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     float bottom = h_pt - mg_maxf(safe_b, 12.0f);
     float lw = inner_w * 0.35f - pad;
     if (ui_hit_area(ui, "back##menu", x0 - 6.0f, y0 - 6.0f, 56.0f, 56.0f, &held)) {
-        m->open = false;
+        if (m->from_card) {
+            m->card = true;
+            m->from_card = false;
+        } else {
+            m->open = false;
+        }
     }
     ui_circle(ui->gfx, ui->font, x0 + 22.0f, y0 + 22.0f, 22.0f, held ? ui_rgba(0xFFFFFF40) : ui_rgba(0xFFFFFF1A));
-    text_draw_centered(ui->gfx, ui->font, x0 + 20.0f, y0 + 22.0f, 26.0f, ui_rgba(0xFFFFFFFF), "<");
+    ui_line(ui->gfx, ui->font, x0 + 26.0f, y0 + 12.0f, x0 + 16.0f, y0 + 22.0f, 3.5f, ui_rgba(0xFFFFFFFF));
+    ui_line(ui->gfx, ui->font, x0 + 16.0f, y0 + 22.0f, x0 + 26.0f, y0 + 32.0f, 3.5f, ui_rgba(0xFFFFFFFF));
     ui_label(ui, x0 + 58.0f, y0 + 8.0f, 22.0f, k_ui_theme.text, "Settings");
     float y = y0 + 64.0f;
     if (ui_button(ui, "Game##tab0", x0, y, lw, 44.0f, m->tab == 0)) {

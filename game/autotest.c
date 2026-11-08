@@ -7,13 +7,15 @@
 #include "player.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
-       AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS };
+       AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
+       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN };
 
 static int kind_of(int argc, char **argv)
 {
-    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers"};
+    static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
+                                        "offline", "freeroam-create", "freeroam-join"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 8 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 11 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -29,6 +31,9 @@ void autotest_init(Autotest *t, int argc, char **argv)
     for (int i = 1; i + 2 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "screenshot") == 0) {
             SDL_snprintf(t->shot_name, sizeof(t->shot_name), "%s", argv[i + 2]);
+        }
+        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "freeroam-join") == 0) {
+            SDL_snprintf(t->join_code, sizeof(t->join_code), "%s", argv[i + 2]);
         }
     }
 }
@@ -255,6 +260,42 @@ static bool run_autonav(Autotest *t, MgApp *app, const AutotestProbe *p, Autotes
             t->stage = 0;
         }
         break;
+    case 3: /* to floor 1, but a stick push once standing in the car: floor menu instead */
+        out->nav_go = true;
+        out->nav_pos = HMM_V3(-3.0f, 4.0f, -5.5f);
+        out->nav_to = 1;
+        t->step_start = el;
+        t->stage = 4;
+        break;
+    case 4:
+        if (el - t->step_start > 0.1 && p->nav_state == IN_CAR_) {
+            finger(app, SDL_EVENT_FINGER_DOWN, 51, sx, sy);
+            finger(app, SDL_EVENT_FINGER_MOTION, 51, sx + 100.0f, sy);
+            t->wait_until = el + 0.05;
+            t->stage = 5;
+        } else if (el - t->step_start > 45.0 || p->nav_state == FAILED_) {
+            return fail(t, "autonav", "never got into the car");
+        }
+        break;
+    case 5:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, 51, sx + 100.0f, sy);
+            t->wait_until = el + 0.6;
+            t->stage = 6;
+        }
+        break;
+    case 6:
+        if (el >= t->wait_until) {
+            float mx, my;
+            bool menu = ui_find(p->ui, "floor1", &mx, &my) || ui_find(p->ui, "floor2", &mx, &my);
+            bool ok = p->nav_state == CANCELLED_ && menu && p->nav_storey == 0;
+            mg_log_info("autotest autonav: stick in the car cancels, floor menu up (%s)", ok ? "ok" : "FAIL");
+            t->passed = t->passed && ok;
+            mg_log_info("autotest autonav: stats %d elevator rides, %.0f m walked", p->rides, (double)p->distance_m);
+            t->passed = t->passed && p->rides == 2 && p->distance_m > 60.0f;
+            t->stage = 7;
+        }
+        break;
     default:
         mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
         return true;
@@ -411,11 +452,6 @@ static bool run_markers(Autotest *t, MgApp *app, const AutotestProbe *p, double 
 
 /* ------------------------------------------------------------ menu scripts */
 
-typedef struct TapStep {
-    int state;       /* FeState the step waits for */
-    const char *key; /* widget to tap (ui_find) */
-    bool look;       /* the tap must change the avatar */
-} TapStep;
 
 static const TapStep k_onboarding[] = {
     {FE_WELCOME, "guest", false},   {FE_USERNAME, "name_ok", false}, {FE_CREATOR, "crtab0", false},
@@ -489,6 +525,102 @@ static bool run_taps(Autotest *t, MgApp *app, const AutotestProbe *p, const TapS
         t->finger_down = 20 + t->step;
         finger(app, SDL_EVENT_FINGER_DOWN, (SDL_FingerID)t->finger_down, x, y);
         t->wait_until = now + 0.1;
+    }
+    return false;
+}
+
+static bool run_offline(Autotest *t, MgApp *app, const AutotestProbe *p, double el)
+{
+    bool failed;
+    float x, y;
+    switch (t->stage) {
+    case 0:
+        if (!run_taps(t, app, p, k_new_game, 1, "offline", &failed)) {
+            return failed;
+        }
+        t->stage = 1;
+        return false;
+    case 1:
+        if (p->playing) {
+            mg_log_info("autotest offline: in play, watching the network for 120 s");
+            t->step_start = el;
+            t->stage = 3;
+        } else if (p->fe_state == FE_MAIN_MENU && ui_find(p->ui, "ow_new", &x, &y)) {
+            t->step = 0;
+            t->stage = 2;
+        }
+        return false;
+    case 2:
+        if (!run_taps(t, app, p, k_overwrite, 1, "offline", &failed)) {
+            return failed;
+        }
+        t->stage = 1;
+        return false;
+    default:
+        if (el - t->step_start >= 120.0) {
+            mg_log_info("autotest offline: 120 s played");
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = true;
+            return true;
+        }
+        return false;
+    }
+}
+
+/* Through the Multiplayer menu; ends when two players share the room. */
+static bool run_freeroam(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el, bool join)
+{
+    bool failed;
+    if (t->step_count == 0) {
+        static const char *const multi[2] = {"menurow1", "menurow2"};
+        int n = 0;
+        t->steps[n++] = (TapStep){FE_MAIN_MENU, multi[p->has_save ? 1 : 0], false};
+        t->steps[n++] = (TapStep){FE_MAIN_MENU, "menurow10", false};
+        if (join) {
+            t->steps[n++] = (TapStep){FE_FREE_ROAM, "menurow21", false};
+            for (int i = 0; i < 4 && t->join_code[i]; i++) {
+                SDL_snprintf(t->keys[i], sizeof(t->keys[i]), "fe_%c", t->join_code[i]);
+                t->steps[n++] = (TapStep){FE_FREE_ROAM, t->keys[i], false};
+            }
+            t->steps[n++] = (TapStep){FE_FREE_ROAM, "frjoin", false};
+        } else {
+            t->steps[n++] = (TapStep){FE_FREE_ROAM, "menurow20", false};
+        }
+        t->step_count = n;
+    }
+    if (t->stage == 0) {
+        if (!run_taps(t, app, p, t->steps, t->step_count, "freeroam", &failed)) {
+            return failed;
+        }
+        t->stage = 1;
+        t->step_start = el;
+        return false;
+    }
+    if (t->stage == 1) {
+        if (p->playing && p->room_code && p->room_code[0]) {
+            mg_log_info("autotest freeroam: in room %s", p->room_code);
+            t->stage = 2;
+            t->step_start = el;
+        } else if (el - t->step_start > 25.0) {
+            return fail(t, "freeroam", "never got into a room");
+        }
+        return false;
+    }
+    if (t->stage == 2) {
+        if (p->players_seen >= 2) {
+            mg_log_info("autotest freeroam: %d players in the room", p->players_seen);
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", join ? "fr_join" : "fr_create");
+            t->stage = 3;
+            t->step_start = el;
+        } else if (el - t->step_start > 90.0) {
+            return fail(t, "freeroam", "nobody else joined");
+        }
+        return false;
+    }
+    if (el - t->step_start > 4.0) {
+        mg_log_info("AUTOTEST PASSED");
+        t->passed = true;
+        return true;
     }
     return false;
 }
@@ -604,6 +736,13 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_MARKERS:
         finished = run_markers(t, app, p, el);
+        break;
+    case AUTOTEST_OFFLINE:
+        finished = run_offline(t, app, p, el);
+        break;
+    case AUTOTEST_FR_CREATE:
+    case AUTOTEST_FR_JOIN:
+        finished = run_freeroam(t, app, p, out, el, t->kind == AUTOTEST_FR_JOIN);
         break;
     case AUTOTEST_SCREENSHOT: /* let the scene settle, shoot, quit a second later */
         if (t->stage == 0 && el > 3.0) {

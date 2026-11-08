@@ -74,6 +74,8 @@ typedef struct Game {
     uint32_t active_marker; /* the one auto-nav is walking to, 0 none */
     double marker_spawn_at; /* test markers: no new one before this */
     uint32_t markers_reached;
+    bool marker_args_done;
+    int marker_override;    /* --markers N / autotest, -1 = use the setting */
     MarkerHudIn hud_in[MARKER_HUD_MAX];
     MarkerHudOut hud_out[MARKER_HUD_MAX];
     int hud_count;
@@ -270,6 +272,7 @@ bool game_init(MgApp *app)
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
     const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
     g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
+    g->menu.card = menu_tab && SDL_strcmp(menu_tab, "pause") == 0;
 
     size_t mark = arena_mark(&app->perm);
     MeshBuilder mb;
@@ -304,7 +307,10 @@ bool game_init(MgApp *app)
                            SDL_strcmp(g->prefs.auth_provider, "apple") != 0;
     }
 
-    NetConfig ncfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
+    /* --autotest offline: an unresolvable host behaves like airplane mode */
+    const char *atest = arg_value(app->argc, app->argv, "--autotest");
+    const bool no_network = atest && SDL_strcmp(atest, "offline") == 0;
+    NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
@@ -566,6 +572,7 @@ static void leave_play(Game *g, MgApp *app)
     session_stop(&g->session);
     g->playing = false;
     g->offline_play = false;
+    g->menu.card = false;
     autonav_clear(&g->autonav);
     g->active_marker = 0;
     marker_clear(&g->markers, MARKER_TEST);
@@ -1034,7 +1041,7 @@ void game_frame(MgApp *app, float alpha)
 #endif
                            g->player.kin.jump_count,
                            g->touch.sprint,
-                           1,
+                           session_player_count(&g->session),
                            &g->ui,
                            (int)g->fe.state,
                            g->playing,
@@ -1043,6 +1050,10 @@ void game_frame(MgApp *app, float alpha)
                            SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
                            g->route.active && !g->route.done ? g->route.step : -1,
                            (int)g->autonav.state,
+                           g->has_save,
+                           g->session.room_code,
+                           (int)g->stats.rides,
+                           (float)g->stats.distance_m,
                            g->markers_reached,
                            g->active_marker,
                            g->touch.stick_touch >= 0,
@@ -1214,9 +1225,19 @@ void game_frame(MgApp *app, float alpha)
         return;
     }
     if (back) { /* in game: the back key opens / closes the settings panel */
-        g->menu.open = !g->menu.open;
+        if (!g->menu.open) {
+            g->menu.open = true;
+            g->menu.card = true;
+            g->menu.from_card = false;
+        } else if (!g->menu.card && g->menu.from_card) {
+            g->menu.card = true;
+            g->menu.from_card = false;
+        } else {
+            g->menu.open = g->menu.card = false;
+        }
     }
     SettingsAccount acct = account_view(g);
+    g->menu.in_room = g->session.mode != MODE_OFFLINE;
     MenuAction action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt,
                                       app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, g->status);
     handle_menu_action(g, app, action);
@@ -1678,9 +1699,22 @@ static bool spawn_test_marker(Game *g, HMM_Vec3 feet)
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
 {
     Markers *ms = &g->markers;
+    if (!g->marker_args_done) { /* desktop / screenshots: --markers N, --marker x,z,storey */
+        g->marker_args_done = true;
+        const char *count = arg_value(app->argc, app->argv, "--markers"), *one = arg_value(app->argc, app->argv, "--marker");
+        float x, z;
+        int st;
+        const char *at = arg_value(app->argc, app->argv, "--autotest");
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : -1);
+        if (one && SDL_sscanf(one, "%f,%f,%d", &x, &z, &st) == 3) {
+            marker_add(ms, HMM_V3(x, scene_floor_y(g->scene, level_of(st)), z), st, MARKER_OBJECTIVE, 0xFF9F0AFF);
+        }
+    }
     markers_tick(ms, mg_minf(app->frame_dt, 0.1f));
     marker_t *a = marker_get(ms, g->active_marker);
-    if (g->autonav.state == AUTONAV_ARRIVED) {
+    if (g->autonav.marker_id == 0) {
+        /* a walk without a marker (desktop click, autotest) keeps its result */
+    } else if (g->autonav.state == AUTONAV_ARRIVED) {
         if (a) {
             marker_reached(g, app, a);
         }
@@ -1714,14 +1748,16 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
             alive_test -= m->kind == MARKER_TEST;
         }
     }
-    const GameSettings *s = &g->settings;
-    if (!s->test_markers) {
+    /* test flags override the setting without being saved into prefs */
+    const int wanted = g->marker_override >= 0 ? g->marker_override
+                                               : (g->settings.test_markers ? (int)g->settings.test_marker_count : 0);
+    if (wanted == 0) {
         if (alive_test > 0) {
             marker_clear(ms, MARKER_TEST);
         }
-    } else if (alive_test < (int)s->test_marker_count && app->time >= g->marker_spawn_at) {
+    } else if (alive_test < wanted && app->time >= g->marker_spawn_at) {
         spawn_test_marker(g, feet);
-    } else if (alive_test > (int)s->test_marker_count) {
+    } else if (alive_test > wanted) {
         for (int i = MARKER_MAX - 1; i >= 0; i--) {
             if (ms->m[i].id && ms->m[i].kind == MARKER_TEST && ms->m[i].id != g->active_marker) {
                 ms->m[i].id = 0;

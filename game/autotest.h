@@ -8,6 +8,10 @@
  *   stickdir    stick up/right/down/left walk north/east/south/west
  *   autonav     auto-nav across the yard and into a room, a stick cancel,
  *               then yard -> floor 2 and floor 2 -> yard through the car
+ *   offline     New Game on an unresolvable host (like airplane mode), play 120 s:
+ *               count "net: attempt" lines after "frontend: PLAY" (must be 0)
+ *   freeroam-create / freeroam-join CODE  through the Multiplayer menu; pass
+ *               when both players are in the room
  *   markers     tap a marker (walks), tap again (cancels), tap and arrive
  *               (reached, respawn), a drag from a marker becomes the stick
  *   nav         every room reachable, rides, timings (no walking)
@@ -39,6 +43,10 @@ typedef struct AutotestProbe {
     uint32_t skin_hash; /* changes whenever the look changes */
     int route_step;    /* route test progress (-1 = not running) */
     int nav_state;     /* AutonavState */
+    bool has_save;
+    const char *room_code;
+    int rides;         /* elevator rides this run */
+    float distance_m;  /* walked this run */
     uint32_t markers_reached;
     uint32_t active_marker;
     bool stick_active;
@@ -58,6 +66,12 @@ typedef struct AutotestOut {
     int nav_to;
 } AutotestOut;
 
+typedef struct TapStep {
+    int state;       /* FeState the step waits for */
+    const char *key; /* widget to tap (ui_find) */
+    bool look;       /* the tap must change the avatar */
+} TapStep;
+
 typedef struct Autotest {
     int kind; /* 0 none */
     double start;
@@ -75,6 +89,10 @@ typedef struct Autotest {
     int skin_changes;
     char shot_name[48];  /* screenshot kind */
     uint32_t pick;       /* markers: the one being tapped */
+    char join_code[8];   /* freeroam-join */
+    char keys[4][8];
+    TapStep steps[12];
+    int step_count;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

@@ -512,11 +512,14 @@ static FeAction free_roam(Frontend *f, Ui *ui, MgApp *app)
 static void back_button(Frontend *f, Ui *ui, MgApp *app)
 {
     char label[48];
-    SDL_snprintf(label, sizeof(label), "< %s##feback", str("back"));
-    if (ui_button(ui, label, app->safe_left + PAD, app->height_pt - mg_maxf(app->safe_bottom, PAD) - 48.0f, 110.0f,
-                  44.0f, false)) {
+    SDL_snprintf(label, sizeof(label), "   %s##feback", str("back"));
+    const float bx = app->safe_left + PAD, by = app->height_pt - mg_maxf(app->safe_bottom, PAD) - 48.0f;
+    if (ui_button(ui, label, bx, by, 110.0f, 44.0f, false)) {
         frontend_back(f);
     }
+    /* procedural arrow: the font has no left arrow */
+    ui_line(ui->gfx, ui->font, bx + 26.0f, by + 14.0f, bx + 18.0f, by + 22.0f, 3.0f, ui_rgba(0xFFFFFFFF));
+    ui_line(ui->gfx, ui->font, bx + 18.0f, by + 22.0f, bx + 26.0f, by + 30.0f, 3.0f, ui_rgba(0xFFFFFFFF));
 }
 
 /* ------------------------------------------------------------------ frame */

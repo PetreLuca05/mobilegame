@@ -26,10 +26,10 @@ static void build_diamond(MeshBuilder *mb)
     HMM_Vec4 c = HMM_V4(1, 1, 1, 1);
     for (int i = 0; i < 4; i++) {
         HMM_Vec3 a = e[i], b = e[(i + 1) % 4];
-        HMM_Vec3 n = HMM_NormV3(HMM_Cross(HMM_SubV3(b, a), HMM_SubV3(top, a)));
+        HMM_Vec3 n = HMM_NormV3(HMM_Cross(HMM_SubV3(top, a), HMM_SubV3(b, a)));
         uint32_t v0 = mb_vertex(mb, a, n, c), v1 = mb_vertex(mb, top, n, c), v2 = mb_vertex(mb, b, n, c);
         mb_triangle_idx(mb, v0, v1, v2);
-        n = HMM_NormV3(HMM_Cross(HMM_SubV3(a, b), HMM_SubV3(bot, b)));
+        n = HMM_NormV3(HMM_Cross(HMM_SubV3(bot, b), HMM_SubV3(a, b)));
         v0 = mb_vertex(mb, b, n, c);
         v1 = mb_vertex(mb, bot, n, c);
         v2 = mb_vertex(mb, a, n, c);

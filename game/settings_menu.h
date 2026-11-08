@@ -44,6 +44,9 @@ typedef struct SettingsAccount {
 
 typedef struct SettingsMenu {
     bool open;
+    bool card;      /* in-game pause card (Resume, Settings, ...) instead of the settings page */
+    bool from_card; /* the settings page was opened from the card: its back arrow returns there */
+    bool in_room;   /* set by the game: the card offers Disconnect */
     int tab; /* 0 game, 1 skin */
     bool dev_open;
     UiScroll game_scroll, skin_scroll, rows[3];

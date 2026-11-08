@@ -60,7 +60,8 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|offline|freeroam-create|freeroam-join CODE|screenshot NAME`,
+`--menu pause`, `--markers N` and `--marker x,z,storey` (not saved),
 `--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
 to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).
@@ -264,6 +265,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   respawn) - on in debug builds. Test markers: 50 % rooms, 25 % corridors,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
   `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
+
+- In-game menu: gear / Back = centred pause card, max 420 pt (Resume, Settings,
+  Save & back to menu, Disconnect in a room); Settings' back arrow returns to
+  it. Arrows are drawn with `ui_line` (the font has no left arrow).
+- `--autotest offline`: an unresolvable host behaves like airplane mode; count
+  `net: attempt` lines after `frontend: PLAY`. Do not mix `--screenshot-at` into
+  tap-timed scripts: a capture stalls one frame, past the 250 ms tap window.
 
 ## Front end, accounts and persistence (M4)
 
