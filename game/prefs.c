@@ -85,7 +85,8 @@ void prefs_load(Prefs *p, const char *profile)
         g->marker_sounds = flag(s, "marker_sounds", g->marker_sounds);
         g->test_markers = flag(s, "test_markers", g->test_markers);
         g->test_marker_count = mg_clampf(num(s, "test_marker_count", g->test_marker_count), 1.0f, 16.0f);
-        g->dead_zone_pt = num(s, "dead_zone", g->dead_zone_pt);
+        g->dead_zone_pt = mg_clampf(num(s, "stick_dead_zone", g->dead_zone_pt), 0.0f, 50.0f); /* "dead_zone" was for the 120 pt stick */
+        g->show_stats = flag(s, "perf_hud", g->show_stats);
         g->render_scale = num(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
         g->tier_override = (int)num(s, "tier", (float)g->tier_override);
@@ -154,7 +155,8 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddBoolToObject(s, "marker_sounds", g->marker_sounds);
     cJSON_AddBoolToObject(s, "test_markers", g->test_markers);
     cJSON_AddNumberToObject(s, "test_marker_count", g->test_marker_count);
-    cJSON_AddNumberToObject(s, "dead_zone", g->dead_zone_pt);
+    cJSON_AddNumberToObject(s, "stick_dead_zone", g->dead_zone_pt);
+    cJSON_AddBoolToObject(s, "perf_hud", g->show_stats);
     cJSON_AddNumberToObject(s, "render_scale", g->render_scale);
 #ifdef MG_RENDER_FULL
     cJSON_AddNumberToObject(s, "tier", g->tier_override);

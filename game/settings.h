@@ -17,6 +17,7 @@ typedef struct GameSettings {
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
     bool show_nav;          /* debug: walkability grid + last path */
+    bool show_stats;        /* the fps / position text, top left */
     bool show_profiler;     /* debug: scopes and counters on the HUD */
     bool show_slots;        /* debug: NPC slots */
     float stress_count;     /* debug: wandering dummy avatars, 0..400 */
@@ -28,7 +29,7 @@ typedef struct GameSettings {
     bool xray_always;       /* debug: x-ray ignores depth */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */
-    float dead_zone_pt;     /* 60 */
+    float dead_zone_pt;     /* 30 */
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
 #ifdef MG_DAYCYCLE_CONTINUOUS
@@ -55,6 +56,7 @@ static inline void settings_default(GameSettings *s)
     s->pitch_deg_per_pt = 0.2f;
     s->invert_y = false;
     s->show_storeys = false;
+    s->show_stats = true;
     s->td_fov_deg = CAM_FOV_DEG;
     s->td_distance = CAM_DISTANCE;
     s->td_pitch_deg = CAM_PITCH_DEG;
@@ -72,7 +74,7 @@ static inline void settings_default(GameSettings *s)
     s->xray_always = false;
     s->cam_pitch_deg = -20.0f;
     s->fov_deg = 55.0f;
-    s->dead_zone_pt = 60.0f;
+    s->dead_zone_pt = 30.0f;
     s->show_colliders = false;
     s->show_triggers = false;
     s->teleport_floor = 0;

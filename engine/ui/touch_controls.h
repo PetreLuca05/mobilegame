@@ -20,7 +20,7 @@
 
 typedef struct TouchControlsConfig {
     float dead_zone_pt;   /* 60 */
-    float radius_pt;      /* 120 */
+    float radius_pt;      /* 60 */
     float sprint_at;      /* fraction of radius that counts as "rim"; > 1 = no sprint */
     float full_at;        /* fraction of radius that gives full magnitude (1 = the rim) */
     float stick_zone_y;   /* stick starts below this fraction of height (0) */

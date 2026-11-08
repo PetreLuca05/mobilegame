@@ -51,6 +51,8 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step;
     ui_slider(ui, str("camera_angle"), cx, cy, cw, &s->td_pitch_deg, CAM_PITCH_MIN, CAM_PITCH_MAX, "%.0f" TEXT_DEGREE);
     cy += step;
+    ui_toggle(ui, str("show_stats"), cx, cy, cw, &s->show_stats);
+    cy += 44.0f;
     ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
     cy += 44.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
@@ -78,7 +80,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 45.0f, 75.0f, "%.0f" TEXT_DEGREE);
     cy += step;
 #endif
-    ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 100.0f, "%.0f pt");
+    ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 50.0f, "%.0f pt");
     cy += step + 4.0f;
     ui_toggle(ui, "Sound", cx, cy, cw, &s->sound_on);
     cy += 44.0f;
@@ -273,7 +275,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
-    if (!m->open) { /* gear button, top-right */
+    if (!m->open) { /* pause button, top-right */
         const float gs = 44.0f;
         float gx = w_pt - safe_r - 12.0f - gs, gy = safe_t + 8.0f;
         if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {
@@ -284,8 +286,9 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         }
         ui_circle(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f, gs * 0.5f,
                   held ? ui_rgba(0x1E2230F0) : ui_rgba(0x1E2230A0));
-        text_draw_centered(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f + 2.0f, 26.0f, ui_rgba(0xFFFFFFFF),
-                           TEXT_GEAR);
+        const float bar_w = 5.0f, bar_h = 20.0f, bar_gap = 6.0f, bar_top = gy + (gs - bar_h) * 0.5f;
+        ui_rect(ui->gfx, ui->font, gx + gs * 0.5f - bar_gap * 0.5f - bar_w, bar_top, bar_w, bar_h, ui_rgba(0xFFFFFFFF));
+        ui_rect(ui->gfx, ui->font, gx + gs * 0.5f + bar_gap * 0.5f, bar_top, bar_w, bar_h, ui_rgba(0xFFFFFFFF));
         m->editing_name = false;
         if (!m->open) {
             return MENU_NONE;

@@ -5,7 +5,7 @@
 void touch_controls_default_config(TouchControlsConfig *c)
 {
     c->dead_zone_pt = 60.0f;
-    c->radius_pt = 120.0f;
+    c->radius_pt = 60.0f;
     c->sprint_at = 0.95f;
     c->full_at = 1.0f;
     c->stick_zone_y = 0.0f;  /* whole height (below the safe area) */
@@ -141,13 +141,13 @@ void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg
         ui_circle(g, f, tc->stick_ox, tc->stick_oy, r, ui_rgba(0xFFFFFF26));
         ui_circle(g, f, tc->stick_ox, tc->stick_oy, cfg->dead_zone_pt, ui_rgba(0xFFFFFF1A));
         UiColor knob = tc->sprint ? ui_rgba(0xFFB347E6) : ui_rgba(0xFFFFFFC8);
-        ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, 34.0f, knob);
+        ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, r * 0.283f, knob);
     } else {
         /* resting hint where a left thumb usually lands */
         float cx = safe_left + 24.0f + r * 0.75f;
         float cy = h_pt - mg_maxf(safe_bottom, 16.0f) - 40.0f - r * 0.75f;
         ui_circle(g, f, cx, cy, r * 0.75f, ui_rgba(0xFFFFFF14));
-        ui_circle(g, f, cx, cy, 30.0f, ui_rgba(0xFFFFFF40));
+        ui_circle(g, f, cx, cy, r * 0.25f, ui_rgba(0xFFFFFF40));
         if (tc->auto_dot) {
             ui_circle(g, f, cx, cy, 10.0f, ui_rgba(0x4A8BFFFF));
         }

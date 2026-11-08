@@ -1372,7 +1372,7 @@ void game_frame(MgApp *app, float alpha)
         s->show_colliders = !s->show_colliders;
     }
 
-    /* UI claims touches first (gear + menu), then gameplay controls. The
+    /* UI claims touches first (pause button + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
     bool back = app->input.key_pressed[SDL_SCANCODE_AC_BACK] || app->input.key_pressed[SDL_SCANCODE_ESCAPE];
@@ -1439,7 +1439,7 @@ void game_frame(MgApp *app, float alpha)
     } else {
         /* iPad: bigger controls so thumbs reach them */
         float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
-        g->touch_cfg.radius_pt = 120.0f * k;
+        g->touch_cfg.radius_pt = 60.0f * k;
         g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
         touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
@@ -1720,7 +1720,9 @@ void game_frame(MgApp *app, float alpha)
     hud.main_ms = gs.main_cpu_ms;
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
-    hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+    if (s->show_stats) {
+        hud_draw(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 8.0f, &hud);
+    }
     if (s->show_profiler != g->prof_on && !g->perf.active) {
         g->prof_on = s->show_profiler;
         prof_set_enabled(g->prof_on);
@@ -1974,12 +1976,12 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
         *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
                             scale, shake, m->ring_t, tint};
     }
-    /* panels the icons stay out of: gear, floor menu, toast */
+    /* panels the icons stay out of: pause button, floor menu, toast */
     const float w = app->width_pt, h = app->height_pt;
     float res[16];
     int rc = 0;
-    const float gear[4] = {w - app->safe_right - 62.0f, app->safe_top + 2.0f, 56.0f, 56.0f};
-    memcpy(res + rc * 4, gear, sizeof(gear));
+    const float pause_btn[4] = {w - app->safe_right - 62.0f, app->safe_top + 2.0f, 56.0f, 56.0f};
+    memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
     if (floor_menu_up) {
         const float fm[4] = {w - app->safe_right - 192.0f, app->safe_top + 64.0f, 180.0f, 200.0f};

@@ -50,6 +50,7 @@
   "provider_google": "Google",
   "provider_apple": "Apple",
   "cant_get_there": "Can't get there",
+  "show_stats": "Show performance stats",
   "camera_fov": "Camera field of view",
   "camera_distance": "Camera distance",
   "camera_angle": "Camera angle",

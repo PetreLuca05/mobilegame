@@ -156,7 +156,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   elevator. Stick / WASD: up = screen up = north.
   Settings sliders: field of view 20-60 deg, distance 8-30 m, angle 35-85 deg
   (`--autotest perf` always keeps the defaults above, so runs stay comparable).
-- Touch zones: left 45 % = floating stick; the rest is UI (and marker taps).
+- Touch zones: left 45 % = floating stick (60 pt radius, scaled up on iPad; dead zone pref `stick_dead_zone`, default 30 pt); the rest is UI (and marker taps).
 - `-DMG_CAMERA=thirdperson` builds the M1-M4 orbit camera (`camera_tp.c`,
   wall sphere-cast, right-half camera drag) for engine tests; not shipped.
 - `--autotest stickdir --spawn -12,0.1,10`: stick up/right/down/left walk
@@ -213,7 +213,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   walls"; Developer -> "X-ray always". Toon outlines are pure black.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
-- Prefs keys (M5): `td_fov`, `td_distance`, `td_pitch` (Settings sliders), `show_own_name`
+- Prefs keys: `perf_hud` (Settings -> "Show performance stats", the top-left text), `td_fov`, `td_distance`, `td_pitch` (Settings sliders), `show_own_name`
   (the M5 camera keys are ignored and dropped on the next write).
 
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
@@ -270,7 +270,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
   `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
 
-- In-game menu: gear / Back = centred pause card, max 420 pt (Resume, Settings,
+- In-game menu: pause button (two bars, drawn with `ui_rect`) / Back = centred pause card, max 420 pt (Resume, Settings,
   Save & back to menu, Disconnect in a room); Settings' back arrow returns to
   it. Arrows are drawn with `ui_line` (the font has no left arrow).
 - `--autotest offline`: an unresolvable host behaves like airplane mode; count
