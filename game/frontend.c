@@ -464,7 +464,7 @@ static FeAction free_roam(Frontend *f, Ui *ui, MgApp *app)
 {
     float w = app->width_pt, h = app->height_pt;
     float x = app->safe_left + PAD, cw = mg_minf(w * 0.5f - x - PAD, 420.0f);
-    float y = app->safe_top + PAD;
+    float y = app->safe_top + PAD + 8.0f;
     text_draw(ui->gfx, ui->font, x, y, 30.0f, ui_rgba(0xFFFFFFFF), str("mode_free_roam"));
     y += 44.0f;
     FeAction a = FE_NONE;

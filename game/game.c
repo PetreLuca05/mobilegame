@@ -89,6 +89,8 @@ typedef struct Game {
     bool google_busy;      /* sign-in sheet open or link request in flight */
     bool skin_override;
     bool has_save;         /* save_slot0.bin exists (Continue) */
+    bool stats_queued;     /* this run's stats are (partly) in prefs.stats_queue */
+    NetStats queued;       /* what of this run is already in the queue */
     bool offline_play;     /* New Game / Continue: saves, no room */
     double next_save;
     SaveGame save;         /* loaded on Continue; progress kept here */
@@ -444,7 +446,17 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         g->google_busy = google_auth_start(g->google, app->window);
         break;
     case MENU_SIGN_OUT:
+        /* device settings and the save stay; the account cache does not */
+        g->prefs.has_profile_cache = false;
+        g->prefs.onboarding_done = false;
+        g->prefs.auth_provider[0] = 0;
+        save_prefs(g);
         net_sign_out(g->net);
+        if (!g->playing) {
+            g->menu.open = false;
+            g->fe.depth = 0;
+            g->fe.state = FE_WELCOME;
+        }
         SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Signed out - playing as a new guest");
         break;
     case MENU_DISCONNECT:
@@ -901,6 +913,24 @@ void game_frame(MgApp *app, float alpha)
                 net_save_profile(g->net, g->profile.display_name, &g->profile.skin);
                 g->prefs.profile_stale = false;
             }
+            if (g->prefs.has_stats_queue) { /* offline play from earlier: add it now */
+                NetStats *q = &g->prefs.stats_queue, *b = &g->profile.stats;
+                b->sessions += q->sessions;
+                b->play_seconds += q->play_seconds;
+                b->distance_m += q->distance_m;
+                b->elevator_rides += q->elevator_rides;
+                b->rooms_joined += q->rooms_joined;
+                SDL_zero(*q);
+                g->prefs.has_stats_queue = false;
+                if (g->stats_queued) { /* this run's part is counted in stats_totals already */
+                    b->sessions -= g->queued.sessions;
+                    b->play_seconds -= g->queued.play_seconds;
+                    b->distance_m -= g->queued.distance_m;
+                    b->elevator_rides -= g->queued.elevator_rides;
+                    b->rooms_joined -= g->queued.rooms_joined;
+                }
+                g->stats_queued = false;
+            }
             stats_loaded(&g->stats, &g->profile.stats, app->time);
             session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
             account_loaded(g, app);
@@ -1075,12 +1105,30 @@ void game_event(MgApp *app, const SDL_Event *e)
     (void)e;
 }
 
+/* Online: PATCH the totals. Never reached the server this run: keep what
+ * happened in prefs.json and add it on the next successful load. */
 static void flush_stats(Game *g)
 {
     if (g->stats.loaded) {
         NetStats t = stats_totals(&g->stats);
         net_save_stats(g->net, &t);
+        return;
     }
+    if (g->stats.play_seconds < 1.0) {
+        return;
+    }
+    NetStats d = {0};
+    d = stats_totals(&g->stats); /* base is zero offline: this is the delta */
+    NetStats *q = &g->prefs.stats_queue;
+    q->sessions += g->prefs.has_stats_queue && g->stats_queued ? 0 : d.sessions;
+    q->play_seconds += d.play_seconds - g->queued.play_seconds;
+    q->distance_m += d.distance_m - g->queued.distance_m;
+    q->elevator_rides += d.elevator_rides - g->queued.elevator_rides;
+    q->rooms_joined += d.rooms_joined - g->queued.rooms_joined;
+    g->queued = d;
+    g->stats_queued = true;
+    g->prefs.has_stats_queue = true;
+    save_prefs(g);
 }
 
 void game_pause(MgApp *app)

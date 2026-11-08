@@ -1,4 +1,4 @@
-# Mobilegame — engine + M2 Hospital & Accounts
+# Mobilegame — engine, hospital, lighting, onboarding (M1-M4)
 
 C11 engine for iOS / Android phones and iPad (landscape only) on SDL3 + SDL3 GPU,
 with a desktop target for fast iteration. Multiplayer over Supabase Realtime;
@@ -137,6 +137,43 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   encode times: SDL3 GPU exposes no GPU timestamps, so measure the GPU frame
   with Xcode's Metal frame capture / Android GPU Inspector. N views near 1
   (cascade 0 only) means the atlas is fully cached.
+
+## Front end, accounts and persistence (M4)
+
+- `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
+  launch; later boots go straight to the menu), SETTINGS, FREE_ROAM,
+  LOADING, PLAY. Outside PLAY the locker-room scene is drawn (avatar on a
+  turntable); the hospital is only built when play starts. Back = Android
+  back / Escape (exits from the welcome screen). Desktop: `--frontend
+  welcome|username|creator|menu|settings|freeroam`, `--play new|continue`.
+- Text lives in `assets/strings.json` (`str("key")`), never in C.
+- Sign-in: Google (both platforms) and Sign in with Apple (iOS,
+  `platform/ios/apple_auth.m`), both linking the guest via the id_token
+  grant. Apple needs a **paid** Apple Developer Program team (personal teams
+  cannot have the capability): enable "Sign In with Apple" for the App ID
+  `ro.docvex.mobilegame` (developer.apple.com -> Identifiers, or Xcode
+  Signing & Capabilities), then build with `MG_IOS_APPLE_SIGNIN=ON
+  tools/run_ios.sh`. Supabase: Authentication -> Sign In / Providers ->
+  Apple -> enable, Client IDs = `ro.docvex.mobilegame` (native flow: no
+  Services ID or secret) -> Save.
+- Per account (Supabase): display name, `profiles.skin` v2
+  `{body, skin, hair, hair_color, suit, accessory, palette}` (migration
+  0004; missing keys = 0), stats. Per device: `prefs.json` and the save slot
+  in `SDL_GetPrefPath("docvex","mobilegame")` (desktop: `<profile>-` prefix).
+- `prefs.json` keys: `settings` {yaw_sens, pitch_sens, invert_y,
+  cam_distance, cam_pitch, fov, dead_zone, render_scale, tier, shadows,
+  sound}, `onboarding_done`, `auth_provider` (google/apple/guest),
+  `last_mode`, `last_room`, `profile_cache` {name, skin, stale},
+  `stats_queue` {sessions, play_seconds, distance_m, elevator_rides,
+  rooms_joined} (offline play, added on the next load). Written atomically.
+  Sign-out keeps settings + save, clears the cache and `onboarding_done`.
+- `save_slot0.bin` (offline New Game / Continue): "MGS1", version u32,
+  pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
+  visited_rooms u64 (bit = storey * 16 + chunk); every 30 s, on background,
+  exit and "Save & back to menu". Offline play joins no Realtime room.
+- Multiplayer modes: one row in `game/modes.c` (id, name/description string
+  keys, players, enabled, entry state) + its strings; disabled rows show
+  "Soon". Free Roam = room code create/join.
 
 ## Networking
 

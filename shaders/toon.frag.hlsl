@@ -29,7 +29,10 @@ float4 PSMain(VSOut i) : SV_Target0
         light *= cascade_tint(i.wpos);
     float sunny = cel_step(ndl, 0.0) * cel_step(shadow, 0.5) * outdoor + (1.0 - outdoor) * cel_step(n.y, -0.2);
     float gloss = u_params.w;
-    float rim = cel_step(1.0 - saturate(dot(n, v)), 0.62) * u_params.x * (0.6 + 0.8 * gloss) * (0.35 + 0.65 * sunny);
+    // rim only on surfaces that face sideways: on flat ground the view-angle
+    // threshold would draw a hard ring around the camera
+    float side = saturate(1.0 - abs(n.y) * 1.4);
+    float rim = cel_step(1.0 - saturate(dot(n, v)), 0.62) * side * u_params.x * (0.6 + 0.8 * gloss) * (0.35 + 0.65 * sunny);
     float ndh = dot(n, normalize(u_sun_dir.xyz + v));
     float spec = gloss * sunny * (0.5 * cel_step(ndh, 0.95) + 0.5 * cel_step(ndh, 0.99));
     float3 c = base * light + (rim * 0.45 + spec * 0.9) * float3(1.0, 1.0, 1.0) + base * u_params.z;
