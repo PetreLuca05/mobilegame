@@ -32,7 +32,8 @@ static struct {
     uint32_t frame;      /* frames finished */
     uint32_t run_frames;
     ProfFrames intervals;
-    uint32_t allocs, allocs_last, allocs_run, alloc_frames;
+    uint32_t allocs, allocs_last, allocs_run, alloc_frames, exempt_run;
+    int exempt;
     SDL_malloc_func real_malloc;
     SDL_calloc_func real_calloc;
     SDL_realloc_func real_realloc;
@@ -42,7 +43,11 @@ static struct {
 static void count_alloc(void)
 {
     if (P.in_frame && SDL_GetCurrentThreadID() == P.main_thread) {
-        P.allocs++;
+        if (P.exempt > 0) {
+            P.exempt_run++;
+        } else {
+            P.allocs++;
+        }
     }
 }
 
@@ -214,7 +219,7 @@ void prof_run_reset(void)
     }
     P.run_frames = 0;
     SDL_memset(&P.intervals, 0, sizeof(P.intervals));
-    P.allocs_run = P.alloc_frames = 0;
+    P.allocs_run = P.alloc_frames = P.exempt_run = 0;
 }
 
 int prof_run_rows(ProfRow *out, int max)
@@ -241,5 +246,7 @@ ProfFrames prof_run_frames(void) { return P.intervals; }
 uint32_t prof_allocs_last_frame(void) { return P.allocs_last; }
 uint32_t prof_allocs_run(void) { return P.allocs_run; }
 uint32_t prof_alloc_frames_run(void) { return P.alloc_frames; }
+void prof_allocs_exempt(bool on) { P.exempt += on ? 1 : -1; }
+uint32_t prof_allocs_exempt_run(void) { return P.exempt_run; }
 
 #endif

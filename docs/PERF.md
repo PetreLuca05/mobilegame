@@ -6,6 +6,13 @@ Budgets and standing rules: [PERF_RULES.md](PERF_RULES.md).
 
 **Verdict:** the 200-NPC stress scene meets every budget on the iPad Air 4 for a 5-minute run, thermal state nominal (commit `6c46299`, MSAA 2x).
 
+## Sign-off decisions (PERF-1 signed off at `f19cace`)
+
+- **MSAA 2x ships; the hot-device path drops it to off. Final.**
+- Sub-target misses are accepted as debt, not failures; see "Audit status and deferred work".
+- The gate (`--gate`) fails on any heap allocation in the frame loop except those made while saving a screenshot, which are counted separately (`heap_allocs_screenshot`). Debug builds count allocations and do not abort.
+- iPhone testing stopped at `f19cace`. If the iPhone comes back as a test device, the first task is a dropped-frame trace.
+
 ## iPad Air 4: before and after
 
 Before is the baseline at `c4eafa3` (MSAA 4x, 180 s stress). After is `6c46299` (MSAA 2x; stress run 300 s).
@@ -58,7 +65,7 @@ All GPU figures were taken at the Minimum clock state (88-100 % of the time). Th
 
 ## iPhone 17 Pro Max: last measurements
 
-Testing on the iPhone stopped at the user's request. These are the last valid numbers, commit `6c46299`, MSAA 2x. Not measured: the stress GPU trace and the determinism test.
+Testing on the iPhone stopped at `f19cace`, at the user's request. These are the last valid numbers, commit `6c46299`, MSAA 2x. Recorded as **FAIL**: 16 dropped frames in the 5-minute run. Recorded as **NOT VERIFIABLE**: the GPU stress scene and the determinism test.
 
 | Scenario | Tick + frame ms | Render ms | GPU ms / busy % / effective | Draws | Memory MB | Dropped |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -143,10 +150,11 @@ Inside the arena: nav grids 7.6 MB, NPC storage 0.9 MB; audio is in the arena an
 | Job system | Done, 6 threads on the iPad | At 400 NPCs one thread takes 0.057 ms per tick and 6 take 0.062 ms: dispatch costs as much as it saves until the per-NPC work grows in M7 |
 | Determinism | Passes on the iPad and desktop | LOD rates depend on the viewer, so two players with different views can drift; M7 accepts drift for now |
 | Render thread priority | Done, log shows 45 on the iPad | |
-| Heap allocations | 0 in every recorded run | Counted and reported on the HUD and in the JSON; there is no hard debug abort, because screenshots legitimately allocate |
+| Heap allocations | 0 in every recorded run | Counted on the HUD and in the JSON. Debug builds do not abort; `--gate` fails on any allocation outside a screenshot |
 | Vertex-shader avatar animation | **Deferred** (accepted) | Avatars are instanced with matrices composed on the CPU. `npc.draw` is the cost it would save: under 0.2 ms per frame with 200 NPCs; expected saving about half of that, and it needs a part id per instance. Candidate when the fidelity work starts |
-| Avatar draws | About 20 on average in the stress scene, target was 10 or fewer | Each part type and hair style is its own mesh; the 150 budget is met |
-| Static world draws | 68 in the yard scene including UI, target was 25 or fewer | Tree canopies and text remain separate; the 150 and 100 limits are met |
+| Avatar draws | **Deferred debt:** about 20 draws on average in the stress scene, target 10 or fewer | Each part type and hair style is its own mesh; the 150 budget is met. Revisit when the map changes |
+| Static world draws | **Deferred debt:** 68 in the yard scene including UI, target 25 or fewer | Tree canopies and text remain separate; the 150 and 100 limits are met. Revisit with chunked static geometry when the map changes |
+| Unattributed iPad render time | **Deferred:** about 0.7 ms of `render` outside the sort and encode scopes | Break it down the next time a perf pass runs |
 | Menu avatar preview | Still an offscreen render target | Menu only, no gameplay cost; M8 replaces it with a viewport in the main pass |
 | Light bake | Skipped by decision | Desktop only: 136 ms for 31,744 vertices, 1 ms cached, streaky floors because the meshes have too few vertices. `MG_BAKE` stays off |
 

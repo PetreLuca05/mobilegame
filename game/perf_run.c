@@ -135,8 +135,8 @@ static void write_report(const PerfRun *p, MgApp *app)
         gs.backend ? gs.backend : "", gs.width_px, gs.height_px);
     PUT("\"frames\": %u,\n\"interval_16ms\": %u,\n\"interval_33ms\": %u,\n\"interval_50ms_plus\": %u,\n\"dropped\": %u,\n", fr.frames,
         fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse);
-    PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n", p->thermal_worst,
-        (double)p->resident_max, prof_allocs_run(), prof_alloc_frames_run());
+    PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n\"heap_allocs_screenshot\": %u,\n",
+        p->thermal_worst, (double)p->resident_max, prof_allocs_run(), prof_alloc_frames_run(), prof_allocs_exempt_run());
     PUT("\"entities_sim_max\": %u,\n\"entities_rendered_max\": %u,\n\"route_failures\": %d,\n", p->sim_max, p->rendered_max, p->failed);
     {
         GfxMemory gm;

@@ -1208,6 +1208,7 @@ void game_frame(MgApp *app, float alpha)
         p = comma ? comma + 1 : NULL;
     }
     if (ato.screenshot[0]) {
+        prof_allocs_exempt(true); /* SDL_GetPrefPath; the capture itself is exempt in gfx */
         char path[640];
 #if defined(SDL_PLATFORM_IOS)
         const char *dir = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
@@ -1220,6 +1221,7 @@ void game_frame(MgApp *app, float alpha)
         SDL_free(dir);
 #endif
         gfx_request_screenshot(app->gfx, path);
+        prof_allocs_exempt(false);
     }
     if (ato.respawn_markers) {
         marker_clear(&g->markers, MARKER_TEST);

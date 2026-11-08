@@ -2304,7 +2304,9 @@ void gfx_frame_end(GfxContext *g)
     g->stats.main_cpu_ms = (float)((mg_time_now() - main0) * 1000.0);
     if (shot) {
         blit_scene_to_swap(g, rw, rh);
+        prof_allocs_exempt(true);
         save_screenshot(g, rw, rh);
+        prof_allocs_exempt(false);
         return;
     }
     if (swap_cmd) {
