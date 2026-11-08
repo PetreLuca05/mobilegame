@@ -112,9 +112,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
         ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->show_triggers);
         y += wide ? 44.0f : 84.0f;
+        ui_toggle(ui, "Nav grid", x, y + (wide ? 44.0f : 84.0f), cw, &s->show_nav);
         ui_toggle(ui, "Storey colours", x, y, cw, &s->show_storeys);
         ui_toggle(ui, "X-ray always", wide ? x2 : x, wide ? y : y + 40.0f, cw, &s->xray_always);
-        y += wide ? 44.0f : 84.0f;
+        y += (wide ? 44.0f : 84.0f) + 44.0f;
 #ifdef MG_RENDER_FULL
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;

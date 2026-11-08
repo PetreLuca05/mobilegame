@@ -126,6 +126,8 @@ add_library(mg_engine STATIC
   engine/core/assets.c
   engine/core/log.c
   engine/core/png_write.c
+  engine/nav/navgrid.c
+  engine/nav/astar.c
   engine/core/time.c
   engine/platform/app_sdl.c
   engine/platform/input_touch.c
@@ -195,6 +197,7 @@ set(MG_GAME_SOURCES
   game/elevator.c
   game/floor_menu.c
   game/route_test.c
+  game/nav_debug.c
   game/stats.c
   game/player.c
   game/camera_td.c

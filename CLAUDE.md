@@ -220,6 +220,23 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
 
+## Navigation (M6)
+
+- `engine/nav/navgrid.c` bakes 0.25 m walkability grids from the static
+  colliders at scene load (each box rasterises into the cells it covers;
+  elevator doors count as open): grid 0 = ground level (yard + storey G,
+  one connected area, `NAV_OUTDOOR` outside the footprint), one grid per upper
+  storey. Flags: `NAV_WALKABLE`, `NAV_DOOR`, `NAV_ELEVATOR`, `NAV_OUTDOOR`,
+  `NAV_NEAR_WALL`. `engine/nav/astar.c`: 8 neighbours, no corner cutting,
+  octile heuristic, +0.5 near walls, then string-pulled by grid line of sight.
+  `nav_find_path(n, from, from_storey, to, to_storey, &path)`: points tagged
+  with storey (-1 yard), `ride_at` / `ride_from` / `ride_to` for the car;
+  `NAV_UNREACHABLE` if nothing walkable within 1 m or not connected.
+- Debug: Developer -> Nav grid / desktop `--nav` (red blocked, green free,
+  olive near walls, yellow narrow, blue car; yellow line = last path). Desktop
+  right-click (no drag) on the floor. `--autotest nav` checks every room
+  from the gate, rides, the blocked stairwell, and logs bake and path ms.
+
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first

@@ -16,6 +16,7 @@ void input_begin_frame(MgInput *in)
     }
     memset(in->key_pressed, 0, sizeof(in->key_pressed));
     in->wheel = 0.0f;
+    in->right_click = false;
     in->mouse_dx = 0.0f;
     in->mouse_dy = 0.0f;
     in->text_len = 0;
@@ -102,11 +103,21 @@ void input_handle_event(MgInput *in, const SDL_Event *e, float width_pt, float h
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
         if (e->button.which != SDL_TOUCH_MOUSEID && (e->button.button == SDL_BUTTON_RIGHT || e->button.button == SDL_BUTTON_MIDDLE)) {
             in->mouse_right = true;
+            if (e->button.button == SDL_BUTTON_RIGHT) {
+                in->right_down_x = e->button.x;
+                in->right_down_y = e->button.y;
+            }
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
         if (e->button.which != SDL_TOUCH_MOUSEID && (e->button.button == SDL_BUTTON_RIGHT || e->button.button == SDL_BUTTON_MIDDLE)) {
             in->mouse_right = false;
+            float dx = e->button.x - in->right_down_x, dy = e->button.y - in->right_down_y;
+            if (e->button.button == SDL_BUTTON_RIGHT && dx * dx + dy * dy < 36.0f) {
+                in->right_click = true;
+                in->right_click_x = e->button.x;
+                in->right_click_y = e->button.y;
+            }
         }
         break;
     case SDL_EVENT_MOUSE_MOTION:

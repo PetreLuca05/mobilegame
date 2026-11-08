@@ -43,6 +43,7 @@
 #include "gfx/mesh.h"
 #include "net_session.h"
 #include "player.h"
+#include "nav_debug.h"
 #include "route_test.h"
 #include "scene.h"
 #include "scenery.h"
@@ -64,6 +65,10 @@ typedef struct Game {
     double start_time;     /* first frame, for --screenshot-at */
     uint32_t shots_taken;  /* --screenshot-at entries done (bit per entry) */
     uint32_t occl_frames, occl_hidden, occl_lost; /* route test: indoor frames / behind a wall / ... with no x-ray */
+    struct NavWorld *nav;  /* pathfinding grids, NULL if the scene has none */
+    NavPath nav_path;      /* last path found */
+    bool nav_path_ok;
+    NavDebug nav_debug;
     FloorPeek peek;
     int peek_view;         /* storey the floor peek shows, -1 = the player's */
     char peek_label[4][2];
@@ -186,6 +191,12 @@ static bool ensure_world(Game *g, MgApp *app)
         return true;
     }
     g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
+    if (g->scene) {
+        g->nav = scene_nav_bake(g->scene, &app->perm, &g->world);
+        if (g->nav) {
+            mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
+        }
+    }
     SceneryShape shape = scene_scenery_shape();
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
@@ -230,6 +241,7 @@ bool game_init(MgApp *app)
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
+    g->settings.show_nav = has_flag(app->argc, app->argv, "--nav");
 #ifdef MG_RENDER_FULL
     g->settings.show_lights = has_flag(app->argc, app->argv, "--lights");
     const char *tier_arg = arg_value(app->argc, app->argv, "--tier");
@@ -401,6 +413,8 @@ static void update_fly_camera(Game *g, MgApp *app)
 }
 
 static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor, HMM_Vec3 feet);
+static void run_nav_check(Game *g, MgApp *app);
+static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y_pt, float y, HMM_Vec3 *out);
 
 /* X-ray silhouette colour: the avatar's accent at full saturation x 0.85
  * (grey accents stay grey), so players can tell each other apart. */
@@ -1326,6 +1340,28 @@ void game_frame(MgApp *app, float alpha)
 #endif
     scene_draw(g->scene, app->gfx, &view);
     scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
+    if (g->nav) {
+        const char *at = arg_value(app->argc, app->argv, "--autotest");
+        if (at && SDL_strcmp(at, "nav") == 0) {
+            run_nav_check(g, app);
+        }
+        /* desktop: right-click on the floor = path from the player */
+        if (app->input.right_click && !g->menu.open) {
+            HMM_Vec3 hit;
+            if (screen_to_floor(g, app, app->input.right_click_x, app->input.right_click_y,
+                                scene_floor_y(g->scene, floor), &hit)) {
+                int from = scene_indoors(g->scene, feet) ? player_floor : -1;
+                g->nav_path_ok = nav_find_path(g->nav, feet, from, hit, floor, &g->nav_path) == 0;
+                mg_log_info("nav: path to (%.1f, %.1f) floor %d: %s, %d points, %.1f m, %.2f ms", (double)hit.X,
+                            (double)hit.Z, floor, g->nav_path_ok ? "ok" : "unreachable", g->nav_path.count,
+                            (double)g->nav_path.length, (double)nav_path_ms(g->nav));
+            }
+        }
+        if (s->show_nav) {
+            nav_debug_draw(&g->nav_debug, app->gfx, &app->perm, g->nav, floor, g->unit_box,
+                           g->nav_path_ok ? &g->nav_path : NULL, true);
+        }
+    }
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
                        g->player.kin.jumping, scene_indoors(g->scene, feet), false};
     avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
@@ -1402,6 +1438,59 @@ void game_frame(MgApp *app, float alpha)
     }
 #endif
     draw_room_badge(g, app);
+}
+
+/* Window point -> the horizontal plane at height y. */
+static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y_pt, float y, HMM_Vec3 *out)
+{
+    HMM_Mat4 inv = HMM_InvGeneralM4(g->view_proj);
+    float nx = x_pt / app->width_pt * 2.0f - 1.0f, ny = 1.0f - y_pt / app->height_pt * 2.0f;
+    HMM_Vec4 a = HMM_MulM4V4(inv, HMM_V4(nx, ny, 0.0f, 1.0f)), b = HMM_MulM4V4(inv, HMM_V4(nx, ny, 1.0f, 1.0f));
+    HMM_Vec3 pa = HMM_DivV3F(a.XYZ, a.W), pb = HMM_DivV3F(b.XYZ, b.W);
+    if (fabsf(pb.Y - pa.Y) < 1e-4f) {
+        return false;
+    }
+    float t = (y - pa.Y) / (pb.Y - pa.Y);
+    *out = HMM_AddV3(pa, HMM_MulV3F(HMM_SubV3(pb, pa), t));
+    return t > 0.0f;
+}
+
+/* --autotest nav: every room reachable from the gate, cross-storey paths go
+ * through the car, the stairwell is not reachable. Logs timings, then quits. */
+static void run_nav_check(Game *g, MgApp *app)
+{
+    static const struct { const char *name; float x, z; int storey; bool reachable; } k[] = {
+        {"lobby", -3.0f, -3.0f, 0, true},       {"pharmacy", -10.4f, -4.0f, 0, true}, {"exam 1", -10.0f, -13.0f, 0, true},
+        {"triage", 10.4f, -4.0f, 0, true},      {"exam 2", 10.0f, -13.0f, 0, true},   {"car G", 0.0f, -13.84f, 0, true},
+        {"yard W", -20.0f, 10.0f, -1, true},    {"yard E", 20.0f, 10.0f, -1, true},   {"room 102", -3.0f, -5.5f, 1, true},
+        {"ward N", 10.0f, -12.0f, 1, true},     {"car 1", 0.0f, -13.84f, 1, true},    {"OR 1", -10.4f, -3.0f, 2, true},
+        {"OR 2", 10.4f, -3.0f, 2, true},        {"office 2", 10.0f, -12.4f, 2, true}, {"cafeteria", 0.0f, -3.5f, 2, true},
+        {"car 2", 0.0f, -13.84f, 2, true},      {"stairs G", -5.0f, -14.0f, 0, false},
+    };
+    bool all = true;
+    float worst = 0.0f;
+    const HMM_Vec3 gate = HMM_V3(0.0f, 0.0f, 17.0f);
+    for (size_t i = 0; i < MG_ARRAY_COUNT(k); i++) {
+        HMM_Vec3 to = HMM_V3(k[i].x, scene_floor_y(g->scene, k[i].storey < 0 ? 0 : k[i].storey), k[i].z);
+        int r = nav_find_path(g->nav, gate, -1, to, k[i].storey, &g->nav_path);
+        bool ok = (r == 0) == k[i].reachable && (!k[i].reachable || (g->nav_path.ride_at >= 0) == (k[i].storey > 0));
+        worst = mg_maxf(worst, nav_path_ms(g->nav));
+        all = all && ok;
+        mg_log_info("nav check %-10s %s, %2d pts, %5.1f m, ride %d, %.2f ms (%s)", k[i].name, r == 0 ? "reachable " : "UNREACHABLE",
+                    g->nav_path.count, (double)g->nav_path.length, g->nav_path.ride_at >= 0, (double)nav_path_ms(g->nav),
+                    ok ? "ok" : "FAIL");
+    }
+    /* floor 2 -> yard: the reverse route */
+    int r = nav_find_path(g->nav, HMM_V3(10.4f, 8.0f, -3.0f), 2, HMM_V3(-20.0f, 0.0f, 10.0f), -1, &g->nav_path);
+    bool rev = r == 0 && g->nav_path.ride_at >= 0 && g->nav_path.ride_to == 0;
+    worst = mg_maxf(worst, nav_path_ms(g->nav));
+    all = all && rev;
+    mg_log_info("nav check floor 2 -> yard %s, ride %d -> %d, %.1f m", rev ? "ok" : "FAIL", g->nav_path.ride_from,
+                g->nav_path.ride_to, (double)g->nav_path.length);
+    g->nav_path_ok = false;
+    mg_log_info("nav: bake %.1f ms, slowest path %.2f ms", (double)nav_bake_ms(g->nav), (double)worst);
+    mg_log_info("AUTOTEST %s", all ? "PASSED" : "FAILED");
+    app->quit_requested = true;
 }
 
 static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name)

@@ -1058,6 +1058,36 @@ static void draw_mesh(GfxContext *g, GfxMeshId m, const GfxMaterial *mat, uint32
     }
 }
 
+NavWorld *hospital_nav_bake(Hospital *h, Arena *perm, ColWorld *world)
+{
+    NavBakeDesc d;
+    memset(&d, 0, sizeof(d));
+    d.grid_count = HOSP_FLOORS;
+    /* grid 0: the whole plot (yard + storey G, one connected area) */
+    d.grids[0] = (NavGridDesc){-HOSP_YARD_HX, -HOSP_YARD_HZ, (int)(2.0f * HOSP_YARD_HX / NAV_CELL),
+                               (int)(2.0f * HOSP_YARD_HZ / NAV_CELL), 0.0f};
+    for (int f = 1; f < HOSP_FLOORS; f++) {
+        d.grids[f] = (NavGridDesc){HOSP_X0, HOSP_Z0, (int)((HOSP_X1 - HOSP_X0) / NAV_CELL),
+                                   (int)((HOSP_Z1 - HOSP_Z0) / NAV_CELL), (float)f * HOSP_STOREY};
+    }
+    const float fp[4] = {HOSP_X0, HOSP_Z0, HOSP_X1, HOSP_Z1}, car[4] = {HOSP_CAR_X0, HOSP_CAR_Z0, HOSP_CAR_X1, HOSP_CAR_Z1};
+    memcpy(d.footprint, fp, sizeof(fp));
+    memcpy(d.car, car, sizeof(car));
+    d.radius = 0.35f;
+    d.height = 1.8f;
+    d.step = 0.35f;
+    float saved[HOSP_FLOORS]; /* the car's doors must not block its landing */
+    for (int f = 0; f < HOSP_FLOORS; f++) {
+        saved[f] = h->door_open[f];
+        h->door_open[f] = 1.0f;
+    }
+    hospital_apply_doors(h, world);
+    NavWorld *n = nav_bake(perm, world, &d);
+    memcpy(h->door_open, saved, sizeof(saved));
+    hospital_apply_doors(h, world);
+    return n;
+}
+
 bool hospital_box_cut_away(const Hospital *h, int box, const float *fade)
 {
     int sg = box >= 0 && box < COL_MAX_BOXES ? h->box_seg[box] : -1;

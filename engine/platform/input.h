@@ -28,6 +28,9 @@ typedef struct MgInput {
     float wheel;
     float mouse_dx, mouse_dy; /* relative motion with right or middle button held (desktop camera) */
     bool mouse_right;
+    float right_down_x, right_down_y; /* where the right button went down (window pt) */
+    bool right_click;                 /* desktop: right button released without a drag, this frame */
+    float right_click_x, right_click_y;
     char text[32]; /* text typed this frame (ASCII subset) */
     int text_len;
 } MgInput;

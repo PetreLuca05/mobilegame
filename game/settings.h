@@ -14,6 +14,7 @@ typedef struct GameSettings {
     float floor_peek_hold;  /* s a tapped peek lasts: 0, 3, 10 */
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
+    bool show_nav;          /* debug: walkability grid + last path */
     bool xray_always;       /* debug: x-ray ignores depth */
     float cam_pitch_deg;    /* third-person: -20; slider value applied to the camera */
     float fov_deg;          /* 55 (landscape) */

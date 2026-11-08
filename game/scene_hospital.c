@@ -76,6 +76,8 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
 #endif
 }
 
+struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world) { return hospital_nav_bake(&s->h, perm, world); }
+
 bool scene_box_cut_away(const Scene *s, int box, const float *fade)
 {
     return hospital_box_cut_away(&s->h, box, fade);

@@ -42,6 +42,9 @@ bool scene_indoors(const Scene *s, HMM_Vec3 p);
 /* Slow orbit for the launch screen. */
 void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target);
 void scene_draw(Scene *s, GfxContext *g, const SceneView *v);
+/* Pathfinding grids from the static colliders; NULL if the scene has none. */
+struct NavWorld;
+struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world);
 /* Collider of geometry that is faded out right now (occlusion survey). */
 bool scene_box_cut_away(const Scene *s, int box, const float *fade);
 /* M5 floor fade: where each fade slot should go (FloorFade.target). */

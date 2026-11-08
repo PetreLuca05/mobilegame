@@ -7,6 +7,7 @@
 #define MG_HOSPITAL_H
 
 #include "gfx/gfx.h"
+#include "nav/navgrid.h"
 #include "physics/collide.h"
 #include "ui/text.h"
 
@@ -119,6 +120,8 @@ typedef struct HospView {
 
 bool hospital_init(Hospital *h, GfxContext *g, Arena *scratch, ColWorld *world, const TextFont *font);
 int hospital_group_storey(int grp);
+/* Walkability grids for pathfinding (all elevator doors count as open). */
+NavWorld *hospital_nav_bake(Hospital *h, Arena *perm, ColWorld *world);
 /* Collider of a wall piece that is faded out right now (fade = vis slots). */
 bool hospital_box_cut_away(const Hospital *h, int box, const float *fade);
 /* Targets for the fade slots: storeys above the view floor and the roof go

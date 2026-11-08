@@ -70,6 +70,12 @@ void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
     devroom_draw(&s->room, g, false);
 }
 
+struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world)
+{
+    (void)s, (void)perm, (void)world;
+    return NULL; /* no pathfinding in the engine test room */
+}
+
 bool scene_box_cut_away(const Scene *s, int box, const float *fade)
 {
     (void)s, (void)box, (void)fade;
