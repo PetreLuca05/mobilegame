@@ -145,7 +145,6 @@ add_library(mg_engine STATIC
   engine/ui/text.c
   engine/ui/widgets.c
   engine/ui/touch_controls.c
-  engine/ui/floorpeek.c
   engine/ui/marker_hud.c
   engine/ui/hud.c
   engine/ui/prof_hud.c

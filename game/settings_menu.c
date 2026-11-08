@@ -45,19 +45,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     float cx = x, cy = y;
     const float sliders_top = y;
 #ifndef MG_CAMERA_THIRDPERSON
-    ui_toggle(ui, "Show floor peek", cx, cy, cw, &s->show_floor_peek);
-    cy += 44.0f;
-    ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, "Floor peek hold time");
-    cy += 22.0f;
-    static const float holds[3] = {0.0f, 3.0f, 10.0f};
-    static const char *const hold_labels[3] = {"0 s##peek", "3 s##peek", "10 s##peek"};
-    float hw = (cw - 16.0f) / 3.0f;
-    for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, hold_labels[i], cx + (float)i * (hw + 8.0f), cy, hw, 40.0f, s->floor_peek_hold == holds[i])) {
-            s->floor_peek_hold = holds[i];
-        }
-    }
-    cy += 52.0f;
+    ui_slider(ui, str("camera_fov"), cx, cy, cw, &s->td_fov_deg, CAM_FOV_MIN, CAM_FOV_MAX, "%.0f" TEXT_DEGREE);
+    cy += step;
+    ui_slider(ui, str("camera_distance"), cx, cy, cw, &s->td_distance, CAM_DISTANCE_MIN, CAM_DISTANCE_MAX, "%.1f m");
+    cy += step;
+    ui_slider(ui, str("camera_angle"), cx, cy, cw, &s->td_pitch_deg, CAM_PITCH_MIN, CAM_PITCH_MAX, "%.0f" TEXT_DEGREE);
+    cy += step;
     ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
     cy += 44.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);

@@ -24,7 +24,6 @@
 #include "avatar.h"
 #include "camera_td.h"
 #include "gfx/floorfade.h"
-#include "ui/floorpeek.h"
 #include "camera_tp.h"
 #include "config.local.h"
 #ifndef MG_VERSION
@@ -94,9 +93,6 @@ typedef struct Game {
     NavPath nav_path;      /* last path found */
     bool nav_path_ok;
     NavDebug nav_debug;
-    FloorPeek peek;
-    int peek_view;         /* storey the floor peek shows, -1 = the player's */
-    char peek_label[4][2];
     HMM_Mat4 view_proj;    /* this frame's camera, for name tags */
     float ride_offset;     /* feet height above the car floor */
     bool fade_snap;
@@ -264,12 +260,6 @@ bool game_init(MgApp *app)
     tpcam_init(&g->cam);
     tdcam_init(&g->td);
     floorfade_init(&g->fade);
-    g->peek.peek = g->peek_view = -1;
-    const char *peek_arg = arg_value(app->argc, app->argv, "--peek"); /* desktop: hold a floor peek */
-    if (peek_arg) {
-        g->peek.peek = SDL_atoi(peek_arg);
-        g->peek.until = 1e9;
-    }
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
@@ -1336,22 +1326,6 @@ void game_frame(MgApp *app, float alpha)
             elevator_request(el, pick);
         }
     }
-    /* floor peek: left edge, view only (the elevator still moves you) */
-    g->peek_view = -1;
-#ifndef MG_CAMERA_THIRDPERSON
-    if (s->show_floor_peek && !g->menu.open && !riding && !g->fly_mode && scene_floor_count() > 1) {
-        const char *labels[4];
-        int n = scene_floor_count() < 4 ? scene_floor_count() : 4;
-        for (int i = 0; i < n; i++) {
-            g->peek_label[i][0] = scene_floor_name(i)[0];
-            g->peek_label[i][1] = 0;
-            labels[i] = g->peek_label[i];
-        }
-        g->peek_view = floorpeek_update(&g->peek, &g->ui, app->safe_left + 8.0f, app->height_pt, n,
-                                        scene_floor_of(g->scene, g->player.kin.pos), labels, app->time,
-                                        s->floor_peek_hold);
-    }
-#endif
     gfx_set_render_scale(app->gfx, s->render_scale);
 #ifdef MG_CAMERA_THIRDPERSON
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
@@ -1459,14 +1433,18 @@ void game_frame(MgApp *app, float alpha)
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
 #else
         /* riding: the pivot rides with the car, so the floors cross-fade as it passes the slabs */
-        int pivot_floor = g->peek_view >= 0 ? g->peek_view : scene_floor_of(g->scene, feet);
-        float floor_y = g->riding ? feet.Y - g->ride_offset : scene_floor_y(g->scene, pivot_floor);
+        float floor_y = g->riding ? feet.Y - g->ride_offset : scene_floor_y(g->scene, scene_floor_of(g->scene, feet));
+        if (!g->perf.active) { /* Settings; perf runs keep the reference view */
+            g->td.fov_y = HMM_AngleDeg(s->td_fov_deg);
+            g->td.distance = s->td_distance;
+            g->td.pitch = -HMM_AngleDeg(s->td_pitch_deg);
+        }
         tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.walk_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
         tdcam_matrices(&g->td, aspect, &sp.view, &sp.proj, &sp.eye);
 #endif
     }
     const int player_floor = scene_floor_of(g->scene, g->fly_mode ? HMM_SubV3(sp.eye, HMM_V3(0, 1.5f, 0)) : feet);
-    int floor = g->peek_view >= 0 ? g->peek_view : player_floor; /* the view floor */
+    int floor = player_floor; /* the view floor */
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     scene_defaults(&sp, (float)app->time, &g->day_state);
 #ifdef MG_RENDER_FULL
@@ -1480,7 +1458,7 @@ void game_frame(MgApp *app, float alpha)
     /* M5 floor fade: inside, storeys above the view floor and the roof
      * dissolve over 350 ms (the third-person camera and fly cam keep the
      * building whole) */
-    bool inside = (scene_indoors(g->scene, feet) || g->peek_view >= 0) && !g->fly_mode;
+    bool inside = scene_indoors(g->scene, feet) && !g->fly_mode;
 #ifdef MG_CAMERA_THIRDPERSON
     inside = false;
 #endif
@@ -1570,15 +1548,9 @@ void game_frame(MgApp *app, float alpha)
 #ifdef MG_CAMERA_THIRDPERSON
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
 #else
-    if (player_floor > floor) { /* peeking below: the x-ray silhouette on the peeked plan, depth ignored */
-        AvatarPose gp = pose;
-        gp.feet.Y = scene_floor_y(g->scene, floor) + (feet.Y - scene_floor_y(g->scene, player_floor));
-        draw_xray(g, app, &g->local_look, &gp, &g->local_anim, true);
-    } else {
-        avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
-        if (s->show_xray) {
-            draw_xray(g, app, &g->local_look, &pose, &g->local_anim, s->xray_always);
-        }
+    avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
+    if (s->show_xray) {
+        draw_xray(g, app, &g->local_look, &pose, &g->local_anim, s->xray_always);
     }
 #endif
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
@@ -1896,18 +1868,13 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
         *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
                             scale, shake, m->ring_t, tint};
     }
-    /* panels the icons stay out of: gear, floor peek, floor menu, toast */
+    /* panels the icons stay out of: gear, floor menu, toast */
     const float w = app->width_pt, h = app->height_pt;
     float res[16];
     int rc = 0;
     const float gear[4] = {w - app->safe_right - 62.0f, app->safe_top + 2.0f, 56.0f, 56.0f};
     memcpy(res + rc * 4, gear, sizeof(gear));
     rc++;
-    if (g->settings.show_floor_peek) {
-        const float peek[4] = {app->safe_left + 4.0f, h * 0.5f - 62.0f, 44.0f, 124.0f};
-        memcpy(res + rc * 4, peek, sizeof(peek));
-        rc++;
-    }
     if (floor_menu_up) {
         const float fm[4] = {w - app->safe_right - 192.0f, app->safe_top + 64.0f, 180.0f, 200.0f};
         memcpy(res + rc * 4, fm, sizeof(fm));

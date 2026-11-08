@@ -76,8 +76,9 @@ void prefs_load(Prefs *p, const char *profile)
         g->cam_pitch_deg = num(s, "cam_pitch", g->cam_pitch_deg);
         g->fov_deg = mg_clampf(num(s, "fov", g->fov_deg), 45.0f, 75.0f);
 #endif
-        g->show_floor_peek = flag(s, "show_floor_peek", g->show_floor_peek);
-        g->floor_peek_hold = mg_clampf(num(s, "floor_peek_hold", g->floor_peek_hold), 0.0f, 10.0f);
+        g->td_fov_deg = mg_clampf(num(s, "td_fov", g->td_fov_deg), CAM_FOV_MIN, CAM_FOV_MAX);
+        g->td_distance = mg_clampf(num(s, "td_distance", g->td_distance), CAM_DISTANCE_MIN, CAM_DISTANCE_MAX);
+        g->td_pitch_deg = mg_clampf(num(s, "td_pitch", g->td_pitch_deg), CAM_PITCH_MIN, CAM_PITCH_MAX);
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
         g->show_xray = flag(s, "show_xray", g->show_xray);
         g->haptics = flag(s, "haptics", g->haptics);
@@ -144,8 +145,9 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddNumberToObject(s, "cam_pitch", g->cam_pitch_deg);
     cJSON_AddNumberToObject(s, "fov", g->fov_deg);
 #endif
-    cJSON_AddBoolToObject(s, "show_floor_peek", g->show_floor_peek);
-    cJSON_AddNumberToObject(s, "floor_peek_hold", g->floor_peek_hold);
+    cJSON_AddNumberToObject(s, "td_fov", g->td_fov_deg);
+    cJSON_AddNumberToObject(s, "td_distance", g->td_distance);
+    cJSON_AddNumberToObject(s, "td_pitch", g->td_pitch_deg);
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
     cJSON_AddBoolToObject(s, "show_xray", g->show_xray);
     cJSON_AddBoolToObject(s, "haptics", g->haptics);

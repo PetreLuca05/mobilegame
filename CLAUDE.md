@@ -152,9 +152,10 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 - Default: fixed diagonal top-down `game/camera_td.c` (M5-S) - pitch 62 deg,
   vertical FOV 32 deg, 16 m from a pivot 0.9 m above the current storey's
   floor, yaw `CAM_YAW_DEG` = 0 (north up: the long east-west axis runs
-  left-right, the entrance and the gate at the bottom). No rotate / pitch /
-  zoom; it only follows (spring 8/s + 1.2 m look-ahead) and rides the
+  left-right, the entrance and the gate at the bottom). No rotate; it only follows (spring 8/s + 1.2 m look-ahead) and rides the
   elevator. Stick / WASD: up = screen up = north.
+  Settings sliders: field of view 20-60 deg, distance 8-30 m, angle 35-85 deg
+  (`--autotest perf` always keeps the defaults above, so runs stay comparable).
 - Touch zones: left 45 % = floating stick; the rest is UI (and marker taps).
 - `-DMG_CAMERA=thirdperson` builds the M1-M4 orbit camera (`camera_tp.c`,
   wall sphere-cast, right-half camera drag) for engine tests; not shipped.
@@ -206,19 +207,13 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   front" (head under hair) and x-ray through each other. Dithered geometry
   goes last so a faded wall's remaining pixels don't trigger the x-ray or
   hide the player. Eligible: the
-  local player and remote players on the view floor; the floor-peek ghost
-  is the same pass with depth ignored. Only meshes drawn with
+  local player and remote players on the view floor. Only meshes drawn with
   `avatar_draw_with(..., mat_xray(...))` are x-rayed: to keep a mesh out,
   just don't draw it with that material. Settings -> "Show players through
   walls"; Developer -> "X-ray always". Toon outlines are pure black.
-- Floor peek (`engine/ui/floorpeek.c`): 36 pt storey rows on the left
-  edge; holding a row views that storey, a tap keeps it for the hold time
-  (Settings: 0 / 3 / 10 s, "Show floor peek"); the camera pivot and the
-  fades follow the peeked storey. On a hidden storey the local avatar is
-  the x-ray silhouette drawn on the peeked plan with depth ignored. Desktop `--peek F`.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
-- Prefs keys (M5): `show_floor_peek`, `floor_peek_hold`, `show_own_name`
+- Prefs keys (M5): `td_fov`, `td_distance`, `td_pitch` (Settings sliders), `show_own_name`
   (the M5 camera keys are ignored and dropped on the next write).
 
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
@@ -260,7 +255,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   32 max. World: spinning diamond, ground ring (0.6 coverage via dither),
   contact disc, storey-tagged like the scene (above the view floor: gone).
   HUD (`engine/ui/marker_hud.c`): on-screen on the view floor = invisible 44 pt
-  tap target only; off-screen / in a reserved panel (gear, floor peek, floor
+  tap target only; off-screen / in a reserved panel (gear, floor
   menu, toast) = edge icon with chevron + distance (4 Hz), max 12, 48 pt apart;
   other storey = icon + floor badge.
 - Touch arbitration (`touch_controls.c`): targets are tested before the zones;

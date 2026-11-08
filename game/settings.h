@@ -3,6 +3,7 @@
 #define MG_SETTINGS_H
 
 #include "core/mg_types.h"
+#include "camera_td.h"
 #include "gfx/gfx.h"
 
 typedef struct GameSettings {
@@ -10,8 +11,9 @@ typedef struct GameSettings {
     float pitch_deg_per_pt; /* 0.2 */
     bool invert_y;
     bool show_storeys;      /* colour meshes by storey id (debug) */
-    bool show_floor_peek;   /* storey selector on the left edge */
-    float floor_peek_hold;  /* s a tapped peek lasts: 0, 3, 10 */
+    float td_fov_deg;       /* top-down camera: vertical field of view, 32 */
+    float td_distance;      /* metres from the player, 16 */
+    float td_pitch_deg;     /* degrees down from the horizon, 62 */
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
     bool show_nav;          /* debug: walkability grid + last path */
@@ -52,8 +54,9 @@ static inline void settings_default(GameSettings *s)
     s->pitch_deg_per_pt = 0.2f;
     s->invert_y = false;
     s->show_storeys = false;
-    s->show_floor_peek = true;
-    s->floor_peek_hold = 3.0f;
+    s->td_fov_deg = CAM_FOV_DEG;
+    s->td_distance = CAM_DISTANCE;
+    s->td_pitch_deg = CAM_PITCH_DEG;
     s->show_own_name = false;
     s->show_xray = true;
     s->haptics = true;

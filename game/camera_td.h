@@ -1,7 +1,7 @@
 /* Fixed diagonal top-down camera (M5-S, the default): pitch 62 deg down,
  * vertical FOV 32 deg, 16 m from a pivot 0.9 m above the current storey's
- * floor at the player, yaw fixed (CAM_YAW_DEG). The player cannot rotate,
- * pitch or zoom it. The pivot follows the player with a critically damped
+ * floor at the player, yaw fixed (CAM_YAW_DEG). Field of view, distance and
+ * pitch are Settings sliders; the player cannot rotate it. The pivot follows the player with a critically damped
  * spring and leads 1.2 m in the movement direction; it rides with the
  * elevator car. No wall collision: what stands between camera and player
  * is faded (floor fade, low walls) or x-rayed. */
@@ -17,6 +17,13 @@
 #define CAM_PITCH_DEG 62.0f
 #define CAM_FOV_DEG 32.0f
 #define CAM_DISTANCE 16.0f
+/* Settings slider ranges */
+#define CAM_FOV_MIN 20.0f
+#define CAM_FOV_MAX 60.0f
+#define CAM_DISTANCE_MIN 8.0f
+#define CAM_DISTANCE_MAX 30.0f
+#define CAM_PITCH_MIN 35.0f
+#define CAM_PITCH_MAX 85.0f
 
 typedef struct TdCamera {
     float yaw;          /* radians, CAM_YAW_DEG */
