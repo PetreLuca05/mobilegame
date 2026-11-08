@@ -20,7 +20,7 @@
 /* Doctor outfit */
 #define MASK_COLOR 0x9FD3EE
 #define BUTTON_COLOR 0xC9CED6
-#define OUTLINE_COLOR 0x1A1C26
+#define OUTLINE_COLOR 0x000000 /* pure black: unlit, so day, night and shading never change it */
 
 /* Patch of a sphere around the face (head space, forward = -Z). Azimuth
  * runs from az_from down to az_to (az_from > az_to keeps the winding
