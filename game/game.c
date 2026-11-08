@@ -4,6 +4,7 @@
 #include "game.h"
 
 #include "audio/audio.h"
+#include "world/daycycle.h"
 #include "platform/google_auth.h"
 #include "autotest.h"
 #include "avatar.h"
@@ -62,6 +63,8 @@ typedef struct Game {
     Audio *audio;
     RouteTest route;
     Stats stats;
+    DayCycle day;
+    DayState day_state;
     float lamp_on;        /* exterior lamps, from the day cycle */
     int shadowed_lights;  /* shadow-casting lights this frame */
     NetProfile profile;    /* our account (name, skin, guest/Google) */
@@ -200,7 +203,14 @@ bool game_init(MgApp *app)
     SDL_snprintf(g->status, sizeof(g->status), "offline");
     autotest_init(&g->autotest, app->argc, app->argv);
     g->audio = audio_create(&app->perm);
-    g->lamp_on = 1.0f;
+    daycycle_init(&g->day);
+    g->settings.follow_clock = true;
+    g->settings.time_speed = 1.0f;
+    const char *time_arg = arg_value(app->argc, app->argv, "--time");
+    if (time_arg) { /* desktop: fixed hour for screenshots */
+        g->day.follow_device = g->settings.follow_clock = false;
+        g->day.t = SDL_atof(time_arg);
+    }
     g->google = google_auth_create(&app->perm, MG_GOOGLE_WEB_CLIENT_ID, MG_GOOGLE_IOS_CLIENT_ID);
     route_test_init(&g->route, app->argc, app->argv);
     g->demo_walk = has_flag(app->argc, app->argv, "--demo-walk");
@@ -320,6 +330,10 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
         break;
+    case MENU_TIME: /* slider: stop following the clock */
+        g->day.t = g->settings.time_of_day;
+        g->settings.follow_clock = false;
+        break;
     case MENU_TELEPORT: {
         Elevator *el = scene_elevator(g->scene);
         int f = g->settings.teleport_floor;
@@ -358,13 +372,19 @@ static void draw_colliders(Game *g, GfxContext *gfx, HMM_Vec3 feet)
     gfx_draw(gfx, g->ref_capsule, &pm, &cap, 0);
 }
 
-static void scene_defaults(GfxSceneParams *sp, float time)
+/* Light, sky and fog from the day cycle. */
+static void scene_defaults(GfxSceneParams *sp, float time, const DayState *d)
 {
-    sp->sun_dir = HMM_NormV3(HMM_V3(0.5f, 0.75f, 0.45f));
-    sp->sun_color = HMM_V3(0.48f, 0.46f, 0.42f);
-    sp->ambient = HMM_V3(0.58f, 0.6f, 0.68f);
-    sp->sky_horizon = mg_rgb(0xBFE3FF);
-    sp->sky_zenith = mg_rgb(0x3F8FE8);
+    sp->sun_dir = d->key_dir;
+    sp->sun_color = d->key_color;
+    sp->ambient = d->ambient;
+    sp->sky_horizon = d->horizon;
+    sp->sky_zenith = d->zenith;
+    sp->fog_color = d->fog;
+    sp->fog_density = d->fog_density;
+    sp->sun_disc = d->sun_disc;
+    sp->moon_disc = d->moon_disc;
+    sp->stars = d->stars;
     sp->reflection_y = 0.0f;
     sp->reflection_strength = 1.0f;
     sp->time = time;
@@ -378,12 +398,12 @@ static void game_frame_launch(Game *g, MgApp *app)
     scene_launch_view(g->scene, (float)app->time, &sp.eye, &target);
     sp.view = HMM_LookAt_RH(sp.eye, target, HMM_V3(0, 1, 0));
     sp.proj = camera_projection(HMM_AngleDeg(62.0f), app->width_pt / app->height_pt, 0.05f, 400.0f, -0.25f);
-    scene_defaults(&sp, (float)app->time);
+    scene_defaults(&sp, (float)app->time, &g->day_state);
     gfx_set_scene(app->gfx, &sp);
     SceneView view = {sp.eye, 0, (float)app->time, false, false, g->lamp_on};
     scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
-    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
+    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     for (int i = 0; i < SCENE_SPAWNS; i++) { /* the cast, idling on their discs */
         AvatarLook look = i == 0 ? session_my_look(&g->session) : avatar_look_for_slot(i);
         AvatarPose pose = {scene_spawn(g->scene, i), scene_spawn_yaw(g->scene) + HMM_PI32 + 0.3f * (float)(i - 1),
@@ -455,6 +475,12 @@ void game_frame(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
+    g->day.follow_device = s->follow_clock;
+    g->day.speed = s->time_speed;
+    daycycle_update(&g->day, app->time, mg_minf(app->frame_dt, 0.25f));
+    s->time_of_day = (float)g->day.t;
+    g->day_state = daycycle_state(&g->day, (float)g->day.t);
+    g->lamp_on = g->day_state.lamp_on;
     AutotestProbe probe = {g->player.kin.pos, g->player.kin.vel, HMM_ToDeg(g->cam.yaw), g->player.kin.jump_count,
                            g->touch.sprint, 1};
     autotest_update(&g->autotest, app, &probe);
@@ -561,6 +587,7 @@ void game_frame(MgApp *app, float alpha)
         pc.eye = HMM_V3(0.0f, 1.35f, -3.7f);
         pc.view = HMM_LookAt_RH(pc.eye, HMM_V3(0.0f, 1.0f, 0.0f), HMM_V3(0, 1, 0));
         pc.proj = camera_projection(HMM_AngleDeg(34.0f), 1.0f, 0.05f, 50.0f, 0.0f);
+        pc.stars = 0.0f;
         gfx_preview(app->gfx, &pc, g->menu.preview_x, g->menu.preview_y, g->menu.preview_size, 14.0f,
                     HMM_V4(0.16f, 0.19f, 0.26f, 1.0f));
         AvatarPose pv = {HMM_V3(0, 0, 0), (float)app->time * 0.6f, HMM_V3(0, 0, 0), true, false, false, true};
@@ -618,14 +645,14 @@ void game_frame(MgApp *app, float alpha)
         tpcam_matrices(&g->cam, aspect, &sp.view, &sp.proj, &sp.eye);
     }
     int floor = scene_floor_of(g->scene, g->fly_mode ? HMM_SubV3(sp.eye, HMM_V3(0, 1.5f, 0)) : feet);
-    scene_defaults(&sp, (float)app->time);
+    scene_defaults(&sp, (float)app->time, &g->day_state);
     sp.reflection_y = scene_floor_y(g->scene, floor);
     gfx_set_scene(app->gfx, &sp);
 
     SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on};
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);
-    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time);
+    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
                        g->player.kin.jumping, scene_indoors(g->scene, feet), false};
     avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));

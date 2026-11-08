@@ -65,6 +65,22 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += wide ? 44.0f : 84.0f;
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 44.0f;
+        /* Time */
+        ui_toggle(ui, "Follow device clock", x, y, cw, &s->follow_clock);
+        y += 44.0f;
+        if (ui_slider(ui, "Time of day##tod", x, y, cw, &s->time_of_day, 0.0f, 23.99f, "%.2f h")) {
+            *action = MENU_TIME;
+        }
+        y += 56.0f;
+        static const float speeds[3] = {1.0f, 60.0f, 600.0f};
+        static const char *const speed_labels[3] = {"x1##spd", "x60##spd", "x600##spd"};
+        float sw = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            if (ui_button(ui, speed_labels[i], x + (float)i * (sw + 8.0f), y, sw, 40.0f, s->time_speed == speeds[i])) {
+                s->time_speed = speeds[i];
+            }
+        }
+        y += 52.0f;
         ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, "Teleport to floor");
         y += 22.0f;
         static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};

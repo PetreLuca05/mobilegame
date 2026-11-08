@@ -20,6 +20,7 @@ struct FrameFS
     float4 u_ambient;
     float4 u_eye;
     float4 u_misc;
+    float4 u_fog;
 };
 
 struct DrawFS
@@ -50,63 +51,63 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _172 [[buffer(0)]], constant FrameFS& _82 [[buffer(1)]], constant LightsFS& _195 [[buffer(2)]], texture2d<float> u_reflection [[texture(0)]], sampler u_reflection_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _202 [[buffer(0)]], constant FrameFS& _87 [[buffer(1)]], constant LightsFS& _224 [[buffer(2)]], texture2d<float> u_reflection [[texture(0)]], sampler u_reflection_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
-    float2 _677 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
-    float2 _659 = float2(1.0) - smoothstep(float2(_172.u_params.x * 0.5) - _677, float2(_172.u_params.x * 0.5) + _677, abs(fract(in.i_wpos.xz - float2(0.5)) - float2(0.5)) * 1.0);
-    float2 _660 = fast::clamp(float2(_172.u_params.x) / (_677 * 1.5), float2(0.0), float2(1.0));
-    float2 _731 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
-    float2 _713 = float2(1.0) - smoothstep(float2(_172.u_params.y * 0.5) - _731, float2(_172.u_params.y * 0.5) + _731, abs(fract((in.i_wpos.xz * float2(10.0)) - float2(0.5)) - float2(0.5)) * 0.100000001490116119384765625);
-    float2 _714 = fast::clamp(float2(_172.u_params.y) / (_731 * 1.5), float2(0.0), float2(1.0));
-    float3 _576 = fast::normalize(in.i_nrm);
-    float3 _540 = _576;
-    float _781 = dot(_576, _82.u_sun_dir.xyz);
-    float _813 = fast::max(fwidth(_781), 9.9999997473787516355514526367188e-05);
-    float _827 = fast::max(fwidth(_781), 9.9999997473787516355514526367188e-05);
-    float _786 = dot(_576, float3(0.22965760529041290283203125, 0.918630421161651611328125, 0.3215206563472747802734375));
-    float _854 = fast::max(fwidth(_786), 9.9999997473787516355514526367188e-05);
-    float _868 = fast::max(fwidth(_786), 9.9999997473787516355514526367188e-05);
-    float3 _877 = float3(0.0);
-    for (int _1081 = 0; _1081 < 8; _1081++)
+    float2 _714 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
+    float2 _696 = float2(1.0) - smoothstep(float2(_202.u_params.x * 0.5) - _714, float2(_202.u_params.x * 0.5) + _714, abs(fract(in.i_wpos.xz - float2(0.5)) - float2(0.5)) * 1.0);
+    float2 _697 = fast::clamp(float2(_202.u_params.x) / (_714 * 1.5), float2(0.0), float2(1.0));
+    float2 _768 = fast::max(fwidth(in.i_wpos.xz), float2(9.9999997473787516355514526367188e-05));
+    float2 _750 = float2(1.0) - smoothstep(float2(_202.u_params.y * 0.5) - _768, float2(_202.u_params.y * 0.5) + _768, abs(fract((in.i_wpos.xz * float2(10.0)) - float2(0.5)) - float2(0.5)) * 0.100000001490116119384765625);
+    float2 _751 = fast::clamp(float2(_202.u_params.y) / (_768 * 1.5), float2(0.0), float2(1.0));
+    float3 _610 = fast::normalize(in.i_nrm);
+    float3 _572 = _610;
+    float _818 = dot(_610, _87.u_sun_dir.xyz);
+    float _850 = fast::max(fwidth(_818), 9.9999997473787516355514526367188e-05);
+    float _864 = fast::max(fwidth(_818), 9.9999997473787516355514526367188e-05);
+    float _823 = dot(_610, float3(0.22965760529041290283203125, 0.918630421161651611328125, 0.3215206563472747802734375));
+    float _891 = fast::max(fwidth(_823), 9.9999997473787516355514526367188e-05);
+    float _905 = fast::max(fwidth(_823), 9.9999997473787516355514526367188e-05);
+    float3 _914 = float3(0.0);
+    for (int _1140 = 0; _1140 < 8; _1140++)
     {
-        int _907 = int(_172.u_light_index[_1081 / 4][spvSMod(_1081, 4)]);
-        if (_907 < 0)
+        int _944 = int(_202.u_light_index[_1140 / 4][spvSMod(_1140, 4)]);
+        if (_944 < 0)
         {
             continue;
         }
-        float3 _917 = _195.u_light_pos_range[_907].xyz - in.i_wpos;
-        float _919 = length(_917);
-        float3 _924 = _917 / float3(fast::max(_919, 9.9999997473787516355514526367188e-05));
-        float _1003 = _919 / _195.u_light_pos_range[_907].w;
-        float _1012 = fast::clamp(1.0 - (((_1003 * _1003) * _1003) * _1003), 0.0, 1.0);
-        float _936 = ((_1012 * _1012) / ((_919 * _919) + 1.0)) * fast::clamp((dot(_576, _924) * 1.2000000476837158203125) + 0.100000001490116119384765625, 0.0, 1.0);
-        float _1083;
-        if (_195.u_light_color_type[_907].w > 0.5)
+        float3 _954 = _224.u_light_pos_range[_944].xyz - in.i_wpos;
+        float _956 = length(_954);
+        float3 _961 = _954 / float3(fast::max(_956, 9.9999997473787516355514526367188e-05));
+        float _1040 = _956 / _224.u_light_pos_range[_944].w;
+        float _1049 = fast::clamp(1.0 - (((_1040 * _1040) * _1040) * _1040), 0.0, 1.0);
+        float _973 = ((_1049 * _1049) / ((_956 * _956) + 1.0)) * fast::clamp((dot(_610, _961) * 1.2000000476837158203125) + 0.100000001490116119384765625, 0.0, 1.0);
+        float _1142;
+        if (_224.u_light_color_type[_944].w > 0.5)
         {
-            _1083 = _936 * smoothstep(_195.u_light_dir_cone[_907].w, _195.u_light_extra[_907].x, dot(-_924, _195.u_light_dir_cone[_907].xyz));
+            _1142 = _973 * smoothstep(_224.u_light_dir_cone[_944].w, _224.u_light_extra[_944].x, dot(-_961, _224.u_light_dir_cone[_944].xyz));
         }
         else
         {
-            _1083 = _936;
+            _1142 = _973;
         }
-        _877 += (_195.u_light_color_type[_907].xyz * _1083);
+        _914 += (_224.u_light_color_type[_944].xyz * _1142);
     }
-    float _978 = fast::max(_877.x, fast::max(_877.y, _877.z));
-    float _1026 = fast::max(fwidth(_978), 9.9999997473787516355514526367188e-05);
-    float _1040 = fast::max(fwidth(_978), 9.9999997473787516355514526367188e-05);
-    float _1054 = fast::max(fwidth(_978), 9.9999997473787516355514526367188e-05);
-    float3 _598 = (in.i_col.xyz * _172.u_tint.xyz) * (mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * ((0.550000011920928955078125 * smoothstep(-_854, _854, _786)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _868, 0.449999988079071044921875 + _868, _786)))), _82.u_ambient.xyz + (_82.u_sun_color.xyz * ((0.550000011920928955078125 * smoothstep(-_813, _813, _781)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _827, 0.449999988079071044921875 + _827, _781)))), float3(fast::clamp(in.i_col.w * _172.u_tint.w, 0.0, 1.0))) + ((_877 / float3(fast::max(_978, 9.9999997473787516355514526367188e-05))) * ((0.2199999988079071044921875 * (smoothstep(0.0599999986588954925537109375 - _1026, 0.0599999986588954925537109375 + _1026, _978) + smoothstep(0.4000000059604644775390625 - _1040, 0.4000000059604644775390625 + _1040, _978))) + (0.300000011920928955078125 * smoothstep(1.2999999523162841796875 - _1054, 1.2999999523162841796875 + _1054, _978)))));
-    float3 _1082;
-    if ((_82.u_misc.y > 0.0) && (_540.y > 0.89999997615814208984375))
+    float _1015 = fast::max(_914.x, fast::max(_914.y, _914.z));
+    float _1063 = fast::max(fwidth(_1015), 9.9999997473787516355514526367188e-05);
+    float _1077 = fast::max(fwidth(_1015), 9.9999997473787516355514526367188e-05);
+    float _1091 = fast::max(fwidth(_1015), 9.9999997473787516355514526367188e-05);
+    float3 _632 = (in.i_col.xyz * _202.u_tint.xyz) * (mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * ((0.550000011920928955078125 * smoothstep(-_891, _891, _823)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _905, 0.449999988079071044921875 + _905, _823)))), _87.u_ambient.xyz + (_87.u_sun_color.xyz * ((0.550000011920928955078125 * smoothstep(-_850, _850, _818)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _864, 0.449999988079071044921875 + _864, _818)))), float3(fast::clamp(in.i_col.w * _202.u_tint.w, 0.0, 1.0))) + ((_914 / float3(fast::max(_1015, 9.9999997473787516355514526367188e-05))) * ((0.2199999988079071044921875 * (smoothstep(0.0599999986588954925537109375 - _1063, 0.0599999986588954925537109375 + _1063, _1015) + smoothstep(0.4000000059604644775390625 - _1077, 0.4000000059604644775390625 + _1077, _1015))) + (0.300000011920928955078125 * smoothstep(1.2999999523162841796875 - _1091, 1.2999999523162841796875 + _1091, _1015)))));
+    float3 _1141;
+    if ((_87.u_misc.y > 0.0) && (_572.y > 0.89999997615814208984375))
     {
-        _1082 = mix(_598, u_reflection.sample(u_reflection_sampler, (gl_FragCoord.xy * _82.u_misc.zw)).xyz, float3(fast::clamp(_172.u_params.w * (0.60000002384185791015625 + (0.89999997615814208984375 * powr(1.0 - fast::clamp(dot(_576, fast::normalize(_82.u_eye.xyz - in.i_wpos)), 0.0, 1.0), 4.0))), 0.0, 1.0) * _82.u_misc.y));
+        _1141 = mix(_632, u_reflection.sample(u_reflection_sampler, (gl_FragCoord.xy * _87.u_misc.zw)).xyz, float3(fast::clamp(_202.u_params.w * (0.60000002384185791015625 + (0.89999997615814208984375 * powr(1.0 - fast::clamp(dot(_610, fast::normalize(_87.u_eye.xyz - in.i_wpos)), 0.0, 1.0), 4.0))), 0.0, 1.0) * _87.u_misc.y));
     }
     else
     {
-        _1082 = _598;
+        _1141 = _632;
     }
-    out._entryPointOutput = float4(mix(mix(_1082, _1082 * 0.60000002384185791015625, float3(fast::max(_713.x * _714.x, _713.y * _714.y) * _172.u_params.z)), float3(0.039999999105930328369140625, 0.04500000178813934326171875, 0.0599999986588954925537109375), float3(fast::max(_659.x * _660.x, _659.y * _660.y))), 1.0);
+    out._entryPointOutput = float4(mix(mix(mix(_1141, _1141 * 0.60000002384185791015625, float3(fast::max(_750.x * _751.x, _750.y * _751.y) * _202.u_params.z)), float3(0.039999999105930328369140625, 0.04500000178813934326171875, 0.0599999986588954925537109375), float3(fast::max(_696.x * _697.x, _696.y * _697.y))), _87.u_fog.xyz, float3(1.0 - exp((-length(in.i_wpos - _87.u_eye.xyz)) * _87.u_fog.w))), 1.0);
     return out;
 }
 

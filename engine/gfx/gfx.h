@@ -91,6 +91,11 @@ typedef struct GfxSceneParams {
     HMM_Vec3 ambient;
     HMM_Vec4 sky_horizon;
     HMM_Vec4 sky_zenith;
+    HMM_Vec3 fog_color;
+    float fog_density;    /* per metre, 0 = none */
+    HMM_Vec4 sun_disc;    /* xyz direction, w visibility (sky) */
+    HMM_Vec4 moon_disc;
+    float stars;          /* 0..1 */
     float reflection_y;   /* height of the mirror plane */
     float reflection_strength; /* 0 disables the reflection pass */
     float time;

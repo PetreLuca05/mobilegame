@@ -10,6 +10,7 @@ struct FrameFS
     float4 u_ambient;
     float4 u_eye;
     float4 u_misc;
+    float4 u_fog;
 };
 
 struct DrawFS

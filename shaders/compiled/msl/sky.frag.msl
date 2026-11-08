@@ -9,6 +9,9 @@ struct SkyFS
     float4 u_eye;
     float4 u_horizon;
     float4 u_zenith;
+    float4 u_sun;
+    float4 u_moon;
+    float4 u_stars;
 };
 
 struct PSMain_out
@@ -21,11 +24,27 @@ struct PSMain_in
     float2 i_ndc [[user(locn0)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant SkyFS& _29 [[buffer(0)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant SkyFS& _47 [[buffer(0)]])
 {
     PSMain_out out = {};
-    float4 _106 = _29.u_inv_view_proj * float4(in.i_ndc, 1.0, 1.0);
-    out._entryPointOutput = float4(mix(_29.u_horizon.xyz, _29.u_zenith.xyz, float3(smoothstep(0.0, 0.64999997615814208984375, fast::normalize((_106.xyz / float3(_106.w)) - _29.u_eye.xyz).y))), 1.0);
+    float4 _256 = _47.u_inv_view_proj * float4(in.i_ndc, 1.0, 1.0);
+    float4 _233 = _256;
+    float3 _267 = fast::normalize((_256.xyz / float3(_233.w)) - _47.u_eye.xyz);
+    float3 _234 = _267;
+    float3 _279 = mix(_47.u_horizon.xyz, _47.u_zenith.xyz, float3(smoothstep(0.0, 0.64999997615814208984375, _234.y)));
+    float3 _385;
+    if ((_47.u_stars.x > 0.0) && (_234.y > 0.0))
+    {
+        float _376 = fract(sin(dot(floor(_267 * 150.0), float3(12.98980045318603515625, 78.233001708984375, 37.71900177001953125))) * 43758.546875);
+        _385 = _279 + (float3(0.89999997615814208984375, 0.930000007152557373046875, 1.0) * (((step(0.9965000152587890625, _376) * smoothstep(0.0, 0.1500000059604644775390625, _234.y)) * (0.75 + (0.25 * sin((_47.u_stars.y * 2.0) + (_376 * 400.0))))) * _47.u_stars.x));
+    }
+    else
+    {
+        _385 = _279;
+    }
+    float _322 = dot(_267, _47.u_sun.xyz);
+    float _346 = dot(_267, _47.u_moon.xyz);
+    out._entryPointOutput = float4(mix(mix(_385, float3(1.0, 0.959999978542327880859375, 0.85000002384185791015625), float3(smoothstep(0.99954998493194580078125, 0.999700009822845458984375, _322) * _47.u_sun.w)) + (float3(1.0, 0.85000002384185791015625, 0.60000002384185791015625) * ((powr(fast::clamp(_322, 0.0, 1.0), 300.0) * 0.3499999940395355224609375) * _47.u_sun.w)), float3(0.86000001430511474609375, 0.89999997615814208984375, 1.0), float3(smoothstep(0.999700009822845458984375, 0.999800026416778564453125, _346) * _47.u_moon.w)) + float3((powr(fast::clamp(_346, 0.0, 1.0), 600.0) * 0.1500000059604644775390625) * _47.u_moon.w), 1.0);
     return out;
 }
 

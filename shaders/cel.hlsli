@@ -13,6 +13,13 @@ float cel_lit(float ndl)
     return 0.55 * cel_step(ndl, 0.0) + 0.45 * cel_step(ndl, 0.45);
 }
 
+// Distance fog towards the day cycle's fog colour.
+float3 apply_fog(float3 c, float3 wpos)
+{
+    float d = length(wpos - u_eye.xyz);
+    return lerp(c, u_fog.rgb, 1.0 - exp(-d * u_fog.a));
+}
+
 // Banded light for a surface. `outdoor` 1 = sun + sky; 0 = indoors: no sun,
 // a bit less sky and a warm overhead fill instead (the per-vertex indoor
 // factor baked into building meshes is vertex alpha x tint alpha).

@@ -27,6 +27,7 @@ cbuffer FrameFS : register(b1, space3)
     float4 u_ambient;
     float4 u_eye;        // camera position
     float4 u_misc;       // x time, y reflection strength, z 1/target width, w 1/target height
+    float4 u_fog;        // rgb colour, a density (per metre)
 };
 
 struct VSIn

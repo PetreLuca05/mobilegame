@@ -72,6 +72,7 @@ typedef struct FrameFSUniforms {
     HMM_Vec4 ambient;
     HMM_Vec4 eye;
     HMM_Vec4 misc;
+    HMM_Vec4 fog;
 } FrameFSUniforms;
 
 typedef struct SkyFSUniforms {
@@ -79,6 +80,7 @@ typedef struct SkyFSUniforms {
     HMM_Vec4 eye;
     HMM_Vec4 horizon;
     HMM_Vec4 zenith;
+    HMM_Vec4 sun, moon, stars;
 } SkyFSUniforms;
 
 enum { TARGET_MAIN, TARGET_REFL, TARGET_COUNT };
@@ -873,6 +875,7 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     f.ambient = HMM_V4V(g->scene.ambient, 0.0f);
     f.eye = HMM_V4V(eye, 1.0f);
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
+    f.fog = HMM_V4V(g->scene.fog_color, g->scene.fog_density);
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
     SDL_PushGPUFragmentUniformData(g->cmd, 2, &g->light_ubo, sizeof(g->light_ubo));
 }
@@ -885,6 +888,9 @@ static void draw_sky(GfxContext *g, SDL_GPURenderPass *pass, SDL_GPUGraphicsPipe
     s.eye = HMM_V4V(eye, 1.0f);
     s.horizon = g->scene.sky_horizon;
     s.zenith = g->scene.sky_zenith;
+    s.sun = g->scene.sun_disc;
+    s.moon = g->scene.moon_disc;
+    s.stars = HMM_V4(g->scene.stars, g->scene.time, 0, 0);
     SDL_BindGPUGraphicsPipeline(pass, pipe);
     SDL_PushGPUFragmentUniformData(g->cmd, 0, &s, sizeof(s));
     SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);

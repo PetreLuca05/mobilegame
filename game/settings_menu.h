@@ -22,6 +22,7 @@ typedef enum MenuAction {
     MENU_NAME,         /* name edited and valid (SettingsMenu.name) */
     MENU_GOOGLE,       /* "Continue with Google" */
     MENU_SIGN_OUT,
+    MENU_TIME,         /* time-of-day slider moved */
 } MenuAction;
 
 typedef struct SettingsAccount {

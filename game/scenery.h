@@ -20,6 +20,6 @@ typedef struct Scenery {
 
 bool scenery_init(Scenery *s, const SceneryShape *shape, GfxContext *g, Arena *scratch);
 float scenery_terrain_height(const SceneryShape *sh, float x, float z);
-void scenery_draw(const Scenery *s, GfxContext *g, const GfxSceneParams *scene, float time);
+void scenery_draw(const Scenery *s, GfxContext *g, const GfxSceneParams *scene, float time, HMM_Vec3 cloud_tint);
 
 #endif

@@ -63,6 +63,7 @@ set(MG_EMBED_FILES
   ${MG_SHADER_MSL}
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
   ${CMAKE_SOURCE_DIR}/assets/cacert.pem
+  ${CMAKE_SOURCE_DIR}/assets/daycycle.json
 )
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
@@ -105,6 +106,7 @@ add_library(mg_engine STATIC
   engine/platform/app_sdl.c
   engine/platform/input_touch.c
   engine/audio/audio_sdl.c
+  engine/world/daycycle.c
   engine/gfx/camera.c
   engine/gfx/gpu.c
   engine/gfx/material.c

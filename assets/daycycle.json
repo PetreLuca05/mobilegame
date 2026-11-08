@@ -1,0 +1,21 @@
+{
+  "comment": "Day/night keyframes (engine/world/daycycle.c). t = hour 0-24, colours #RRGGBB, linear interpolation, wraps at 24. Output light = colour * intensity * scale.",
+  "sunrise": 6.5,
+  "sunset": 19.5,
+  "sun_max_elevation": 70,
+  "moon_color": "#6F7FB8",
+  "moon_intensity": 0.15,
+  "sun_scale": 0.5,
+  "ambient_scale": 0.72,
+  "ambient_floor": "#24283A",
+  "keys": [
+    {"t": 0.0,  "sun": "#000000", "sun_i": 0.0, "ambient": "#1C2440", "ambient_i": 0.25, "horizon": "#0B1230", "zenith": "#04060F", "fog": "#0B1230", "fog_density": 0.006, "cloud": "#2A3050", "lamps": 1.0},
+    {"t": 5.5,  "sun": "#FFB070", "sun_i": 0.3, "ambient": "#5A6080", "ambient_i": 0.4,  "horizon": "#F2A268", "zenith": "#3A4C8A", "fog": "#D99A78", "fog_density": 0.005, "cloud": "#F0B090", "lamps": 1.0},
+    {"t": 7.0,  "sun": "#FFE4C0", "sun_i": 0.8, "ambient": "#8FA6C8", "ambient_i": 0.7,  "horizon": "#BFE3FF", "zenith": "#3F8FE8", "fog": "#BFE3FF", "fog_density": 0.002, "cloud": "#FFF4E8", "lamps": 0.0},
+    {"t": 12.0, "sun": "#FFFFFF", "sun_i": 1.0, "ambient": "#9FB7D9", "ambient_i": 0.8,  "horizon": "#BFE3FF", "zenith": "#3F8FE8", "fog": "#BFE3FF", "fog_density": 0.0015, "cloud": "#FFFFFF", "lamps": 0.0},
+    {"t": 17.5, "sun": "#FFE9CF", "sun_i": 0.9, "ambient": "#9FB7D9", "ambient_i": 0.75, "horizon": "#BFE3FF", "zenith": "#3F8FE8", "fog": "#BFE3FF", "fog_density": 0.002, "cloud": "#FFF6EC", "lamps": 0.0},
+    {"t": 19.0, "sun": "#FF8A4C", "sun_i": 0.5, "ambient": "#8A7090", "ambient_i": 0.5,  "horizon": "#FF9A5A", "zenith": "#4B3F8A", "fog": "#E08A66", "fog_density": 0.004, "cloud": "#FFB088", "lamps": 0.6},
+    {"t": 20.5, "sun": "#000000", "sun_i": 0.0, "ambient": "#3A3A6A", "ambient_i": 0.3,  "horizon": "#2A2A5A", "zenith": "#090C20", "fog": "#252550", "fog_density": 0.005, "cloud": "#4A4A78", "lamps": 1.0},
+    {"t": 22.0, "sun": "#000000", "sun_i": 0.0, "ambient": "#1C2440", "ambient_i": 0.25, "horizon": "#0B1230", "zenith": "#04060F", "fog": "#0B1230", "fog_density": 0.006, "cloud": "#2A3050", "lamps": 1.0}
+  ]
+}

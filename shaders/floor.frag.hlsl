@@ -36,5 +36,5 @@ float4 PSMain(VSOut i) : SV_Target0
     }
     c = lerp(c, c * 0.6, minor);
     c = lerp(c, float3(0.04, 0.045, 0.06), major);
-    return float4(c, 1.0);
+    return float4(apply_fog(c, i.wpos), 1.0);
 }

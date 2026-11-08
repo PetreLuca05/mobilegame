@@ -16,6 +16,9 @@ typedef struct GameSettings {
     bool show_colliders;
     bool show_triggers;     /* elevator trigger volume */
     bool show_lights;       /* light gizmos + light counts */
+    bool follow_clock;      /* day cycle follows the device's local time */
+    float time_of_day;      /* hours, shown / set by the Time slider */
+    float time_speed;       /* 1, 60, 600 */
     int teleport_floor;     /* MENU_TELEPORT target */
     float render_scale;     /* 3D resolution vs native (UI stays native) */
     char room_code[5];      /* last entered party code */
