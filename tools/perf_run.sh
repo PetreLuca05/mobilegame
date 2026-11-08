@@ -30,9 +30,17 @@ BID=ro.docvex.mobilegame
 device_name() { [[ $1 == ipad ]] && echo "iPad (4)" || echo "iPhone" }
 device_udid() { [[ $1 == ipad ]] && echo 00008101-001318910A44001E || echo 00008150-0008552802A3C01C }
 pull() { # device source dest
-  rm -f "$3"
-  xcrun devicectl device copy from --device "$(device_name $1)" --domain-type appDataContainer --domain-identifier $BID \
-    --source "Documents/$2" --destination "$3" >/dev/null 2>&1
+  local attempt
+  for attempt in 1 2 3; do # the USB link sometimes hands back an empty file
+    rm -f "$3"
+    xcrun devicectl device copy from --device "$(device_name $1)" --domain-type appDataContainer --domain-identifier $BID \
+      --source "Documents/$2" --destination "$3" >/dev/null 2>&1
+    [[ -s $3 ]] && return 0
+    sleep 3
+  done
+}
+same_build() { # the app in a commit is HEAD's app if only docs/ or tools/ changed since
+  [[ $1 != *-dirty ]] && git diff --quiet "$1" HEAD -- . ':!docs' ':!tools' 2>/dev/null
 }
 check_file() { # path start
   [[ -s $1 ]] || fail "$1: no file produced by this run"
@@ -41,7 +49,7 @@ check_file() { # path start
 check_stamp() { # path run_id
   read -r got_id got_commit _ < "$1"
   [[ $got_id == "$2" ]] || fail "$1: run id $got_id, expected $2"
-  [[ $got_commit == "$COMMIT" ]] || fail "$1: built from $got_commit, HEAD is $COMMIT (install this commit)"
+  same_build "$got_commit" || fail "$1: built from $got_commit, HEAD is $COMMIT (install this commit)"
 }
 GPU_ERROR=""
 gpu_trace() { # device scenario; returns non-zero and sets GPU_ERROR
@@ -89,12 +97,8 @@ for dev in $DEVICES; do
       dest="$OUT/${dev}_$s$TAG.json"
       pull $dev perf_$s.json "$dest"
       check_file "$dest" $start
-      python3 - "$dest" "$id" "$COMMIT" <<'PY' || exit 1
-import json,sys
-d=json.load(open(sys.argv[1]))
-if d.get("run_id")!=sys.argv[2]: sys.exit(f"PERF RUN FAILED: {sys.argv[1]}: run id {d.get('run_id')}, expected {sys.argv[2]}")
-if d.get("commit")!=sys.argv[3]: sys.exit(f"PERF RUN FAILED: {sys.argv[1]}: built from {d.get('commit')}, HEAD is {sys.argv[3]}")
-PY
+      got=$(python3 tools/perf_check.py "$dest" "$id") || exit 1
+      same_build "$got" || fail "$dest: built from $got, HEAD is $COMMIT (install this commit)"
       rm -f "$log"
       echo "$dev $s: ok ($dest)"
       sleep 15
