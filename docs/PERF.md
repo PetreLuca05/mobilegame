@@ -192,6 +192,23 @@ These need the Xcode GUI on a Mac with the iPad connected. Menu names can differ
 3. In the capture, select the main render pass and open its colour attachment in the viewer.
 4. Look for the overdraw display in the attachment viewer's options or the performance counters for the pass, and check that faded walls are the only layered areas.
 
+## M7 (NPCs), iPad Air 4, commit `6451a0b`
+
+Perf gate passed on all five scenarios (raw files in `docs/perf/m7/`). The 47-NPC roster ran 5 minutes: 0 dropped frames, 0 heap allocations, thermal nominal.
+
+| Metric | NPC roster | Budget |
+|---|---|---|
+| NPC sim on the main thread | 0.08 ms | 2.0 |
+| CPU tick + game frame | 0.28 ms | 5.0 |
+| Render submission | 1.04 ms | 2.0 |
+| GPU frame / busy / effective (Minimum clock) | 4.75 ms / 29 % / 1.36 ms | 8.0 effective |
+| Draw calls | 85 | 150 |
+| Memory | 154 MB | 300 |
+
+Real NPC sim, 1 thread against 6, iPad (`--autotest npcs-bench`, positions identical): 44 NPCs 0.008 / 0.013 ms per tick, 200 NPCs 0.021 / 0.027 ms. Dispatch costs more than it saves at these sizes, so the job system gives no speed-up yet.
+
+Two late-frame allocation sources were removed for this gate: uploads now use a fixed ring of preallocated buffers, and SDL's GPU pools are filled at startup. The gate now also fails on dropped frames. `docs/perf/after/` gained the `npcs` scenario as its reference.
+
 ## Reproducing
 
 ```
