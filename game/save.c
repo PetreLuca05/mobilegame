@@ -64,8 +64,9 @@ bool save_read(SaveGame *s, const char *profile)
     char path[512];
     size_t len = 0;
     uint8_t *b = prefs_path(profile, "save_slot0.bin", path, sizeof(path)) ? SDL_LoadFile(path, &len) : NULL;
-    bool ok = b && len >= SAVE_BYTES && SDL_memcmp(b, "MGS1", 4) == 0 && get32(b + 4) == SAVE_VERSION;
+    bool ok = b && len >= SAVE_BYTES && SDL_memcmp(b, "MGS1", 4) == 0 && get32(b + 4) >= 1 && get32(b + 4) <= SAVE_VERSION;
     if (ok) {
+        s->version = get32(b + 4);
         s->pos = HMM_V3(getf(b + 8), getf(b + 12), getf(b + 16));
         s->yaw = getf(b + 20);
         s->floor = get32(b + 24);

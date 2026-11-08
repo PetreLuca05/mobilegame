@@ -1227,13 +1227,15 @@ static void render_cascades(GfxContext *g)
     LightsFSUniforms *u = &g->light_ubo;
     const GfxShadowConfig *c = &g->shadow_cfg;
     bool sun_up = HMM_LenV3(g->scene.sun_color) > 0.01f;
-    u->csm_params = HMM_V4(CSM_SPLIT0, CSM_SPLIT1, 1.0f / (float)c->csm_size, c->enabled && sun_up ? 1.0f : 0.0f);
+    const float focus = g->scene.shadow_focus;
+    const float split0 = focus > 0.0f ? focus + 8.0f : CSM_SPLIT0, split1 = focus > 0.0f ? focus + 30.0f : CSM_SPLIT1;
+    u->csm_params = HMM_V4(split0, split1, 1.0f / (float)c->csm_size, c->enabled && sun_up ? 1.0f : 0.0f);
     ShadowCamera cam = shadow_camera(&g->scene);
     u->csm_fwd = HMM_V4V(cam.fwd, c->show_cascades ? 1.0f : 0.0f);
     if (!c->enabled || !sun_up) {
         return;
     }
-    const float splits[3] = {0.05f, CSM_SPLIT0, CSM_SPLIT1};
+    const float splits[3] = {0.05f, split0, split1};
     for (int i = 0; i < 2; i++) {
         bool due = i == 0 || (g->frame_no % 4) == 0 || !g->csm_valid[i];
         if (!due || (c->freeze && g->csm_valid[i])) {

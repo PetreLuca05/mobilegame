@@ -17,6 +17,7 @@ typedef struct Elevator Elevator;
 
 typedef struct SceneView {
     HMM_Vec3 eye;
+    HMM_Vec3 focus;     /* light culling centre: the player (top-down) or the eye */
     int floor;          /* storey the camera's player is on (reflections, culling) */
     float time;
     bool show_triggers; /* debug: draw trigger volumes */

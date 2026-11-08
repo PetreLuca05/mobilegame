@@ -471,7 +471,11 @@ static void write_save(Game *g)
     }
     SaveGame *s = &g->save;
     s->pos = g->player.kin.pos;
+#ifdef MG_CAMERA_THIRDPERSON
     s->yaw = g->player.yaw;
+#else
+    s->yaw = g->td.yaw_target; /* v2: the camera yaw (the player faces away from it on load) */
+#endif
     s->floor = (uint32_t)scene_floor_of(g->scene, g->player.kin.pos);
     s->play_seconds = g->save_play_base + (uint32_t)g->stats.play_seconds;
     s->elevator_rides = g->save_rides_base + (uint32_t)g->stats.rides;
@@ -769,6 +773,11 @@ static void load_step(Game *g, MgApp *app)
         g->save_play_base = g->save_rides_base = 0;
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
             player_init(&g->player, g->save.pos, g->save.yaw);
+#ifndef MG_CAMERA_THIRDPERSON
+            if (g->save.version >= 2) {
+                g->td.yaw = g->td.yaw_target = g->save.yaw;
+            }
+#endif
             Elevator *el = scene_elevator(g->scene);
             if (el && g->save.floor > 0) {
                 elevator_place(el, (int)g->save.floor < el->floors ? (int)g->save.floor : 0);
@@ -1174,6 +1183,9 @@ void game_frame(MgApp *app, float alpha)
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     scene_defaults(&sp, (float)app->time, &g->day_state);
     sp.reflection_y = scene_floor_y(g->scene, floor);
+#ifndef MG_CAMERA_THIRDPERSON
+    sp.shadow_focus = g->fly_mode ? 0.0f : g->td.distance; /* cascades: 8 m / 30 m past the player */
+#endif
     gfx_set_scene(app->gfx, &sp);
 
     /* M5 floor fade: inside, storeys above the view floor and the roof
@@ -1190,7 +1202,12 @@ void game_frame(MgApp *app, float alpha)
     } else {
         floorfade_update(&g->fade, mg_minf(app->frame_dt, 0.1f));
     }
-    SceneView view = {sp.eye, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, g->fade.vis,
+#ifdef MG_CAMERA_THIRDPERSON
+    const HMM_Vec3 focus = sp.eye;
+#else
+    const HMM_Vec3 focus = g->fly_mode ? sp.eye : feet;
+#endif
+    SceneView view = {sp.eye, focus, floor, (float)app->time, s->show_triggers, s->show_lights, g->lamp_on, g->fade.vis,
                       s->show_storeys};
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
     scene_draw(g->scene, app->gfx, &view);

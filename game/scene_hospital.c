@@ -81,7 +81,7 @@ void scene_fade_targets(const Scene *s, float *target, int view_floor, bool insi
 
 int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
-    return hospital_lights(&s->h, g, v->floor, v->eye, v->lamp_on);
+    return hospital_lights(&s->h, g, v->floor, v->focus, v->lamp_on);
 }
 
 void scene_tick(Scene *s, ColWorld *world, float dt)

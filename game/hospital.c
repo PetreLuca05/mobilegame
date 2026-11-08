@@ -1112,8 +1112,9 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
         if (!interiors || vis <= 0.02f) {
             continue;
         }
-        /* only the view floor reflects */
-        GfxMaterial inside = tinted(mat_floor_plain(HMM_V4(1, 1, 1, 1), f == floor ? 0.35f : 0.0f), v, f);
+        /* only the view floor reflects; with the ceiling faded away the
+         * mirror mostly shows sky, so it stays subtle */
+        GfxMaterial inside = tinted(mat_floor_plain(HMM_V4(1, 1, 1, 1), f == floor ? 0.25f : 0.0f), v, f);
         GfxMaterial mt = tinted(matte, v, f), gl = tinted(glossy, v, f);
         inside.hide = mt.hide = gl.hide = floorfade_hide(vis);
         for (int c = 0; c < HOSP_CELLS; c++) {
@@ -1138,21 +1139,21 @@ void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v)
     }
 }
 
-static bool light_relevant(const HospLight *hl, int floor, HMM_Vec3 eye)
+static bool light_relevant(const HospLight *hl, int floor, HMM_Vec3 focus)
 {
     if (!hl->exterior && hl->floor > floor) {
         return false; /* indoor lights: the view floor and below (above is faded) */
     }
-    HMM_Vec3 d = HMM_SubV3(hl->light.pos, eye);
-    return HMM_DotV3(d, d) < 40.0f * 40.0f;
+    HMM_Vec3 d = HMM_SubV3(hl->light.pos, focus);
+    return HMM_DotV3(d, d) < 35.0f * 35.0f;
 }
 
-int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 eye, float lamp_on)
+int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 focus, float lamp_on)
 {
     int shadowed = 0;
     for (int i = 0; i < h->light_count; i++) {
         const HospLight *hl = &h->lights[i];
-        if (!light_relevant(hl, floor, eye) || (hl->exterior && lamp_on < 0.01f)) {
+        if (!light_relevant(hl, floor, focus) || (hl->exterior && lamp_on < 0.01f)) {
             continue;
         }
         GfxLight l = hl->light;

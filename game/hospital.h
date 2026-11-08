@@ -112,9 +112,9 @@ void hospital_apply_doors(Hospital *h, ColWorld *world);
  * the opaque windows hide them); only the view floor reflects. */
 void hospital_draw(const Hospital *h, GfxContext *g, const HospView *v);
 /* Add this frame's lights: exterior ones scaled by lamp_on, interior ones of
- * `floor` and below (storeys above are faded), nothing beyond 40 m from the
- * eye. Returns how many cast shadows. */
-int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 eye, float lamp_on);
+ * `floor` and below (storeys above are faded), nothing beyond 35 m from
+ * `focus` (the player). Returns how many cast shadows. */
+int hospital_lights(const Hospital *h, GfxContext *g, int floor, HMM_Vec3 focus, float lamp_on);
 void hospital_draw_light_gizmos(const Hospital *h, GfxContext *g, int floor);
 
 #endif

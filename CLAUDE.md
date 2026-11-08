@@ -130,7 +130,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   (`place_lights`); interiors are split into 16 chunks per storey so each
   chunk gets its own nearby lights.
 - Shadows (`engine/gfx/shadows.c`, gpu.c): sun/moon 2 cascades (0-12 m,
-  12-45 m; cascade 1 re-rendered every 4th frame); spot tiles and 6-face
+  12-45 m from the eye; top-down: `GfxSceneParams.shadow_focus` = camera
+  distance moves the splits to 8 m and 30 m past the player; cascade 1
+  re-rendered every 4th frame); spot tiles and 6-face
   point tiles in one atlas, cached and re-rendered only for a new light or
   an avatar (`GFX_DRAW_DYNAMIC`) inside the light (<= 15 Hz). Shadows drop
   the light one toon step. Manual-compare PCF (no comparison samplers).
@@ -196,6 +198,12 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   avatars on the view floor; own tag off by default ("Show my name tag").
 - Prefs keys (M5): `cam_distance`, `cam_yaw_lock`, `cam_pitch_override`,
   `show_floor_peek`, `floor_peek_hold`, `show_own_name`.
+
+- Lighting retune (M5): lights culled 35 m from the player (not the eye),
+  indoor lights of storeys above the view floor culled, the view floor's
+  reflection 25 % (the open ceiling mirrors sky). Rim light unchanged: from
+  62 deg the avatar body is side-facing and the ring-free rule holds.
+- Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
 
 ## Front end, accounts and persistence (M4)
 

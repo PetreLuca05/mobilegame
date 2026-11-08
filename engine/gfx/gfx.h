@@ -67,7 +67,9 @@ enum {
     GFX_DRAW_DYNAMIC = 1u << 4,   /* moves (avatars): dirties cached shadow tiles it touches */
 };
 
-/* Shadow maps (M3). Sun/moon: 2 cascades (0-12 m, 12-45 m). Spot and
+/* Shadow maps (M3). Sun/moon: 2 cascades (0-12 m, 12-45 m from the eye;
+ * with GfxSceneParams.shadow_focus set: up to focus + 8 m, then to
+ * focus + 30 m, so a top-down camera 16 m away does not waste cascade 0). Spot and
  * point lights with cast_shadow: tiles of one atlas (6 per point light). */
 typedef struct GfxShadowConfig {
     bool enabled;
@@ -111,6 +113,7 @@ typedef struct GfxSceneParams {
     HMM_Vec4 moon_disc;
     float stars;          /* 0..1 */
     float reflection_y;   /* height of the mirror plane */
+    float shadow_focus;   /* eye-to-player distance for the cascade splits, 0 = fixed 12 / 45 m */
     float reflection_strength; /* 0 disables the reflection pass */
     float time;
 } GfxSceneParams;
