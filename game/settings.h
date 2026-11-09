@@ -32,7 +32,7 @@ typedef struct GameSettings {
     float npc_density;      /* 0 off, 0.5 low, 1 normal */
     int chat_bubbles;       /* 0 off, 1 the active NPC, 2 nearby ones too */
     float stress_count;     /* debug: wandering dummy avatars, 0..400 */
-    bool haptics;           /* marker taps (iOS) */
+    bool haptics;           /* marker taps, lift buttons (iOS) */
     bool marker_sounds;
     bool test_markers;      /* debug: scatter markers to tap */
     float test_marker_count; /* 1..16 */

@@ -1412,6 +1412,9 @@ static void lift_panel_press(Game *g, Elevator *el, int floor)
     if (floor != el->car_floor && g->lift_panel.pressed < 0) {
         audio_ding(g->audio);
     }
+    if (g->settings.haptics) {
+        haptic_impact(false);
+    }
     elevator_panel_press(&g->lift_panel, floor, el->car_floor);
 }
 
@@ -1492,7 +1495,7 @@ static void interact_setup(Game *g, MgApp *app)
     for (int i = 0; i < MARKER_MAX; i++) {
         g->marker_ia[i] = IA_NONE;
     }
-    g->lift_panel_ok = elevator_panel_init(&g->lift_panel, app->gfx, &app->perm, scene_floor_count());
+    g->lift_panel_ok = elevator_panel_init(&g->lift_panel, app->gfx, &app->perm, scene_floor_count(), &app->font, scene_floor_name);
     if (!g->ia_ok) {
         return;
     }
@@ -2557,7 +2560,6 @@ void game_frame(MgApp *app, float alpha)
     }
     if (g->lift_panel_ok && el) {
         elevator_panel_draw_3d(&g->lift_panel, app->gfx, el->car_floor);
-        elevator_panel_draw_ui(&g->lift_panel, app->gfx, &app->font, el->car_floor, scene_floor_name);
     }
     if (g->ia_ok) {
         const ui_frame_t pf = frame_of(app);

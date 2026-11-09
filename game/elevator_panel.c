@@ -14,15 +14,22 @@
 #define SLAB_HALF_W 0.31f
 #define SLAB_HALF_H 0.5f
 #define SLAB_HALF_D 0.12f
-#define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen */
-#define SLAB_PITCH 22.0f
+#define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen; a turn about the vertical only, so its upright edges stay parallel to the screen edge */
 #define EDGE_GAP 16.0f
 #define BUTTON_H 0.05f
 #define BUTTON_SINK 0.04f
+#define FACE_LIFT 0.002f      /* the buttons and the ring stand on the front plate */
+#define LABEL_LIFT 0.004f     /* over whatever it is printed on */
+#define LABEL_EM 1.2f         /* of the button radius */
+#define INDICATOR_Y 0.415f
+#define INDICATOR_HALF_W 0.09f
+#define INDICATOR_HALF_H 0.055f
+#define INDICATOR_THICK 0.003f
+#define INDICATOR_EM 0.075f
 #define PRESS_ANIM_S 0.3f
 #define FOV_DEG 28.0f
 
-bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors)
+bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *(*name)(int))
 {
     *p = (ElevatorPanel){0};
     p->floors = floors > LIFT_PANEL_FLOORS ? LIFT_PANEL_FLOORS : floors;
@@ -36,6 +43,7 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     /* darker sides and top under a light front plate, so it reads as a solid */
     mb_box(&mb, HMM_M4D(1.0f), HMM_V3(SLAB_HALF_W, SLAB_HALF_H, SLAB_HALF_D), HMM_V4(0.55f, 0.58f, 0.64f, 1.0f));
     mb_box(&mb, HMM_Translate(HMM_V3(0.0f, 0.0f, SLAB_HALF_D)), HMM_V3(SLAB_HALF_W - 0.004f, SLAB_HALF_H - 0.004f, 0.002f), white);
+    mb_box(&mb, HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT)), HMM_V3(INDICATOR_HALF_W, INDICATOR_HALF_H, INDICATOR_THICK), HMM_V4(0.08f, 0.09f, 0.12f, 1.0f));
     p->slab = mb_upload(&mb, g);
     /* the column, top floor first, under the floor indicator */
     const float top = 0.2f, bottom = -0.38f;
@@ -51,17 +59,22 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     mb_reset(&mb);
     mb_cylinder(&mb, face, 1.0f, 0.004f, 28, white);
     p->ring = mb_upload(&mb, g);
+    bool labels_ok = true;
+    for (int i = 0; i < p->floors; i++) { /* G, 1, 2: the first letter of the floor's name, 1 unit tall */
+        const char label[2] = {name(i)[0], 0};
+        mb_reset(&mb);
+        text_mesh(&mb, f, HMM_M4D(1.0f), 1.0f, white, label);
+        p->label[i] = mb_upload(&mb, g);
+        labels_ok = labels_ok && p->label[i] != GFX_MESH_NONE;
+    }
     arena_reset_to(scratch, mark);
-    return p->slab != GFX_MESH_NONE && p->button != GFX_MESH_NONE && p->ring != GFX_MESH_NONE;
+    return labels_ok && p->slab != GFX_MESH_NONE && p->button != GFX_MESH_NONE && p->ring != GFX_MESH_NONE;
 }
 
 bool elevator_panel_visible(const ElevatorPanel *p) { return p->slide > 0.001f; }
 
-/* Turned inward, tipped so its top shows */
-static HMM_Mat4 slab_root(float extra_yaw)
-{
-    return HMM_MulM4(HMM_Rotate_RH(HMM_AngleDeg(SLAB_PITCH), HMM_V3(1, 0, 0)), HMM_Rotate_RH(HMM_AngleDeg(SLAB_YAW + extra_yaw), HMM_V3(0, 1, 0)));
-}
+/* Turned inward */
+static HMM_Mat4 slab_root(float extra_yaw) { return HMM_Rotate_RH(HMM_AngleDeg(SLAB_YAW + extra_yaw), HMM_V3(0, 1, 0)); }
 
 static HMM_Vec3 slab_eye(void) { return HMM_V3(0.0f, 0.0f, VIEW_HALF / tanf(HMM_AngleDeg(FOV_DEG * 0.5f))); }
 
@@ -70,10 +83,10 @@ static HMM_Mat4 slab_view_proj(void)
     return HMM_MulM4(HMM_Perspective_RH_ZO(HMM_AngleDeg(FOV_DEG), VIEW_ASPECT, 0.3f, 8.0f), HMM_LookAt_RH(slab_eye(), HMM_V3(0, 0, 0), HMM_V3(0, 1, 0)));
 }
 
-/* A point on the slab's front face, on screen */
-static void face_to_screen(const ElevatorPanel *p, float fx, float fy, float *x, float *y)
+/* A point on the top of a resting button, on screen */
+static void cap_to_screen(const ElevatorPanel *p, float fx, float fy, float *x, float *y)
 {
-    const HMM_Vec4 c = HMM_MulM4V4(HMM_MulM4(slab_view_proj(), slab_root(0.0f)), HMM_V4(fx, fy, SLAB_HALF_D, 1.0f));
+    const HMM_Vec4 c = HMM_MulM4V4(HMM_MulM4(slab_view_proj(), slab_root(0.0f)), HMM_V4(fx, fy, SLAB_HALF_D + FACE_LIFT + BUTTON_H, 1.0f));
     *x = p->x + (c.X / c.W * 0.5f + 0.5f) * p->w;
     *y = p->y + (0.5f - c.Y / c.W * 0.5f) * p->h;
 }
@@ -97,14 +110,14 @@ void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame
 
 void elevator_panel_button_pos(const ElevatorPanel *p, int floor, float *x, float *y)
 {
-    face_to_screen(p, 0.0f, p->button_y[floor], x, y);
+    cap_to_screen(p, 0.0f, p->button_y[floor], x, y);
 }
 
 float elevator_panel_button_radius(const ElevatorPanel *p)
 {
     float x0, x1, y;
-    face_to_screen(p, -p->button_r, 0.0f, &x0, &y);
-    face_to_screen(p, p->button_r, 0.0f, &x1, &y);
+    cap_to_screen(p, -p->button_r, 0.0f, &x0, &y);
+    cap_to_screen(p, p->button_r, 0.0f, &x1, &y);
     return (x1 - x0) * 0.5f;
 }
 
@@ -148,34 +161,24 @@ void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_f
         const float sink = p->press_anim[i] > 0.0f ? BUTTON_SINK * sinf(t * HMM_PI32) : 0.0f; /* down and back up */
         const float grow = 1.0f - 0.08f * (sink / BUTTON_SINK);
         const float h = BUTTON_H - sink;
-        const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + 0.002f)), HMM_Scale(HMM_V3(r * grow, r * grow, h))));
+        const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(r * grow, r * grow, h))));
         GfxMaterial btn = p->pressed == i ? mat_toon_emissive(mg_rgb(0xFFD166), 0.9f) : mat_toon(mg_rgb(0xFFFFFF), 0.0f);
         gfx_draw(g, p->button, &m, &btn, GFX_DRAW_NO_SHADOW);
+        const float em = r * LABEL_EM * grow; /* printed on the cap: it turns and sinks with it */
+        const HMM_Mat4 lm = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + FACE_LIFT + h + LABEL_LIFT)), HMM_Scale(HMM_V3(em, em, 1.0f))));
+        GfxMaterial ink = mat_text(HMM_V4(0.125f, 0.141f, 0.172f, 1.0f));
+        gfx_draw(g, p->label[i], &lm, &ink, GFX_DRAW_NO_SHADOW);
     }
     const float rr = r * 1.18f;
     if (current_floor >= 0 && current_floor < p->floors && (p->blink_t <= 0.0f || fmodf(p->blink_t, 0.16f) < 0.08f)) { /* where the car is */
-        const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[current_floor], SLAB_HALF_D + 0.002f)), HMM_Scale(HMM_V3(rr, rr, 1.0f))));
+        const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[current_floor], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(rr, rr, 1.0f))));
         GfxMaterial dim = mat_toon_emissive(mg_rgb(0x5A7FB0), 0.5f);
         gfx_draw(g, p->ring, &m, &dim, GFX_DRAW_NO_SHADOW);
     }
+    if (current_floor >= 0 && current_floor < p->floors) { /* the floor indicator */
+        const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT + INDICATOR_THICK + LABEL_LIFT)), HMM_Scale(HMM_V3(INDICATOR_EM, INDICATOR_EM, 1.0f))));
+        GfxMaterial amber = mat_text(HMM_V4(1.0f, 0.82f, 0.4f, 1.0f));
+        gfx_draw(g, p->label[current_floor], &m, &amber, GFX_DRAW_NO_SHADOW);
+    }
     gfx_inset_end(g);
-}
-
-void elevator_panel_draw_ui(const ElevatorPanel *p, GfxContext *g, const TextFont *f, int current_floor, const char *(*name)(int))
-{
-    if (!elevator_panel_visible(p) || p->slide < 0.9f) { /* the labels follow the settled slab */
-        return;
-    }
-    float ix, iy;
-    face_to_screen(p, 0.0f, 0.415f, &ix, &iy);
-    ui_round_rect(g, f, ix - 26.0f, iy - 16.0f, 52.0f, 32.0f, 6.0f, ui_rgba(0x101218F0)); /* floor indicator */
-    char label[2] = {name(current_floor)[0], 0}; /* G, 1, 2: the first letter of the floor's name */
-    text_draw_centered(g, f, ix, iy + 1.0f, 22.0f, ui_rgba(0xFFD166FF), label);
-    const float size = elevator_panel_button_radius(p) * 1.2f;
-    for (int i = 0; i < p->floors; i++) {
-        float bx, by;
-        elevator_panel_button_pos(p, i, &bx, &by);
-        label[0] = name(i)[0];
-        text_draw_centered(g, f, bx, by + 1.0f, size, ui_rgba(0x20242CFF), label);
-    }
 }

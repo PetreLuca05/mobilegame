@@ -13,6 +13,7 @@
 
 typedef struct ElevatorPanel {
     GfxMeshId slab, button, ring;
+    GfxMeshId label[LIFT_PANEL_FLOORS]; /* one per floor, 1 unit tall */
     int floors;
     float button_y[LIFT_PANEL_FLOORS]; /* on the slab's face, -0.5 .. 0.5 */
     float button_r;
@@ -24,7 +25,8 @@ typedef struct ElevatorPanel {
     float blink_t;       /* tapped the floor we are on */
 } ElevatorPanel;
 
-bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors);
+/* name: a floor's name, its first letter goes on the button */
+bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *(*name)(int));
 void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame_t *f);
 bool elevator_panel_visible(const ElevatorPanel *p);
 /* A button's centre on screen, pt */
@@ -36,6 +38,5 @@ void elevator_panel_press(ElevatorPanel *p, int floor, int current_floor);
 /* The floor whose press has come due, -1 if none. */
 int elevator_panel_take(ElevatorPanel *p);
 void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_floor);
-void elevator_panel_draw_ui(const ElevatorPanel *p, GfxContext *g, const TextFont *f, int current_floor, const char *(*name)(int));
 
 #endif
