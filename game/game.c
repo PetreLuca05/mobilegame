@@ -1548,7 +1548,7 @@ static void greet_rect(const Game *g, const MgApp *app, float r[4])
     const ui_frame_t cf = frame_of(app);
     const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f;
     r[0] = ui_safe_right(&cf) - UI_MARGIN - cf.corner - g->panel.size - 12.0f - cw;
-    r[1] = ui_safe_bottom(&cf) - UI_MARGIN - ch;
+    r[1] = ui_safe_bottom(&cf) - UI_MARGIN - cf.corner - ch;
     r[2] = cw;
     r[3] = ch;
 }

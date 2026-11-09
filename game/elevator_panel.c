@@ -16,8 +16,9 @@
 #define SLAB_HALF_D 0.12f
 #define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen; a turn about the vertical only, so its upright edges stay parallel to the screen edge */
 #define EDGE_GAP 16.0f
-#define BUTTON_H 0.05f
-#define BUTTON_SINK 0.04f
+#define BUTTON_MAX_R 0.088f
+#define BUTTON_H 0.0325f
+#define BUTTON_SINK 0.026f
 #define FACE_LIFT 0.002f      /* the buttons and the ring stand on the front plate */
 #define LABEL_LIFT 0.004f     /* over whatever it is printed on */
 #define LABEL_EM 1.2f         /* of the button radius */
@@ -48,7 +49,7 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     /* the column, top floor first, under the floor indicator */
     const float top = 0.2f, bottom = -0.38f;
     const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
-    p->button_r = mg_minf(0.135f, spacing > 0.0f ? spacing * 0.44f : 0.135f);
+    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.286f : BUTTON_MAX_R);
     for (int i = 0; i < p->floors; i++) {
         p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
     }
