@@ -6,7 +6,6 @@
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
-#include "modes.h"
 #include "strings.h"
 
 #define ROW_H 52.0f
@@ -391,40 +390,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
         y += ROW_H + 8.0f;
     }
-    char mp[64];
-    SDL_snprintf(mp, sizeof(mp), "%s  %s", str("multiplayer"), f->mp_open ? "-" : "+");
-    if (menu_row(f, ui, app, row++, mp, x, y, cw, f->mp_open, false, NULL)) {
-        f->mp_open = !f->mp_open;
-    }
-    y += ROW_H + 8.0f;
-    /* sub-list grows over 200 ms */
-    float dt = mg_minf(app->frame_dt, 0.1f);
-    f->mp_anim = mg_clampf(f->mp_anim + (f->mp_open ? dt : -dt) / 0.2f, 0.0f, 1.0f);
-    if (f->mp_anim > 0.0f) {
-        float full = (float)mode_count() * (ROW_H + 8.0f);
-        float shown = full * f->mp_anim;
-        gfx_ui_clip(ui->gfx, x, y, cw, shown);
-        for (int i = 0; i < mode_count(); i++) {
-            const ModeDef *m = mode_get(i);
-            float ry = y + (float)i * (ROW_H + 8.0f);
-            if (ry - y > shown) {
-                break;
-            }
-            bool hit = menu_row(f, ui, app, 10 + i, str(m->name_key), x + 24.0f, ry, cw - 24.0f, i == ctx->last_mode,
-                                !m->enabled, m->enabled ? NULL : str("soon"));
-            if (hit && f->mp_anim >= 1.0f) {
-                if (!m->enabled) {
-                    frontend_toast(f, str("soon_toast"), app->time);
-                } else {
-                    f->joining = false;
-                    f->code[0] = 0;
-                    frontend_go(f, (FeState)m->entry_state);
-                }
-            }
-        }
-        gfx_ui_clip_off(ui->gfx);
-        y += shown;
-    }
     if (menu_row(f, ui, app, row++, str("settings"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
@@ -469,46 +434,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     return a;
 }
 
-static FeAction free_roam(Frontend *f, Ui *ui, MgApp *app)
-{
-    float w = app->width_pt, h = app->height_pt;
-    float x = app->safe_left + PAD, cw = mg_minf(w * 0.5f - x - PAD, 420.0f);
-    float y = app->safe_top + PAD + 8.0f;
-    text_draw(ui->gfx, ui->font, x, y, 30.0f, ui_rgba(0xFFFFFFFF), str("mode_free_roam"));
-    y += 44.0f;
-    FeAction a = FE_NONE;
-    char label[48];
-    if (!f->joining) {
-        if (menu_row(f, ui, app, 20, str("create_room"), x, y, cw, true, false, NULL)) {
-            a = FE_ROOM_CREATE;
-        }
-        y += ROW_H + 8.0f;
-        if (menu_row(f, ui, app, 21, str("join_room"), x, y, cw, false, false, NULL)) {
-            f->joining = true;
-            f->code[0] = 0;
-        }
-    } else {
-        text_draw(ui->gfx, ui->font, x, y, 16.0f, ui_rgba(0xFFFFFFCC), str("room_code"));
-        y += 28.0f;
-        size_t len = strlen(f->code);
-        for (int i = 0; i < 4; i++) {
-            float bx = x + (float)i * 52.0f;
-            ui_round_rect(ui->gfx, ui->font, bx, y, 44.0f, 48.0f, 10.0f,
-                          (size_t)i == len ? ui_rgba(0x4A8BFF66) : ui_rgba(0xFFFFFF2A));
-            char c[2] = {(size_t)i < len ? f->code[i] : 0, 0};
-            text_draw_centered(ui->gfx, ui->font, bx + 22.0f, y + 24.0f, 26.0f, ui_rgba(0xFFFFFFFF), c);
-        }
-        y += 60.0f;
-        y += ui_letter_keypad(ui, "fe", x, y, cw, mg_minf(40.0f, (h - y - 90.0f) / 3.0f - 4.0f), f->code, 4) + 8.0f;
-        SDL_snprintf(label, sizeof(label), "%s##frjoin", str("join"));
-        if (ui_button(ui, label, x, y, cw, 48.0f, strlen(f->code) == 4) && strlen(f->code) == 4) {
-            a = FE_ROOM_JOIN;
-        }
-    }
-    spin_drag(f, app, w * 0.5f, w);
-    return a;
-}
-
 static void back_button(Frontend *f, Ui *ui, MgApp *app)
 {
     char label[48];
@@ -527,7 +452,7 @@ static void back_button(Frontend *f, Ui *ui, MgApp *app)
 FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes)
 {
     f->clicked = false;
-    float side = f->state == FE_MAIN_MENU || f->state == FE_FREE_ROAM ? 0.5f : -0.5f;
+    float side = f->state == FE_MAIN_MENU ? 0.5f : -0.5f;
     if (f->state == FE_CREATOR) {
         side = -0.55f;
     }
@@ -549,10 +474,6 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_MAIN_MENU:
         a = main_menu(f, ui, app, ctx);
-        break;
-    case FE_FREE_ROAM:
-        a = free_roam(f, ui, app);
-        back_button(f, ui, app);
         break;
     case FE_LOADING: {
         float bw = app->width_pt * 0.4f, bx = (app->width_pt - bw) * 0.5f, by = app->height_pt * 0.82f;

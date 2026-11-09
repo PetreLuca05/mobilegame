@@ -10,8 +10,6 @@
  *               then yard -> floor 2 and floor 2 -> yard through the car
  *   offline     New Game on an unresolvable host (like airplane mode), play 120 s:
  *               count "net: attempt" lines after "frontend: PLAY" (must be 0)
- *   freeroam-create / freeroam-join CODE  through the Multiplayer menu; pass
- *               when both players are in the room
  *   markers     tap a marker (walks), tap again (cancels), tap and arrive
  *               (reached, respawn), a drag from a marker becomes the stick
  *   interact    walk to a marker and the receptionist (panel up, a drag does
@@ -49,7 +47,6 @@ typedef struct AutotestProbe {
     int route_step;    /* route test progress (-1 = not running) */
     int nav_state;     /* AutonavState */
     bool has_save;
-    const char *room_code;
     int rides;         /* elevator rides this run */
     float distance_m;  /* walked this run */
     uint32_t markers_reached;
@@ -114,8 +111,6 @@ typedef struct Autotest {
     int skin_changes;
     char shot_name[48];  /* screenshot kind */
     uint32_t pick;       /* markers: the one being tapped */
-    char join_code[8];   /* freeroam-join */
-    char keys[4][8];
     TapStep steps[12];
     int step_count;
     uint32_t it_fired, it_reached;

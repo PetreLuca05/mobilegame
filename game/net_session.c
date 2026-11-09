@@ -32,14 +32,6 @@ void session_set_identity(NetSession *s, const char *name, NetSkin skin)
     }
 }
 
-void session_random_code(char out[5])
-{
-    for (int i = 0; i < 4; i++) {
-        out[i] = (char)('A' + SDL_rand(26));
-    }
-    out[4] = 0;
-}
-
 static void fill_meta(NetSession *s)
 {
     SDL_snprintf(s->me.name, sizeof(s->me.name), "%s", s->my_name);
@@ -63,42 +55,12 @@ static void clear_remotes(NetSession *s) { memset(s->remotes, 0, sizeof(s->remot
 
 static void join_topic(NetSession *s)
 {
-    if (s->mode == MODE_LOBBY) {
-        SDL_snprintf(s->topic, sizeof(s->topic), "room:%s", s->room_token);
-    } else if (s->mode == MODE_PARTY) {
-        SDL_snprintf(s->topic, sizeof(s->topic), "room:%s", s->room_code);
-    } else {
-        SDL_snprintf(s->topic, sizeof(s->topic), "world:%02d", s->shard);
-    }
+    SDL_snprintf(s->topic, sizeof(s->topic), "room:%s", s->room_token);
     s->slot = -1;
     s->slot_announced = false;
     fill_meta(s);
-    net_join(s->net, s->topic, &s->me, s->mode == MODE_WORLD ? WORLD_SHARD_CAP : PARTY_MAX_PLAYERS);
+    net_join(s->net, s->topic, &s->me, SESSION_MAX_PLAYERS);
     SDL_snprintf(s->status_text, sizeof(s->status_text), "joining %s", s->topic);
-}
-
-void session_start(NetSession *s, GameMode mode, const char *code)
-{
-    clear_remotes(s);
-    memset(&s->sender, 0, sizeof(s->sender));
-    s->mode = mode;
-    s->rtt_ms = -1;
-    if (mode == MODE_OFFLINE || !s->net) {
-        session_stop(s);
-        if (!s->net && mode != MODE_OFFLINE) {
-            SDL_snprintf(s->status_text, sizeof(s->status_text), "online play not configured");
-        }
-        return;
-    }
-    if (mode == MODE_PARTY) {
-        SDL_snprintf(s->room_code, sizeof(s->room_code), "%s", code ? code : "");
-        if (strlen(s->room_code) != 4) {
-            session_random_code(s->room_code);
-        }
-    } else {
-        s->shard = 1;
-    }
-    join_topic(s);
 }
 
 void session_start_lobby(NetSession *s, const char *token, const char *host)
@@ -147,7 +109,7 @@ static void apply_members(NetSession *s)
 
 void session_set_members(NetSession *s, const char (*ids)[NET_ID_LEN], int count)
 {
-    s->member_count = count < PARTY_MAX_PLAYERS ? count : PARTY_MAX_PLAYERS;
+    s->member_count = count < SESSION_MAX_PLAYERS ? count : SESSION_MAX_PLAYERS;
     memcpy(s->members, ids, (size_t)s->member_count * NET_ID_LEN);
     apply_members(s);
     net_send_members(s->net, ids, count);
@@ -297,7 +259,7 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         if (e->value == 0) {
             s->member_count = 0;
         }
-        if (s->member_count < PARTY_MAX_PLAYERS) {
+        if (s->member_count < SESSION_MAX_PLAYERS) {
             SDL_snprintf(s->members[s->member_count++], NET_ID_LEN, "%s", e->peer);
         }
         if (e->value + 1 == e->len) {
@@ -355,17 +317,10 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         s->rtt_ms = e->value;
         break;
     case NET_EV_ROOM_FULL:
-        if (s->mode == MODE_WORLD && s->shard < WORLD_MAX_SHARDS) {
-            s->shard++;
-            mg_log_info("session: world shard full (%d players), trying %02d", e->value, s->shard);
-            clear_remotes(s);
-            join_topic(s);
-        } else {
-            SDL_snprintf(s->status_text, sizeof(s->status_text), "room %s is full", s->room_code);
-            s->mode = MODE_OFFLINE;
-            s->slot = 0;
-            clear_remotes(s);
-        }
+        SDL_snprintf(s->status_text, sizeof(s->status_text), "the room is full");
+        s->mode = MODE_OFFLINE;
+        s->slot = 0;
+        clear_remotes(s);
         break;
     default: /* user channel, calls and pushes: the listener's */
         break;
@@ -433,12 +388,6 @@ int session_player_count(const NetSession *s)
 const char *session_mode_label(const NetSession *s, char *buf, size_t cap)
 {
     switch (s->mode) {
-    case MODE_PARTY:
-        SDL_snprintf(buf, cap, "party %s", s->room_code);
-        break;
-    case MODE_WORLD:
-        SDL_snprintf(buf, cap, "world %02d", s->shard);
-        break;
     case MODE_LOBBY:
         SDL_snprintf(buf, cap, "lobby");
         break;

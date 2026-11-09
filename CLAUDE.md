@@ -57,10 +57,10 @@ Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [-
 `android` GitHub workflow publishes `android-latest` on every push to main.
 Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 
-Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
+Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|freeroam-create|freeroam-join CODE|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -280,11 +280,11 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 ## Front end, accounts and persistence (M4)
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
-  launch; later boots go straight to the menu), SETTINGS, FREE_ROAM,
+  launch; later boots go straight to the menu), SETTINGS,
   LOADING, PLAY. Outside PLAY the locker-room scene is drawn (avatar on a
   turntable); the hospital is only built when play starts. Back = Android
   back / Escape (exits from the welcome screen). Desktop: `--frontend
-  welcome|username|creator|menu|settings|freeroam`, `--play new|continue`.
+  welcome|username|creator|menu|settings`, `--play new|continue`.
 - Text lives in `assets/strings.json` (`str("key")`), never in C.
 - Sign-in: Google (both platforms) and Sign in with Apple (iOS,
   `platform/ios/apple_auth.m`), both linking the guest via the id_token
@@ -302,7 +302,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 - `prefs.json` keys: `settings` {yaw_sens, pitch_sens, invert_y,
   cam_distance, cam_pitch, fov, dead_zone, render_scale, tier, shadows,
   sound}, `onboarding_done`, `auth_provider` (google/apple/guest),
-  `last_mode`, `last_room`, `profile_cache` {name, skin, stale},
+  `lobby_open`, `profile_cache` {name, skin, stale},
   `stats_queue` {sessions, play_seconds, distance_m, elevator_rides,
   rooms_joined} (offline play, added on the next load). Written atomically.
 - Offline play sets `net_set_quiet`: after a failed sign-in (airplane mode)
@@ -312,9 +312,6 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
   visited_rooms u64 (bit = storey * 16 + chunk); every 30 s, on background,
   exit and "Save & back to menu". Offline play joins no Realtime room.
-- Multiplayer modes: one row in `game/modes.c` (id, name/description string
-  keys, players, enabled, entry state) + its strings; disabled rows show
-  "Soon". Free Roam = room code create/join.
 
 ## Networking
 
@@ -327,8 +324,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   embedded `assets/cacert.pem` (regenerate: `python3 tools/gen_ca_bundle.py`).
 - Auth: refresh token in Keychain / Android Keystore (`SecureStore.java`) /
   desktop pref file per `--profile`.
-- Topics: party `room:ABCD` (max 4), open world `world:01`.. (cap 4 per
-  shard, see `game/net_session.h`). RLS in `supabase/migrations`.
+- Topics: `user:<uid>` (private, receive only, whole app run) and `room:<token>` (a lobby, max 4), one socket. RLS in `supabase/migrations`.
 - Accounts: the network thread signs in as a guest at launch (no room
   needed), loads `profiles` + `stats` in one PostgREST GET
   (`supabase_rest.c`), writes name/skin through at once and stats totals
@@ -343,12 +339,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 Diagnostics (desktop):
 ```
 build/desktop/mg_nettest probe                       # HTTPS + WebSocket + RTT, no sign-in
-build/desktop/mg_nettest join ABCD alice 20          # signed-in join (needs anonymous sign-ins)
 build/desktop/mg_nettest join ABCD alice 20 --public # public test channel, no sign-in
-build/desktop/mobilegame --party ABCD --profile a    # two instances: different --profile
-build/desktop/mobilegame --party ABCD --profile b --demo-walk --window-pos 600,90
+build/desktop/mg_nettest friends PROFILE SEC [CODE]  # user:<uid> channel, list, pushes; accepts requests, with CODE sends one
 ```
-`--public-test` makes the game use a public channel without sign-in (testing only).
 
 ## Tests
 

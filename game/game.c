@@ -44,7 +44,6 @@
 #include "elevator.h"
 #include "elevator_panel.h"
 #include "frontend.h"
-#include "modes.h"
 #include "prefs.h"
 #include "save.h"
 #include "strings.h"
@@ -127,7 +126,7 @@ typedef struct Game {
     bool playing;          /* in the hospital (else the front end) */
     bool play_paused;      /* front end opened from the game (edit character) */
     int load_step;
-    int pending_play;      /* what LOADING leads to: 0 new game, 1 create room, 2 join room, 3 continue, 4 a friend's lobby */
+    int pending_play;      /* what LOADING leads to: 0 new game, 3 continue, 4 a friend's lobby */
     char status[96];
     Autotest autotest;
     PerfRun perf;
@@ -395,8 +394,7 @@ bool game_init(MgApp *app)
     const char *atest = arg_value(app->argc, app->argv, "--autotest");
     perf_run_init(&g->perf, app->argc, app->argv);
     const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active);
-    NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3,
-                      has_flag(app->argc, app->argv, "--public-test")};
+    NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3, false};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
     friends_init(&g->friends, g->net, profile ? profile : "");
@@ -407,21 +405,15 @@ bool game_init(MgApp *app)
     g->lobby.epoch_user = g;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
-    const char *party = arg_value(app->argc, app->argv, "--party");
-    if (party) {
-        session_start(&g->session, MODE_PARTY, party);
-    } else if (has_flag(app->argc, app->argv, "--world")) {
-        session_start(&g->session, MODE_WORLD, NULL);
-    }
     /* the front end comes first unless a test flag already chose to play */
-    bool play_now = party || has_flag(app->argc, app->argv, "--world") || has_flag(app->argc, app->argv, "--offline") ||
+    bool play_now = has_flag(app->argc, app->argv, "--offline") ||
                     autotest_starts_in_game(app->argc, app->argv) || arg_value(app->argc, app->argv, "--spawn") ||
                     arg_value(app->argc, app->argv, "--cam") || has_flag(app->argc, app->argv, "--menu") ||
                     has_flag(app->argc, app->argv, "--colliders");
     const char *fe_arg = arg_value(app->argc, app->argv, "--frontend"); /* desktop: start on a screen */
     g->fe.state = g->prefs.onboarding_done ? FE_MAIN_MENU : FE_WELCOME;
     if (fe_arg) {
-        static const char *const names[] = {"welcome", "username", "creator", "menu", "settings", "freeroam"};
+        static const char *const names[] = {"welcome", "username", "creator", "menu", "settings"};
         for (int i = 0; i < 6; i++) {
             if (SDL_strcmp(fe_arg, names[i]) == 0) {
                 g->fe.state = (FeState)i;
@@ -687,7 +679,7 @@ static void write_save(Game *g)
     g->has_save = save_write(s, g->profile_name) || g->has_save;
 }
 
-/* Back to the main menu from the hospital (multiplayer: leave the room). */
+/* Back to the main menu from the hospital (leaves or closes the lobby). */
 static void leave_play(Game *g, MgApp *app)
 {
     (void)app;
@@ -825,35 +817,18 @@ static void scene_defaults(GfxSceneParams *sp, float time, const DayState *d)
     sp->time = time;
 }
 
-/* Big room badge at the top so the code can be read out to friends;
- * connection problems show here in red. */
-static void draw_room_badge(Game *g, MgApp *app)
+/* In company, connection problems show at the top in red; a solo lobby plays on regardless. */
+static void draw_net_badge(Game *g, MgApp *app)
 {
     const NetSession *s = &g->session;
-    if (s->mode == MODE_OFFLINE && s->status != NET_FAILED) {
+    if ((!lobby_is_guest(&g->lobby) && g->lobby.state != LOBBY_HOSTING) || s->status == NET_JOINED) {
         return;
     }
-    char line[128];
-    bool bad = s->status == NET_FAILED || s->status == NET_RECONNECTING;
-    if (s->mode == MODE_PARTY) {
-        SDL_snprintf(line, sizeof(line), "Room %s", s->room_code);
-    } else if (s->mode == MODE_WORLD) {
-        SDL_snprintf(line, sizeof(line), "World %02d", s->shard);
-    } else {
-        SDL_snprintf(line, sizeof(line), "Offline");
-    }
-    float cx = app->width_pt * 0.5f;
-    float y = app->safe_top + 104.0f; /* below the debug HUD lines */
-    float tw = text_width(&app->font, line, 24.0f);
-    ui_round_rect(app->gfx, &app->font, cx - tw * 0.5f - 18.0f, y, tw + 36.0f, 40.0f, 20.0f, ui_rgba(0x1E2230C0));
-    text_draw_centered(app->gfx, &app->font, cx, y + 20.0f, 24.0f, ui_rgba(0xFFFFFFFF), line);
-    if (s->status != NET_JOINED) {
-        const char *msg = s->status_text;
-        float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
-        ui_round_rect(app->gfx, &app->font, cx - mw * 0.5f - 12.0f, y + 46.0f, mw + 24.0f, 26.0f, 13.0f,
-                      bad ? ui_rgba(0xD94141E0) : ui_rgba(0x1E2230A0));
-        text_draw_centered(app->gfx, &app->font, cx, y + 59.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
-    }
+    const float cx = app->width_pt * 0.5f, y = app->safe_top + 104.0f; /* below the debug HUD lines */
+    const char *msg = s->status_text;
+    float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
+    ui_round_rect(app->gfx, &app->font, cx - mw * 0.5f - 12.0f, y, mw + 24.0f, 26.0f, 13.0f, ui_rgba(0xD94141E0));
+    text_draw_centered(app->gfx, &app->font, cx, y + 13.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
 }
 
 #ifdef MG_RENDER_FULL
@@ -1047,13 +1022,7 @@ static void load_step(Game *g, MgApp *app)
         g->cam.initialized = g->td.initialized = false;
         g->fade_snap = true;
         touch_controls_reset(&g->touch);
-        if (g->pending_play == 1) {
-            session_start(&g->session, MODE_PARTY, NULL);
-            SDL_snprintf(g->prefs.last_room, sizeof(g->prefs.last_room), "%s", g->session.room_code);
-        } else if (g->pending_play == 2) {
-            session_start(&g->session, MODE_PARTY, g->fe.code);
-            SDL_snprintf(g->prefs.last_room, sizeof(g->prefs.last_room), "%s", g->fe.code);
-        } else if (g->pending_play == 4) {
+        if (g->pending_play == 4) {
             lobby_start_guest(&g->lobby);
             session_set_npc_epoch(&g->session, g->npc_epoch_ms);
         } else {
@@ -1095,7 +1064,6 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        g->net && apple_auth_available(g->google),
                        g->google_busy,
                        g->has_save,
-                       g->prefs.last_mode,
                        g->load_step / 2.0f,
                        MG_VERSION};
     FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
@@ -1155,14 +1123,6 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         break;
     case FE_CONTINUE:
         start_loading(g, 3);
-        break;
-    case FE_ROOM_CREATE:
-        g->prefs.last_mode = mode_find("free_roam");
-        start_loading(g, 1);
-        break;
-    case FE_ROOM_JOIN:
-        g->prefs.last_mode = mode_find("free_roam");
-        start_loading(g, 2);
         break;
     case FE_LOAD_STEP:
         load_step(g, app);
@@ -1993,7 +1953,6 @@ void game_frame(MgApp *app, float alpha)
                            g->route.active && !g->route.done ? g->route.step : -1,
                            (int)g->autonav.state,
                            g->has_save,
-                           g->session.room_code,
                            (int)g->stats.rides,
                            (float)g->stats.distance_m,
                            g->markers_reached,
@@ -2089,7 +2048,7 @@ void game_frame(MgApp *app, float alpha)
     }
     if ((int)g->fe.state != g->logged_fe) { /* screen changes, for device logs */
         static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU",
-                                            "SETTINGS", "FREE_ROAM", "LOADING", "PLAY"};
+                                            "SETTINGS", "LOADING", "PLAY"};
         g->logged_fe = (int)g->fe.state;
         mg_log_info("frontend: %s", names[g->logged_fe]);
     }
@@ -2637,7 +2596,7 @@ void game_frame(MgApp *app, float alpha)
                          ui_rgba(0xFFFFFFFF), line);
     }
 #endif
-    draw_room_badge(g, app);
+    draw_net_badge(g, app);
 }
 
 /* Window point -> the horizontal plane at height y. */

@@ -108,7 +108,7 @@ note in `README.md`.
   and slide; push to the edge of the circle to sprint.
 - **Look around**: drag with your right thumb.
 - **Jump**: the round arrow button bottom-right (hold for a higher jump).
-- **Gear icon** (top-right): room code, leave / main menu, camera
+- **Pause button** (top-right): lobby open or locked, players, friends, leave / main menu, camera
   sensitivity, field of view, render scale, show colliders.
 
 All three work at the same time, so you can run, turn and jump together.

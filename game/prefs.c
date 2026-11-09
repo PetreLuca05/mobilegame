@@ -105,8 +105,6 @@ void prefs_load(Prefs *p, const char *profile)
     p->onboarding_done = flag(j, "onboarding_done", false);
     p->lobby_open = flag(j, "lobby_open", true);
     text(j, "auth_provider", p->auth_provider, sizeof(p->auth_provider));
-    p->last_mode = (int)num(j, "last_mode", 0);
-    text(j, "last_room", p->last_room, sizeof(p->last_room));
     const cJSON *pc = cJSON_GetObjectItemCaseSensitive(j, "profile_cache");
     if (cJSON_IsObject(pc)) {
         p->has_profile_cache = true;
@@ -177,8 +175,6 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddBoolToObject(j, "onboarding_done", p->onboarding_done);
     cJSON_AddBoolToObject(j, "lobby_open", p->lobby_open);
     cJSON_AddStringToObject(j, "auth_provider", p->auth_provider);
-    cJSON_AddNumberToObject(j, "last_mode", p->last_mode);
-    cJSON_AddStringToObject(j, "last_room", p->last_room);
     if (p->has_profile_cache) {
         cJSON *pc = cJSON_AddObjectToObject(j, "profile_cache");
         cJSON_AddStringToObject(pc, "name", p->cache_name);

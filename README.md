@@ -90,11 +90,11 @@ USB debugging on. Connect, accept the prompt, run `tools/run_android.sh`.
    sign-ins: ON**. Without it, Party and World show "sign-in failed".
 2. Apply `supabase/migrations/*.sql` (`supabase link --project-ref <ref>` then
    `supabase db push`): Realtime RLS so signed-in (including anonymous) users
-   can use private channels `room:ABCD` and `world:01`..`world:99`.
+   can use their own private `user:<uid>` channel and the `room:<token>` of a lobby they were let into.
 3. Quota: the Free plan allows about 100 Realtime messages/s per project. M1
    sends 10 Hz with 2 players and 8 Hz with 3–4 (fan-out N×(N−1)×Hz ≤ 96),
-   nothing while alone and 1 Hz while standing still. Open-world rooms are
-   capped at 4 players for this reason; raise `WORLD_SHARD_CAP`
+   nothing while alone and 1 Hz while standing still. Lobbies are
+   capped at 4 players for this reason; raise `SESSION_MAX_PLAYERS`
    (`game/net_session.h`) on a paid plan.
 
 ## Performance target

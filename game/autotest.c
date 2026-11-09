@@ -8,14 +8,14 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
+       AUTOTEST_OFFLINE, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "freeroam-create", "freeroam-join", "interact", "text", "hudclamp"};
+                                        "offline", "interact", "text", "hudclamp"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 14 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 12 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -31,9 +31,6 @@ void autotest_init(Autotest *t, int argc, char **argv)
     for (int i = 1; i + 2 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "screenshot") == 0) {
             SDL_snprintf(t->shot_name, sizeof(t->shot_name), "%s", argv[i + 2]);
-        }
-        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "freeroam-join") == 0) {
-            SDL_snprintf(t->join_code, sizeof(t->join_code), "%s", argv[i + 2]);
         }
     }
 }
@@ -595,64 +592,6 @@ static bool run_offline(Autotest *t, MgApp *app, const AutotestProbe *p, double 
     }
 }
 
-/* Through the Multiplayer menu; ends when two players share the room. */
-static bool run_freeroam(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el, bool join)
-{
-    bool failed;
-    if (t->step_count == 0) {
-        static const char *const multi[2] = {"menurow1", "menurow2"};
-        int n = 0;
-        t->steps[n++] = (TapStep){FE_MAIN_MENU, multi[p->has_save ? 1 : 0], false};
-        t->steps[n++] = (TapStep){FE_MAIN_MENU, "menurow10", false};
-        if (join) {
-            t->steps[n++] = (TapStep){FE_FREE_ROAM, "menurow21", false};
-            for (int i = 0; i < 4 && t->join_code[i]; i++) {
-                SDL_snprintf(t->keys[i], sizeof(t->keys[i]), "fe_%c", t->join_code[i]);
-                t->steps[n++] = (TapStep){FE_FREE_ROAM, t->keys[i], false};
-            }
-            t->steps[n++] = (TapStep){FE_FREE_ROAM, "frjoin", false};
-        } else {
-            t->steps[n++] = (TapStep){FE_FREE_ROAM, "menurow20", false};
-        }
-        t->step_count = n;
-    }
-    if (t->stage == 0) {
-        if (!run_taps(t, app, p, t->steps, t->step_count, "freeroam", &failed)) {
-            return failed;
-        }
-        t->stage = 1;
-        t->step_start = el;
-        return false;
-    }
-    if (t->stage == 1) {
-        if (p->playing && p->room_code && p->room_code[0]) {
-            mg_log_info("autotest freeroam: in room %s", p->room_code);
-            t->stage = 2;
-            t->step_start = el;
-        } else if (el - t->step_start > 25.0) {
-            return fail(t, "freeroam", "never got into a room");
-        }
-        return false;
-    }
-    if (t->stage == 2) {
-        if (p->players_seen >= 2) {
-            mg_log_info("autotest freeroam: %d players in the room", p->players_seen);
-            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", join ? "fr_join" : "fr_create");
-            t->stage = 3;
-            t->step_start = el;
-        } else if (el - t->step_start > 90.0) {
-            return fail(t, "freeroam", "nobody else joined");
-        }
-        return false;
-    }
-    if (el - t->step_start > 4.0) {
-        mg_log_info("AUTOTEST PASSED");
-        t->passed = true;
-        return true;
-    }
-    return false;
-}
-
 static bool run_onboarding(Autotest *t, MgApp *app, const AutotestProbe *p)
 {
     bool failed;
@@ -1170,10 +1109,6 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
                 t->passed = finished = true;
             }
         }
-        break;
-    case AUTOTEST_FR_CREATE:
-    case AUTOTEST_FR_JOIN:
-        finished = run_freeroam(t, app, p, out, el, t->kind == AUTOTEST_FR_JOIN);
         break;
     case AUTOTEST_SCREENSHOT: /* let the scene settle, shoot, quit a second later */
         if (t->stage == 0 && el > 3.0) {

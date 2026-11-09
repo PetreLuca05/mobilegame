@@ -1,6 +1,6 @@
-/* Game-side networking: the three modes (offline, private party, open
- * world), slot / spawn-disc assignment through Presence, sending our state
- * and buffering everyone else's for interpolation. */
+/* Game-side networking: the lobby room (see lobby.h), slot / spawn-disc
+ * assignment through Presence, sending our state and buffering everyone
+ * else's for interpolation. */
 #ifndef MG_NET_SESSION_H
 #define MG_NET_SESSION_H
 
@@ -9,14 +9,10 @@
 #include "net/replication.h"
 
 #define SESSION_MAX_REMOTE 8
-#define PARTY_MAX_PLAYERS 4
-#define WORLD_SHARD_CAP 4    /* Supabase Free plan: ~100 msg/s per project */
-#define WORLD_MAX_SHARDS 20
+#define SESSION_MAX_PLAYERS 4  /* Supabase Free plan: ~100 msg/s per project */
 
 typedef enum GameMode {
     MODE_OFFLINE,
-    MODE_PARTY,
-    MODE_WORLD,
     MODE_LOBBY,
 } GameMode;
 
@@ -36,15 +32,13 @@ typedef struct RemotePlayer {
 typedef struct NetSession {
     NetTransport *net;
     GameMode mode;
-    char room_code[5];
     char room_token[NET_TOKEN_LEN];
     char host_id[NET_ID_LEN];  /* MODE_LOBBY as a guest; "" = we are the host */
-    char members[PARTY_MAX_PLAYERS][NET_ID_LEN]; /* who may be heard: state from anyone else is dropped */
+    char members[SESSION_MAX_PLAYERS][NET_ID_LEN]; /* who may be heard: state from anyone else is dropped */
     int member_count;
     bool members_known;
     int members_filling;       /* ids of the list still arriving */
     bool host_closed;
-    int shard;
     char topic[NET_TOPIC_LEN];
     char self_id[NET_ID_LEN];
     NetPeerMeta me;
@@ -73,8 +67,6 @@ typedef struct NetSession {
 } NetSession;
 
 void session_init(NetSession *s, NetTransport *net);
-/* mode MODE_PARTY needs a 4-letter code; MODE_WORLD picks shard 01 upward. */
-void session_start(NetSession *s, GameMode mode, const char *code);
 void session_stop(NetSession *s);
 /* FRIENDS-1: the lobby room room:<token>. host = "" when it is ours. */
 void session_start_lobby(NetSession *s, const char *token, const char *host);
@@ -90,7 +82,6 @@ void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_
                     uint8_t floor);
 int session_player_count(const NetSession *s);
 const char *session_mode_label(const NetSession *s, char *buf, size_t cap);
-void session_random_code(char out[5]);
 AvatarLook session_my_look(const NetSession *s);
 /* Name + skin sent in Presence; re-broadcast at once when joined. */
 void session_set_identity(NetSession *s, const char *name, NetSkin skin);

@@ -1,6 +1,6 @@
 /* Per-device preferences: prefs.json in SDL_GetPrefPath (desktop: one file
  * per --profile). Account data (name, character, stats) lives in Supabase;
- * this holds what belongs to the phone - settings, last mode / room code,
+ * this holds what belongs to the phone - settings, my lobby's open/locked state,
  * onboarding flag, sign-in provider, a cache of the profile for offline
  * launches and stats waiting to be flushed. Written atomically (temp file
  * + rename). Keys are listed in CLAUDE.md. */
@@ -15,8 +15,6 @@ typedef struct Prefs {
     bool onboarding_done;
     bool lobby_open;        /* FRIENDS-1: last state of my lobby, default on */
     char auth_provider[12]; /* "", "google", "apple", "guest" */
-    int last_mode;          /* index into the modes table */
-    char last_room[5];
     /* account cache (offline launches) */
     bool has_profile_cache;
     bool profile_stale;     /* edited offline: push on the next sign-in */

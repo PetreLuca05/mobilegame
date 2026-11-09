@@ -1,6 +1,7 @@
 /* Desktop network diagnostics (not shipped):
  *   mg_nettest probe                  HTTPS + WebSocket + heartbeat RTT, no sign-in needed
- *   mg_nettest join ROOM PROFILE SEC  sign in, join room:ROOM, send state at 10 Hz, print events
+ *   mg_nettest join ROOM PROFILE SEC --public  public channel room:ROOM, send state at 10 Hz, print events
+ *                                     (private rooms need a lobby grant: see `friends`)
  * Two `join` instances with different PROFILEs must see each other.
  *   mg_nettest friends PROFILE SEC [CODE]  user:<uid> channel + friend calls: print my code and list,
  *                                     accept any request pushed to us; with CODE, send a request to it */

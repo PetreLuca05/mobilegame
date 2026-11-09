@@ -58,7 +58,6 @@ typedef struct GameSettings {
     bool sound_on;
     int teleport_floor;     /* MENU_TELEPORT target */
     float render_scale;     /* 3D resolution vs native (UI stays native) */
-    char room_code[5];      /* last entered party code */
 } GameSettings;
 
 static inline void settings_default(GameSettings *s)
@@ -99,7 +98,6 @@ static inline void settings_default(GameSettings *s)
 #endif
     s->sound_on = true;
     s->render_scale = gfx_default_render_scale();
-    s->room_code[0] = 0;
 }
 
 #endif
