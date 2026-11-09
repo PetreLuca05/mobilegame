@@ -9,13 +9,14 @@
 #ifndef MG_SETTINGS_MENU_H
 #define MG_SETTINGS_MENU_H
 
+#include "lobby.h"
 #include "net/net_transport.h"
 #include "settings.h"
+#include "ui/head_icons.h"
 #include "ui/widgets.h"
 
 typedef enum MenuAction {
     MENU_NONE,
-    MENU_DISCONNECT,   /* leave the room, back to offline play */
     MENU_CAMERA_PITCH, /* pitch slider moved: apply to the camera */
     MENU_MAIN_MENU,    /* back to the launch screen */
     MENU_TELEPORT,     /* debug: to settings->teleport_floor */
@@ -29,6 +30,8 @@ typedef enum MenuAction {
     MENU_EDIT_CHARACTER, /* open the character creator */
     MENU_APPLE,        /* "Continue with Apple" (iOS) */
     MENU_RESPAWN_MARKERS, /* debug: new test markers */
+    MENU_LOBBY_TOGGLE, /* open / locked changed: save it */
+    MENU_FRIENDS,      /* open the Friends page */
 } MenuAction;
 
 typedef struct SettingsAccount {
@@ -46,7 +49,12 @@ typedef struct SettingsMenu {
     bool open;
     bool card;      /* in-game pause card (Resume, Settings, ...) instead of the settings page */
     bool from_card; /* the settings page was opened from the card: its back arrow returns there */
-    bool in_room;   /* set by the game: the card offers Disconnect */
+    Lobby *lobby;   /* set by the game: the card's lobby column */
+    Friends *friends;
+    HeadIcons *heads;
+    const char *my_name;
+    const NetSkin *my_skin;
+    UiScroll players_scroll;
     int tab; /* 0 game, 1 skin */
     bool dev_open;
     UiScroll game_scroll, skin_scroll, rows[3];

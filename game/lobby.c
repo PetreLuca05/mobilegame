@@ -281,6 +281,7 @@ static void on_push(Lobby *l, const NetPush *p)
         SDL_snprintf(r->name, sizeof(r->name), "%s", p->name);
         r->skin = p->skin;
         r->expires = l->now + LOBBY_REQUEST_S;
+        r->shown = false;
 #else
         admit(l, p->from);
 #endif

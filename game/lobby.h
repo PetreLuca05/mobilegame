@@ -25,6 +25,7 @@ typedef struct LobbyRequest {
     char name[NET_NAME_LEN];
     NetSkin skin;
     double expires;
+    bool shown;   /* the panel has it */
 } LobbyRequest;
 
 typedef struct LobbyMember {

@@ -60,6 +60,7 @@
 #include "lobby.h"
 #include "friends_page.h"
 #include "ui/head_icons.h"
+#include "ui/notice_panel.h"
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
@@ -146,6 +147,7 @@ typedef struct Game {
     Lobby lobby;
     HeadIcons heads;
     FriendsPage fpage;
+    NoticePanel notice;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -297,11 +299,17 @@ static bool ensure_world(Game *g, MgApp *app)
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
 
+#define NOTICE_FRIEND_S 15.0
+#define NOTICE_INFO_S 3.0
+
 static void on_net_event(void *user, const NetEvent *e)
 {
     Game *g = (Game *)user;
     friends_on_event(&g->friends, e);
     lobby_on_event(&g->lobby, e);
+    if (e->type == NET_EV_PUSH && e->push.type == NET_PUSH_FRIEND_REQUEST) {
+        notice_push(&g->notice, NOTICE_FRIEND, e->push.from, e->push.name, &e->push.skin, str("notice_friend_request"), NOTICE_FRIEND_S);
+    }
 }
 
 static double wall_clock_ms(void);
@@ -430,6 +438,11 @@ bool game_init(MgApp *app)
     lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
     g->lobby.epoch_ms = lobby_epoch;
     g->lobby.epoch_user = g;
+    g->menu.lobby = &g->lobby;
+    g->menu.friends = &g->friends;
+    g->menu.heads = &g->heads;
+    g->menu.my_name = g->profile.display_name;
+    g->menu.my_skin = &g->profile.skin;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     /* the front end comes first unless a test flag already chose to play */
@@ -761,9 +774,12 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         }
         SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Signed out - playing as a new guest");
         break;
-    case MENU_DISCONNECT:
-        session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
-        session_stop(&g->session);
+    case MENU_LOBBY_TOGGLE:
+        g->prefs.lobby_open = g->lobby.open;
+        save_prefs(g);
+        break;
+    case MENU_FRIENDS:
+        friends_page_open(&g->fpage, &g->friends);
         break;
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
@@ -1010,8 +1026,43 @@ static void lobby_follow(Game *g, MgApp *app)
     if (l->joined_name[0]) {
         char msg[96];
         SDL_snprintf(msg, sizeof(msg), "%s %s", l->joined_name, str("lobby_entered"));
+#if LOBBY_JOIN_APPROVAL
         frontend_toast(&g->fe, msg, app->time);
+#else
+        const NetSkin none = {0};
+        notice_push(&g->notice, NOTICE_INFO, l->joined_name, l->joined_name, &none, str("lobby_entered"), NOTICE_INFO_S);
+#endif
         l->joined_name[0] = 0;
+    }
+    for (int i = 0; i < l->request_count; i++) {
+        LobbyRequest *r = &l->requests[i];
+        if (!r->shown) {
+            r->shown = true;
+            notice_push(&g->notice, NOTICE_JOIN, r->id, r->name, &r->skin, str("notice_wants_join"), LOBBY_REQUEST_S);
+        }
+    }
+}
+
+/* The top-centre panel, over whatever is on screen; its buttons are taken before the stick */
+static void draw_notices(Game *g, MgApp *app)
+{
+    const ui_frame_t f = frame_of(app);
+    NoticeKind kind = NOTICE_JOIN;
+    char id[NET_ID_LEN];
+    const NoticeResult res = notice_panel_draw(&g->notice, &g->ui, &g->heads, &f, app->time, mg_minf(app->frame_dt, 0.1f), str("friend_accept"),
+                                               str("friend_decline"), &kind, id);
+    if (g->notice.just_shown) {
+        if (g->settings.marker_sounds) {
+            audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
+        }
+        if (g->settings.haptics) {
+            haptic_impact(false);
+        }
+    }
+    if (res != NOTICE_NONE && kind == NOTICE_JOIN) {
+        lobby_respond(&g->lobby, id, res == NOTICE_ACCEPT);
+    } else if (res != NOTICE_NONE && kind == NOTICE_FRIEND) {
+        friends_respond(&g->friends, id, res == NOTICE_ACCEPT);
     }
 }
 
@@ -1109,6 +1160,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     if (f->state == FE_FRIENDS && friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
         frontend_back(f);
     }
+    draw_notices(g, app);
     if (f->state == FE_SETTINGS) { /* the settings panel, full screen over the menu */
         g->menu.open = true;
         SettingsAccount acct = account_view(g);
@@ -2233,16 +2285,21 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
     }
     SettingsAccount acct = account_view(g);
-    g->menu.in_room = g->session.mode != MODE_OFFLINE;
     const bool stats_was = s->show_stats;
-    MenuAction action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt,
-                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, app->corner_clearance, g->status);
+    MenuAction action = MENU_NONE;
+    if (g->fpage.open) { /* opened from the pause card; its back arrow returns there */
+        friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin);
+    } else {
+        action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt, app->safe_left, app->safe_top, app->safe_right,
+                               app->safe_bottom, app->corner_clearance, g->status);
+    }
     if (s->show_stats != stats_was) {
         save_prefs(g); /* per device, and a kill must not lose it */
     }
     handle_menu_action(g, app, action);
     poll_sign_in(g, app);
-    app_text_input(app, g->menu.open && g->menu.editing_name);
+    draw_notices(g, app);
+    app_text_input(app, (g->menu.open && g->menu.editing_name) || friends_page_editing(&g->fpage));
     if (g->offline_play && app->time >= g->next_save) { /* autosave */
         g->next_save = app->time + 30.0;
         write_save(g);

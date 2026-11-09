@@ -272,19 +272,90 @@ static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float
 /* ------------------------------------------------------------------ panel */
 
 /* In-game pause: a centred card, at most 420 pt wide. */
+/* Right column of the pause card: my lobby, friends, who is here */
+static void lobby_column(SettingsMenu *m, Ui *ui, MenuAction *action, float x, float y, float w, float h)
+{
+    Lobby *l = m->lobby;
+    const NetSession *se = l->session;
+    const float row = 44.0f, gap = 6.0f, y_end = y + h;
+    char label[64];
+    if (lobby_is_guest(l)) {
+        SDL_snprintf(label, sizeof(label), "%s##p_leave", str("lobby_leave"));
+        if (ui_button(ui, label, x, y, w, row, false)) {
+            *action = MENU_MAIN_MENU;
+            m->open = false;
+            m->card = false;
+        }
+    } else if (lobby_can_toggle(l)) {
+        SDL_snprintf(label, sizeof(label), "%s: %s##p_lobby", str("lobby_row"), str(l->open ? "lobby_open" : "lobby_locked"));
+        bool open = l->open;
+        ui_toggle(ui, label, x, y + 4.0f, w, &open);
+        if (open != l->open) {
+            lobby_set_open(l, open);
+            *action = MENU_LOBBY_TOGGLE;
+        }
+    } else {
+        SDL_snprintf(label, sizeof(label), "%s: %s", str("lobby_row"), str("lobby_offline"));
+        ui_round_rect(ui->gfx, ui->font, x, y, w, row, 10.0f, ui_rgba(0xFFFFFF14));
+        text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + row * 0.5f, 16.0f, ui_rgba(0xFFFFFF80), label);
+    }
+    y += row + gap;
+    SDL_snprintf(label, sizeof(label), "%s##p_friends", str("friends"));
+    if (ui_button(ui, label, x, y, w, row, false)) {
+        *action = MENU_FRIENDS;
+    }
+    if (m->friends->incoming > 0) {
+        char n[8];
+        SDL_snprintf(n, sizeof(n), "%d", m->friends->incoming);
+        ui_circle(ui->gfx, ui->font, x + w - 24.0f, y + row * 0.5f, 12.0f, ui_rgba(0xE5484DFF));
+        text_draw_centered(ui->gfx, ui->font, x + w - 24.0f, y + row * 0.5f, 13.0f, ui_rgba(0xFFFFFFFF), n);
+    }
+    y += row + gap + 2.0f;
+    SDL_snprintf(label, sizeof(label), "%s (%d/%d)", str("lobby_players"), session_player_count(se), LOBBY_MAX_PLAYERS);
+    ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, label);
+    y += 20.0f;
+    const float view = y_end - y, line = 44.0f, head = 40.0f;
+    const float off = ui_scroll_begin(ui, &m->players_scroll, x, y, w, view, false);
+    float py = y - off;
+    head_icon_draw(m->heads, ui->gfx, ui->font, m->my_skin, m->my_name, x + head * 0.5f, py + line * 0.5f, head, false);
+    text_draw(ui->gfx, ui->font, x + head + 8.0f, py + 12.0f, 15.0f, k_ui_theme.text, m->my_name);
+    py += line;
+    for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+        const RemotePlayer *r = &se->remotes[i];
+        if (!r->active) {
+            continue;
+        }
+        head_icon_draw(m->heads, ui->gfx, ui->font, &r->meta.skin, r->meta.name, x + head * 0.5f, py + line * 0.5f, head, false);
+        text_draw(ui->gfx, ui->font, x + head + 8.0f, py + 12.0f, 15.0f, k_ui_theme.text, r->meta.name);
+        if (lobby_can_toggle(l)) {
+            SDL_snprintf(label, sizeof(label), "%s##p_kick%d", str("lobby_kick"), i);
+            if (ui_button(ui, label, x + w - 84.0f, py + 2.0f, 84.0f, 40.0f, false)) {
+                lobby_kick(l, r->id);
+            }
+        }
+        py += line;
+    }
+    ui_scroll_end(ui, &m->players_scroll, view, py + off - y);
+}
+
 static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_pt, float h_pt)
 {
     MenuAction action = MENU_NONE;
-    const float row = 50.0f, pad = 18.0f;
-    const int rows = m->in_room ? 5 : 4;
-    const float cw = mg_minf(420.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
+    const float row = 50.0f, pad = 18.0f, gutter = 16.0f;
+    const int rows = 4;
+    const float cw = mg_minf(680.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
     const float x = (w_pt - cw) * 0.5f, top = (h_pt - ch) * 0.5f;
     ui_block(ui, 0, 0, w_pt, h_pt);
     ui_rect(ui->gfx, ui->font, 0, 0, w_pt, h_pt, ui_rgba(0x00000080));
     ui_panel(ui, x, top, cw, ch);
     text_draw_centered(ui->gfx, ui->font, x + cw * 0.5f, top + pad + 14.0f, 24.0f, k_ui_theme.text, str("pause_title"));
-    float y = top + pad + 40.0f, bx = x + pad, bw = cw - 2.0f * pad;
+    const float column = (cw - 2.0f * pad - gutter) * 0.5f;
+    float y = top + pad + 40.0f;
+    const float bx = x + pad, bw = column;
     char label[64];
+    if (m->lobby) {
+        lobby_column(m, ui, &action, bx + column + gutter, y, column, ch - pad * 2.0f - 40.0f);
+    }
     SDL_snprintf(label, sizeof(label), "%s##p_resume", str("resume"));
     if (ui_button(ui, label, bx, y, bw, row, true)) {
         m->open = false;
@@ -303,12 +374,6 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
         action = MENU_MAIN_MENU;
-        m->open = false;
-        m->card = false;
-    }
-    y += row + 8.0f;
-    if (m->in_room && ui_button(ui, "Disconnect##p_disc", bx, y, bw, row, false)) {
-        action = MENU_DISCONNECT;
         m->open = false;
         m->card = false;
     }

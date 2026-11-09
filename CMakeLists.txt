@@ -173,6 +173,7 @@ add_library(mg_engine STATIC
   engine/net/supabase_rpc.c
   engine/net/replication.c
   engine/ui/head_icons.c
+  engine/ui/notice_panel.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
