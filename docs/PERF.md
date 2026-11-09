@@ -156,6 +156,7 @@ Inside the arena: nav grids 7.6 MB, NPC storage 0.9 MB; audio is in the arena an
 | Static world draws | **Deferred debt:** 68 in the yard scene including UI, target 25 or fewer | Tree canopies and text remain separate; the 150 and 100 limits are met. Revisit with chunked static geometry when the map changes |
 | Unattributed iPad render time | **Deferred:** about 0.7 ms of `render` outside the sort and encode scopes | Break it down the next time a perf pass runs |
 | Menu avatar preview | Still an offscreen render target | Menu only, no gameplay cost; M8 replaces it with a viewport in the main pass |
+| NPC preview head draws | **Deferred** (accepted at M8 sign-off): +14.3 draws against an estimate of 3 or fewer, no measurable GPU cost | The head is drawn part by part in its own inset. If draw count ever becomes the constraint: merge the parts into one mesh per look |
 | Light bake | Skipped by decision | Desktop only: 136 ms for 31,744 vertices, 1 ms cached, streaky floors because the meshes have too few vertices. `MG_BAKE` stays off |
 
 ## Fidelity headroom
@@ -225,7 +226,7 @@ Perf gate passed on all seven scenarios, including the new `lift_panel` and `int
 | NPC preview head, draws | 100.3 | 86.0 | +14.3 | <= 3 | 6, **exceeded** |
 | Scan + registry, CPU (p95 frame) | 0.05 ms | - | - | <= 0.03 per scan | 0.06 |
 
-The head is drawn part by part in its own inset (head, hair, outlines, eyes, nose, mouth), not instanced, hence the draws. `GfxStats.draws` does not count insets drawn before the world, so the iPad's `lift_panel` figure (67) leaves out the panel.
+The head is drawn part by part in its own inset (head, hair, outlines, eyes, nose, mouth), not instanced, hence the draws. Lift-panel draw figures up to and including `aff8719` (the iPad's 67) exclude the panel: `GfxStats.draws` did not count insets drawn before the world. Fixed in `3f29211`.
 
 Font atlas: 512x512 -> 1024x512, +256 KB; no separate texture budget, resident memory 151 MB against 300.
 
