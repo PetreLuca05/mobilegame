@@ -35,10 +35,13 @@ typedef struct Friends {
     int search_count;
     bool searched;     /* an answer arrived for the current search */
     char error[64];    /* the last refused call's code, "" = none */
+    char cache_path[512];
     NetFriendRow scratch[FRIEND_MAX];
 } Friends;
 
 void friends_init(Friends *f, NetTransport *net, const char *profile);
+/* The account changed: nothing of the old list or its cache may show. */
+void friends_forget(Friends *f);
 /* Called for every network event (from session_update). */
 void friends_on_event(Friends *f, const NetEvent *e);
 void friends_tick(Friends *f, double now);

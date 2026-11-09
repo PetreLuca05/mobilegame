@@ -34,6 +34,10 @@
 #include "ui/widgets.h"
 
 typedef struct AutotestProbe {
+    /* --autotest link */
+    struct AccountLink *link;
+    bool is_guest;
+    struct Stats *stats;
     /* --autotest friends */
     struct Friends *friends;
     struct Lobby *lobby;

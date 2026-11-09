@@ -29,6 +29,9 @@
 #define BACKOFF_STEPS 6
 #define RPC_QUEUE 16
 #define USER_CHANNEL_RETRY_S 10.0
+#define LINK_STEP_S 20.0
+#define LINK_CHECK_TRIES 3
+#define LINK_CHECK_WAIT_S 2.0
 
 typedef enum NetCmdType {
     CMD_JOIN,
@@ -45,6 +48,8 @@ typedef enum NetCmdType {
     CMD_QUIET,
     CMD_USER_CHANNEL,
     CMD_MEMBERS,  /* list in NetTransport.members_out */
+    CMD_LINK_MERGE,
+    CMD_LINK_CANCEL,
 } NetCmdType;
 
 typedef struct NetCmd {
@@ -57,6 +62,8 @@ typedef struct NetCmd {
     bool flag;
     NetStats stats;
 } NetCmd;
+
+typedef enum LinkStage { LS_NONE, LS_TICKET, LS_CLEAR, LS_SIGNIN, LS_REDEEM, LS_CHECK } LinkStage;
 
 typedef struct RpcJob {
     NetRpc rpc;
@@ -130,6 +137,12 @@ struct NetTransport {
     char user_topic[NET_TOPIC_LEN];
     SupaRpc rpc;
     NetRpc rpc_running;
+    /* Case B: the merge, one step at a time (nothing else uses the RPC slot meanwhile) */
+    LinkStage link_stage;
+    bool link_sent;      /* this stage's request has gone out */
+    double link_deadline, link_retry_at;
+    char link_ticket[40];
+    int link_tries;
     NetFriendRow rows_scratch[NET_FRIEND_ROWS]; /* parsed here, published under the lock */
     double now;
     double next_heartbeat;
@@ -858,6 +871,17 @@ static void process_commands(NetTransport *n)
         case CMD_QUIET:
             n->quiet = c.flag;
             break;
+        case CMD_LINK_MERGE:
+            if (n->link_stage == LS_NONE) {
+                n->link_stage = LS_TICKET;
+                n->link_sent = false;
+                n->link_tries = 0;
+                n->link_deadline = n->now + LINK_STEP_S;
+            }
+            break;
+        case CMD_LINK_CANCEL:
+            supa_auth_link_forget(&n->auth);
+            break;
         case CMD_MEMBERS:
             if (n->joined) {
                 send_members(n);
@@ -1030,20 +1054,8 @@ static void stats_saved(void *user, int status, const char *body, size_t len)
     }
 }
 
-static void guest_deleted(void *user, int status, const char *body, size_t len)
-{
-    (void)body;
-    (void)len;
-    mg_log_info("account: old guest removed (HTTP %d)", status);
-    (void)user;
-}
-
 static void drive_account(NetTransport *n)
 {
-    if (n->auth.link_error[0]) {
-        account_error(n, n->auth.link_error, 0);
-        n->auth.link_error[0] = 0;
-    }
     if (n->auth.account_changed) { /* linked, switched or signed out */
         n->auth.account_changed = false;
         n->loaded_uid[0] = 0;
@@ -1058,17 +1070,13 @@ static void drive_account(NetTransport *n)
     if (n->link_pending) {
         n->link_pending = false;
         SDL_LockMutex(n->lock);
-        bool ok = supa_auth_link_idp(&n->auth, &n->mgr, n->link_provider, n->link_token, n->link_nonce);
+        supa_auth_link_idp(&n->auth, &n->mgr, n->link_provider, n->link_token, n->link_nonce); /* failure: link_outcome */
         memset(n->link_token, 0, sizeof(n->link_token));
         SDL_UnlockMutex(n->lock);
-        if (!ok) {
-            account_error(n, "sign-in: not signed in yet", 0);
+        if (n->auth.state == AUTH_OK && !n->auth.link_outcome) {
+            n->auth.link_outcome = -1;
+            snprintf(n->auth.link_error, sizeof(n->auth.link_error), "not a guest");
         }
-        return;
-    }
-    if (n->auth.delete_guest) {
-        n->auth.delete_guest = false;
-        rest_call(&n->rest, &n->mgr, n->auth.guest_token, "POST", "rpc/delete_anonymous_self", "{}", guest_deleted, n);
         return;
     }
     char path[160];
@@ -1224,8 +1232,8 @@ static void drive_rpc(NetTransport *n)
         "my_friend_code", "friends_list", "friend_search", "friend_request_by_code", "friend_respond", "friend_remove",
         "status_heartbeat", "status_clear", "lobby_join_request", "lobby_join_respond", "lobby_kick", "lobby_leave",
     };
-    if (n->rpc.busy || n->cfg.public_test) {
-        return;
+    if (n->rpc.busy || n->cfg.public_test || n->link_stage != LS_NONE) {
+        return; /* the merge owns the slot, and the token may belong to either account */
     }
     const bool ready = supa_auth_ready(&n->auth);
     if (!ready && n->auth.state != AUTH_FAILED) {
@@ -1238,6 +1246,164 @@ static void drive_rpc(NetTransport *n)
     n->rpc_running = job.rpc;
     if (!ready || !rpc_call(&n->rpc, &n->mgr, n->auth.access_token, k_fn[job.rpc], job.body, rpc_done, n)) {
         rpc_done(n, 0, "", 0); /* no account: every waiting call fails now, nothing stalls */
+    }
+}
+
+static void link_event(NetTransport *n, NetLinkEvent what, int step, const char *text)
+{
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_LINK;
+    e.value = (int)what;
+    e.len = (uint16_t)step;
+    snprintf(e.text, sizeof(e.text), "%s", text ? text : "");
+    push_event(n, &e);
+}
+
+static void link_stage(NetTransport *n, LinkStage s)
+{
+    n->link_stage = s;
+    n->link_sent = false;
+    n->link_deadline = n->now + LINK_STEP_S;
+    link_event(n, NET_LINK_STEP, (int)s, NULL);
+}
+
+/* Before the merge: nothing happened as far as the player can tell */
+static void link_abort(NetTransport *n, bool signed_in, const char *why)
+{
+    if (signed_in) {
+        supa_auth_link_restore(&n->auth);
+    } else {
+        supa_auth_link_forget(&n->auth);
+    }
+    n->link_stage = LS_NONE;
+    mg_log_warn("link: rolled back: %s", why);
+    link_event(n, NET_LINK_FAILED, 0, why);
+}
+
+static void link_merged(NetTransport *n)
+{
+    supa_auth_link_commit(&n->auth);
+    n->stats_pending = n->profile_pending = false; /* the guest's numbers must not land on this account */
+    SDL_LockMutex(n->lock);
+    n->friend_count = 0;
+    n->search_count = 0;
+    SDL_UnlockMutex(n->lock);
+    n->link_stage = LS_NONE;
+    link_event(n, NET_LINK_MERGED, 0, NULL);
+}
+
+#ifdef MG_TEST_AUTH
+static bool link_test_fail(const char *step)
+{
+    const char *f = SDL_getenv("MG_TEST_AUTH_FAIL");
+    return f && strcmp(f, step) == 0;
+}
+#endif
+
+static void link_rpc_done(void *user, int status, const char *body, size_t len)
+{
+    NetTransport *n = (NetTransport *)user;
+    const bool ok = status >= 200 && status < 300;
+    cJSON *j = ok && len ? cJSON_ParseWithLength(body, len) : NULL;
+    switch (n->link_stage) {
+    case LS_TICKET:
+        if (cJSON_IsString(j)) {
+            snprintf(n->link_ticket, sizeof(n->link_ticket), "%s", j->valuestring);
+            link_stage(n, LS_CLEAR);
+        } else {
+            link_abort(n, false, "ticket");
+        }
+        break;
+    case LS_CLEAR: /* whatever it answered: the old identity is going anyway */
+        link_stage(n, LS_SIGNIN);
+        break;
+    case LS_REDEEM:
+        if (ok) {
+            mg_log_info("link: merged: %.*s", (int)(len < 200 ? len : 200), body);
+            link_merged(n);
+        } else if (status == 0) {
+            n->link_tries = 0; /* it may have gone through: ask */
+            link_stage(n, LS_CHECK);
+        } else {
+            link_abort(n, true, "redeem");
+        }
+        break;
+    case LS_CHECK:
+        if (ok && cJSON_IsTrue(j)) {
+            link_merged(n);
+        } else if (ok || ++n->link_tries >= LINK_CHECK_TRIES) {
+            link_abort(n, true, "redeem lost");
+        } else {
+            n->link_sent = false;
+            n->link_retry_at = n->now + LINK_CHECK_WAIT_S;
+        }
+        break;
+    default:
+        break;
+    }
+    cJSON_Delete(j);
+}
+
+static void drive_link(NetTransport *n)
+{
+    SupaAuth *a = &n->auth;
+    if (a->link_outcome) {
+        const int outcome = a->link_outcome;
+        a->link_outcome = 0;
+        if (outcome == 1) {
+            link_event(n, NET_LINK_LINKED, 0, NULL);
+        } else if (outcome == 2) {
+            link_event(n, NET_LINK_CONFLICT, 0, a->link_name);
+        } else {
+            link_event(n, NET_LINK_FAILED, 0, a->link_error);
+            a->link_error[0] = 0;
+        }
+    }
+    if (n->link_stage == LS_NONE) {
+        return;
+    }
+    if (n->now > n->link_deadline) { /* closing the connection reports a transport error to its callback */
+        if (n->rpc.busy && n->rpc.req.c) {
+            n->rpc.req.c->is_closing = 1;
+        } else if (a->state == AUTH_LINK_SIGNIN && a->req.c) {
+            a->req.c->is_closing = 1;
+        }
+        n->link_deadline = n->now + LINK_STEP_S;
+    }
+    if (n->link_stage == LS_SIGNIN) {
+        if (!n->link_sent) {
+            n->link_sent = true;
+            supa_auth_link_signin(a, &n->mgr);
+        } else if (a->signin_outcome == 1) {
+            a->signin_outcome = 0;
+            link_stage(n, LS_REDEEM);
+        } else if (a->signin_outcome == -1) {
+            a->signin_outcome = 0;
+            link_abort(n, true, "signin");
+        }
+        return;
+    }
+    if (n->link_sent || n->rpc.busy || n->now < n->link_retry_at) {
+        return;
+    }
+    n->link_sent = true;
+    char body[96] = "{}";
+    const char *fn = "merge_ticket_create";
+    if (n->link_stage == LS_CLEAR) {
+        fn = "status_clear";
+    } else if (n->link_stage == LS_REDEEM || n->link_stage == LS_CHECK) {
+        fn = n->link_stage == LS_REDEEM ? "merge_ticket_redeem" : "merge_ticket_used";
+        snprintf(body, sizeof(body), "{\"p_ticket\":\"%s\"}", n->link_ticket);
+    }
+#ifdef MG_TEST_AUTH
+    if (n->link_stage == LS_REDEEM && link_test_fail("redeem")) {
+        link_rpc_done(n, 0, "", 0); /* the connection died on the way there */
+        return;
+    }
+#endif
+    if (!rpc_call(&n->rpc, &n->mgr, a->access_token, fn, body, link_rpc_done, n)) {
+        link_rpc_done(n, 0, "", 0);
     }
 }
 
@@ -1314,6 +1480,7 @@ static int net_thread(void *arg)
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         process_commands(n);
         supa_auth_update(&n->auth, &n->mgr, n->now);
+        drive_link(n);
         drive(n);
         drive_account(n);
         drive_rpc(n);
@@ -1644,6 +1811,21 @@ void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count)
 uint32_t net_room_sends(NetTransport *n) { return n ? (uint32_t)SDL_GetAtomicInt(&n->room_sends) : 0u; }
 
 void net_json_escape(char *out, size_t cap, const char *s) { json_escape(out, cap, s); }
+
+static void net_simple_cmd(NetTransport *n, NetCmdType type)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = type;
+    push_cmd(n, &c);
+}
+
+void net_link_merge(NetTransport *n) { net_simple_cmd(n, CMD_LINK_MERGE); }
+
+void net_link_cancel(NetTransport *n) { net_simple_cmd(n, CMD_LINK_CANCEL); }
 
 void net_sign_out(NetTransport *n)
 {

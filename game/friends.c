@@ -86,6 +86,22 @@ void friends_init(Friends *f, NetTransport *net, const char *profile)
     if (prefs_path(profile, "friends_cache.bin", path, sizeof(path))) {
         load_cache(f, path);
         net_set_friends_cache(net, path);
+        SDL_snprintf(f->cache_path, sizeof(f->cache_path), "%s", path);
+    }
+}
+
+void friends_forget(Friends *f)
+{
+    f->count = 0;
+    f->incoming = 0;
+    f->search_count = 0;
+    f->searched = false;
+    f->my_code[0] = 0;
+    f->stale = false;
+    f->signed_in = false;
+    f->channel_up = false;
+    if (f->cache_path[0]) {
+        SDL_RemovePath(f->cache_path);
     }
 }
 

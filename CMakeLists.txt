@@ -14,6 +14,7 @@ option(MG_BAKE "Prototype: bake sun shadow and AO into the static world's vertex
 option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store builds)" ON)
 # Needs the "Sign In with Apple" capability on the App ID (see CLAUDE.md);
 # without it the provisioning profile rejects the entitlement.
+option(MG_TEST_AUTH "--autotest link: email + password stand in for the ID-token grant (desktop test builds only)" OFF)
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
 set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
 set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
@@ -215,6 +216,12 @@ if(MG_PROF)
 endif()
 string(TOUPPER "${MG_PLATFORM}" MG_PLATFORM_UPPER)
 target_compile_definitions(mg_engine PUBLIC MG_PLATFORM_${MG_PLATFORM_UPPER}=1)
+if(MG_TEST_AUTH)
+  if(NOT MG_PLATFORM STREQUAL "desktop" OR CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(FATAL_ERROR "MG_TEST_AUTH is for desktop test builds only")
+  endif()
+  target_compile_definitions(mg_engine PUBLIC MG_TEST_AUTH=1)
+endif()
 if(MG_GPU_DEBUG)
   target_compile_definitions(mg_engine PRIVATE MG_GPU_DEBUG=1)
 endif()
@@ -254,6 +261,7 @@ set(MG_GAME_SOURCES
   game/net_session.c
   game/friends.c
   game/friends_page.c
+  game/account_link.c
   game/autotest_friends.c
   game/lobby.c
   game/frontend.c

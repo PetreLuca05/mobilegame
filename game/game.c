@@ -59,6 +59,7 @@
 #include "friends.h"
 #include "lobby.h"
 #include "friends_page.h"
+#include "account_link.h"
 #include "ui/head_icons.h"
 #include "ui/notice_panel.h"
 #include "ui/marker_hud.h"
@@ -149,6 +150,7 @@ typedef struct Game {
     HeadIcons heads;
     FriendsPage fpage;
     NoticePanel notice;
+    AccountLink link;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -188,6 +190,7 @@ typedef struct Game {
     bool profile_loaded;
     GoogleAuth *google;
     bool google_busy;      /* sign-in sheet open or link request in flight */
+    bool fill_name_from_provider;
     bool skin_override;
     bool has_save;         /* save_slot0.bin exists (Continue) */
     bool stats_queued;     /* this run's stats are (partly) in prefs.stats_queue */
@@ -326,6 +329,7 @@ static void on_net_event(void *user, const NetEvent *e)
     Game *g = (Game *)user;
     friends_on_event(&g->friends, e);
     lobby_on_event(&g->lobby, e);
+    account_link_on_event(&g->link, e);
     if (e->type == NET_EV_PUSH && e->push.type == NET_PUSH_FRIEND_REQUEST) {
         notice_push(&g->notice, NOTICE_FRIEND, e->push.from, e->push.name, &e->push.skin, str("notice_friend_request"), NOTICE_FRIEND_S);
     }
@@ -458,6 +462,7 @@ bool game_init(MgApp *app)
     g->session.listener = on_net_event;
     g->session.listener_user = g;
     head_icons_init(&g->heads, draw_head_icon, head_icon_rgb, g);
+    account_link_init(&g->link, g->net);
     lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
     g->lobby.epoch_ms = lobby_epoch;
     g->lobby.epoch_user = g;
@@ -807,6 +812,11 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
     case MENU_FRIENDS:
         friends_page_open(&g->fpage, &g->friends);
         break;
+    case MENU_LINK_ACCOUNT: /* never mid-session */
+        leave_play(g, app);
+        g->menu.tab = 1;
+        frontend_go(&g->fe, FE_SETTINGS);
+        break;
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
         break;
@@ -930,6 +940,7 @@ static void apply_tier(Game *g, MgApp *app)
 /* What Settings -> Account shows. */
 static SettingsAccount account_view(Game *g)
 {
+    g->menu.is_guest = g->profile.guest;
     SettingsAccount a = {g->profile.display_name,
                          g->profile.email,
                          g->profile.guest || !g->profile_loaded,
@@ -942,6 +953,37 @@ static SettingsAccount account_view(Game *g)
 }
 
 /* Native sign-in sheet finished: hand the token to Supabase to link. */
+/* What the link flow settled: the provider, and after a merge everything cached for the old identity */
+static void follow_account_link(Game *g, MgApp *app)
+{
+    AccountLink *l = &g->link;
+    if (l->linked || l->merged) {
+        SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "%s", l->provider);
+    }
+    if (l->linked) {
+        l->linked = false;
+        g->fill_name_from_provider = true;
+        frontend_toast(&g->fe, str("link_ok"), app->time);
+        save_prefs(g);
+    }
+    if (l->merged) {
+        l->merged = false;
+        g->prefs.has_profile_cache = false; /* device data stays: settings and the save slot */
+        g->stats.loaded = false;            /* this run's numbers are in the merged totals already */
+        g->stats.play_seconds = g->stats.distance_m = 0.0;
+        g->stats.rides = g->stats.rooms = 0;
+        friends_forget(&g->friends);
+        head_icons_clear(&g->heads);
+        g->pending_name[0] = 0;
+        save_prefs(g);
+    }
+    if (l->failed) {
+        frontend_toast(&g->fe, str(l->failed), app->time);
+        l->failed = NULL;
+        g->google_busy = false;
+    }
+}
+
 static void poll_sign_in(Game *g, MgApp *app)
 {
     char token[4096], nonce[96], err[160], name[64];
@@ -949,11 +991,10 @@ static void poll_sign_in(Game *g, MgApp *app)
     GoogleAuthState gs = native_auth_poll(g->google, provider, sizeof(provider), token, sizeof(token), nonce,
                                           sizeof(nonce), name, sizeof(name), err, sizeof(err));
     if (gs == GOOGLE_DONE) {
-        SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "%s", provider);
         if (name[0]) { /* Apple sends the full name only once: keep it now */
             SDL_snprintf(g->pending_name, sizeof(g->pending_name), "%s", name);
         }
-        net_link_idp(g->net, provider, token, nonce);
+        account_link_begin(&g->link, provider, token, nonce);
         SDL_memset(token, 0, sizeof(token));
     } else if (gs == GOOGLE_FAILED) {
         g->google_busy = false;
@@ -961,10 +1002,11 @@ static void poll_sign_in(Game *g, MgApp *app)
         SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s", cancelled ? str("cancelled") : err);
         frontend_toast(&g->fe, cancelled ? str("cancelled") : str("no_connection"), app->time);
     }
-    if (g->session.account_error[0] && g->google_busy) {
+    if (g->session.account_error[0] && g->google_busy && !account_link_active(&g->link)) {
         g->google_busy = false;
         frontend_toast(&g->fe, str("no_connection"), app->time);
     }
+    follow_account_link(g, app);
 }
 
 /* Account (re)loaded from Supabase: cache it on the device and route the
@@ -972,6 +1014,10 @@ static void poll_sign_in(Game *g, MgApp *app)
 static void account_loaded(Game *g, MgApp *app)
 {
     (void)app;
+    if (g->fill_name_from_provider && !g->pending_name[0] && g->profile.google_name[0] && g->fe.state != FE_WELCOME) {
+        SDL_snprintf(g->pending_name, sizeof(g->pending_name), "%s", g->profile.google_name); /* Case A: only if still the default, below */
+    }
+    g->fill_name_from_provider = false;
     if (!g->profile.guest && g->pending_name[0] && SDL_strcmp(g->profile.display_name, "Player") == 0) {
         /* first link with Apple: its full name, cleaned to 2-16 safe chars */
         char name[NET_NAME_LEN];
@@ -1178,6 +1224,9 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         return;
     }
     poll_sign_in(g, app);
+    if (account_link_active(&g->link)) { /* first, so the screens underneath cannot take a touch */
+        ui_block(&g->ui, 0, 0, app->width_pt, app->height_pt);
+    }
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
                        g->profile.guest || !g->profile_loaded,
@@ -1206,8 +1255,10 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             frontend_back(f);
             save_prefs(g);
         }
+        account_link_draw(&g->link, &g->ui, &g->heads, app, app->time);
         return;
     }
+    account_link_draw(&g->link, &g->ui, &g->heads, app, app->time);
     if (f->clicked) {
         audio_click(g->audio);
     }
@@ -2077,7 +2128,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->lamp_on = g->day_state.lamp_on;
 #endif
     Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
-    AutotestProbe probe = {&g->friends, &g->lobby, &g->fpage, &g->notice, &g->heads, &g->profile.skin, g->profile.display_name, g->npc_sync_tick, g->npc_sync_hash,
+    AutotestProbe probe = {&g->link, g->profile.guest, &g->stats, &g->friends, &g->lobby, &g->fpage, &g->notice, &g->heads, &g->profile.skin, g->profile.display_name, g->npc_sync_tick, g->npc_sync_hash,
                            g->player.kin.pos,
                            g->player.kin.vel,
 #ifdef MG_CAMERA_THIRDPERSON
@@ -3381,6 +3432,9 @@ void game_event(MgApp *app, const SDL_Event *e)
  * happened in prefs.json and add it on the next successful load. */
 static void flush_stats(Game *g)
 {
+    if (account_link_active(&g->link)) {
+        return; /* these numbers may belong to the account that is being replaced */
+    }
     if (g->stats.loaded) {
         NetStats t = stats_totals(&g->stats);
         net_save_stats(g->net, &t);

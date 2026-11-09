@@ -32,6 +32,7 @@ typedef enum MenuAction {
     MENU_RESPAWN_MARKERS, /* debug: new test markers */
     MENU_LOBBY_TOGGLE, /* open / locked changed: save it */
     MENU_FRIENDS,      /* open the Friends page */
+    MENU_LINK_ACCOUNT, /* pause card: save, close the lobby, go to Settings -> Account */
 } MenuAction;
 
 typedef struct SettingsAccount {
@@ -54,6 +55,7 @@ typedef struct SettingsMenu {
     HeadIcons *heads;
     const char *my_name;
     const NetSkin *my_skin;
+    bool is_guest;  /* set by the game: the card offers linking */
     UiScroll players_scroll;
     int tab; /* 0 game, 1 skin */
     bool dev_open;

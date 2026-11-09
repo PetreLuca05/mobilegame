@@ -4,6 +4,9 @@
 #include <string.h>
 
 #include <SDL3/SDL_timer.h>
+#ifdef MG_TEST_AUTH
+#include <SDL3/SDL.h>
+#endif
 
 #include "cJSON.h"
 #include "core/log.h"
@@ -51,38 +54,124 @@ static void refresh(SupaAuth *a, struct mg_mgr *mgr)
 
 static bool post_link(SupaAuth *a, struct mg_mgr *mgr, bool with_guest_jwt)
 {
-    char headers[2400];
+    char headers[2400], body[2400];
+#ifdef MG_TEST_AUTH
+    if (strcmp(a->link_provider, "test") == 0) { /* link_token is "<email> <password>" */
+        char email[128] = "", password[64] = "";
+        sscanf(a->link_token, "%127s %63s", email, password);
+        snprintf(headers, sizeof(headers), "apikey: %s\r\nContent-Type: application/json\r\n", a->anon_key);
+        snprintf(body, sizeof(body), "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
+        a->state = with_guest_jwt ? AUTH_TEST_PROBE : AUTH_LINK_SIGNIN;
+        return https_request(&a->req, mgr, &a->ep, "POST", "/auth/v1/token?grant_type=password", headers, body, request_done, a);
+    }
+#endif
     int n = snprintf(headers, sizeof(headers), "apikey: %s\r\nContent-Type: application/json\r\n", a->anon_key);
     if (with_guest_jwt) {
-        snprintf(headers + n, sizeof(headers) - (size_t)n, "Authorization: Bearer %s\r\n", a->guest_token);
+        snprintf(headers + n, sizeof(headers) - (size_t)n, "Authorization: Bearer %s\r\n", a->access_token);
     }
     static const char fmt[] = "{\"provider\":\"%s\",\"id_token\":\"%s\",\"nonce\":\"%s\"%s}";
-    char body[2400];
-    snprintf(body, sizeof(body), fmt, a->link_provider, a->link_token, a->link_nonce,
-             with_guest_jwt ? ",\"link_identity\":true" : "");
+    snprintf(body, sizeof(body), fmt, a->link_provider, a->link_token, a->link_nonce, with_guest_jwt ? ",\"link_identity\":true" : "");
     a->state = with_guest_jwt ? AUTH_LINKING : AUTH_LINK_SIGNIN;
-    return https_request(&a->req, mgr, &a->ep, "POST", "/auth/v1/token?grant_type=id_token", headers, body,
-                         request_done, a);
+    return https_request(&a->req, mgr, &a->ep, "POST", "/auth/v1/token?grant_type=id_token", headers, body, request_done, a);
+}
+
+/* The "name" claim of the identity token, for the dialog; "" if it has none. */
+static void read_token_name(SupaAuth *a)
+{
+    a->link_name[0] = 0;
+    const char *dot = strchr(a->link_token, '.');
+    const char *end = dot ? strchr(dot + 1, '.') : NULL;
+    if (!end || (size_t)(end - dot) > 2000) {
+        return;
+    }
+    char b64[2048], json[1600];
+    size_t n = 0;
+    for (const char *c = dot + 1; c < end && n < sizeof(b64) - 4; c++) { /* base64url -> base64 */
+        b64[n++] = *c == '-' ? '+' : *c == '_' ? '/' : *c;
+    }
+    while (n % 4) {
+        b64[n++] = '=';
+    }
+    b64[n] = 0;
+    const size_t jl = mg_base64_decode(b64, n, json, sizeof(json));
+    cJSON *j = jl ? cJSON_ParseWithLength(json, jl) : NULL;
+    const cJSON *name = j ? cJSON_GetObjectItemCaseSensitive(j, "name") : NULL;
+    if (cJSON_IsString(name)) {
+        snprintf(a->link_name, sizeof(a->link_name), "%s", name->valuestring);
+    }
+    cJSON_Delete(j);
 }
 
 bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, const char *id_token,
                         const char *nonce)
 {
-    if (a->state != AUTH_OK || !a->access_token[0]) {
-        return false;
+    if (a->state != AUTH_OK || !a->access_token[0] || !a->is_anonymous) {
+        return false; /* only a guest links */
     }
     snprintf(a->link_provider, sizeof(a->link_provider), "%s", provider);
     snprintf(a->link_token, sizeof(a->link_token), "%s", id_token);
     snprintf(a->link_nonce, sizeof(a->link_nonce), "%s", nonce ? nonce : "");
-    snprintf(a->guest_token, sizeof(a->guest_token), "%s", a->access_token);
-    snprintf(a->guest_id, sizeof(a->guest_id), "%s", a->is_anonymous ? a->user_id : "");
     a->link_error[0] = 0;
-    if (!post_link(a, mgr, a->is_anonymous)) {
+    a->link_outcome = 0;
+    a->signin_outcome = 0;
+    read_token_name(a);
+    if (!post_link(a, mgr, true)) {
         a->state = AUTH_OK;
         snprintf(a->link_error, sizeof(a->link_error), "network unavailable");
+        a->link_outcome = -1;
         return false;
     }
     return true;
+}
+
+bool supa_auth_link_signin(SupaAuth *a, struct mg_mgr *mgr)
+{
+    snprintf(a->guest_token, sizeof(a->guest_token), "%s", a->access_token);
+    snprintf(a->guest_refresh, sizeof(a->guest_refresh), "%s", a->refresh_token);
+    snprintf(a->guest_id, sizeof(a->guest_id), "%s", a->user_id);
+    a->guest_expires = a->expires_at;
+    a->signin_outcome = 0;
+    if (!post_link(a, mgr, false)) {
+        a->state = AUTH_OK;
+        a->signin_outcome = -1;
+        return false;
+    }
+    return true;
+}
+
+void supa_auth_link_forget(SupaAuth *a)
+{
+    memset(a->link_token, 0, sizeof(a->link_token));
+    memset(a->link_nonce, 0, sizeof(a->link_nonce));
+}
+
+void supa_auth_link_commit(SupaAuth *a)
+{
+    if (!secure_store_set(a->store, REFRESH_KEY, a->refresh_token)) {
+        mg_log_warn("auth: could not persist refresh token");
+    }
+    mg_log_info("auth: merged, now %.8s... (guest %.8s... is gone)", a->user_id, a->guest_id);
+    memset(a->guest_token, 0, sizeof(a->guest_token));
+    memset(a->guest_refresh, 0, sizeof(a->guest_refresh));
+    a->account_changed = true;
+    supa_auth_link_forget(a);
+}
+
+void supa_auth_link_restore(SupaAuth *a)
+{
+    snprintf(a->access_token, sizeof(a->access_token), "%s", a->guest_token);
+    snprintf(a->refresh_token, sizeof(a->refresh_token), "%s", a->guest_refresh);
+    snprintf(a->user_id, sizeof(a->user_id), "%s", a->guest_id);
+    a->expires_at = a->guest_expires;
+    a->is_anonymous = true;
+    a->email[0] = 0;
+    a->name[0] = 0;
+    a->token_version++;
+    a->state = AUTH_OK;
+    memset(a->guest_token, 0, sizeof(a->guest_token));
+    memset(a->guest_refresh, 0, sizeof(a->guest_refresh));
+    supa_auth_link_forget(a);
+    mg_log_info("auth: guest %.8s... restored", a->user_id);
 }
 
 void supa_auth_sign_out(SupaAuth *a)
@@ -118,6 +207,17 @@ bool supa_auth_ready(const SupaAuth *a)
 
 void supa_auth_update(SupaAuth *a, struct mg_mgr *mgr, double now)
 {
+#ifdef MG_TEST_AUTH
+    if (a->state == AUTH_TEST_CONVERT) {
+        char path[320];
+        snprintf(path, sizeof(path), "%s/convert_done", SDL_getenv("MG_FT_SYNC"));
+        if (SDL_GetPathInfo(path, NULL)) {
+            SDL_RemovePath(path);
+            a->test_convert = true;
+            refresh(a, mgr); /* the new token says is_anonymous = false */
+        }
+    }
+#endif
     if (a->state == AUTH_OK && a->expires_at > 0.0 && now > a->expires_at - REFRESH_MARGIN_S) {
         a->refreshing_in_background = true;
         refresh(a, mgr);
@@ -175,45 +275,106 @@ static void copy_error(SupaAuth *a, int status, const char *body, size_t len)
     cJSON_Delete(j);
 }
 
-static void link_done(SupaAuth *a, struct mg_mgr *mgr, int status, const char *body, size_t len)
+static bool body_error_code(const char *body, size_t len, const char *code)
 {
-    if (status == 200 && take_session(a, body, len)) {
-        if (!secure_store_set(a->store, REFRESH_KEY, a->refresh_token)) {
-            mg_log_warn("auth: could not persist refresh token");
+    cJSON *j = len ? cJSON_ParseWithLength(body, len) : NULL;
+    const cJSON *ec = j ? cJSON_GetObjectItemCaseSensitive(j, "error_code") : NULL;
+    const bool same = cJSON_IsString(ec) && strcmp(ec->valuestring, code) == 0;
+    cJSON_Delete(j);
+    return same;
+}
+
+static void link_linked(SupaAuth *a)
+{
+    if (!secure_store_set(a->store, REFRESH_KEY, a->refresh_token)) {
+        mg_log_warn("auth: could not persist refresh token");
+    }
+    mg_log_info("auth: %s linked in place, %.8s... (%s)", a->link_provider, a->user_id, a->email);
+    a->account_changed = true;
+    a->state = AUTH_OK;
+    a->link_outcome = 1;
+    supa_auth_link_forget(a);
+}
+
+static void link_conflict(SupaAuth *a)
+{
+    mg_log_info("auth: that identity already has an account: waiting for the player");
+    a->state = AUTH_OK;
+    a->link_outcome = 2; /* the token stays for the sign-in that may follow */
+}
+
+static void link_done(SupaAuth *a, int status, const char *body, size_t len)
+{
+    if (a->state == AUTH_LINK_SIGNIN) {
+        if (status == 200 && take_session(a, body, len)) { /* not persisted: the guest is still the device's account */
+            a->state = AUTH_OK;
+            a->signin_outcome = 1;
+        } else {
+            copy_error(a, status, body, len);
+            mg_log_warn("auth: sign-in to the existing account failed: %s", a->error);
+            a->state = AUTH_OK;
+            a->signin_outcome = -1;
         }
-        /* a different user than the guest: the guest would be an orphan */
-        a->delete_guest = a->guest_id[0] && strcmp(a->guest_id, a->user_id) != 0;
-        mg_log_info("auth: %s account %s %.8s... (%s)", a->link_provider, a->delete_guest ? "switched to" : "linked to",
-                    a->user_id, a->email);
-        a->account_changed = true;
-        a->state = AUTH_OK;
-        memset(a->link_token, 0, sizeof(a->link_token));
         return;
     }
-    char head[320]; /* body is not NUL-terminated */
-    size_t n = len < sizeof(head) - 1 ? len : sizeof(head) - 1;
-    memcpy(head, body ? body : "", body ? n : 0);
-    head[body ? n : 0] = 0;
-    bool exists = status >= 400 && status < 500 && strstr(head, "already") != NULL;
-    if (a->state == AUTH_LINKING && exists && mgr && post_link(a, mgr, false)) {
-        mg_log_info("auth: Google account already has a user, signing in to it");
+    if (status == 200 && take_session(a, body, len)) {
+        link_linked(a);
+        return;
+    }
+    if (status >= 400 && status < 500 && body_error_code(body, len, "identity_already_exists")) {
+        link_conflict(a);
         return;
     }
     copy_error(a, status, body, len);
-    snprintf(a->link_error, sizeof(a->link_error), "sign-in: %s", a->error);
-    mg_log_warn("auth: %s", a->link_error);
+    snprintf(a->link_error, sizeof(a->link_error), "%s", a->error);
+    mg_log_warn("auth: link failed: %s", a->link_error);
     a->state = AUTH_OK; /* still signed in as before */
-    memset(a->link_token, 0, sizeof(a->link_token));
+    a->link_outcome = -1;
+    supa_auth_link_forget(a);
 }
+
+#ifdef MG_TEST_AUTH
+/* The email already has an account: that is the identity-taken case. If not, ask the test
+ * script to do what the server does for a real link (it makes the guest permanent). */
+static void test_probe_done(SupaAuth *a, int status)
+{
+    if (status == 200) {
+        link_conflict(a);
+        return;
+    }
+    if (status == 0) {
+        snprintf(a->link_error, sizeof(a->link_error), "network error");
+        a->state = AUTH_OK;
+        a->link_outcome = -1;
+        return;
+    }
+    char path[320], text[160];
+    snprintf(path, sizeof(path), "%s/convert_request", SDL_getenv("MG_FT_SYNC"));
+    snprintf(text, sizeof(text), "%s %s", a->user_id, a->link_token);
+    SDL_SaveFile(path, text, strlen(text));
+    a->state = AUTH_TEST_CONVERT;
+}
+#endif
 
 static void request_done(void *user, int status, const char *body, size_t len)
 {
     SupaAuth *a = (SupaAuth *)user;
     struct mg_mgr *mgr = a->req.c ? a->req.c->mgr : NULL;
     if (a->state == AUTH_LINKING || a->state == AUTH_LINK_SIGNIN) {
-        link_done(a, mgr, status, body, len);
+        link_done(a, status, body, len);
         return;
     }
+#ifdef MG_TEST_AUTH
+    if (a->state == AUTH_TEST_PROBE) {
+        test_probe_done(a, status);
+        return;
+    }
+    if (a->test_convert && status == 200 && take_session(a, body, len)) {
+        a->test_convert = false;
+        link_linked(a);
+        return;
+    }
+#endif
     if (status == 200 && take_session(a, body, len)) {
         if (!secure_store_set(a->store, REFRESH_KEY, a->refresh_token)) {
             mg_log_warn("auth: could not persist refresh token");

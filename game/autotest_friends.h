@@ -27,6 +27,7 @@ typedef struct FriendsTest {
     uint32_t npc_seen;
     uint32_t sends_at_start;
     double solo_from;
+    char saved_uid[NET_ID_LEN];
     char why[120];
 } FriendsTest;
 

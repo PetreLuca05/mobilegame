@@ -61,5 +61,20 @@
   "lobby_kick": "Scoate",
   "lobby_leave": "Ieși din lobby",
   "notice_wants_join": "vrea să intre în joc",
-  "notice_friend_request": "ți-a trimis o cerere de prietenie"
+  "notice_friend_request": "ți-a trimis o cerere de prietenie",
+  "link_guest_line": "Invitat — progresul este doar pe acest dispozitiv",
+  "link_connect_google": "Conectează cu Google",
+  "link_connect_apple": "Conectează cu Apple",
+  "link_connected": "Cont conectat",
+  "link_step_connect": "Se conectează…",
+  "link_step_load": "Se încarcă datele contului…",
+  "link_dialog": "Contul %s «%s» are deja progres. Îl încărcăm pe acest dispozitiv, iar progresul tău de invitat se adaugă la el.",
+  "link_continue": "Continuă",
+  "link_cancel": "Anulează",
+  "link_failed": "Conectarea nu a reușit, progresul tău este neschimbat",
+  "link_load_slow": "Datele contului se încarcă în continuare",
+  "link_welcome_back": "Bine ai revenit, %s",
+  "link_summary": "%d sesiuni, %d minute jucate",
+  "link_row": "Conectează contul",
+  "link_ok": "Cont conectat"
 }

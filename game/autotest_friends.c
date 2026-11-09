@@ -10,6 +10,8 @@
 #include "lobby.h"
 #include "ui/layout.h"
 #include "ui/notice_panel.h"
+#include "account_link.h"
+#include "stats.h"
 
 #define TIMEOUT_S 70.0
 
@@ -18,6 +20,7 @@ typedef enum FtOpKind {
     OP_ACCEPT_ALL, OP_FRIENDS, OP_ST, OP_BADGE, OP_NOTICE, OP_PLAYERS, OP_LOBBY, OP_TOKEN, OP_PLAYING, OP_MENU, OP_SLEEP, OP_SHOT,
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
+    OP_LINK, OP_LINK_STATE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -113,6 +116,28 @@ static const FtOp k_reinstall[] = {
     {OP_READY, NULL, 0}, {OP_CODE_IS, "code_a", 0}, {OP_FRIENDS, NULL, 2}, {OP_END, NULL, 0},
 };
 
+/* --autotest link: the identity is $MG_LT_EMAIL (see tools/link_test.sh). Starts on Settings. */
+#define LSTATE(x) {OP_LINK_STATE, NULL, x}
+#define START_GUEST {OP_READY, NULL, 0}, {OP_UID_SAVE, NULL, 0}, {OP_GUEST, NULL, 1}
+static const FtOp k_l1[] = { /* new identity: linked in place */
+    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), {OP_LINK, NULL, 0}, SHOT("overlay"),
+    {OP_GUEST, NULL, 0}, LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_READY, NULL, 0}, SLEEP(1.5), SHOT("account_linked"), SIG("l1_done"), {OP_END, NULL, 0},
+};
+static const FtOp k_l2[] = { /* identity taken: confirm, merge, the account is loaded */
+    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), SLEEP(0.5), SHOT("dialog"), TAP("link_continue"), LSTATE(AL_RESULT), SLEEP(1.0), SHOT("result"),
+    TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0}, {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, SIG("l2_done"), {OP_END, NULL, 0},
+};
+static const FtOp k_l3[] = { /* cancel: nothing changed */
+    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+};
+static const FtOp k_l4[] = { /* the connection dies before the merge: the guest comes back (run with MG_TEST_AUTH_FAIL=redeem) */
+    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_MERGING), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+};
+static const FtOp k_l5[] = { /* reinstall: a fresh guest signs in and everything is back */
+    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0},
+    {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, {OP_END, NULL, 0},
+};
+
 /* no network: the game plays, the switch is off, the list is the cached one */
 static const FtOp k_offline[] = {
     {OP_NET_DOWN, NULL, 0}, TAP("menurow0"), {OP_TAP_OPT, "ow_new", 0}, {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(1.0),
@@ -127,6 +152,7 @@ void ft_init(FriendsTest *t, const char *role)
     SDL_snprintf(t->dir, sizeof(t->dir), "%s", dir ? dir : "/tmp/mg_ft");
     t->ops = strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
              : strcmp(role, "c") == 0 ? k_c
+             : strcmp(role, "l1") == 0 ? k_l1 : strcmp(role, "l2") == 0 ? k_l2 : strcmp(role, "l3") == 0 ? k_l3 : strcmp(role, "l4") == 0 ? k_l4 : strcmp(role, "l5") == 0 ? k_l5
              : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
 }
 
@@ -417,6 +443,50 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         break;
     case OP_STALE:
         done = f->stale;
+        break;
+    case OP_LINK: {
+#ifdef MG_TEST_AUTH
+        char cred[160];
+        SDL_snprintf(cred, sizeof(cred), "%s mgtest-password-1", SDL_getenv("MG_LT_EMAIL"));
+        account_link_begin(p->link, "test", cred, "");
+        done = true;
+#else
+        return fail_now(t, "build with -DMG_TEST_AUTH=ON");
+#endif
+        break;
+    }
+    case OP_LINK_STATE:
+        done = (int)p->link->state == (int)o->n;
+        break;
+    case OP_UID_SAVE:
+        SDL_snprintf(t->saved_uid, sizeof(t->saved_uid), "%s", f->self_id);
+        {
+            char name[32];
+            SDL_snprintf(name, sizeof(name), "uid_%s", t->role);
+            sync_write(t, name, f->self_id);
+        }
+        done = true;
+        break;
+    case OP_UID_SAME:
+        if (strcmp(f->self_id, t->saved_uid) != 0) {
+            return fail_now(t, "the user id changed");
+        }
+        done = true;
+        break;
+    case OP_UID_DIFF:
+        done = f->self_id[0] && strcmp(f->self_id, t->saved_uid) != 0;
+        break;
+    case OP_GUEST:
+        done = p->is_guest == (o->n != 0.0);
+        break;
+    case OP_NAME_IS:
+        done = strcmp(p->my_name, o->s) == 0;
+        break;
+    case OP_SEED:
+        p->stats->base = (NetStats){.sessions = 2, .play_seconds = 50, .distance_m = 4.0f, .elevator_rides = 1, .rooms_joined = 3};
+        p->stats->loaded = true;
+        net_save_stats(f->net, &p->stats->base);
+        done = true;
         break;
     case OP_SET_SEARCH:
         SDL_snprintf(p->fpage->search_in, sizeof(p->fpage->search_in), "%s", o->s);

@@ -119,5 +119,20 @@
   "lobby_kick": "Remove",
   "lobby_leave": "Leave lobby",
   "notice_wants_join": "wants to join",
-  "notice_friend_request": "sent you a friend request"
+  "notice_friend_request": "sent you a friend request",
+  "link_guest_line": "Guest: your progress is only on this device",
+  "link_connect_google": "Connect with Google",
+  "link_connect_apple": "Connect with Apple",
+  "link_connected": "Account connected",
+  "link_step_connect": "Connecting...",
+  "link_step_load": "Loading your account...",
+  "link_dialog": "The %s account \"%s\" already has progress. We will load it on this device, and your guest progress will be added to it.",
+  "link_continue": "Continue",
+  "link_cancel": "Cancel",
+  "link_failed": "Could not connect, your progress is unchanged",
+  "link_load_slow": "Your account is still loading",
+  "link_welcome_back": "Welcome back, %s",
+  "link_summary": "%d sessions, %d minutes played",
+  "link_row": "Connect account",
+  "link_ok": "Account connected"
 }

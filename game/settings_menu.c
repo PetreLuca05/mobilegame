@@ -230,31 +230,32 @@ static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float
         m->open = false;
     }
     y += 64.0f;
-    char line[96];
     if (acct->guest) {
-        SDL_snprintf(line, sizeof(line), "%s", str("guest_name"));
+        ui_label(ui, x, y, 15.0f, k_ui_theme.text, str("link_guest_line"));
     } else {
-        SDL_snprintf(line, sizeof(line), "%s %s " TEXT_BULLET " %s", str("signed_in_as"), acct->name,
-                     SDL_strcmp(acct->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
+        const float hs = 44.0f;
+        if (m->heads) {
+            head_icon_draw(m->heads, ui->gfx, ui->font, m->my_skin, m->my_name, x + hs * 0.5f, y + 14.0f, hs, false);
+        }
+        char line[96];
+        SDL_snprintf(line, sizeof(line), "%s " TEXT_BULLET " %s", acct->name, SDL_strcmp(acct->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
+        ui_label(ui, x + hs + 10.0f, y - 4.0f, 16.0f, k_ui_theme.text, line);
+        ui_label(ui, x + hs + 10.0f, y + 18.0f, 13.0f, k_ui_theme.text_dim, str("link_connected"));
     }
-    ui_label(ui, x, y, 16.0f, k_ui_theme.text, line);
-    if (!acct->guest && acct->email[0]) {
-        ui_label(ui, x, y + 20.0f, 13.0f, k_ui_theme.text_dim, acct->email);
-    }
-    y += 44.0f;
+    y += 56.0f;
     if (acct->guest) {
         if (acct->busy) {
             ui_button(ui, "...##google", x, y, cw, 44.0f, false);
         } else {
             float bw = acct->apple_ready ? (cw - 8.0f) * 0.5f : cw;
             if (acct->google_ready) {
-                SDL_snprintf(label, sizeof(label), "%s##google", str("google"));
+                SDL_snprintf(label, sizeof(label), "%s##google", str("link_connect_google"));
                 if (ui_button(ui, label, x, y, bw, 44.0f, true)) {
                     *action = MENU_GOOGLE;
                 }
             }
             if (acct->apple_ready) {
-                SDL_snprintf(label, sizeof(label), "%s##apple", str("apple"));
+                SDL_snprintf(label, sizeof(label), "%s##apple", str("link_connect_apple"));
                 if (ui_button(ui, label, acct->google_ready ? x + bw + 8.0f : x, y, bw, 44.0f, false)) {
                     *action = MENU_APPLE;
                 }
@@ -342,7 +343,7 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
 {
     MenuAction action = MENU_NONE;
     const float row = 50.0f, pad = 18.0f, gutter = 16.0f;
-    const int rows = 4;
+    const int rows = m->is_guest ? 5 : 4;
     const float cw = mg_minf(680.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
     const float x = (w_pt - cw) * 0.5f, top = (h_pt - ch) * 0.5f;
     ui_block(ui, 0, 0, w_pt, h_pt);
@@ -376,6 +377,15 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
         action = MENU_MAIN_MENU;
         m->open = false;
         m->card = false;
+    }
+    y += row + 8.0f;
+    if (m->is_guest) {
+        SDL_snprintf(label, sizeof(label), "%s##p_link", str("link_row"));
+        if (ui_button(ui, label, bx, y, bw, row, false)) {
+            action = MENU_LINK_ACCOUNT;
+            m->open = false;
+            m->card = false;
+        }
     }
     return action;
 }

@@ -90,6 +90,7 @@ typedef enum NetEventType {
     NET_EV_USER_CHANNEL, /* value = 1 joined user:<uid>, 0 refused or lost (text = why) */
     NET_EV_RPC,         /* value = NetRpc, http = status (0 no network); text = the error code or the scalar answer */
     NET_EV_PUSH,        /* push = what arrived on user:<uid> */
+    NET_EV_LINK,        /* value = NetLinkEvent; text = the identity's name (conflict) or the reason (failed) */
     NET_EV_MEMBERS,     /* one per id of the host's list: peer, value = index, len = count; text = sender. Count 0: the host closed the room */
 } NetEventType;
 
@@ -109,6 +110,14 @@ typedef enum NetRpc {
     NET_RPC_LEAVE,
     NET_RPC_COUNT,
 } NetRpc;
+
+typedef enum NetLinkEvent {
+    NET_LINK_LINKED,    /* Case A: same user, now permanent */
+    NET_LINK_CONFLICT,  /* Case B: the identity has an account; net_link_merge / net_link_cancel */
+    NET_LINK_STEP,      /* value of the merge moved on: for the progress text */
+    NET_LINK_MERGED,    /* Case B done: the account changed */
+    NET_LINK_FAILED,    /* nothing changed, the guest is still signed in */
+} NetLinkEvent;
 
 typedef enum NetRelation { NET_REL_FRIEND, NET_REL_INCOMING, NET_REL_OUTGOING } NetRelation;
 
@@ -213,6 +222,9 @@ void net_save_stats(NetTransport *n, const NetStats *totals);
  * Success arrives as NET_EV_PROFILE (guest = false), failure as
  * NET_EV_ACCOUNT_ERROR. */
 void net_link_idp(NetTransport *n, const char *provider, const char *id_token, const char *nonce);
+/* After NET_LINK_CONFLICT: load that account here and merge the guest into it. */
+void net_link_merge(NetTransport *n);
+void net_link_cancel(NetTransport *n);
 /* Drop the session; a fresh guest (new profile) signs in. */
 void net_sign_out(NetTransport *n);
 
