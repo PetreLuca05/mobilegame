@@ -154,6 +154,9 @@ typedef struct Game {
     FriendsPage fpage;
     NoticePanel notice;
     AccountLink link;
+    bool menu_world_on;    /* the hospital and its NPCs are the menu's backdrop */
+    HMM_Vec3 menu_hero;
+    float frame_alpha;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -306,6 +309,20 @@ static bool ensure_world(Game *g, MgApp *app)
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
 
+/* the account chip, top right; the perf text goes under the pause button, top left */
+#define STATS_Y(top, corner) ((top) + 8.0f + (corner) + UI_PAUSE_SIZE + 8.0f)
+#define CHIP_RESERVED_W 170.0f
+/* the main menu's view: from the gate, the hero in the right half */
+#define MENU_EYE_X 0.5f
+#define MENU_EYE_Y 0.9f
+#define MENU_EYE_Z 18.73f /* 2.53 m from the hero */
+#define MENU_LOOK_X 0.5f
+#define MENU_LOOK_Y 8.0f
+#define MENU_LOOK_Z 0.0f
+#define MENU_FOV_DEG 64.8f
+#define MENU_HERO_Z 16.2f
+#define MENU_HERO_MID_Y 1.0f  /* the part of the hero that is centred */
+#define MENU_HERO_FEET_Y (-0.3f) /* the body floats: this puts it on the ground */
 #define NOTICE_FRIEND_S 15.0
 #define NOTICE_INFO_S 3.0
 
@@ -574,6 +591,9 @@ void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
     if (!g->playing) {
+        if (g->menu_world_on && g->npcs_on && !g->settings.freeze_npcs) { /* the people outside the menu */
+            npc_step(g, app);
+        }
         return;
     }
     scene_tick(g->scene, &g->world, MG_TICK_DT);
@@ -1255,6 +1275,66 @@ static void start_loading(Game *g, int what)
     g->fe.state = FE_LOADING;
 }
 
+#define MENU_NPC_SEED 0x4D454E55u /* a fixed crowd: nothing here is shared or saved */
+
+/* Halfway between the menu's buttons and the screen edge, wherever those are on this device */
+static HMM_Vec3 menu_hero_feet(const MgApp *app)
+{
+    const HMM_Vec3 eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
+    const HMM_Vec3 fwd = HMM_NormV3(HMM_SubV3(HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), eye));
+    const float depth = (MENU_HERO_MID_Y - eye.Y) * fwd.Y + (MENU_HERO_Z - eye.Z) * fwd.Z;
+    const float centre = (frontend_menu_right(app) + app->width_pt - app->safe_right) * 0.5f;
+    const float ndc = centre / app->width_pt * 2.0f - 1.0f;
+    const float aspect = app->width_pt / app->height_pt;
+    return HMM_V3(eye.X + ndc * depth * HMM_TanF(HMM_AngleDeg(MENU_FOV_DEG) * 0.5f) * aspect, MENU_HERO_FEET_Y, MENU_HERO_Z);
+}
+
+/* The main menu's backdrop: the hospital from outside, its NPCs going about their day. The world
+ * stays loaded for play. Off everywhere else, so a game starts its own sim from its own seed. */
+static bool menu_world(Game *g, MgApp *app)
+{
+    const HMM_Vec3 hero = menu_hero_feet(app);
+    g->menu_hero = hero;
+    const int st = g->fe.state;
+    if (st != FE_MAIN_MENU && st != FE_SETTINGS && st != FE_FRIENDS) {
+        if (g->menu_world_on) {
+            g->menu_world_on = false;
+            npc_world_stop(&g->npcs);
+            g->npcs_on = false;
+        }
+        return false;
+    }
+    if (!ensure_world(g, app)) {
+        return false;
+    }
+    if (!g->menu_world_on) {
+        g->menu_world_on = true;
+        if (g->npcs_ok) {
+            npc_world_start(&g->npcs, MENU_NPC_SEED);
+            g->npcs_on = true;
+            g->npc_catching_up = false;
+        }
+    }
+    const float aspect = app->width_pt / app->height_pt;
+    GfxSceneParams sp = {0};
+    sp.eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
+    sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), HMM_V3(0, 1, 0));
+    sp.proj = camera_projection(HMM_AngleDeg(MENU_FOV_DEG), aspect, 0.1f, 300.0f, 0.0f);
+    g->view_proj = HMM_MulM4(sp.proj, sp.view);
+    scene_defaults(&sp, (float)app->time, &g->day_state);
+    gfx_set_scene(app->gfx, &sp);
+    scene_fade_targets(g->scene, g->fade.target, 0, false, hero, sp.eye);
+    floorfade_snap(&g->fade);
+    SceneView view = {.eye = sp.eye, .focus = hero, .floor = 0, .time = (float)app->time, .lamp_on = g->lamp_on, .fade = g->fade.vis};
+    scene_draw(g->scene, app->gfx, &view);
+    scenery_draw(&g->scenery, app->gfx, &sp, (float)app->time, g->day_state.cloud);
+    if (g->npcs_ok && g->npcs_on && g->npcs.pool.count > 0) {
+        g->player.kin.pos = hero; /* NPC detail is by distance from here */
+        draw_npcs(g, app, 0, g->frame_alpha);
+    }
+    return true;
+}
+
 /* Everything outside PLAY: menu scene, screens, their actions. */
 static void frontend_flow(Game *g, MgApp *app, bool back)
 {
@@ -1269,6 +1349,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     }
     poll_sign_in(g, app);
     g->ui.input_off = account_link_active(&g->link); /* the screens underneath take no touches */
+    const bool world_behind = menu_world(g, app);
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
                        g->profile.guest || !g->profile_loaded,
@@ -1277,6 +1358,8 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        g->net && apple_auth_available(g->google),
                        g->google_busy,
                        g->has_save,
+                       world_behind,
+                       g->menu_hero,
                        g->friends.incoming,
                        &g->heads,
                        g->load_step / 2.0f,
@@ -1532,7 +1615,7 @@ static void npc_step(Game *g, MgApp *app)
     const size_t mark = arena_mark(&app->frame);
     npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
     arena_reset_to(&app->frame, mark);
-    if (g->npc_sync_log && g->npcs.tick % 600u == 0u) {
+    if (g->npc_sync_log && g->playing && g->npcs.tick % 600u == 0u) { /* not the menu's backdrop */
         mg_log_info("npc-sync: tick %u hash %08x alive %d seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.pool.count, g->npcs.seed);
         g->npc_sync_tick = g->npcs.tick;
         g->npc_sync_hash = npc_world_hash(&g->npcs);
@@ -2063,6 +2146,9 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
         pose.sway = c->pose == POSE_MOP ? 0.12f * HMM_SinF((float)app->time * 3.0f + (float)i) : 0.0f;
         pose.hide = c->fade < 1.0f ? 1.0f - c->fade : 0.0f;
+        if (g->menu_world_on) { /* the hero stays the nearest thing: anyone coming closer fades out first */
+            pose.hide = mg_maxf(pose.hide, mg_clampf((feet.Z - (MENU_HERO_Z - 1.0f)) / 1.5f, 0.0f, 1.0f));
+        }
         npc_idle_touches(g, app, i, h, c, &pose, dt, queue_waiting);
         avatar_animate(&c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
@@ -2126,6 +2212,7 @@ void game_frame(MgApp *app, float alpha)
 static void game_frame_inner(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
+    g->frame_alpha = alpha;
     GameSettings *s = &g->settings;
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */
@@ -2145,7 +2232,7 @@ static void game_frame_inner(MgApp *app, float alpha)
                 npc_world_stop(&g->npcs);
             }
         }
-    } else if (g->npcs_ok && g->npcs_on) {
+    } else if (g->npcs_ok && g->npcs_on && !g->menu_world_on) {
         g->npcs_on = false;
         npc_world_stop(&g->npcs);
     }
@@ -2754,6 +2841,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     if (g->nav) {
         markers_hud(g, app, floor, feet);
     }
+    {
+        const ui_frame_t cf = frame_of(app);
+        float cpx, cpy, cps;
+        ui_pause_rect(&cf, &cpx, &cpy, &cps);
+        head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, ui_safe_right(&cf) - UI_MARGIN - cf.corner, cpy);
+    }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
                         app->safe_bottom);
@@ -2778,7 +2871,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     hud.render_h = gs.height_px;
     if (s->show_stats && !g->perf.active) { /* perf numbers never include the overlay */
         const float hud_x = app->safe_left + 10.0f + app->corner_clearance;
-        hud_draw(app->gfx, &app->font, hud_x, app->safe_top + 8.0f, &hud);
+        hud_draw(app->gfx, &app->font, hud_x, STATS_Y(app->safe_top, app->corner_clearance), &hud);
     }
     if (s->show_safe_rect) {
         const ui_frame_t lf = frame_of(app);
@@ -3097,13 +3190,18 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         greet_rect(g, app, res + rc * 4);
         rc++;
     }
+    {
+        const float chip[4] = {ui_safe_right(&uf) - UI_MARGIN - uf.corner - CHIP_RESERVED_W, py, CHIP_RESERVED_W, 44.0f};
+        memcpy(res + rc * 4, chip, sizeof(chip));
+        rc++;
+    }
     if (g->notice.count > 0 && g->notice.w > 0.0f) {
         const float nr[4] = {g->notice.x, g->notice.y, g->notice.w, g->notice.h};
         memcpy(res + rc * 4, nr, sizeof(nr));
         rc++;
     }
     if (g->settings.show_stats && !g->perf.active) { /* the same box --autotest layout checks */
-        const float st[4] = {app->safe_left + 10.0f + app->corner_clearance, app->safe_top + 8.0f, 200.0f, 90.0f};
+        const float st[4] = {app->safe_left + 10.0f + app->corner_clearance, STATS_Y(app->safe_top, app->corner_clearance), 200.0f, 90.0f};
         memcpy(res + rc * 4, st, sizeof(st));
         rc++;
     }
@@ -3365,7 +3463,8 @@ static void layout_autotest(Game *g, MgApp *app)
     const struct { const char *name; float x, y, w, h; } items[] = {
         {"pause", px, py, ps, ps},
         {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r},
-        {"stats", f.inset_l + 10.0f + f.corner, f.inset_t + 8.0f, 200.0f, 90.0f},
+        {"chip", ui_safe_right(&f) - UI_MARGIN - f.corner - CHIP_RESERVED_W, py, CHIP_RESERVED_W, 44.0f},
+        {"stats", f.inset_l + 10.0f + f.corner, STATS_Y(f.inset_t, f.corner), 200.0f, 90.0f},
         {"notice", (f.w - 360.0f * nk) * 0.5f, f.inset_t + 8.0f, 360.0f * nk, 64.0f * nk},
     };
     bool ok = true;

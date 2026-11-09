@@ -78,6 +78,7 @@ int slot_add(RoomGraph *g, uint32_t tag, int storey, float x, float z, float yaw
 int slot_add_seat(RoomGraph *g, uint32_t tag, int storey, float x, float z, float seat_x, float seat_z, float yaw);
 void slot_set_group(RoomGraph *g, int id, int group, int order);
 void slot_set_flags(RoomGraph *g, int id, unsigned flags);
+void slots_free_all(RoomGraph *g);
 
 /* Snaps every slot to the nearest walkable nav cell; a slot with none within
  * 0.5 m is an error, logged with its tag and position. Returns the number of errors. */

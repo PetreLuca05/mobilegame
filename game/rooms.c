@@ -73,6 +73,13 @@ void slot_set_group(RoomGraph *g, int id, int group, int order)
 
 void slot_set_flags(RoomGraph *g, int id, unsigned flags) { g->slots[id].flags = (uint8_t)flags; }
 
+void slots_free_all(RoomGraph *g)
+{
+    for (int i = 0; i < g->slot_count; i++) {
+        g->slots[i].occupant = 0;
+    }
+}
+
 const char *slot_tag_name(uint32_t tag)
 {
     for (int i = 0; i < SLOT_TAG_COUNT; i++) {

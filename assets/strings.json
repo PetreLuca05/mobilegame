@@ -134,5 +134,6 @@
   "link_welcome_back": "Welcome back, %s",
   "link_summary": "%d sessions, %d minutes played",
   "link_row": "Connect account",
-  "link_ok": "Account connected"
+  "link_ok": "Account connected",
+  "menu_title": "Rezi"
 }

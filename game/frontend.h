@@ -52,6 +52,8 @@ typedef struct FrontendCtx {
     bool google_available, apple_available;
     bool signin_busy;
     bool has_save;
+    bool world_behind;    /* the game has drawn the hospital: only the hero goes on top */
+    HMM_Vec3 hero_feet;
     int friend_requests;  /* the Friends row's red badge */
     struct HeadIcons *heads;
     float load_progress;  /* LOADING: 0..1 */
@@ -78,6 +80,8 @@ typedef struct Frontend {
     bool clicked;        /* a row was activated this frame (click sound) */
 } Frontend;
 
+/* Where the main menu's buttons end, in pt from the left (the hero is centred in what is left). */
+float frontend_menu_right(const MgApp *app);
 bool frontend_init(Frontend *f, GfxContext *g, Arena *scratch);
 void frontend_go(Frontend *f, FeState s); /* pushes the current state for Back */
 /* Android back / Escape: one state back; returns FE_EXIT on the welcome screen. */

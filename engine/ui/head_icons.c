@@ -106,6 +106,17 @@ void head_icon_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSki
     text_draw_centered(g, f, cx, cy, size * 0.5f, (UiColor){32, 36, 44, alpha}, first);
 }
 
+float head_chip_width(const TextFont *f, const char *name) { return 4.0f + 36.0f + 8.0f + text_width(f, name, 16.0f) + 14.0f; }
+
+void head_chip_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSkin *skin, const char *name, float right, float y)
+{
+    const float head = 36.0f, pad = 4.0f, size = 16.0f;
+    const float w = head_chip_width(f, name), x = right - w;
+    ui_round_rect(g, f, x, y, w, head + 2.0f * pad, 22.0f, ui_rgba(0x1E2230B0));
+    head_icon_draw(h, g, f, skin, name, x + pad + head * 0.5f, y + pad + head * 0.5f, head, false);
+    text_draw(g, f, x + pad + head + 8.0f, y + pad + head * 0.5f - size * 0.65f, size, ui_rgba(0xFFFFFFFF), name);
+}
+
 int head_icons_used(const HeadIcons *h)
 {
     int n = 0;

@@ -270,7 +270,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
   `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
 
-- In-game menu: pause button (34 pt frosted disc, two rounded bars) / Back = centred pause card, max 420 pt (Resume, Settings,
+- In-game menu: pause button (top left, 34 pt frosted disc, two rounded bars), account chip (avatar + name, top right, also on the main menu) / Back = centred pause card, max 420 pt (Resume, Settings,
   Save & back to menu, Disconnect in a room); Settings' back arrow returns to
   it. Arrows are drawn with `ui_line` (the font has no left arrow).
 - `--autotest offline`: an unresolvable host behaves like airplane mode; count
@@ -281,8 +281,10 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
   launch; later boots go straight to the menu), SETTINGS,
-  LOADING, PLAY. Outside PLAY the locker-room scene is drawn (avatar on a
-  turntable); the hospital is only built when play starts. Back = Android
+  LOADING, PLAY. Main menu, Settings and Friends draw the real hospital from outside
+  behind the hero (`menu_world` in `game/game.c`, `MENU_*` camera, NPCs on `MENU_NPC_SEED`); the other screens
+  keep the locker room (avatar on a turntable). `npc_world_start` is a clean start (slots, ids, nav queue), so the
+  menu's NPCs cannot change a game's deterministic sim. Back = Android
   back / Escape (exits from the welcome screen). Desktop: `--frontend
   welcome|username|creator|menu|settings`, `--play new|continue`.
 - Text lives in `assets/strings.json` (`str("key")`), never in C.

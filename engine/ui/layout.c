@@ -3,7 +3,7 @@
 void ui_pause_rect(const ui_frame_t *f, float *x, float *y, float *size)
 {
     *size = UI_PAUSE_SIZE;
-    *x = ui_safe_right(f) - UI_MARGIN - f->corner - UI_PAUSE_SIZE;
+    *x = ui_safe_left(f) + UI_MARGIN + f->corner;
     *y = ui_safe_top(f) + 8.0f + f->corner;
 }
 

@@ -81,6 +81,13 @@ void frontend_toast(Frontend *f, const char *msg, double now)
 static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes, float side)
 {
     GfxContext *g = app->gfx;
+    if (ctx->world_behind) { /* the hospital is drawn already: the hero stands in front, turned 45 degrees to its right */
+        AvatarPose hero = {ctx->hero_feet, HMM_PI32 - HMM_AngleDeg(45.0f), HMM_V3(0, 0, 0), true, false, false, false};
+        avatar_animate(&f->anim, &hero, mg_minf(app->frame_dt, 0.1f));
+        AvatarLook hero_look = avatar_look_from_skin(*ctx->skin);
+        avatar_draw(g, meshes, &hero_look, &hero, &f->anim, NULL);
+        return;
+    }
     float aspect = app->width_pt / app->height_pt;
     const float fov = HMM_AngleDeg(40.0f), dist = 5.2f;
     float tan_x = HMM_TanF(fov * 0.5f) * aspect;
@@ -144,9 +151,8 @@ static void spin_drag(Frontend *f, MgApp *app, float x0, float x1)
 
 /* ------------------------------------------------------------------ helpers */
 
-static void title_block(Ui *ui, float x, float y, float w, bool centred)
+static void title_block(Ui *ui, const char *title, float x, float y, float w, bool centred)
 {
-    const char *title = str("game_name");
     UiColor white = ui_rgba(0xFFFFFFFF), shadow = ui_rgba(0x0000006A);
     if (centred) {
         text_draw_centered(ui->gfx, ui->font, x + w * 0.5f + 2.0f, y + 26.0f, 44.0f, shadow, title);
@@ -270,7 +276,7 @@ static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     float w = app->width_pt, h = app->height_pt;
     float l = app->safe_left + PAD, r = w - app->safe_right - PAD;
     float top = app->safe_top + PAD + 8.0f;
-    title_block(ui, l, top, r - l, true);
+    title_block(ui, str("game_name"), l, top, r - l, true);
     wrapped(ui, l + (r - l) * 0.15f, top + 56.0f, (r - l) * 0.7f, 16.0f, ui_rgba(0xFFFFFFCC), str("description"),
             true);
     /* buttons: right half, vertically centred in the middle band */
@@ -365,21 +371,27 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     return a;
 }
 
+float frontend_menu_right(const MgApp *app)
+{
+    const float x = app->safe_left + PAD;
+    return x + mg_minf(app->width_pt * 0.5f - x - PAD, 400.0f);
+}
+
 static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
     float x = app->safe_left + PAD, cw = mg_minf(w * 0.5f - x - PAD, 400.0f);
     float y = app->safe_top + PAD + 8.0f;
-    title_block(ui, x, y, cw, false);
+    head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, w - app->safe_right - PAD, y); /* the account, top right */
+    title_block(ui, str("menu_title"), x, y - 8.0f, cw, false);
     y += 54.0f;
-    y += wrapped(ui, x, y, cw, 14.0f, ui_rgba(0xFFFFFFB3), str("description"), false) + 10.0f;
     ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
     y += 12.0f;
     FeAction a = FE_NONE;
     int row = 0;
     /* the rows scroll between the divider and the account line when the screen is short */
     const float fy = h - mg_maxf(app->safe_bottom, 10.0f) - 22.0f;
-    const float rows_top = y, rows_view = mg_maxf(fy - 10.0f - y, ROW_H);
+    const float rows_top = y, rows_view = mg_maxf(h - mg_maxf(app->safe_bottom, 10.0f) - 8.0f - y, ROW_H);
     const float rows_off = ui_scroll_begin(ui, &f->menu_scroll, x - 4.0f, rows_top, cw + 8.0f, rows_view, false);
     y -= rows_off;
     if (menu_row(f, ui, app, row++, str("new_game"), x, y, cw, false, false, NULL)) {
@@ -411,16 +423,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     }
     y += ROW_H;
     ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
-    /* footer */
-    char who[96];
-    if (ctx->guest) {
-        SDL_snprintf(who, sizeof(who), "%s", str("guest_name"));
-    } else {
-        SDL_snprintf(who, sizeof(who), "%s %s " TEXT_BULLET " %s", str("signed_in_as"), ctx->name,
-                     SDL_strcmp(ctx->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
-    }
-    head_icon_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, x + 13.0f, fy + 8.0f, 26.0f, false);
-    text_draw(ui->gfx, ui->font, x + 32.0f, fy, 13.0f, ui_rgba(0xFFFFFF99), who);
     float vw = text_width(ui->font, ctx->version, 13.0f);
     text_draw(ui->gfx, ui->font, w - app->safe_right - PAD - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
 
@@ -429,7 +431,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     if (!f->confirm_new && ui_hit_area(ui, "avatar", w * 0.62f, h * 0.15f, w * 0.26f, h * 0.7f, &held)) {
         frontend_go(f, FE_CREATOR);
     }
-    spin_drag(f, app, w * 0.5f, w);
 
     if (f->confirm_new) { /* overwrite dialog */
         ui_block(ui, 0, 0, w, h);

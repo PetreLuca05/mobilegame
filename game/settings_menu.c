@@ -406,8 +406,8 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
-    if (!m->open) { /* pause button, top-right */
-        const ui_frame_t uf = {w_pt, h_pt, 0.0f, safe_r, safe_t, 0.0f, corner};
+    if (!m->open) { /* pause button, top-left */
+        const ui_frame_t uf = {w_pt, h_pt, safe_l, safe_r, safe_t, 0.0f, corner};
         float gs, gx, gy;
         ui_pause_rect(&uf, &gx, &gy, &gs);
         if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {

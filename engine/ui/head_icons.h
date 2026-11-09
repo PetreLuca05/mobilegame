@@ -41,6 +41,9 @@ HeadUv head_icon_get(HeadIcons *h, const NetSkin *skin);
 /* A round head (or its placeholder) of diameter `size`, at centre (cx, cy). */
 void head_icon_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSkin *skin, const char *name, float cx, float cy,
                     float size, bool faded);
+/* The account chip: head and name in a pill, 44 pt tall. `right`, `y`: its top-right corner. */
+float head_chip_width(const TextFont *f, const char *name);
+void head_chip_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSkin *skin, const char *name, float right, float y);
 /* Once per frame, after the UI: renders what is queued. */
 void head_icons_update(HeadIcons *h, GfxContext *g);
 /* Memory warning / lost textures: whatever is still on screen queues itself again. */

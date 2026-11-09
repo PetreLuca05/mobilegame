@@ -283,6 +283,10 @@ static void fill_roster(NpcWorld *w, bool steady)
 void npc_world_start(NpcWorld *w, uint32_t seed)
 {
     npc_world_stop(w);
+    /* a start must not depend on any earlier run (the menu's backdrop comes before every game) */
+    slots_free_all(w->rooms);
+    w->next_id = 0;
+    w->pool.read = 0;
     w->seed = seed ? seed : 1u;
     w->rng = w->seed;
     w->tick = 0;
