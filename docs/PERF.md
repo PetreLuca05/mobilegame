@@ -264,3 +264,18 @@ Against the old baseline, GPU effective and render time rise 10 to 55 % in the s
 
 Gate against the new baseline: passed. `corridor_f2` dropped 1 frame on its first run and 0 on its one rerun, which is the file kept here.
 
+
+## Full gate at 22cd389 (iPad Air 4)
+
+`docs/perf/after/` now holds this run, all eight scenarios from one commit, gated against the e034fd2 baseline. Gate: passed. `stress200` failed on its first run (3 heap allocations, 1 dropped frame) and was clean on its one rerun, which is the file kept. GPU clock Minimum for 97-100 % of every run.
+
+| Scenario | Draws | Render ms | GPU frame ms / busy % / effective ms | Memory MB |
+|---|---|---|---|---|
+| `yard` | 64.0 | 1.21 | 5.31 / 32 / 1.70 | 157 |
+| `lobby` | 63.5 | 1.20 | 5.19 / 31 / 1.62 | 158 |
+| `corridor_f2` | 83.1 | 1.28 | 5.49 / 33 / 1.82 | 162 |
+| `stress200` | 86.6 | 1.33 | 5.75 / 35 / 1.99 | 169 |
+| `npcs` | 89.8 | 1.34 | 5.62 / 34 / 1.90 | 159 |
+| `lift_panel` | 72.0 | 1.30 | 5.30 / 32 / 1.69 | 160 |
+| `interact_npc` | 97.3 | 1.39 | 5.81 / 35 / 2.03 | 162 |
+| `lobby4` | 95.4 | 1.30 | 5.69 / 34 / 1.95 | 161 |
