@@ -213,6 +213,22 @@ Every NPC updates every tick (viewer-based update rates would make clients diffe
 
 Two late-frame allocation sources were removed for this gate: uploads now use a fixed ring of preallocated buffers, and SDL's GPU pools are filled at startup. The gate now also fails on dropped frames. `docs/perf/after/` gained the `npcs` scenario as its reference.
 
+## M8 (interaction, layout), iPad Air 4, commit `aff8719`
+
+Perf gate passed on all seven scenarios, including the new `lift_panel` and `interact_npc` (raw files in `docs/perf/after/`, panels-off runs in `docs/perf/m8_panels_off/`). Dominant GPU clock state: Minimum in every run.
+
+| Panel cost | Panels on | Panels off | Delta | Estimate | 2x limit |
+|---|---|---|---|---|---|
+| Lift panel, GPU effective | 1.99 ms (5.74 ms, 35 %) | 1.73 ms (5.36 ms, 32 %) | +0.26 ms | +0.15-0.25 | 0.50 |
+| Lift panel, draws (Mac, counter patched for the run) | 80 | 75 | +5 | <= 4 | 8 |
+| NPC preview head, GPU effective | 1.41 ms (4.84 ms, 29 %) | 1.42 ms (4.86 ms, 29 %) | none measurable | +0.08-0.12 | 0.24 |
+| NPC preview head, draws | 100.3 | 86.0 | +14.3 | <= 3 | 6, **exceeded** |
+| Scan + registry, CPU (p95 frame) | 0.05 ms | - | - | <= 0.03 per scan | 0.06 |
+
+The head is drawn part by part in its own inset (head, hair, outlines, eyes, nose, mouth), not instanced, hence the draws. `GfxStats.draws` does not count insets drawn before the world, so the iPad's `lift_panel` figure (67) leaves out the panel.
+
+Font atlas: 512x512 -> 1024x512, +256 KB; no separate texture budget, resident memory 151 MB against 300.
+
 ## Reproducing
 
 ```

@@ -48,8 +48,8 @@ def main():
             if not d or not g:
                 continue
             m = metrics(d, g)
-            if sc in ("lift_panel", "interact_npc") and d.get("panel_samples", 0) < 0.9 * d["samples"]:
-                problems.append(f"{dev} {sc}: the panel was up in only {d.get('panel_samples', 0)} of {d['samples']} frames")
+            if sc in ("lift_panel", "interact_npc") and d.get("panel_samples", 0) < 0.9 * d["frames"]:
+                problems.append(f"{dev} {sc}: the panel was up in only {d.get('panel_samples', 0)} of {d['frames']} frames")
             for name, (budget, stress_only) in BUDGETS.items():
                 if stress_only and sc != "stress200":
                     continue
