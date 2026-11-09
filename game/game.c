@@ -62,6 +62,9 @@
 #include "account_link.h"
 #include "ui/head_icons.h"
 #include "ui/notice_panel.h"
+#ifdef MG_TEST_AUTH
+#include "platform/secure_store.h"
+#endif
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
@@ -456,6 +459,23 @@ bool game_init(MgApp *app)
     }
     const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active || (ft_role && SDL_strcmp(ft_role, "offline") == 0));
     NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3, false};
+#ifdef MG_TEST_AUTH
+    { /* a device has one keychain: set its session aside for a new-install run, and put it back after */
+        SecureStore store;
+        char token[256];
+        secure_store_init(&store, profile ? profile : "");
+        if (has_flag(app->argc, app->argv, "--test-fresh-guest")) {
+            char kept[256];
+            if (secure_store_get(&store, "sb_refresh_token", token, sizeof(token)) && !secure_store_get(&store, "sb_test_kept", kept, sizeof(kept))) {
+                secure_store_set(&store, "sb_test_kept", token);
+            }
+            secure_store_remove(&store, "sb_refresh_token");
+        } else if (has_flag(app->argc, app->argv, "--test-restore-guest") && secure_store_get(&store, "sb_test_kept", token, sizeof(token))) {
+            secure_store_set(&store, "sb_refresh_token", token);
+            secure_store_remove(&store, "sb_test_kept");
+        }
+    }
+#endif
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
     friends_init(&g->friends, g->net, profile ? profile : "");
@@ -475,11 +495,6 @@ bool game_init(MgApp *app)
     g->menu.my_name = g->profile.display_name;
     g->menu.my_skin = &g->profile.skin;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
-#ifdef MG_TEST_AUTH
-    if (has_flag(app->argc, app->argv, "--test-fresh-guest")) {
-        net_sign_out(g->net); /* a device keeps one keychain: this is what a new install starts from */
-    }
-#endif
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     /* the front end comes first unless a test flag already chose to play */
     bool play_now = has_flag(app->argc, app->argv, "--offline") ||

@@ -10,8 +10,8 @@ ipad() { xcrun devicectl device process launch --console --terminate-existing --
 
 ipad $BID --frontend menu --autotest friends d_code --quit-after 60 > $OUT/ipad_code.log 2>&1
 IPAD_CODE=$(grep -oE 'my code [0-9A-Z]{6}' $OUT/ipad_code.log | head -1 | awk '{print $3}')
-build/desktop/mg_nettest friends $P 8 > $OUT/mac_code.log 2>/dev/null
-MAC_CODE=$(grep -oE 'rpc 0: HTTP 200 [0-9A-Z]{6}' $OUT/mac_code.log | head -1 | awk '{print $5}')
+$GAME --profile $P --frontend menu --autotest friends d_code --window-pos 100,60 --quit-after 60 > $OUT/mac_code.log 2>&1
+MAC_CODE=$(grep -oE 'my code [0-9A-Z]{6}' $OUT/mac_code.log | head -1 | awk '{print $3}')
 echo "ipad $IPAD_CODE mac $MAC_CODE"
 [ -n "$IPAD_CODE" ] && [ -n "$MAC_CODE" ] || { echo "FAIL could not read the codes"; exit 1; }
 

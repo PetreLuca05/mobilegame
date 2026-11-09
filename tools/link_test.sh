@@ -89,6 +89,9 @@ MG_LT_EMAIL=$E_MAIL play lp "--play new"
 UP=$(uid_of lp)
 check "Pause card: Cancel left the guest" "$(sql "select is_anonymous::text from auth.users where id = '$UP'")" "true"
 
+if [ "$TARGET" = ipad ]; then # give the iPad its own guest session back
+  xcrun devicectl device process launch --console --terminate-existing --device "iPad (4)" ro.docvex.mobilegame --test-restore-guest --quit-after 5 > $OUT/restore.log 2>&1
+fi
 for f in "$PREFS"/friends_l*.png; do cp "$f" docs/autotest/link/ 2>/dev/null; done
 sql "do \$\$ begin
   delete from auth.users where email like '%@mgtest.invalid';
