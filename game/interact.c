@@ -75,8 +75,23 @@ static bool facing_ok(const ia_hot_t *h, HMM_Vec3 p, float fx, float fz)
     return len < 0.2f || (dx * fx + dz * fz) / len >= FACING_DOT;
 }
 
-/* Does slot s take over from `best`? Someone who can be used comes before a greyed one standing closer
- * (a queue must not hide the receptionist); then the nearest. */
+/* Who comes first regardless of distance: >0 a, <0 b, 0 then the nearest. Someone who can be used comes
+ * before a greyed one, and among NPCs one with interact_priority before one without (a queue must not
+ * hide the receptionist). */
+static int rank_cmp(const Interact *ia, uint16_t a, uint16_t b)
+{
+    const ia_hot_t *ha = &ia->hot[a], *hb = &ia->hot[b];
+    const bool on_a = !(ha->flags & IA_DISABLED), on_b = !(hb->flags & IA_DISABLED);
+    if (on_a != on_b) {
+        return on_a ? 1 : -1;
+    }
+    if (ha->kind == IA_NPC && hb->kind == IA_NPC && (ha->flags & IA_PRIORITY) != (hb->flags & IA_PRIORITY)) {
+        return (ha->flags & IA_PRIORITY) ? 1 : -1;
+    }
+    return 0;
+}
+
+/* Does slot s take over from `best`? */
 static bool beats(const Interact *ia, uint16_t s, uint16_t best, float best_d2, HMM_Vec3 player, float fx, float fz)
 {
     const ia_hot_t *h = &ia->hot[s];
@@ -87,8 +102,8 @@ static bool beats(const Interact *ia, uint16_t s, uint16_t best, float best_d2, 
     if (best == IA_NONE) {
         return true;
     }
-    const bool on = !(h->flags & IA_DISABLED), best_on = !(ia->hot[best].flags & IA_DISABLED);
-    return on != best_on ? on : d2 < best_d2;
+    const int c = rank_cmp(ia, s, best);
+    return c != 0 ? c > 0 : d2 < best_d2;
 }
 
 void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int storey, float yaw)
@@ -130,9 +145,9 @@ void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int s
     if (ia->active == IA_NONE) {
         ia->active = best;
     } else if (best != ia->active) {
-        const bool best_on = !(ia->hot[best].flags & IA_DISABLED), now_on = !(ia->hot[ia->active].flags & IA_DISABLED);
+        const int c = rank_cmp(ia, best, ia->active);
         const float now = sqrtf(dist2_of(&ia->hot[ia->active], player));
-        if ((best_on && !now_on) || (best_on == now_on && sqrtf(best_d2) + SWITCH_MARGIN < now)) {
+        if (c > 0 || (c == 0 && sqrtf(best_d2) + SWITCH_MARGIN < now)) {
             ia->active = best;
         }
     }

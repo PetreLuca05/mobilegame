@@ -58,6 +58,7 @@ struct MgApp {
     char **argv;
     double quit_after;
     double capture_at; /* --metal-capture [S]: capture the frame at S s (0 = off) */
+    int orient_request; /* iOS --orientation: 1 left, 2 right, 0 none */
     bool log_events;
 };
 

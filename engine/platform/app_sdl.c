@@ -14,6 +14,7 @@ static MgApp g_app; /* the single global app context */
 
 #if defined(SDL_PLATFORM_IOS)
 bool ios_safe_insets(SDL_Window *window, float *left, float *top, float *right, float *bottom);
+void ios_request_landscape(SDL_Window *window, bool right);
 #endif
 
 static void update_metrics(MgApp *app)
@@ -75,6 +76,8 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--quit-after") == 0 && i + 1 < argc) {
             app->quit_after = SDL_atof(argv[++i]);
+        } else if (SDL_strcmp(argv[i], "--orientation") == 0 && i + 1 < argc) {
+            app->orient_request = SDL_strcmp(argv[++i], "right") == 0 ? 2 : 1;
         } else if (SDL_strcmp(argv[i], "--metal-capture") == 0) {
             app->capture_at = i + 1 < argc && SDL_atof(argv[i + 1]) > 0.0 ? SDL_atof(argv[++i]) : 6.0;
         } else if (SDL_strcmp(argv[i], "--log-events") == 0) {
@@ -197,6 +200,12 @@ SDL_AppResult app_iterate(void *appstate)
     }
 
     /* one frame into a .gputrace (Xcode shows its GPU time) */
+#if defined(SDL_PLATFORM_IOS)
+    if (app->orient_request && SDL_GetTicks() > 1000) { /* the window scene exists by now */
+        ios_request_landscape(app->window, app->orient_request == 2);
+        app->orient_request = 0;
+    }
+#endif
     bool capture = app->capture_at > 0.0 && (double)SDL_GetTicks() * 0.001 > app->capture_at;
     if (capture) {
         app->capture_at = 0.0;

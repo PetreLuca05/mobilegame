@@ -17,6 +17,7 @@ typedef enum ia_kind_t { IA_NPC, IA_BUTTON, IA_MARKER, IA_ELEVATOR, IA_KIND_COUN
 #define IA_WANTS_CHAT 1u
 #define IA_DISABLED 2u
 #define IA_FACING_FREE 4u /* needs no facing test */
+#define IA_PRIORITY 8u    /* an NPC with interact_priority: before nearer NPCs without it */
 
 typedef struct ia_hot_t {
     HMM_Vec3 pos;

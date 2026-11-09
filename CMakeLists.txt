@@ -265,8 +265,8 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_compile_options(mobilegame PRIVATE ${MG_WARNINGS})
 
   enable_testing()
-  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c tests/test_replication.c
-    game/devroom_layout.c engine/net/replication.c)
+  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c tests/test_replication.c tests/test_interact.c
+    game/devroom_layout.c engine/net/replication.c game/interact.c engine/world/spatial.c engine/core/arena.c)
   target_include_directories(mg_tests PRIVATE game)
   target_link_libraries(mg_tests PRIVATE mg_physics)
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})

@@ -40,6 +40,8 @@ typedef struct NpcArchetype {
     float speed;
     NpcLookKind look;
     float staff_weight;
+    bool interact_priority;  /* comes before nearer NPCs without it */
+    uint32_t priority_tags;  /* only at these slots; 0 = wherever they are posted */
     int storeys[4];
     int storey_count;
     NpcPackage packages[NPC_PACKAGES];

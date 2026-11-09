@@ -6,15 +6,57 @@
 #define INSET 24.0f
 #define EDGE_GAP 48.0f
 
+/* An icon: 14 pt disc, chevron beside it, its distance label under it. */
+#define ICON_CLEAR_X 26.0f
+#define ICON_CLEAR_ABOVE 24.0f
+#define ICON_CLEAR_BELOW 36.0f
+#define SLIDE_STEP 12.0f
+
 static bool in_reserved(const MarkerHudView *v, float x, float y)
 {
     for (int i = 0; i < v->reserved_count; i++) {
         const float *r = v->reserved + i * 4;
-        if (x > r[0] - 22.0f && x < r[0] + r[2] + 22.0f && y > r[1] - 22.0f && y < r[1] + r[3] + 22.0f) {
+        if (x > r[0] - ICON_CLEAR_X && x < r[0] + r[2] + ICON_CLEAR_X && y > r[1] - ICON_CLEAR_BELOW && y < r[1] + r[3] + ICON_CLEAR_ABOVE) {
             return true;
         }
     }
     return false;
+}
+
+/* The inset rectangle as one loop, clockwise from the top left */
+static void edge_point(float l, float t, float r, float b, float s, float *x, float *y)
+{
+    const float w = r - l, h = b - t, p = 2.0f * (w + h);
+    s = fmodf(s, p);
+    s = s < 0.0f ? s + p : s;
+    if (s < w) {
+        *x = l + s;
+        *y = t;
+    } else if (s < w + h) {
+        *x = r;
+        *y = t + s - w;
+    } else if (s < 2.0f * w + h) {
+        *x = r - (s - w - h);
+        *y = b;
+    } else {
+        *x = l;
+        *y = b - (s - 2.0f * w - h);
+    }
+}
+
+static float edge_param(float l, float t, float r, float b, float x, float y)
+{
+    const float w = r - l, h = b - t;
+    if (y <= t + 0.5f) {
+        return x - l;
+    }
+    if (x >= r - 0.5f) {
+        return w + (y - t);
+    }
+    if (y >= b - 0.5f) {
+        return w + h + (r - x);
+    }
+    return 2.0f * w + h + (b - y);
 }
 
 int marker_hud_layout(const MarkerHudIn *in, int n, const MarkerHudView *v, MarkerHudOut *out)
@@ -76,26 +118,31 @@ int marker_hud_layout(const MarkerHudIn *in, int n, const MarkerHudView *v, Mark
         out[edge[i]].hidden = true;
     }
     ne = ne > MARKER_HUD_MAX_EDGE ? MARKER_HUD_MAX_EDGE : ne;
-    /* de-overlap: nearest stays, the others slide along their edge */
+    /* nearest first: each takes the closest spot along the edge clear of the HUD and of those already placed */
+    const float perimeter = 2.0f * ((r - l) + (b - t));
     for (int i = 0; i < ne; i++) {
         MarkerHudOut *o = &out[edge[i]];
-        const bool horizontal = o->y <= t + 0.5f || o->y >= b - 0.5f;
-        float sign = horizontal ? (o->x >= cx ? -1.0f : 1.0f) : (o->y >= cy ? -1.0f : 1.0f);
-        for (int tries = 0; tries < 24; tries++) {
-            bool clash = in_reserved(v, o->x, o->y);
-            for (int k = 0; k < i && !clash; k++) {
-                float dx = o->x - out[edge[k]].x, dy = o->y - out[edge[k]].y;
-                clash = dx * dx + dy * dy < EDGE_GAP * EDGE_GAP;
-            }
-            if (!clash) {
-                break;
-            }
-            if (horizontal) {
-                o->x = mg_clampf(o->x + sign * 24.0f, l, r);
-            } else {
-                o->y = mg_clampf(o->y + sign * 24.0f, t, b);
+        const float s0 = edge_param(l, t, r, b, o->x, o->y);
+        bool placed = false;
+        for (int step = 0; !placed && (float)step * SLIDE_STEP <= perimeter * 0.5f; step++) {
+            for (int side = 0; side < (step ? 2 : 1) && !placed; side++) {
+                float x, y;
+                edge_point(l, t, r, b, s0 + (side ? -1.0f : 1.0f) * (float)step * SLIDE_STEP, &x, &y);
+                bool clash = in_reserved(v, x, y);
+                for (int k = 0; k < i && !clash; k++) {
+                    if (!out[edge[k]].hidden) {
+                        const float dx = x - out[edge[k]].x, dy = y - out[edge[k]].y;
+                        clash = dx * dx + dy * dy < EDGE_GAP * EDGE_GAP;
+                    }
+                }
+                if (!clash) {
+                    o->x = x;
+                    o->y = y;
+                    placed = true;
+                }
             }
         }
+        o->hidden = !placed; /* no room left on the edge */
     }
     return n;
 }

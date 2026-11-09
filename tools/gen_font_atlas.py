@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
+from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parent.parent
 FONT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "assets/fonts/Fredoka.ttf"
@@ -33,9 +34,17 @@ EM_PX = 40           # glyph em size in atlas pixels
 UPSCALE = 8          # supersampling factor for the distance transform
 RANGE_PX = 5.0       # distance (atlas px) mapped to the 0..1 value span
 PAD = 6              # atlas px padding around each glyph
-ATLAS_W, ATLAS_H = 512, 512
+ATLAS_SIZES = [(512, 512), (1024, 512), (1024, 768), (1024, 1024)]  # the smallest that fits
 CIRCLE = 64
-CHARS = [chr(c) for c in range(32, 127)] + ["°", "•"]
+# Everything the font has from Latin-1 and Latin Extended-A, on top of ASCII
+BASE_CHARS = [chr(c) for c in range(32, 127)] + ["°", "•"]
+LATIN_RANGE = range(0xA0, 0x180)
+# Romanian letters Fredoka does not have: built from its own letters. The cedilla forms
+# (U+015E, 015F, 0162, 0163) are not generated: the game maps them onto the comma ones.
+COMPOSED = {0x102: ("A", "breve"), 0x103: ("a", "breve"),
+            0x218: ("S", "comma"), 0x219: ("s", "comma"), 0x21A: ("T", "comma"), 0x21B: ("t", "comma")}
+CEDILLA = {0x15E, 0x15F, 0x162, 0x163}
+ROMANIAN = "ăâîșțĂÂÎȘȚ"
 # Procedural icons (not in the font)
 ICON_GEAR = 0x2699
 ICON_ARROW_UP = 0x2191
@@ -76,6 +85,47 @@ def glyph_sdf(font, ch):
     xoff = (bbox[0] - pad_hi) / UPSCALE
     yoff = (bbox[1] - pad_hi) / UPSCALE  # negative = above baseline
     return (val * 255.0 + 0.5).astype(np.uint8), xoff, yoff, advance
+
+
+def sdf_of_mask(img, ox, oy, advance):
+    """SDF of a hi-res ink image; (ox, oy) is the pen origin on the baseline, in hi-res pixels."""
+    box = img.getbbox()
+    pad_hi = PAD * UPSCALE
+    x0, y0, x1, y1 = box[0] - pad_hi, box[1] - pad_hi, box[2] + pad_hi, box[3] + pad_hi
+    # keep the crop on the same UPSCALE grid as the pen origin
+    x0 = ox + ((x0 - ox) // UPSCALE) * UPSCALE
+    y0 = oy + ((y0 - oy) // UPSCALE) * UPSCALE
+    x1 = x0 + (x1 - x0 + UPSCALE - 1) // UPSCALE * UPSCALE
+    y1 = y0 + (y1 - y0 + UPSCALE - 1) // UPSCALE * UPSCALE
+    inside = np.asarray(img.crop((x0, y0, x1, y1))) > 127
+    sd = (ndimage.distance_transform_edt(inside) - ndimage.distance_transform_edt(~inside)) / UPSCALE
+    sd = sd[UPSCALE // 2::UPSCALE, UPSCALE // 2::UPSCALE]
+    val = np.clip(0.5 + sd / (2.0 * RANGE_PX), 0.0, 1.0)
+    return (val * 255.0 + 0.5).astype(np.uint8), (x0 - ox) / UPSCALE, (y0 - oy) / UPSCALE, advance
+
+
+def composed_sdf(font, base, mark):
+    """A letter of the font with a breve above it or the font's own comma under it."""
+    em = EM_PX * UPSCALE
+    size = em * 3
+    ox, oy = em, em * 2
+    img = Image.new("L", (size, size), 0)
+    d = ImageDraw.Draw(img)
+    d.text((ox, oy), base, font=font, fill=255, anchor="ls")
+    bb = font.getbbox(base, anchor="ls")
+    cx = ox + (bb[0] + bb[2]) / 2
+    gap = 0.07 * em
+    if mark == "breve":  # a smile with round ends, a little lighter than the letters
+        stroke, rx, ry = 0.095 * em, 0.17 * em, 0.15 * em
+        cy = oy + bb[1] - gap - stroke / 2 - ry
+        for i in range(121):
+            a = np.pi * i / 120
+            px, py = cx + rx * np.cos(a), cy + ry * np.sin(a)
+            d.ellipse([px - stroke / 2, py - stroke / 2, px + stroke / 2, py + stroke / 2], fill=255)
+    else:
+        cb = font.getbbox(",", anchor="ls")
+        d.text((cx - (cb[0] + cb[2]) / 2, oy + gap - cb[1]), ",", font=font, fill=255, anchor="ls")
+    return sdf_of_mask(img, ox, oy, font.getlength(base) / UPSCALE)
 
 
 def draw_gear(d, s):
@@ -122,36 +172,52 @@ def icon_sdf(draw_fn):
 def main():
     font = load_font(EM_PX * UPSCALE)
     ascent, descent = font.getmetrics()
-    atlas = np.zeros((ATLAS_H, ATLAS_W), dtype=np.uint8)
-
     # solid cell (8x8 fully inside) and circle cell in the top-left corner
-    atlas[0:8, 0:8] = 255
     solid = (4, 4)
     yy, xx = np.mgrid[0:CIRCLE, 0:CIRCLE] + 0.5
     radius = CIRCLE / 2 - RANGE_PX - 1
     dist = radius - np.hypot(xx - CIRCLE / 2, yy - CIRCLE / 2)
     circle = np.clip(0.5 + dist / (2.0 * RANGE_PX), 0, 1)
-    atlas[0:CIRCLE, 8:8 + CIRCLE] = (circle * 255 + 0.5).astype(np.uint8)
     circle_pos = (8, 0)
 
-    glyphs = []
-    x, y, row_h = 8 + CIRCLE + 2, 0, CIRCLE
-    items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in CHARS]
+    cmap = TTFont(str(FONT)).getBestCmap()
+    chars = BASE_CHARS + [chr(c) for c in LATIN_RANGE if c in cmap and c not in CEDILLA and chr(c) not in BASE_CHARS]
+    items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in chars]
+    items += [(cp, lambda b=b, m=m: composed_sdf(font, b, m)) for cp, (b, m) in COMPOSED.items()]
     items += [(ICON_GEAR, lambda: icon_sdf(draw_gear)), (ICON_ARROW_UP, lambda: icon_sdf(draw_arrow_up))]
-    for cp, make in items:
-        sdf, xoff, yoff, adv = make()
-        if sdf is None:
-            glyphs.append((cp, 0, 0, 0, 0, 0.0, 0.0, adv))
-            continue
-        h, w = sdf.shape
-        if x + w > ATLAS_W:
-            x, y, row_h = 0, y + row_h + 2, 0
-        if y + h > ATLAS_H:
-            raise SystemExit("atlas too small")
-        atlas[y:y + h, x:x + w] = sdf
-        glyphs.append((cp, x, y, w, h, xoff, yoff, adv))
-        x += w + 2
-        row_h = max(row_h, h)
+    have = {cp for cp, _ in items}
+    missing = [c for c in ROMANIAN if ord(c) not in have]
+    if missing:
+        raise SystemExit(f"no glyph for {missing}")
+    made = [(cp, *make()) for cp, make in items]
+    # tallest first packs the shelves tighter
+    made.sort(key=lambda m: -(m[1].shape[0] if m[1] is not None else 0))
+
+    for ATLAS_W, ATLAS_H in ATLAS_SIZES:
+        atlas = np.zeros((ATLAS_H, ATLAS_W), dtype=np.uint8)
+        atlas[0:8, 0:8] = 255
+        atlas[0:CIRCLE, 8:8 + CIRCLE] = (circle * 255 + 0.5).astype(np.uint8)
+        glyphs = []
+        x, y, row_h = 8 + CIRCLE + 2, 0, CIRCLE
+        fits = True
+        for cp, sdf, xoff, yoff, adv in made:
+            if sdf is None:
+                glyphs.append((cp, 0, 0, 0, 0, 0.0, 0.0, adv))
+                continue
+            h, w = sdf.shape
+            if x + w > ATLAS_W:
+                x, y, row_h = 0, y + row_h + 2, 0
+            if y + h > ATLAS_H:
+                fits = False
+                break
+            atlas[y:y + h, x:x + w] = sdf
+            glyphs.append((cp, x, y, w, h, xoff, yoff, adv))
+            x += w + 2
+            row_h = max(row_h, h)
+        if fits:
+            break
+    else:
+        raise SystemExit("atlas too small")
 
     out = bytearray()
     out += b"MGF1"
@@ -166,7 +232,7 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(bytes(out))
     Image.fromarray(atlas).save(OUT.with_suffix(".preview.png"))
-    print(f"wrote {OUT} ({len(out)} bytes, {len(glyphs)} glyphs, rows used {y + row_h}px)")
+    print(f"wrote {OUT} ({len(out)} bytes, {ATLAS_W}x{ATLAS_H}, {len(glyphs)} glyphs, rows used {y + row_h}px)")
 
 
 if __name__ == "__main__":

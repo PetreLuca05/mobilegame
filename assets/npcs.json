@@ -10,11 +10,11 @@
     "waiting_families": 1
   },
   "archetypes": [
-    {"name": "receptionist", "type": "staff", "staff_weight": 1, "age": [0, 1, 0.1], "speed": 1.6, "look": "coat", "storeys": [0],
+    {"name": "receptionist", "interact_priority": true, "type": "staff", "staff_weight": 1, "age": [0, 1, 0.1], "speed": 1.6, "look": "coat", "storeys": [0],
      "packages": [{"kind": "post", "tags": ["RECEPTION_DESK"]}]},
-    {"name": "doctor", "type": "staff", "staff_weight": 3, "age": [0, 0.85, 0.15], "speed": 1.6, "look": "doctor", "storeys": [0, 1, 2],
+    {"name": "doctor", "interact_priority": ["OFFICE_DESK", "EXAM_DOCTOR"], "type": "staff", "staff_weight": 3, "age": [0, 0.85, 0.15], "speed": 1.6, "look": "doctor", "storeys": [0, 1, 2],
      "packages": [{"kind": "patrol", "tags": ["EXAM_DOCTOR", "NURSE_STATION", "OFFICE_DESK", "OR_SURGEON"], "dwell": [20, 40]}]},
-    {"name": "nurse", "type": "staff", "staff_weight": 3, "age": [0, 1, 0], "speed": 1.6, "look": "nurse", "storeys": [0, 1],
+    {"name": "nurse", "interact_priority": ["NURSE_STATION"], "type": "staff", "staff_weight": 3, "age": [0, 1, 0], "speed": 1.6, "look": "nurse", "storeys": [0, 1],
      "packages": [{"kind": "patrol", "tags": ["WARD_BED", "NURSE_STATION", "EXAM_DOCTOR"], "dwell": [8, 30]}]},
     {"name": "orderly", "type": "staff", "staff_weight": 1, "age": [0, 0.8, 0.2], "speed": 1.6, "look": "orderly", "storeys": [0, 1, 2],
      "packages": [{"kind": "patrol", "tags": ["MOP_SPOT"], "dwell": [6, 6], "pose": "mop", "random": true}]},

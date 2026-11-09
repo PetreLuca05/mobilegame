@@ -141,6 +141,9 @@ typedef struct Game {
     uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
+    bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
+    float hud_res[24];       /* what the marker icons stay out of: x, y, w, h */
+    int hud_res_count;
     int player_storey_cached;
     int ia_enter_run, ia_enter_lag, ia_exit_run, ia_exit_lag; /* ticks */
     uint16_t ia_hover_slot;  /* --autotest interact */
@@ -543,7 +546,7 @@ static void npc_save_test_compare(Game *g, MgApp *app);
 static void npc_save_test_save(Game *g, MgApp *app);
 static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet);
 static void marker_tapped(Game *g, MgApp *app, uint32_t id);
-static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up);
+static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet);
 static bool screen_to_floor(const Game *g, const MgApp *app, float x_pt, float y_pt, float y, HMM_Vec3 *out);
 
 /* X-ray silhouette colour: the avatar's accent at full saturation x 0.85
@@ -1479,6 +1482,9 @@ static void interact_setup(Game *g, MgApp *app)
 {
     g->ia_app = app;
     g->no_panels = has_flag(app->argc, app->argv, "--no-panels");
+    const char *ia_at = arg_value(app->argc, app->argv, "--autotest");
+    g->text_test = ia_at && SDL_strcmp(ia_at, "text") == 0;
+    g->hud_clamp_test = ia_at && SDL_strcmp(ia_at, "hudclamp") == 0;
     g->ia_ok = ia_init(&g->ia, &app->perm) && preview_panel_init(&g->panel, app->gfx, &app->perm);
     g->npcs.on_spawned = npc_registered;
     g->npcs.on_despawned = npc_unregistered;
@@ -1538,11 +1544,23 @@ static void draw_ia_debug(Game *g, MgApp *app, int floor)
     }
 }
 
+/* The greeting card: bottom right, beside the preview */
+static void greet_rect(const Game *g, const MgApp *app, float r[4])
+{
+    const ui_frame_t cf = frame_of(app);
+    const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f;
+    r[0] = ui_safe_right(&cf) - UI_MARGIN - cf.corner - g->panel.size - 12.0f - cw;
+    r[1] = ui_safe_bottom(&cf) - UI_MARGIN - ch;
+    r[2] = cw;
+    r[3] = ch;
+}
+
 /* --autotest interact: where its targets are */
 static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
 {
     const Interact *ia = &g->ia;
     pr->active_slot = ia->active == IA_NONE ? -1 : (int)ia->active;
+    pr->active_flags = ia->active == IA_NONE ? 0u : ia->hot[ia->active].flags;
     SDL_memcpy(pr->ia_fired, ia->fired, sizeof(pr->ia_fired));
     pr->ia_enter_lag = g->ia_enter_lag;
     pr->ia_exit_lag = g->ia_exit_lag;
@@ -1617,7 +1635,9 @@ static void interact_tick(Game *g, MgApp *app)
             const bool posted = c->phase == NPC_PHASE_HOLD;
             c->wants_chat = posted && (SDL_strcmp(arch, "receptionist") == 0 || (SDL_strcmp(arch, "doctor") == 0 && (tags & (SLOT_OFFICE_DESK | SLOT_EXAM_DOCTOR))) ||
                                        (SDL_strcmp(arch, "nurse") == 0 && (tags & SLOT_NURSE_STATION)) || c->pose == POSE_SIT);
-            ia_set_flags(&g->ia, c->ia_slot, c->wants_chat ? IA_WANTS_CHAT : IA_DISABLED);
+            const NpcArchetype *ar = &g->npcs.data.archetypes[c->archetype];
+            const bool first = ar->interact_priority && (!ar->priority_tags || (tags & ar->priority_tags));
+            ia_set_flags(&g->ia, c->ia_slot, c->wants_chat ? (IA_WANTS_CHAT | (first ? IA_PRIORITY : 0u)) : IA_DISABLED);
         }
         ia_set_pos(&g->ia, c->ia_slot, HMM_V3(hot[i].x, hot[i].y, hot[i].z), hot[i].storey);
         g->ia.cold[c->ia_slot].label = c->name; /* despawning moves NPCs in the array */
@@ -1653,6 +1673,11 @@ static void interact_tick(Game *g, MgApp *app)
     }
     if (hover != IA_NONE) {
         g->ia.active = hover;
+    }
+    if (g->hud_clamp_test) { /* every panel up at once, while 16 markers go round the edge */
+        g->settings.preview_any = g->settings.force_lift_panel = true;
+        g->greet_t = 2.0f;
+        SDL_snprintf(g->greet_line, sizeof(g->greet_line), "%s", str("autotest_text"));
     }
     if (g->settings.preview_any) {
         const GfxMeshId meshes[] = {g->unit_box, g->markers.diamond, g->markers.ring, g->avatar_meshes.shadow};
@@ -1941,6 +1966,17 @@ void game_frame(MgApp *app, float alpha)
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
     probe.show_stats = s->show_stats;
+    probe.hud_res = g->hud_res;
+    probe.hud_res_count = g->hud_res_count;
+    if (g->text_test) {
+        static const uint32_t ro[] = {0x103, 0xE2, 0xEE, 0x219, 0x21B, 0x102, 0xC2, 0xCE, 0x218, 0x21A};
+        probe.text_ok = true;
+        for (size_t i = 0; i < MG_ARRAY_COUNT(ro); i++) {
+            probe.text_ok = probe.text_ok && text_has_glyph(&app->font, ro[i]);
+        }
+        /* the cedilla forms draw the comma glyphs */
+        probe.text_ok = probe.text_ok && app->font.glyphs[0x15F].u0 == app->font.glyphs[0x219].u0 && app->font.glyphs[0x163].u0 == app->font.glyphs[0x21B].u0;
+    }
     if (g->ia_check && g->ia_ok && g->playing) {
         interact_probe(g, app, &probe);
     } else {
@@ -2166,7 +2202,7 @@ void game_frame(MgApp *app, float alpha)
     Elevator *el = scene_elevator(g->scene);
     const bool riding = el && elevator_busy(el);
     /* auto-nav rides on its own: no panel unless the player cancels */
-    const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && !autonav_active(&g->autonav) &&
+    const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && (!autonav_active(&g->autonav) || s->force_lift_panel) &&
                             (elevator_contains(el, g->player.kin.pos, g->kparams.radius) || s->force_lift_panel);
     if (g->lift_panel_ok && el) {
         const ui_frame_t lf = frame_of(app);
@@ -2463,7 +2499,7 @@ void game_frame(MgApp *app, float alpha)
         return;
     }
     if (g->nav) {
-        markers_hud(g, app, floor, feet, menu_shown);
+        markers_hud(g, app, floor, feet);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
@@ -2504,10 +2540,17 @@ void game_frame(MgApp *app, float alpha)
     }
     layout_autotest(g, app);
     draw_chat_bubbles(g, app, floor);
+    if (g->text_test) { /* --autotest text */
+        const float tw = mg_minf(app->width_pt - 40.0f, 760.0f), tx = (app->width_pt - tw) * 0.5f, ty = app->height_pt * 0.5f - 70.0f;
+        ui_round_rect(app->gfx, &app->font, tx, ty, tw, 140.0f, 14.0f, ui_rgba(0x101218F0));
+        text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 44.0f, 30.0f, ui_rgba(0xFFFFFFFF), str("autotest_text"));
+        text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 100.0f, 20.0f, ui_rgba(0xFFD166FF), str("autotest_text_line"));
+    }
     if (g->greet_t > 0.0f) { /* bottom right, beside the preview card */
         g->greet_t = mg_maxf(g->greet_t - mg_minf(app->frame_dt, 0.1f), 0.0f);
-        const ui_frame_t cf = frame_of(app);
-        const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f, cx = ui_safe_right(&cf) - UI_MARGIN - cf.corner - g->panel.size - 12.0f - cw, cy = ui_safe_bottom(&cf) - UI_MARGIN - ch;
+        float gr[4];
+        greet_rect(g, app, gr);
+        const float cw = gr[2], ch = gr[3], cx = gr[0], cy = gr[1];
         ui_round_rect(app->gfx, &app->font, cx, cy, cw, ch, 12.0f, ui_rgba(0x101218E8));
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 18.0f, 13.0f, ui_rgba(0xFFD166FF), g->greet_name);
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(0xFFFFFFFF), g->greet_line);
@@ -2518,7 +2561,7 @@ void game_frame(MgApp *app, float alpha)
     }
     if (g->ia_ok) {
         const ui_frame_t pf = frame_of(app);
-        const bool hide_panel = g->menu.open || riding || (g->lift_panel_ok && g->lift_panel.slide > 0.0f);
+        const bool hide_panel = g->menu.open || riding || (g->lift_panel_ok && g->lift_panel.slide > 0.0f && !g->hud_clamp_test);
         preview_panel_update(&g->panel, hide_panel || g->no_panels ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
         preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
         preview_panel_draw_ui(&g->panel, &g->ia, app->gfx, &app->font);
@@ -2684,7 +2727,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         float x, z;
         int st;
         const char *at = arg_value(app->argc, app->argv, "--autotest");
-        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && SDL_strcmp(at, "interact") == 0) ? 0 : -1));
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && SDL_strcmp(at, "interact") == 0) ? 0 : (at && SDL_strcmp(at, "hudclamp") == 0 ? 16 : -1)));
         if (at && SDL_strcmp(at, "interact") == 0) {
             marker_add(ms, HMM_V3(10.4f, scene_floor_y(g->scene, 0), -3.0f), 0, MARKER_OBJECTIVE, 0xFF9F0AFF);
         }
@@ -2744,7 +2787,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
     }
 }
 
-static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool floor_menu_up)
+static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
 {
     Markers *ms = &g->markers;
     const float dt = mg_minf(app->frame_dt, 0.1f);
@@ -2778,9 +2821,9 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
         *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
                             scale, shake, m->ring_t, tint};
     }
-    /* panels the icons stay out of: pause button, lift panel, interact card, toast */
+    /* panels the icons stay out of: pause button, lift panel, interact card, greeting card, toast */
     const float w = app->width_pt, h = app->height_pt;
-    float res[16];
+    float *res = g->hud_res;
     int rc = 0;
     const ui_frame_t uf = frame_of(app);
     float px, py, ps;
@@ -2788,7 +2831,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
     const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
     memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
-    if (floor_menu_up && g->lift_panel_ok) {
+    if (g->lift_panel_ok && elevator_panel_visible(&g->lift_panel)) {
         const float fm[4] = {g->lift_panel.x, g->lift_panel.y, g->lift_panel.w, g->lift_panel.h};
         memcpy(res + rc * 4, fm, sizeof(fm));
         rc++;
@@ -2798,11 +2841,21 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
         memcpy(res + rc * 4, card, sizeof(card));
         rc++;
     }
+    if (g->greet_t > 0.0f) {
+        greet_rect(g, app, res + rc * 4);
+        rc++;
+    }
+    if (g->settings.show_stats && !g->perf.active) { /* the same box --autotest layout checks */
+        const float st[4] = {app->safe_left + 10.0f + app->corner_clearance, app->safe_top + 8.0f, 200.0f, 90.0f};
+        memcpy(res + rc * 4, st, sizeof(st));
+        rc++;
+    }
     if (frontend_toast_active(&g->fe, app->time)) {
         const float t[4] = {w * 0.5f - 170.0f, h - mg_maxf(app->safe_bottom, 12.0f) - 60.0f, 340.0f, 48.0f};
         memcpy(res + rc * 4, t, sizeof(t));
         rc++;
     }
+    g->hud_res_count = rc;
     MarkerHudView v = {g->view_proj, w, h, app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, view_floor, res, rc};
     g->hud_count = marker_hud_layout(g->hud_in, n, &v, g->hud_out);
     marker_hud_draw(app->gfx, &app->font, g->hud_out, g->hud_count, view_floor);
@@ -3046,6 +3099,9 @@ static void layout_autotest(Game *g, MgApp *app)
     const ui_frame_t f = frame_of(app);
     float px, py, ps;
     ui_pause_rect(&f, &px, &py, &ps);
+    static const char *const orient[5] = {"unknown", "landscape (SDL)", "landscape-flipped (SDL)", "portrait", "portrait-flipped"};
+    const SDL_DisplayOrientation so = SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay());
+    mg_log_info("autotest layout: display orientation %s", orient[so >= 0 && so < 5 ? so : 0]);
     const float r = g->touch_cfg.radius_pt * 0.75f;
     const float stick_x = f.inset_l + 16.0f, stick_y = f.h - f.inset_b - 16.0f - 2.0f * r;
     const struct { const char *name; float x, y, w, h; } items[] = {

@@ -72,15 +72,43 @@ bool text_init(TextFont *f, GfxContext *g)
             }
         }
     }
+    /* the cedilla forms old keyboards type are the same letters */
+    static const uint32_t same[][2] = {{0x15E, 0x218}, {0x15F, 0x219}, {0x162, 0x21A}, {0x163, 0x21B}};
+    for (size_t i = 0; i < MG_ARRAY_COUNT(same); i++) {
+        f->glyphs[same[i][0]] = f->glyphs[same[i][1]];
+    }
     return gfx_set_ui_atlas(g, p, aw, ah);
 }
 
-static const TextGlyph *glyph_for(const TextFont *f, unsigned char ch)
+static const TextGlyph *glyph_for(const TextFont *f, uint32_t cp)
 {
-    if (ch < TEXT_GLYPH_SLOTS && f->glyphs[ch].present) {
-        return &f->glyphs[ch];
+    if (cp < TEXT_GLYPH_SLOTS && f->glyphs[cp].present) {
+        return &f->glyphs[cp];
     }
     return &f->glyphs['?'];
+}
+
+bool text_has_glyph(const TextFont *f, uint32_t cp) { return cp < TEXT_GLYPH_SLOTS && f->glyphs[cp].present; }
+
+/* The next code point of a UTF-8 string; a broken sequence is one '?' per byte. */
+static uint32_t next_cp(const char **ps)
+{
+    const unsigned char *s = (const unsigned char *)*ps;
+    const int len = s[0] < 0x80 ? 1 : (s[0] & 0xE0) == 0xC0 ? 2 : (s[0] & 0xF0) == 0xE0 ? 3 : (s[0] & 0xF8) == 0xF0 ? 4 : 0;
+    uint32_t cp = len == 1 ? s[0] : len == 2 ? s[0] & 0x1Fu : len == 3 ? s[0] & 0x0Fu : s[0] & 0x07u;
+    for (int i = 1; i < len; i++) {
+        if ((s[i] & 0xC0) != 0x80) {
+            *ps += 1;
+            return '?';
+        }
+        cp = (cp << 6) | (s[i] & 0x3Fu);
+    }
+    if (len == 0) {
+        *ps += 1;
+        return '?';
+    }
+    *ps += len;
+    return cp;
 }
 
 float text_line_height(const TextFont *f, float size_pt) { return f->line_px * size_pt / f->em_px; }
@@ -89,8 +117,8 @@ float text_width(const TextFont *f, const char *s, float size_pt)
 {
     float scale = size_pt / f->em_px;
     float w = 0.0f;
-    for (; *s; s++) {
-        w += glyph_for(f, (unsigned char)*s)->advance * scale;
+    while (*s) {
+        w += glyph_for(f, next_cp(&s))->advance * scale;
     }
     return w;
 }
@@ -119,8 +147,8 @@ float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_p
     float scale = size_pt / f->em_px;
     float pen = x;
     float baseline = y + f->ascent_px * scale;
-    for (; *s; s++) {
-        const TextGlyph *gl = glyph_for(f, (unsigned char)*s);
+    while (*s) {
+        const TextGlyph *gl = glyph_for(f, next_cp(&s));
         if (gl->w > 0.0f) {
             GfxUiVertex *v = gfx_ui_quads(g, 1);
             if (!v) {
@@ -140,8 +168,8 @@ void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_
     float scale = height_m / f->em_px;
     float pen = -text_width(f, s, height_m) * 0.5f;
     float top = f->ascent_px * scale * 0.55f; /* same vertical centring as text_draw_centered */
-    for (; *s; s++) {
-        const TextGlyph *gl = glyph_for(f, (unsigned char)*s);
+    while (*s) {
+        const TextGlyph *gl = glyph_for(f, next_cp(&s));
         if (gl->w > 0.0f) {
             float x0 = pen + gl->xoff * scale, x1 = x0 + gl->w * scale;
             float y0 = top - (f->ascent_px + gl->yoff) * scale, y1 = y0 - gl->h * scale;

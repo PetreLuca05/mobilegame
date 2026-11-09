@@ -17,6 +17,8 @@
  *   interact    walk to a call button, a marker and the receptionist (panel up, a drag does
  *               nothing, a tap fires once), then the lift's 3D buttons, an auto-ride with no
  *               panel, desktop hover, Pause -> Performance; scan lag against brute force
+ *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
+ *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -72,6 +74,10 @@ typedef struct AutotestProbe {
     float lift_btn_x[3], lift_btn_y[3];
     int hover_slot;            /* -1: none on screen, or no mouse */
     float hover_x, hover_y;
+    uint32_t active_flags;
+    const float *hud_res;      /* what marker icons stay out of: x, y, w, h */
+    int hud_res_count;
+    bool text_ok;              /* --autotest text: every Romanian letter has its glyph */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -113,8 +119,9 @@ typedef struct Autotest {
     TapStep steps[12];
     int step_count;
     uint32_t it_fired, it_reached;
-    bool it_hidden;
+    bool it_hidden, it_priority;
     int it_rides, it_hover;
+    int clamp_frames, clamp_edge, clamp_hidden;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

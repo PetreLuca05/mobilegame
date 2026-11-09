@@ -8,14 +8,14 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN, AUTOTEST_INTERACT };
+       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "freeroam-create", "freeroam-join", "interact"};
+                                        "offline", "freeroam-create", "freeroam-join", "interact", "text", "hudclamp"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 12 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 14 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -45,7 +45,7 @@ bool autotest_starts_in_game(int argc, char **argv)
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
                    SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0 ||
                    SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0 ||
-                   SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 || SDL_strcmp(argv[i + 1], "interact") == 0 ||
+                   SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 || SDL_strcmp(argv[i + 1], "interact") == 0 || SDL_strcmp(argv[i + 1], "text") == 0 || SDL_strcmp(argv[i + 1], "hudclamp") == 0 ||
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0;
@@ -731,6 +731,58 @@ static bool run_continue(Autotest *t, MgApp *app, const AutotestProbe *p)
     return true;
 }
 
+static void walk_to(AutotestOut *out, HMM_Vec3 at, int storey);
+
+/* Every frame, with the pause button, lift panel, preview and greeting card all up: no icon on a panel */
+static bool run_hud_clamp(Autotest *t, const AutotestProbe *p, AutotestOut *out, double el)
+{
+    static const struct { float x, y, z; int storey; } wp[] = {
+        {-20.0f, 0.0f, 10.0f, -1}, {20.0f, 0.0f, 10.0f, -1}, {3.0f, 0.0f, -3.0f, 0}, {-10.4f, 0.0f, -4.0f, 0}, {10.4f, 0.0f, -4.0f, 0}, {0.0f, 8.0f, 0.0f, -2},
+    };
+    if (!p->playing || el < 3.0) {
+        return false;
+    }
+    int edge = 0, hidden = 0;
+    for (int i = 0; i < p->hud_count; i++) {
+        const MarkerHudOut *o = &p->hud[i];
+        hidden += o->hidden;
+        if (!o->icon || o->hidden) {
+            continue;
+        }
+        edge += o->edge;
+        for (int r = 0; r < p->hud_res_count; r++) {
+            const float *q = p->hud_res + r * 4;
+            if (o->x > q[0] - 14.0f && o->x < q[0] + q[2] + 14.0f && o->y > q[1] - 14.0f && o->y < q[1] + q[3] + 14.0f) {
+                mg_log_info("autotest hudclamp: icon at %.0f, %.0f touches panel %d (%.0f, %.0f, %.0f x %.0f)", (double)o->x, (double)o->y, r, (double)q[0], (double)q[1],
+                            (double)q[2], (double)q[3]);
+                return fail(t, "hudclamp", "a marker icon is on a HUD panel");
+            }
+        }
+    }
+    t->clamp_frames++;
+    t->clamp_edge = edge > t->clamp_edge ? edge : t->clamp_edge;
+    t->clamp_hidden = hidden > t->clamp_hidden ? hidden : t->clamp_hidden;
+    if (t->stage == 0 || (el >= t->wait_until && (p->nav_state == 0 || p->nav_state == 4 || p->nav_state == 6 || el - t->step_start > 30.0))) {
+        if (t->stage >= (int)(sizeof(wp) / sizeof(wp[0]) - 1)) {
+            mg_log_info("autotest hudclamp: %d frames, %d panels, most edge icons at once %d, most hidden %d", t->clamp_frames, p->hud_res_count, t->clamp_edge, t->clamp_hidden);
+            if (t->clamp_frames < 120 || t->clamp_edge < 4 || p->hud_res_count < 4) {
+                return fail(t, "hudclamp", "too little was on screen to prove anything");
+            }
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = true;
+            return true;
+        }
+        walk_to(out, HMM_V3(wp[t->stage].x, 0.1f, wp[t->stage].z), wp[t->stage].storey);
+        if (t->stage == 2) {
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "hud_16_markers");
+        }
+        t->stage++;
+        t->wait_until = el + 0.5;
+        t->step_start = el;
+    }
+    return false;
+}
+
 static void tap_later(Autotest *t, MgApp *app, float x, float y, double el, int next)
 {
     finger(app, SDL_EVENT_FINGER_DOWN, INTERACT_FINGER, x, y);
@@ -795,6 +847,7 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
                 return fail(t, "interact", "walking onto the marker fired it");
             }
             mg_log_info("autotest interact: %s panel up after %.1f s, not fired (ok)", names[i], el - t->step_start);
+            t->it_priority = (p->active_flags & 8u /* IA_PRIORITY */) != 0;
             t->wait_until = el + 0.4; /* past the cross-fade */
             t->stage = 200;
         } else if (el - t->step_start > 70.0) {
@@ -860,6 +913,9 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
                 return fail(t, "interact", "no greeting card");
             }
             mg_log_info("autotest interact: %s fired once by the tap (ok)", names[i]);
+            if (i == 2 && !t->it_priority) {
+                return fail(t, "interact", "the receptionist has no interact_priority");
+            }
             if (i == 2) {
                 IT_SHOT("greeting");
             }
@@ -1096,6 +1152,24 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_INTERACT:
         finished = run_interact(t, app, p, out, el);
+        break;
+    case AUTOTEST_HUDCLAMP:
+        finished = run_hud_clamp(t, p, out, el);
+        break;
+    case AUTOTEST_TEXT:
+        if (t->stage == 0 && el > 3.0) {
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "text_romanian");
+            t->stage = 1;
+        }
+        if (t->stage == 1 && el > 4.0) {
+            if (!p->text_ok) {
+                finished = fail(t, "text", "a Romanian letter has no glyph, or a cedilla form is not mapped");
+            } else {
+                mg_log_info("autotest text: all ten letters have glyphs, cedilla forms map to the comma ones (ok)");
+                mg_log_info("AUTOTEST PASSED");
+                t->passed = finished = true;
+            }
+        }
         break;
     case AUTOTEST_FR_CREATE:
     case AUTOTEST_FR_JOIN:

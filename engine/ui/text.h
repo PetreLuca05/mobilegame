@@ -7,7 +7,7 @@
 #include "gfx/mesh.h"
 
 #define TEXT_FIRST_CHAR 32
-#define TEXT_GLYPH_SLOTS 128
+#define TEXT_GLYPH_SLOTS 0x250 /* by code point: up to Latin Extended-B, where the comma-below letters are */
 
 typedef struct TextGlyph {
     float u0, v0, u1, v1; /* atlas UVs */
@@ -18,7 +18,7 @@ typedef struct TextGlyph {
 } TextGlyph;
 
 typedef struct TextFont {
-    TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* ASCII; non-ASCII extras live in control-char slots */
+    TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* icon extras live in control-char slots */
     float em_px;
     float ascent_px;
     float line_px;
@@ -44,6 +44,8 @@ static inline UiColor ui_rgba(uint32_t rgba)
 }
 
 bool text_init(TextFont *f, GfxContext *g);
+/* Strings are UTF-8. */
+bool text_has_glyph(const TextFont *f, uint32_t cp);
 float text_width(const TextFont *f, const char *s, float size_pt);
 float text_line_height(const TextFont *f, float size_pt);
 /* (x, y) is the top-left of the line box. Returns the advance width. */

@@ -3,12 +3,14 @@
 
 int test_kinematic(void);
 int test_replication(void);
+int test_interact(void);
 
 int main(void)
 {
     int failures = 0;
     failures += test_kinematic();
     failures += test_replication();
+    failures += test_interact();
     if (failures) {
         printf("\n%d check(s) FAILED\n", failures);
         return 1;

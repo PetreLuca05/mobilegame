@@ -144,28 +144,6 @@ static NpcLookKind look_of(const char *s)
     return LOOK_CIVILIAN;
 }
 
-/* The font atlas is ASCII: Romanian letters become their plain forms, in place. */
-static void fold_diacritics(char *s)
-{
-    static const struct { unsigned char a, b; char to; } map[] = {
-        {0xC4, 0x83, 'a'}, {0xC4, 0x82, 'A'}, {0xC3, 0xA2, 'a'}, {0xC3, 0x82, 'A'}, {0xC3, 0xAE, 'i'}, {0xC3, 0x8E, 'I'},
-        {0xC8, 0x99, 's'}, {0xC8, 0x98, 'S'}, {0xC8, 0x9B, 't'}, {0xC8, 0x9A, 'T'},
-        {0xC5, 0x9F, 's'}, {0xC5, 0x9E, 'S'}, {0xC5, 0xA3, 't'}, {0xC5, 0xA2, 'T'},
-    };
-    char *w = s;
-    for (const char *r = s; *r;) {
-        char out = 0;
-        for (size_t i = 0; i < sizeof(map) / sizeof(map[0]) && !out; i++) {
-            if ((unsigned char)r[0] == map[i].a && (unsigned char)r[1] == map[i].b) {
-                out = map[i].to;
-            }
-        }
-        *w++ = out ? out : *r;
-        r += out ? 2 : 1;
-    }
-    *w = 0;
-}
-
 static int load_names(const cJSON *root, const char *key, const char **out, Arena *perm)
 {
     int n = 0;
@@ -177,7 +155,6 @@ static int load_names(const cJSON *root, const char *key, const char **out, Aren
             char *copy = ARENA_PUSH(perm, char, len);
             if (copy) {
                 memcpy(copy, it->valuestring, len);
-                fold_diacritics(copy);
                 out[n++] = copy;
             }
         }
@@ -213,6 +190,20 @@ bool npc_data_load(NpcData *d, Arena *perm)
         NpcArchetype *ar = &d->archetypes[d->archetype_count++];
         const char *name = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(a, "name"));
         SDL_snprintf(ar->name, sizeof(ar->name), "%s", name ? name : "?");
+        /* true = at any post; a list = only at those kinds of slot */
+        const cJSON *prio = cJSON_GetObjectItemCaseSensitive(a, "interact_priority");
+        ar->interact_priority = cJSON_IsTrue(prio) || cJSON_IsArray(prio);
+        if (cJSON_IsArray(prio)) {
+            const cJSON *tag;
+            cJSON_ArrayForEach(tag, prio)
+            {
+                const uint32_t t = cJSON_IsString(tag) ? slot_tag_from_name(tag->valuestring) : 0;
+                if (!t) {
+                    mg_log_error("npc: unknown slot tag in interact_priority of %s", ar->name);
+                }
+                ar->priority_tags |= t;
+            }
+        }
         const char *type = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(a, "type"));
         ar->type = type_of(type ? type : "");
         const char *look = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(a, "look"));
@@ -252,7 +243,6 @@ bool npc_data_load(NpcData *d, Arena *perm)
                 char *copy = ARENA_PUSH(perm, char, len);
                 if (copy) {
                     memcpy(copy, it->valuestring, len);
-                    fold_diacritics(copy);
                     d->greetings[i][d->n_greetings[i]++] = copy;
                 }
             }
