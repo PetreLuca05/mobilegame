@@ -99,8 +99,8 @@ binary as C arrays; look assets up with `mg_asset_find("path/from/repo/root")`.
 Project ref `kugytvcupelitbaksotg` (eu-central-1). Client config lives in the
 git-ignored `config.local.h` (copy `config.local.h.example`): host + publishable
 key only, never the service key.
-Migrations in `supabase/migrations/` (0001 realtime, 0002 world shards,
-0003 accounts: `profiles` + `stats` with RLS, sign-up trigger,
+Migrations in `supabase/migrations/`, named by the version recorded on the project (`<timestamp>_<name>.sql`, so `supabase db push` lines up): realtime, world shards, friends (`supabase/tests/friends_test.sql`; it always ends by raising, `ALL FRIENDS SQL TESTS PASSED` is the pass), and
+accounts: `profiles` + `stats` with RLS, sign-up trigger,
 `delete_anonymous_self()`). Apply with the CLI:
 ```
 supabase link --project-ref kugytvcupelitbaksotg
