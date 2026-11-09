@@ -1,4 +1,4 @@
-/* M8: the lift's 3D button panel, a floating 3D rectangle at the right of the safe area while the player
+/* M8: the lift's 3D button panel, a floating 3D rectangle in the bottom right of the safe area while the player
  * stands in the car. Drawn in the main pass ahead of the world (a depth-range inset); the column of
  * buttons comes from the lift's floor count. Tap-only through the touch targets. */
 #ifndef MG_ELEVATOR_PANEL_H

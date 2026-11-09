@@ -8,17 +8,16 @@
 #define SLIDE_IN_S 0.22f
 #define SLIDE_OUT_S 0.25f
 #define PRESS_DELAY 0.4f
-#define HEIGHT_FRACTION 0.95f /* of the safe height */
+#define HEIGHT_FRACTION 0.7125f /* of the safe height */
 #define VIEW_ASPECT 0.72f     /* the area it is drawn in, width / height */
 #define VIEW_HALF 0.6f        /* how much of its height that area shows, up and down from the centre */
 #define SLAB_HALF_W 0.31f
 #define SLAB_HALF_H 0.5f
 #define SLAB_HALF_D 0.12f
 #define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen; a turn about the vertical only, so its upright edges stay parallel to the screen edge */
-#define EDGE_GAP 16.0f
-#define BUTTON_MAX_R 0.088f
-#define BUTTON_H 0.0325f
-#define BUTTON_SINK 0.026f
+#define BUTTON_MAX_R 0.11f
+#define BUTTON_H 0.04f
+#define BUTTON_SINK 0.032f
 #define FACE_LIFT 0.002f      /* the buttons and the ring stand on the front plate */
 #define LABEL_LIFT 0.004f     /* over whatever it is printed on */
 #define LABEL_EM 1.2f         /* of the button radius */
@@ -49,7 +48,7 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     /* the column, top floor first, under the floor indicator */
     const float top = 0.2f, bottom = -0.38f;
     const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
-    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.286f : BUTTON_MAX_R);
+    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.3575f : BUTTON_MAX_R);
     for (int i = 0; i < p->floors; i++) {
         p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
     }
@@ -92,6 +91,18 @@ static void cap_to_screen(const ElevatorPanel *p, float fx, float fy, float *x, 
     *y = p->y + (0.5f - c.Y / c.W * 0.5f) * p->h;
 }
 
+/* How far the slab's lower right corner reaches into its area, 0 .. 1 */
+static void slab_extent(float *right, float *bottom)
+{
+    const HMM_Mat4 mvp = HMM_MulM4(slab_view_proj(), slab_root(0.0f));
+    *right = *bottom = 0.0f;
+    for (int i = 0; i < 2; i++) {
+        const HMM_Vec4 c = HMM_MulM4V4(mvp, HMM_V4(SLAB_HALF_W, -SLAB_HALF_H, i ? SLAB_HALF_D : -SLAB_HALF_D, 1.0f));
+        *right = mg_maxf(*right, c.X / c.W * 0.5f + 0.5f);
+        *bottom = mg_maxf(*bottom, 0.5f - c.Y / c.W * 0.5f);
+    }
+}
+
 void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame_t *f)
 {
     p->slide = open ? mg_minf(p->slide + dt / SLIDE_IN_S, 1.0f) : mg_maxf(p->slide - dt / SLIDE_OUT_S, 0.0f);
@@ -105,8 +116,11 @@ void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame
     const float ease = 1.0f - (1.0f - p->slide) * (1.0f - p->slide);
     p->h = ui_safe_h(f) * HEIGHT_FRACTION;
     p->w = p->h * VIEW_ASPECT;
-    p->x = ui_safe_right(f) - p->w - EDGE_GAP + (1.0f - ease) * (p->w + f->inset_r + EDGE_GAP + 8.0f); /* right edge: the stick owns the left */
-    p->y = ui_safe_top(f) + (ui_safe_h(f) - p->h) * 0.5f;
+    float right, bottom;
+    slab_extent(&right, &bottom);
+    const float gap = UI_MARGIN + f->corner; /* the slab itself sits in the bottom right corner, like the preview: the stick owns the left */
+    p->x = ui_safe_right(f) - gap - p->w * right + (1.0f - ease) * (p->w + f->inset_r + gap + 8.0f);
+    p->y = ui_safe_bottom(f) - gap - p->h * bottom;
 }
 
 void elevator_panel_button_pos(const ElevatorPanel *p, int floor, float *x, float *y)
