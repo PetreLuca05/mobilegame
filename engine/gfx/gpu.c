@@ -2333,11 +2333,11 @@ static void frame_end(GfxContext *g)
 #endif
     {
         PROF_SCOPE("render.encode");
-        draw_insets(g, pass, true);
+        const uint32_t pre_world = draw_insets(g, pass, true);
 #ifndef MG_RENDER_FULL
         push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, 0.0f);
 #endif
-        g->stats.draws = draw_list(g, pass, TARGET_MAIN, false, 0);
+        g->stats.draws = pre_world + draw_list(g, pass, TARGET_MAIN, false, 0);
         g->stats.draws += draw_insets(g, pass, false);
     }
 
