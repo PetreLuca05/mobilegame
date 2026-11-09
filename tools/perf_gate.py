@@ -12,6 +12,7 @@ import os
 import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
+PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
 SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4"]
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
@@ -50,6 +51,8 @@ def main():
             m = metrics(d, g)
             if sc in ("lift_panel", "interact_npc") and d.get("panel_samples", 0) < 0.9 * d["frames"]:
                 problems.append(f"{dev} {sc}: the panel was up in only {d.get('panel_samples', 0)} of {d['frames']} frames")
+            if sc == "lobby4" and d["counters"]["passes"]["max"] > PRE_FRIENDS_PASSES:
+                problems.append(f"{dev} {sc}: {d['counters']['passes']['max']:.0f} passes, the pre-FRIENDS baseline is {PRE_FRIENDS_PASSES}")
             for name, (budget, stress_only) in BUDGETS.items():
                 if stress_only and sc != "stress200":
                     continue

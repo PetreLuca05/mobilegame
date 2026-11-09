@@ -17,7 +17,7 @@ typedef enum FtOpKind {
     OP_END, OP_READY, OP_NET_DOWN, OP_CLEAN, OP_PUB_CODE, OP_READ_PEER, OP_SIG, OP_WAIT, OP_TAP, OP_TAP_P, OP_TAP_OPT, OP_SET_CODE,
     OP_ACCEPT_ALL, OP_FRIENDS, OP_ST, OP_BADGE, OP_NOTICE, OP_PLAYERS, OP_LOBBY, OP_TOKEN, OP_PLAYING, OP_MENU, OP_SLEEP, OP_SHOT,
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
-    OP_NO_TOGGLE,
+    OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -38,6 +38,7 @@ typedef struct FtOp {
 #define NOTICE {OP_NOTICE, NULL, 0}
 #define JOIN {OP_TAP_P, "fjoin_%s", 0}
 #define ASKS_REFUSED(x) {OP_ASK_ERR, x, 0}
+#define ADD_BY_NAME(n) TAP("menurow30"), TAP("ftab2"), {OP_SET_SEARCH, n, 0}, {OP_SEARCH_HAS, NULL, 0}, {OP_TAP_P, "fres_%s", 0}, SLEEP(1.0)
 #define ADD_PEER TAP("menurow30"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0)
 
 static const FtOp k_a1[] = {
@@ -72,7 +73,10 @@ static const FtOp k_a3[] = {
     WAIT("b_menu"), NEW_GAME, {OP_DEBUG_PLAYERS, NULL, 4}, SIG("a_full"), WAIT("b_full_ok"), {OP_DEBUG_PLAYERS, NULL, 0},
     TAP("gear"), TAP("p_friends"), SLEEP(1.0), {OP_REMEMBER, NULL, 0}, SIG("a_watch"), WAIT("b_skin"), {OP_SKIN_SEEN, NULL, 0}, SLEEP(1.0),
     SHOT("friends_new_skin"), TAP("friends"), TAP("p_resume"), SIG("a_rm_wait"), WAIT("b_removed"), {OP_HEADS, NULL, 0},
-    BACK_TO_MENU, SLEEP(1.0), {OP_END, NULL, 0},
+    /* a friend request declined here, then one cancelled by its sender */
+    TAP("gear"), TAP("p_friends"), TAP("ftab1"), WAIT("b_req2"), {OP_BADGE, NULL, 1}, SLEEP(1.0), {OP_TAP_P, "frq_no_%s", 0}, SLEEP(1.0), {OP_GONE, NULL, 0},
+    SIG("a_req_declined"), WAIT("b_req3"), {OP_BADGE, NULL, 1}, WAIT("b_cancelled"), {OP_GONE, NULL, 0},
+    TAP("friends"), TAP("p_resume"), BACK_TO_MENU, SLEEP(1.0), {OP_END, NULL, 0},
 };
 
 static const FtOp k_b[] = {
@@ -87,13 +91,26 @@ static const FtOp k_b[] = {
     SLEEP(1.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), SLEEP(11.0), JOIN, SIG("b_ask5"), {OP_PLAYING, NULL, 0}, PLAYERS(2), WAIT("a_leaving"),
     {OP_MENU, NULL, 0}, SIG("b_menu"), SLEEP(1.0), TAP("menurow30"), TAP("ftab0"), WAIT("a_full"), ST(NET_FS_FULL), ASKS_REFUSED("lobby_full"), SIG("b_full_ok"),
     WAIT("a_watch"), {OP_SKIN, NULL, 0}, SIG("b_skin"), WAIT("a_rm_wait"),
-    {OP_TAP_P, "fmore_%s", 0}, TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0}, ASKS_REFUSED("not_friends"), SIG("b_removed"), {OP_END, NULL, 0},
+    {OP_TAP_P, "fmore_%s", 0}, TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0}, ASKS_REFUSED("not_friends"), SIG("b_removed"),
+    TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0), SIG("b_req2"), WAIT("a_req_declined"), {OP_GONE, NULL, 0},
+    {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0), SIG("b_req3"), TAP("ftab1"), SLEEP(1.0), {OP_TAP_P, "frq_x_%s", 0}, SLEEP(1.0), {OP_GONE, NULL, 0}, SIG("b_cancelled"),
+    {OP_END, NULL, 0},
 };
 
 static const FtOp k_c[] = {
-    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("c_req"),
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_BY_NAME("Ana"), SIG("c_req"),
     WAIT("a_accepted"), TAP("ftab0"), WAIT("a_b_ok"), ST(NET_FS_OPEN), JOIN, SIG("c_asked"), {OP_PLAYING, NULL, 0}, PLAYERS(3), WAIT("a_three"),
     TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0}, SIG("c_left"), {OP_END, NULL, 0},
+};
+
+/* a solo game online: not one broadcast on the room channel for 60 s */
+static const FtOp k_solo[] = {
+    {OP_READY, NULL, 0}, NEW_GAME, {OP_SOLO, NULL, 60}, BACK_TO_MENU, {OP_END, NULL, 0},
+};
+
+/* run after wiping prefs and the cache: the account still has its code and its friends */
+static const FtOp k_reinstall[] = {
+    {OP_READY, NULL, 0}, {OP_CODE_IS, "code_a", 0}, {OP_FRIENDS, NULL, 2}, {OP_END, NULL, 0},
 };
 
 /* no network: the game plays, the switch is off, the list is the cached one */
@@ -109,7 +126,8 @@ void ft_init(FriendsTest *t, const char *role)
     const char *dir = SDL_getenv("MG_FT_SYNC");
     SDL_snprintf(t->dir, sizeof(t->dir), "%s", dir ? dir : "/tmp/mg_ft");
     t->ops = strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
-             : strcmp(role, "c") == 0 ? k_c : k_offline;
+             : strcmp(role, "c") == 0 ? k_c
+             : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
 }
 
 static void sync_path(const FriendsTest *t, const char *name, char *out, size_t cap) { SDL_snprintf(out, cap, "%s/%s", t->dir, name); }
@@ -400,6 +418,41 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     case OP_STALE:
         done = f->stale;
         break;
+    case OP_SET_SEARCH:
+        SDL_snprintf(p->fpage->search_in, sizeof(p->fpage->search_in), "%s", o->s);
+        p->fpage->search_dirty = true;
+        p->fpage->search_at = 0.0;
+        f->searched = false;
+        done = true;
+        break;
+    case OP_SEARCH_HAS:
+        for (int k = 0; f->searched && k < f->search_count && !done; k++) {
+            done = strcmp(f->search[k].code, t->peer_code) == 0;
+        }
+        break;
+    case OP_CODE_IS:
+        done = sync_read(t, o->s, text, sizeof(text));
+        if (done && strcmp(text, f->my_code) != 0) {
+            return fail_now(t, "the friend code changed after the reinstall");
+        }
+        break;
+    case OP_SOLO:
+        if (l->session->status != NET_JOINED || session_player_count(l->session) != 1) {
+            t->solo_from = 0.0; /* the window starts once alone in the joined room */
+        } else if (t->solo_from == 0.0 && now - t->started > 2.0) {
+            t->solo_from = now;
+            t->sends_at_start = net_room_sends(f->net);
+        } else if (t->solo_from > 0.0) {
+            const uint32_t sent = net_room_sends(f->net) - t->sends_at_start;
+            if (sent != 0) {
+                return fail_now(t, "a solo lobby put packets on the room channel");
+            }
+            if (now - t->solo_from >= o->n) {
+                mg_log_info("autotest friends: solo online, %u room packets in %.0f s (%u since launch)", sent, now - t->solo_from, net_room_sends(f->net));
+                done = true;
+            }
+        }
+        break;
     case OP_NO_TOGGLE:
         if (lobby_can_toggle(l) || ui_find(p->ui, "p_lobby", &t->tx, &t->ty)) {
             return fail_now(t, "the lobby switch is up while offline");
@@ -409,7 +462,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     }
     if (done) {
         next(t);
-    } else if (o->op != OP_SLEEP && now - t->started > TIMEOUT_S) {
+    } else if (o->op != OP_SLEEP && o->op != OP_SOLO && now - t->started > TIMEOUT_S) {
         SDL_snprintf(t->why, sizeof(t->why), "op %d (%d) timed out", t->pc, (int)o->op);
         return -1;
     }

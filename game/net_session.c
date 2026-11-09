@@ -112,7 +112,9 @@ void session_set_members(NetSession *s, const char (*ids)[NET_ID_LEN], int count
     s->member_count = count < SESSION_MAX_PLAYERS ? count : SESSION_MAX_PLAYERS;
     memcpy(s->members, ids, (size_t)s->member_count * NET_ID_LEN);
     apply_members(s);
-    net_send_members(s->net, ids, count);
+    if (count > 1) { /* alone: nobody to tell, and a solo lobby stays silent */
+        net_send_members(s->net, ids, count);
+    }
 }
 
 void session_announce_closed(NetSession *s)

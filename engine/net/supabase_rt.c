@@ -86,6 +86,7 @@ struct NetTransport {
     SDL_Mutex *lock;
     SDL_AtomicInt quit;
     SDL_AtomicInt status;
+    SDL_AtomicInt room_sends;
     char self_id[NET_ID_LEN]; /* under lock */
 
     NetCmd cmds[CMD_CAPACITY];
@@ -369,6 +370,7 @@ static void send_state(NetTransport *n, const uint8_t *data, uint16_t len)
                      "\"event\":\"s\",\"payload\":{\"u\":\"%s\",\"d\":\"%s\"}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
                      n->topic, n->auth.user_id, b64, n->ref, n->join_ref);
     send_line(n, l);
+    SDL_AddAtomicInt(&n->room_sends, 1);
 }
 
 static void send_members(NetTransport *n)
@@ -383,6 +385,7 @@ static void send_members(NetTransport *n)
                      "\"event\":\"m\",\"payload\":{\"u\":\"%s\",\"m\":\"%s\"}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
                      n->topic, n->auth.user_id, list, n->ref, n->join_ref);
     send_line(n, l);
+    SDL_AddAtomicInt(&n->room_sends, 1);
 }
 
 static void send_leave_topic(NetTransport *n, const char *topic, int join_ref)
@@ -1637,6 +1640,8 @@ void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count)
     c.type = CMD_MEMBERS;
     push_cmd(n, &c);
 }
+
+uint32_t net_room_sends(NetTransport *n) { return n ? (uint32_t)SDL_GetAtomicInt(&n->room_sends) : 0u; }
 
 void net_json_escape(char *out, size_t cap, const char *s) { json_escape(out, cap, s); }
 

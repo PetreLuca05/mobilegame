@@ -43,12 +43,16 @@ if check a1; then
 fi
 wait $PB; report b
 run offline fta iphone 300; report offline
-grep -E "NPC worlds match|heads generated" $OUT/*.log | cut -c1-160
+run solo fta iphone 300; report solo
+rm -f "$PREFS/fta-prefs.json" "$PREFS/fta-friends_cache.bin" # a reinstall: the account survives in the keychain
+run a4 fta iphone 300; report a4
+grep -hE "NPC worlds match|heads generated|solo online" $OUT/*.log | cut -c36-150
+: grep -E "NPC worlds match|heads generated" $OUT/*.log | cut -c1-160
 if grep -rnIE 'free.?roam|last_mode|last_room|MODE_PARTY|MODE_WORLD|room_code|--party|game/modes|mode_coop|mode_versus' game engine assets/strings*.json CMakeLists.txt tests | grep -v "^tools/friends_test"; then
   echo "FAIL grep gate"; GATE=1
 else
   echo "PASS grep gate"
 fi
 for f in "$PREFS"/friends_*.png; do cp "$f" docs/autotest/friends/ 2>/dev/null; done
-for r in a1 a2 a3 b c offline; do check $r || exit 1; done
+for r in a1 a2 a3 b c offline solo a4; do check $r || exit 1; done
 exit ${GATE:-0}

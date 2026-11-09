@@ -42,3 +42,4 @@ assets/*.preview.png
 # supabase CLI local state
 supabase/.temp/
 supabase/.branches/
+.env

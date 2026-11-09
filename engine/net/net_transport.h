@@ -230,6 +230,8 @@ int net_search_copy(NetTransport *n, NetFriendRow *out, int cap);
 void net_set_friends_cache(NetTransport *n, const char *path);
 /* Room channel: who may be heard here (`count` ids); 0 = the host is closing. */
 void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count);
+/* Broadcasts we have put on a room channel since launch (state and member lists; not Presence). */
+uint32_t net_room_sends(NetTransport *n);
 /* JSON string body (no quotes) */
 void net_json_escape(char *out, size_t cap, const char *s);
 

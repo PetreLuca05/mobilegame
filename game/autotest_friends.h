@@ -25,6 +25,8 @@ typedef struct FriendsTest {
     char peer_id[NET_ID_LEN];
     NetSkin remembered;
     uint32_t npc_seen;
+    uint32_t sends_at_start;
+    double solo_from;
     char why[120];
 } FriendsTest;
 

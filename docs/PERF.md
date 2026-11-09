@@ -241,6 +241,6 @@ tools/perf_run.sh docs/perf/run1 --gpu --gate
 
 `lobby4` (3 fake guests, join panel up, 200 dummies) on the Mac, new camera, labelled sanity, not the gate: 163 draws average, 168 max before the x-ray instancing, 96.7 average, 102 max after (budget 150, an iPad budget; target 110), 4 passes, 0 heap allocations in the frame, 1 dropped frame of 1800, 200 MB resident. The iPad Air 4 was unavailable, so neither the gate nor the generation-frame GPU cost is measured.
 
-Steady state the four passes are main, two blur (the frosted pause disc, since `e99c268`) and UI; head icons add none. Heads are generated at most 2 per frame in one extra offscreen pass, only while the queue is not empty.
+Steady state the four passes are main, two blur (the frosted pause disc, since `e99c268`) and UI; head icons add none. Accepted at FRIENDS-1 review as the known cost of the frosted button: the `lobby4` gate asserts no new passes against that pre-FRIENDS baseline of 4. If the blur ever has to go, it goes, but not in this milestone. Heads are generated at most 2 per frame in one extra offscreen pass, only while the queue is not empty.
 
 The three-instance friends test generated 6 heads into 6 cells, longest placeholder 1 frame.

@@ -324,7 +324,7 @@ Every game is a lobby owned by its player; only friends get in, after the host s
 - `game/friends.c`: `friends_page`, `friends_refresh`, `friends_request_code`, `friends_search`, `friends_respond`, `friends_remove`; `friends_cache.bin` is written by the network thread. `game/friends_page.c` is the page. `engine/ui/notice_panel.c` the top-centre panel (its rect is reserved from marker icons).
 - `engine/ui/head_icons.c` (A1): 64-cell atlas of account heads, keyed by skin hash, max 2 rendered per frame through one offscreen pass; 0 extra draws because `ui.frag` samples it as a second texture when u >= 2.
 - Prefs: `lobby_open` (default on). Strings: `assets/strings_ro.json` first, then `strings.json` as the fallback.
-- `tools/friends_test.sh OUT` runs `--autotest friends` on desktop: roles a1, a2, a3 (restarts), b, c, offline, plus a fourth account; files in `$MG_FT_SYNC` keep them in step. SQL: `supabase/tests/friends_test.sql`.
+- `tools/friends_test.sh OUT` runs `--autotest friends` on desktop: roles a1, a2, a3 (restarts), b, c, offline, solo (0 room packets in 60 s), a4 (prefs and cache wiped, same account), plus a fourth account; c adds by name search, b and a3 cover friend-request decline and cancel; files in `$MG_FT_SYNC` keep them in step. SQL: `supabase/tests/friends_test.sql`.
 
 ## Networking
 
