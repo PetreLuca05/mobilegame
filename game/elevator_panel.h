@@ -16,8 +16,7 @@ typedef struct ElevatorPanel {
     GfxMeshId label[LIFT_PANEL_FLOORS]; /* one per floor, 1 unit tall */
     int floors;
     float button_y[LIFT_PANEL_FLOORS]; /* on the slab's face, -0.5 .. 0.5 */
-    float button_r;      /* base_r, less on big screens (clamped in pt) */
-    float base_r;
+    float button_r;
     float press_anim[LIFT_PANEL_FLOORS]; /* 1 just pressed .. 0 */
     float slide;         /* 0 hidden .. 1 shown */
     float x, y, w, h;    /* the area the slab is drawn in, pt */
