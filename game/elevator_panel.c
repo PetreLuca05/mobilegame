@@ -16,6 +16,7 @@
 #define SLAB_HALF_D 0.07f
 #define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen; a turn about the vertical only, so its upright edges stay parallel to the screen edge */
 #define BUTTON_MAX_R 0.125f
+#define BUTTON_MAX_PT 28.0f   /* the buttons stop growing with the panel on big screens */
 #define BUTTON_H 0.04f
 #define BUTTON_SINK 0.032f
 #define FACE_LIFT 0.002f      /* the buttons and the ring stand on the front plate */
@@ -48,7 +49,7 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     /* the column, top floor first, under the floor indicator */
     const float top = 0.235f, bottom = -0.345f;
     const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
-    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.43f : BUTTON_MAX_R);
+    p->base_r = p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.43f : BUTTON_MAX_R);
     for (int i = 0; i < p->floors; i++) {
         p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
     }
@@ -86,7 +87,7 @@ static HMM_Mat4 slab_view_proj(void)
 /* A point on the top of a resting button, on screen */
 static void cap_to_screen(const ElevatorPanel *p, float fx, float fy, float *x, float *y)
 {
-    const HMM_Vec4 c = HMM_MulM4V4(HMM_MulM4(slab_view_proj(), slab_root(0.0f)), HMM_V4(fx, fy, SLAB_HALF_D + FACE_LIFT + BUTTON_H, 1.0f));
+    const HMM_Vec4 c = HMM_MulM4V4(HMM_MulM4(slab_view_proj(), slab_root(0.0f)), HMM_V4(fx, fy, SLAB_HALF_D + FACE_LIFT + BUTTON_H * p->button_r / p->base_r, 1.0f));
     *x = p->x + (c.X / c.W * 0.5f + 0.5f) * p->w;
     *y = p->y + (0.5f - c.Y / c.W * 0.5f) * p->h;
 }
@@ -121,6 +122,11 @@ void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame
     const float gap = UI_MARGIN + f->corner; /* the slab itself sits in the bottom right corner, like the preview: the stick owns the left */
     p->x = ui_safe_right(f) - gap - p->w * right + (1.0f - ease) * (p->w + f->inset_r + gap + 8.0f);
     p->y = ui_safe_bottom(f) - gap - p->h * bottom;
+    p->button_r = p->base_r;
+    const float pt = elevator_panel_button_radius(p);
+    if (pt > BUTTON_MAX_PT) {
+        p->button_r *= BUTTON_MAX_PT / pt;
+    }
 }
 
 void elevator_panel_button_pos(const ElevatorPanel *p, int floor, float *x, float *y)
@@ -170,12 +176,12 @@ void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_f
     const HMM_Mat4 root = slab_root(40.0f * (1.0f - ease)); /* turns inward as it comes in */
     GfxMaterial steel = mat_toon(mg_rgb(0xCDD5DF), 0.0f);
     gfx_draw(g, p->slab, &root, &steel, GFX_DRAW_NO_SHADOW);
-    const float r = p->button_r;
+    const float r = p->button_r, k = r / p->base_r; /* the depth follows the clamp */
     for (int i = 0; i < p->floors; i++) {
         const float t = 1.0f - p->press_anim[i];
         const float sink = p->press_anim[i] > 0.0f ? BUTTON_SINK * sinf(t * HMM_PI32) : 0.0f; /* down and back up */
         const float grow = 1.0f - 0.08f * (sink / BUTTON_SINK);
-        const float h = BUTTON_H - sink;
+        const float h = (BUTTON_H - sink) * k;
         const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(r * grow, r * grow, h))));
         GfxMaterial btn = p->pressed == i ? mat_toon_emissive(mg_rgb(0xFFD166), 0.9f) : mat_toon(mg_rgb(0xFFFFFF), 0.0f);
         gfx_draw(g, p->button, &m, &btn, GFX_DRAW_NO_SHADOW);
