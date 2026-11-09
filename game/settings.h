@@ -11,9 +11,9 @@ typedef struct GameSettings {
     float pitch_deg_per_pt; /* 0.2 */
     bool invert_y;
     bool show_storeys;      /* colour meshes by storey id (debug) */
-    float td_fov_deg;       /* top-down camera: vertical field of view, 32 */
-    float td_distance;      /* metres from the player, 16 */
-    float td_pitch_deg;     /* degrees down from the horizon, 62 */
+    float td_fov_deg;       /* top-down camera: vertical field of view, 40 */
+    float td_distance;      /* metres from the player, 19 */
+    float td_pitch_deg;     /* degrees down from the horizon, 55 */
     bool show_own_name;     /* name tag over the local player */
     bool show_xray;         /* players' silhouettes through walls (M5-X) */
     bool show_nav;          /* debug: walkability grid + last path */

@@ -14,9 +14,9 @@
  * on screen and the entrance / yard gate (south) is at the bottom, so the
  * player walks "up" into the building and stick up = north. */
 #define CAM_YAW_DEG 0.0f
-#define CAM_PITCH_DEG 62.0f
-#define CAM_FOV_DEG 32.0f
-#define CAM_DISTANCE 16.0f
+#define CAM_PITCH_DEG 55.0f
+#define CAM_FOV_DEG 40.0f
+#define CAM_DISTANCE 19.0f
 /* Settings slider ranges */
 #define CAM_FOV_MIN 20.0f
 #define CAM_FOV_MAX 60.0f

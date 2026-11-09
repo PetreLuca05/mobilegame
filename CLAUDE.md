@@ -149,8 +149,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 ## Camera (M5)
 
-- Default: fixed diagonal top-down `game/camera_td.c` (M5-S) - pitch 62 deg,
-  vertical FOV 32 deg, 16 m from a pivot 0.9 m above the current storey's
+- Default: fixed diagonal top-down `game/camera_td.c` (M5-S) - pitch 55 deg,
+  vertical FOV 40 deg, 19 m from a pivot 0.9 m above the current storey's
   floor, yaw `CAM_YAW_DEG` = 0 (north up: the long east-west axis runs
   left-right, the entrance and the gate at the bottom). No rotate; it only follows (spring 8/s + 1.2 m look-ahead) and rides the
   elevator. Stick / WASD: up = screen up = north.

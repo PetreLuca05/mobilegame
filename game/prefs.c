@@ -79,6 +79,11 @@ void prefs_load(Prefs *p, const char *profile)
         g->td_fov_deg = mg_clampf(num(s, "td_fov", g->td_fov_deg), CAM_FOV_MIN, CAM_FOV_MAX);
         g->td_distance = mg_clampf(num(s, "td_distance", g->td_distance), CAM_DISTANCE_MIN, CAM_DISTANCE_MAX);
         g->td_pitch_deg = mg_clampf(num(s, "td_pitch", g->td_pitch_deg), CAM_PITCH_MIN, CAM_PITCH_MAX);
+        if (g->td_fov_deg == 32.0f && g->td_distance == 16.0f && g->td_pitch_deg == 62.0f) { /* never touched: the old defaults move to the new ones */
+            g->td_fov_deg = CAM_FOV_DEG;
+            g->td_distance = CAM_DISTANCE;
+            g->td_pitch_deg = CAM_PITCH_DEG;
+        }
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
         g->show_xray = flag(s, "show_xray", g->show_xray);
         g->haptics = flag(s, "haptics", g->haptics);
