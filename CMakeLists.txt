@@ -250,6 +250,7 @@ set(MG_GAME_SOURCES
   game/scenery.c
   game/net_session.c
   game/friends.c
+  game/lobby.c
   game/frontend.c
   game/creator.c
   game/modes.c

@@ -58,6 +58,7 @@ void prefs_load(Prefs *p, const char *profile)
 {
     SDL_zerop(p);
     settings_default(&p->settings);
+    p->lobby_open = true;
     char path[512];
     size_t len = 0;
     void *data = prefs_path(profile, "prefs.json", path, sizeof(path)) ? SDL_LoadFile(path, &len) : NULL;
@@ -102,6 +103,7 @@ void prefs_load(Prefs *p, const char *profile)
         g->sound_on = flag(s, "sound", g->sound_on);
     }
     p->onboarding_done = flag(j, "onboarding_done", false);
+    p->lobby_open = flag(j, "lobby_open", true);
     text(j, "auth_provider", p->auth_provider, sizeof(p->auth_provider));
     p->last_mode = (int)num(j, "last_mode", 0);
     text(j, "last_room", p->last_room, sizeof(p->last_room));
@@ -173,6 +175,7 @@ bool prefs_save(const Prefs *p, const char *profile)
 #endif
     cJSON_AddBoolToObject(s, "sound", g->sound_on);
     cJSON_AddBoolToObject(j, "onboarding_done", p->onboarding_done);
+    cJSON_AddBoolToObject(j, "lobby_open", p->lobby_open);
     cJSON_AddStringToObject(j, "auth_provider", p->auth_provider);
     cJSON_AddNumberToObject(j, "last_mode", p->last_mode);
     cJSON_AddStringToObject(j, "last_room", p->last_room);

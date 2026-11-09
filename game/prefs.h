@@ -13,6 +13,7 @@
 typedef struct Prefs {
     GameSettings settings;
     bool onboarding_done;
+    bool lobby_open;        /* FRIENDS-1: last state of my lobby, default on */
     char auth_provider[12]; /* "", "google", "apple", "guest" */
     int last_mode;          /* index into the modes table */
     char last_room[5];

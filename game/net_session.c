@@ -63,7 +63,9 @@ static void clear_remotes(NetSession *s) { memset(s->remotes, 0, sizeof(s->remot
 
 static void join_topic(NetSession *s)
 {
-    if (s->mode == MODE_PARTY) {
+    if (s->mode == MODE_LOBBY) {
+        SDL_snprintf(s->topic, sizeof(s->topic), "room:%s", s->room_token);
+    } else if (s->mode == MODE_PARTY) {
         SDL_snprintf(s->topic, sizeof(s->topic), "room:%s", s->room_code);
     } else {
         SDL_snprintf(s->topic, sizeof(s->topic), "world:%02d", s->shard);
@@ -71,7 +73,7 @@ static void join_topic(NetSession *s)
     s->slot = -1;
     s->slot_announced = false;
     fill_meta(s);
-    net_join(s->net, s->topic, &s->me, s->mode == MODE_PARTY ? PARTY_MAX_PLAYERS : WORLD_SHARD_CAP);
+    net_join(s->net, s->topic, &s->me, s->mode == MODE_WORLD ? WORLD_SHARD_CAP : PARTY_MAX_PLAYERS);
     SDL_snprintf(s->status_text, sizeof(s->status_text), "joining %s", s->topic);
 }
 
@@ -99,6 +101,75 @@ void session_start(NetSession *s, GameMode mode, const char *code)
     join_topic(s);
 }
 
+void session_start_lobby(NetSession *s, const char *token, const char *host)
+{
+    clear_remotes(s);
+    memset(&s->sender, 0, sizeof(s->sender));
+    s->rtt_ms = -1;
+    s->member_count = 0;
+    s->members_filling = 0;
+    s->members_known = false;
+    s->host_closed = false;
+    if (!s->net) {
+        return;
+    }
+    s->mode = MODE_LOBBY;
+    SDL_snprintf(s->room_token, sizeof(s->room_token), "%s", token);
+    SDL_snprintf(s->host_id, sizeof(s->host_id), "%s", host);
+    join_topic(s);
+}
+
+static bool heard(const NetSession *s, const char *id)
+{
+    if (!s->members_known) {
+        return true;
+    }
+    for (int i = 0; i < s->member_count; i++) {
+        if (strcmp(s->members[i], id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Someone off the list is not in the game any more, even if still subscribed */
+static void apply_members(NetSession *s)
+{
+    s->members_known = true;
+    for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+        RemotePlayer *r = &s->remotes[i];
+        if (r->active && !heard(s, r->id)) {
+            mg_log_info("session: %.8s is not on the member list", r->id);
+            r->active = false;
+        }
+    }
+}
+
+void session_set_members(NetSession *s, const char (*ids)[NET_ID_LEN], int count)
+{
+    s->member_count = count < PARTY_MAX_PLAYERS ? count : PARTY_MAX_PLAYERS;
+    memcpy(s->members, ids, (size_t)s->member_count * NET_ID_LEN);
+    apply_members(s);
+    net_send_members(s->net, ids, count);
+}
+
+void session_announce_closed(NetSession *s)
+{
+    if (s->status == NET_JOINED) {
+        net_send_members(s->net, NULL, 0);
+    }
+}
+
+bool session_has_remote(const NetSession *s, const char *id)
+{
+    for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+        if (s->remotes[i].active && strcmp(s->remotes[i].id, id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void session_say_goodbye(NetSession *s, uint32_t tick, HMM_Vec3 pos, float yaw)
 {
     if (!s->net || s->status != NET_JOINED) {
@@ -116,6 +187,10 @@ void session_stop(NetSession *s)
     }
     clear_remotes(s);
     s->mode = MODE_OFFLINE;
+    s->members_known = false;
+    s->member_count = 0;
+    s->host_id[0] = 0;
+    s->host_closed = false;
     s->slot = 0;
     s->topic[0] = 0;
     s->rtt_ms = -1;
@@ -211,7 +286,28 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
     case NET_EV_ACCOUNT_ERROR:
         SDL_snprintf(s->account_error, sizeof(s->account_error), "%s", e->text);
         break;
+    case NET_EV_MEMBERS:
+        if (!s->host_id[0] || strcmp(e->text, s->host_id) != 0) {
+            break; /* only the host's list counts, and the host keeps its own */
+        }
+        if (e->len == 0) {
+            s->host_closed = true;
+            break;
+        }
+        if (e->value == 0) {
+            s->member_count = 0;
+        }
+        if (s->member_count < PARTY_MAX_PLAYERS) {
+            SDL_snprintf(s->members[s->member_count++], NET_ID_LEN, "%s", e->peer);
+        }
+        if (e->value + 1 == e->len) {
+            apply_members(s);
+        }
+        break;
     case NET_EV_PEER_JOIN: {
+        if (!heard(s, e->peer)) {
+            break;
+        }
         RemotePlayer *r = find_remote(s, e->peer, true);
         if (r) {
             r->meta = e->meta;
@@ -243,6 +339,9 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
                 mg_log_info("session: %.8s left (goodbye packet)", e->peer);
             }
             break;
+        }
+        if (!heard(s, e->peer)) {
+            break; /* a kicked client may still be subscribed */
         }
         /* state can arrive just before the presence join */
         RemotePlayer *r = find_remote(s, e->peer, true);
@@ -339,6 +438,9 @@ const char *session_mode_label(const NetSession *s, char *buf, size_t cap)
         break;
     case MODE_WORLD:
         SDL_snprintf(buf, cap, "world %02d", s->shard);
+        break;
+    case MODE_LOBBY:
+        SDL_snprintf(buf, cap, "lobby");
         break;
     default:
         SDL_snprintf(buf, cap, "offline");

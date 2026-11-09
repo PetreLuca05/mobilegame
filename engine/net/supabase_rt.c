@@ -44,6 +44,7 @@ typedef enum NetCmdType {
     CMD_SIGN_OUT,
     CMD_QUIET,
     CMD_USER_CHANNEL,
+    CMD_MEMBERS,  /* list in NetTransport.members_out */
 } NetCmdType;
 
 typedef struct NetCmd {
@@ -98,6 +99,7 @@ struct NetTransport {
     NetFriendRow search[NET_SEARCH_ROWS]; /* last friend_search() */
     int search_count;
     char friends_path[512];
+    char members_out[(NET_ID_LEN + 1) * 8];
 
     /* ---- network thread only ---- */
     struct mg_mgr mgr;
@@ -369,6 +371,20 @@ static void send_state(NetTransport *n, const uint8_t *data, uint16_t len)
     send_line(n, l);
 }
 
+static void send_members(NetTransport *n)
+{
+    char list[sizeof(n->members_out)];
+    SDL_LockMutex(n->lock);
+    memcpy(list, n->members_out, sizeof(list));
+    SDL_UnlockMutex(n->lock);
+    n->ref++;
+    int l = snprintf(n->line, sizeof(n->line),
+                     "{\"topic\":\"realtime:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+                     "\"event\":\"m\",\"payload\":{\"u\":\"%s\",\"m\":\"%s\"}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                     n->topic, n->auth.user_id, list, n->ref, n->join_ref);
+    send_line(n, l);
+}
+
 static void send_leave_topic(NetTransport *n, const char *topic, int join_ref)
 {
     n->ref++;
@@ -568,10 +584,46 @@ static void handle_reply(NetTransport *n, const cJSON *topic, int ref, const cJS
     }
 }
 
+/* {"u":sender,"m":"id,id,..."}: one event per id, so the event stays small */
+static void handle_members(NetTransport *n, const cJSON *inner)
+{
+    const cJSON *u = cJSON_GetObjectItemCaseSensitive(inner, "u");
+    const cJSON *m = cJSON_GetObjectItemCaseSensitive(inner, "m");
+    if (!cJSON_IsString(u) || !cJSON_IsString(m)) {
+        return;
+    }
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_MEMBERS;
+    snprintf(e.text, sizeof(e.text), "%s", u->valuestring);
+    int count = m->valuestring[0] ? 1 : 0;
+    for (const char *p = m->valuestring; *p; p++) {
+        count += *p == ',' ? 1 : 0;
+    }
+    e.len = (uint16_t)count;
+    if (count == 0) {
+        push_event(n, &e);
+        return;
+    }
+    const char *p = m->valuestring;
+    for (int i = 0; i < count; i++) {
+        const char *end = strchr(p, ',');
+        const size_t idl = end ? (size_t)(end - p) : strlen(p);
+        snprintf(e.peer, sizeof(e.peer), "%.*s", (int)idl, p);
+        e.value = i;
+        push_event(n, &e);
+        p += idl + 1;
+    }
+}
+
 static void handle_broadcast(NetTransport *n, const cJSON *payload)
 {
     const cJSON *ev = cJSON_GetObjectItemCaseSensitive(payload, "event");
     const cJSON *inner = cJSON_GetObjectItemCaseSensitive(payload, "payload");
+    if (cJSON_IsString(ev) && strcmp(ev->valuestring, "m") == 0 && inner) {
+        handle_members(n, inner);
+        return;
+    }
     if (!cJSON_IsString(ev) || strcmp(ev->valuestring, "s") != 0 || !inner) {
         return;
     }
@@ -802,6 +854,11 @@ static void process_commands(NetTransport *n)
             break;
         case CMD_QUIET:
             n->quiet = c.flag;
+            break;
+        case CMD_MEMBERS:
+            if (n->joined) {
+                send_members(n);
+            }
             break;
         case CMD_USER_CHANNEL:
             if (n->want_user && !c.flag && n->user_joined) {
@@ -1561,6 +1618,24 @@ void net_set_friends_cache(NetTransport *n, const char *path)
     SDL_LockMutex(n->lock);
     snprintf(n->friends_path, sizeof(n->friends_path), "%s", path);
     SDL_UnlockMutex(n->lock);
+}
+
+void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count)
+{
+    if (!n) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    size_t at = 0;
+    n->members_out[0] = 0;
+    for (int i = 0; i < count && at + NET_ID_LEN + 1 < sizeof(n->members_out); i++) {
+        at += (size_t)snprintf(n->members_out + at, sizeof(n->members_out) - at, "%s%s", i ? "," : "", ids[i]);
+    }
+    SDL_UnlockMutex(n->lock);
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_MEMBERS;
+    push_cmd(n, &c);
 }
 
 void net_json_escape(char *out, size_t cap, const char *s) { json_escape(out, cap, s); }

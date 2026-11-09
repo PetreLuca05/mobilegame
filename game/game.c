@@ -58,6 +58,7 @@
 #include "nav_debug.h"
 #include "platform/haptics.h"
 #include "friends.h"
+#include "lobby.h"
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
@@ -126,7 +127,7 @@ typedef struct Game {
     bool playing;          /* in the hospital (else the front end) */
     bool play_paused;      /* front end opened from the game (edit character) */
     int load_step;
-    int pending_play;      /* what LOADING leads to: 0 new game, 1 create room, 2 join room, 3 continue */
+    int pending_play;      /* what LOADING leads to: 0 new game, 1 create room, 2 join room, 3 continue, 4 a friend's lobby */
     char status[96];
     Autotest autotest;
     PerfRun perf;
@@ -141,6 +142,7 @@ typedef struct Game {
     MgApp *ia_app;  /* for the interact callbacks */
     uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
     Friends friends;
+    Lobby lobby;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -296,6 +298,17 @@ static void on_net_event(void *user, const NetEvent *e)
 {
     Game *g = (Game *)user;
     friends_on_event(&g->friends, e);
+    lobby_on_event(&g->lobby, e);
+}
+
+static double wall_clock_ms(void);
+
+/* Wall clock of NPC tick 0, as the sim stands: a guest catches up from it */
+static double lobby_epoch(void *user)
+{
+    const Game *g = (const Game *)user;
+    const uint32_t tick = g->npcs_on && g->npcs.tick > g->npc_resume_tick ? g->npcs.tick : g->npc_resume_tick;
+    return wall_clock_ms() - (double)tick / 0.06;
 }
 
 bool game_init(MgApp *app)
@@ -389,6 +402,9 @@ bool game_init(MgApp *app)
     friends_init(&g->friends, g->net, profile ? profile : "");
     g->session.listener = on_net_event;
     g->session.listener_user = g;
+    lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
+    g->lobby.epoch_ms = lobby_epoch;
+    g->lobby.epoch_user = g;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     const char *party = arg_value(app->argc, app->argv, "--party");
@@ -677,7 +693,7 @@ static void leave_play(Game *g, MgApp *app)
     (void)app;
     write_save(g);
     session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
-    session_stop(&g->session);
+    lobby_stop(&g->lobby);
     g->playing = false;
     g->offline_play = false;
     g->menu.card = false;
@@ -956,6 +972,37 @@ static void account_loaded(Game *g, MgApp *app)
     save_prefs(g);
 }
 
+/* What the lobby has for the game: a grant to follow, a guest session that ended, toasts. */
+static void lobby_follow(Game *g, MgApp *app)
+{
+    Lobby *l = &g->lobby;
+    if (l->grant_ready) {
+        l->grant_ready = false;
+        if (g->playing) { /* autosave + close our own session and lobby */
+            leave_play(g, app);
+        }
+        g->pending_play = 4;
+        g->load_step = 0;
+        g->fe.depth = 0;
+        g->fe.state = FE_LOADING;
+    }
+    if (l->ended) {
+        frontend_toast(&g->fe, str(l->ended), app->time);
+        l->ended = NULL;
+        if (g->playing) {
+            leave_play(g, app);
+        } else {
+            lobby_stop(l);
+        }
+    }
+    if (l->joined_name[0]) {
+        char msg[96];
+        SDL_snprintf(msg, sizeof(msg), "%s %s", l->joined_name, str("lobby_entered"));
+        frontend_toast(&g->fe, msg, app->time);
+        l->joined_name[0] = 0;
+    }
+}
+
 /* LOADING: build the hospital over a few frames, then start playing. */
 static void load_step(Game *g, MgApp *app)
 {
@@ -971,7 +1018,8 @@ static void load_step(Game *g, MgApp *app)
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
         g->offline_play = g->pending_play == 0 || g->pending_play == 3;
-        net_set_quiet(g->net, g->offline_play);
+        net_set_quiet(g->net, g->offline_play && !g->friends.signed_in); /* online, a solo game is a lobby */
+        g->npc_epoch_ms = g->pending_play == 4 ? g->lobby.grant.start_tick : 0.0;
         g->save_play_base = g->save_rides_base = 0;
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
             g->npc_resume_tick = g->save.npc_tick;
@@ -1005,8 +1053,11 @@ static void load_step(Game *g, MgApp *app)
         } else if (g->pending_play == 2) {
             session_start(&g->session, MODE_PARTY, g->fe.code);
             SDL_snprintf(g->prefs.last_room, sizeof(g->prefs.last_room), "%s", g->fe.code);
+        } else if (g->pending_play == 4) {
+            lobby_start_guest(&g->lobby);
+            session_set_npc_epoch(&g->session, g->npc_epoch_ms);
         } else {
-            session_stop(&g->session); /* offline: nothing leaves the device */
+            lobby_start_host(&g->lobby, 0, npc_seed_for(g, app)); /* online when signed in; offline nothing leaves the device */
         }
         g->playing = true;
         g->fe.depth = 0;
@@ -1204,6 +1255,9 @@ static uint32_t hash_text(const char *t)
 /* Everyone in a room derives the same roster from its name; offline it is the save's */
 static uint32_t npc_seed_for(Game *g, MgApp *app)
 {
+    if (lobby_is_guest(&g->lobby) || g->pending_play == 4) {
+        return (uint32_t)g->lobby.grant.npc_seed; /* the host's roster */
+    }
     if (!g->offline_play && g->session.mode != MODE_OFFLINE && g->session.topic[0]) {
         return hash_text(g->session.topic);
     }
@@ -2049,6 +2103,8 @@ void game_frame(MgApp *app, float alpha)
                                   (el && elevator_busy(el) ? REP_RIDING : 0));
         PROF_SCOPE("net.poll");
         friends_tick(&g->friends, app->time);
+        lobby_tick(&g->lobby, app->time);
+        lobby_follow(g, app);
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
                        (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
         if (el) { /* someone riding from our landing: their doors close here too */
@@ -3241,6 +3297,7 @@ void game_pause(MgApp *app)
     touch_controls_reset(&g->touch);
     player_set_input(&g->player, 0, 0, false, false);
     session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
+    lobby_background(&g->lobby);
     net_set_background(g->net, true); /* leave the room: others see us go at once */
 }
 
@@ -3248,6 +3305,7 @@ void game_resume(MgApp *app)
 {
     Game *g = (Game *)app->game;
     net_set_background(g->net, false);
+    lobby_foreground(&g->lobby);
 }
 
 void game_quit(MgApp *app)
@@ -3260,6 +3318,7 @@ void game_quit(MgApp *app)
     if (g && g->net) {
         flush_stats(g); /* the network thread finishes pending writes before it exits */
         session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
+        lobby_quit(&g->lobby);
         net_destroy(g->net); /* sends phx_leave before closing */
         g->net = NULL;
     }

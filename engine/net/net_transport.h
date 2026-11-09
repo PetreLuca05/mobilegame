@@ -90,6 +90,7 @@ typedef enum NetEventType {
     NET_EV_USER_CHANNEL, /* value = 1 joined user:<uid>, 0 refused or lost (text = why) */
     NET_EV_RPC,         /* value = NetRpc, http = status (0 no network); text = the error code or the scalar answer */
     NET_EV_PUSH,        /* push = what arrived on user:<uid> */
+    NET_EV_MEMBERS,     /* one per id of the host's list: peer, value = index, len = count; text = sender. Count 0: the host closed the room */
 } NetEventType;
 
 /* Postgres functions of the friends migration */
@@ -227,6 +228,8 @@ int net_friends_copy(NetTransport *n, NetFriendRow *out, int cap);
 int net_search_copy(NetTransport *n, NetFriendRow *out, int cap);
 /* The network thread keeps the friend list here (see friends.h); "" = no file. */
 void net_set_friends_cache(NetTransport *n, const char *path);
+/* Room channel: who may be heard here (`count` ids); 0 = the host is closing. */
+void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count);
 /* JSON string body (no quotes) */
 void net_json_escape(char *out, size_t cap, const char *s);
 

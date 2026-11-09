@@ -17,6 +17,7 @@ typedef enum GameMode {
     MODE_OFFLINE,
     MODE_PARTY,
     MODE_WORLD,
+    MODE_LOBBY,
 } GameMode;
 
 typedef struct RemotePlayer {
@@ -36,6 +37,13 @@ typedef struct NetSession {
     NetTransport *net;
     GameMode mode;
     char room_code[5];
+    char room_token[NET_TOKEN_LEN];
+    char host_id[NET_ID_LEN];  /* MODE_LOBBY as a guest; "" = we are the host */
+    char members[PARTY_MAX_PLAYERS][NET_ID_LEN]; /* who may be heard: state from anyone else is dropped */
+    int member_count;
+    bool members_known;
+    int members_filling;       /* ids of the list still arriving */
+    bool host_closed;
     int shard;
     char topic[NET_TOPIC_LEN];
     char self_id[NET_ID_LEN];
@@ -68,6 +76,12 @@ void session_init(NetSession *s, NetTransport *net);
 /* mode MODE_PARTY needs a 4-letter code; MODE_WORLD picks shard 01 upward. */
 void session_start(NetSession *s, GameMode mode, const char *code);
 void session_stop(NetSession *s);
+/* FRIENDS-1: the lobby room room:<token>. host = "" when it is ours. */
+void session_start_lobby(NetSession *s, const char *token, const char *host);
+/* Host: who may be heard in the room (sent to everyone in it). */
+void session_set_members(NetSession *s, const char (*ids)[NET_ID_LEN], int count);
+void session_announce_closed(NetSession *s);
+bool session_has_remote(const NetSession *s, const char *id);
 /* Tell peers we are going (app backgrounded / leaving); next tick of the
  * network thread then sends phx_leave. */
 void session_say_goodbye(NetSession *s, uint32_t tick, HMM_Vec3 pos, float yaw);
