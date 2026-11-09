@@ -68,6 +68,12 @@ check "B: counters summed" "$(sql "select sessions || '/' || play_seconds || '/'
 check "B: the account keeps its name" "$(sql "select display_name from public.profiles where id = '$E_ID'")" "Seeded"
 check "B: rejoined on the new topic" "$(grep -c 'user channel joined' $OUT/l2.log | tr -d ' ')" "2"
 
+# only the two roles that touch the counters: sign-ups are rate limited (about 30 guests an hour, a full run makes 7)
+if [ -n "${LT_COUNTERS_ONLY:-}" ]; then
+  sql "delete from auth.users where email like '%@mgtest.invalid'; delete from auth.users where id = '$U1' and is_anonymous; select 1" > /dev/null
+  exit $FAILS
+fi
+
 MG_LT_EMAIL=$E_MAIL play l3
 U3=$(uid_of l3)
 check "Cancel: guest untouched" "$(sql "select is_anonymous::text from auth.users where id = '$U3'")" "true"

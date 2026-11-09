@@ -13,11 +13,11 @@ res = lambda e: ids[e.attrib["ref"]] if "ref" in e.attrib else e
 iv = []
 for row in root.iter("row"):
     c = [res(x) for x in row]
-    if c[10].attrib.get("fmt", "").startswith("Mobilegame") and c[5].text == "0":
+    if c[10].attrib.get("fmt", "").startswith(("Rezi", "Mobilegame")) and c[5].text == "0":
         a = int(c[0].text)
         iv.append((a, a + int(c[1].text), c[3].text if c[3].tag != "sentinel" else None))
 if not iv:
-    sys.exit("no Mobilegame GPU intervals in the trace")
+    sys.exit("no Rezi GPU intervals in the trace")
 end = max(b for _, b, _ in iv)
 iv = sorted(x for x in iv if x[0] >= end - 5e9)
 busy, ca, cb, frames = 0, None, None, set()
