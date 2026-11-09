@@ -20,7 +20,7 @@ typedef enum FtOpKind {
     OP_ACCEPT_ALL, OP_FRIENDS, OP_ST, OP_BADGE, OP_NOTICE, OP_PLAYERS, OP_LOBBY, OP_TOKEN, OP_PLAYING, OP_MENU, OP_SLEEP, OP_SHOT,
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
-    OP_LINK, OP_LINK_STATE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
+    OP_DRAG_UP, OP_FE_STATE, OP_LINK, OP_LINK_STATE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -116,6 +116,11 @@ static const FtOp k_reinstall[] = {
     {OP_READY, NULL, 0}, {OP_CODE_IS, "code_a", 0}, {OP_FRIENDS, NULL, 2}, {OP_END, NULL, 0},
 };
 
+/* a short screen: the menu's last row is reached by dragging the list */
+static const FtOp k_scroll[] = {
+    {OP_READY, NULL, 0}, {OP_FE_STATE, NULL, FE_MAIN_MENU}, SLEEP(1.0), {OP_DRAG_UP, "menurow1", 0}, SLEEP(0.5), TAP("menurow2"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_END, NULL, 0},
+};
+
 /* --autotest link: the identity is $MG_LT_EMAIL (see tools/link_test.sh). Starts on Settings. */
 #define LSTATE(x) {OP_LINK_STATE, NULL, x}
 #define START_GUEST {OP_READY, NULL, 0}, {OP_UID_SAVE, NULL, 0}, {OP_GUEST, NULL, 1}
@@ -153,7 +158,7 @@ void ft_init(FriendsTest *t, const char *role)
     t->ops = strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
              : strcmp(role, "c") == 0 ? k_c
              : strcmp(role, "l1") == 0 ? k_l1 : strcmp(role, "l2") == 0 ? k_l2 : strcmp(role, "l3") == 0 ? k_l3 : strcmp(role, "l4") == 0 ? k_l4 : strcmp(role, "l5") == 0 ? k_l5
-             : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
+             : strcmp(role, "scroll") == 0 ? k_scroll : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
 }
 
 static void sync_path(const FriendsTest *t, const char *name, char *out, size_t cap) { SDL_snprintf(out, cap, "%s/%s", t->dir, name); }
@@ -443,6 +448,25 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         break;
     case OP_STALE:
         done = f->stale;
+        break;
+    case OP_FE_STATE:
+        done = p->fe_state == (int)o->n;
+        break;
+    case OP_DRAG_UP: /* press, slide up 90 pt over a dozen frames, release */
+        if (t->finger == 0) {
+            if (ui_find(p->ui, o->s, &t->tx, &t->ty)) {
+                autotest_finger(app, SDL_EVENT_FINGER_DOWN, 902, t->tx, t->ty);
+                t->finger = 1;
+                t->finger_frames = 0;
+            }
+        } else if (++t->finger_frames <= 12) {
+            t->ty -= 7.5f;
+            autotest_finger(app, SDL_EVENT_FINGER_MOTION, 902, t->tx, t->ty);
+        } else {
+            autotest_finger(app, SDL_EVENT_FINGER_UP, 902, t->tx, t->ty);
+            t->finger = 0;
+            done = true;
+        }
         break;
     case OP_LINK: {
 #ifdef MG_TEST_AUTH

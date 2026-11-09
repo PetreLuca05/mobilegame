@@ -204,10 +204,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 
 /* ------------------------------------------------------------------ skin */
 
-static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float x, float y, float w, float h,
-                     MenuAction *action)
+/* Returns the height used. */
+static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float x, float y, float w, MenuAction *action)
 {
-    (void)h;
+    const float y_start = y;
     float cw = mg_minf(w, 420.0f);
     m->preview_visible = false;
     ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, str("username_title"));
@@ -267,7 +267,9 @@ static void skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, float
     y += 52.0f;
     if (acct->message && acct->message[0]) {
         ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, acct->message);
+        y += 20.0f;
     }
+    return y - y_start;
 }
 
 /* ------------------------------------------------------------------ panel */
@@ -339,13 +341,15 @@ static void lobby_column(SettingsMenu *m, Ui *ui, MenuAction *action, float x, f
     ui_scroll_end(ui, &m->players_scroll, view, py + off - y);
 }
 
-static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_pt, float h_pt)
+static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_pt, float h_pt, float safe_t, float safe_b)
 {
     MenuAction action = MENU_NONE;
     const float row = 50.0f, pad = 18.0f, gutter = 16.0f;
     const int rows = m->is_guest ? 5 : 4;
-    const float cw = mg_minf(680.0f, w_pt - 48.0f), ch = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
-    const float x = (w_pt - cw) * 0.5f, top = (h_pt - ch) * 0.5f;
+    const float room = h_pt - safe_t - safe_b - 12.0f;
+    const float wanted = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
+    const float cw = mg_minf(680.0f, w_pt - 48.0f), ch = mg_minf(wanted, room); /* the column scrolls if it does not fit */
+    const float x = (w_pt - cw) * 0.5f, top = safe_t + (h_pt - safe_t - safe_b - ch) * 0.5f;
     ui_block(ui, 0, 0, w_pt, h_pt);
     ui_rect(ui->gfx, ui->font, 0, 0, w_pt, h_pt, ui_rgba(0x00000080));
     ui_panel(ui, x, top, cw, ch);
@@ -357,6 +361,9 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     if (m->lobby) {
         lobby_column(m, ui, &action, bx + column + gutter, y, column, ch - pad * 2.0f - 40.0f);
     }
+    const float column_top = y, column_view = ch - pad * 2.0f - 40.0f;
+    const float column_off = ui_scroll_begin(ui, &m->card_scroll, bx - 2.0f, column_top, bw + 4.0f, column_view, false);
+    y -= column_off;
     SDL_snprintf(label, sizeof(label), "%s##p_resume", str("resume"));
     if (ui_button(ui, label, bx, y, bw, row, true)) {
         m->open = false;
@@ -386,7 +393,9 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
             m->open = false;
             m->card = false;
         }
+        y += row + 8.0f;
     }
+    ui_scroll_end(ui, &m->card_scroll, column_view, y + column_off - column_top);
     return action;
 }
 
@@ -422,7 +431,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     }
 
     if (m->card) {
-        return pause_card(m, ui, s, w_pt, h_pt);
+        return pause_card(m, ui, s, w_pt, h_pt, safe_t, safe_b);
     }
 
     /* full screen, two columns: back + title + tabs left (35 %), content right (65 %) */
@@ -467,7 +476,9 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         float used = game_tab(m, ui, s, x, y - off, w, &action);
         ui_scroll_end(ui, &m->game_scroll, h, used);
     } else {
-        skin_tab(m, ui, acct, x, y, w, h, &action);
+        float off = ui_scroll_begin(ui, &m->skin_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 8.0f, false);
+        float used = skin_tab(m, ui, acct, x, y - off, w, &action);
+        ui_scroll_end(ui, &m->skin_scroll, h, used);
     }
     if (!m->open) {
         m->editing_name = false;

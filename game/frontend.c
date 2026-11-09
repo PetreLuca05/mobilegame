@@ -377,6 +377,11 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     y += 12.0f;
     FeAction a = FE_NONE;
     int row = 0;
+    /* the rows scroll between the divider and the account line when the screen is short */
+    const float fy = h - mg_maxf(app->safe_bottom, 10.0f) - 22.0f;
+    const float rows_top = y, rows_view = mg_maxf(fy - 10.0f - y, ROW_H);
+    const float rows_off = ui_scroll_begin(ui, &f->menu_scroll, x - 4.0f, rows_top, cw + 8.0f, rows_view, false);
+    y -= rows_off;
     if (menu_row(f, ui, app, row++, str("new_game"), x, y, cw, false, false, NULL)) {
         if (ctx->has_save) {
             f->confirm_new = true;
@@ -404,6 +409,8 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     if (menu_row(f, ui, app, row++, str("settings"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
+    y += ROW_H;
+    ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
     /* footer */
     char who[96];
     if (ctx->guest) {
@@ -412,7 +419,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         SDL_snprintf(who, sizeof(who), "%s %s " TEXT_BULLET " %s", str("signed_in_as"), ctx->name,
                      SDL_strcmp(ctx->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
     }
-    float fy = h - mg_maxf(app->safe_bottom, 10.0f) - 22.0f;
     head_icon_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, x + 13.0f, fy + 8.0f, 26.0f, false);
     text_draw(ui->gfx, ui->font, x + 32.0f, fy, 13.0f, ui_rgba(0xFFFFFF99), who);
     float vw = text_width(ui->font, ctx->version, 13.0f);

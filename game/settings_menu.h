@@ -56,7 +56,7 @@ typedef struct SettingsMenu {
     const char *my_name;
     const NetSkin *my_skin;
     bool is_guest;  /* set by the game: the card offers linking */
-    UiScroll players_scroll;
+    UiScroll players_scroll, card_scroll;
     int tab; /* 0 game, 1 skin */
     bool dev_open;
     UiScroll game_scroll, skin_scroll, rows[3];

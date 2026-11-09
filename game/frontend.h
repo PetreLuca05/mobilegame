@@ -68,6 +68,7 @@ typedef struct Frontend {
     char name[NET_NAME_LEN];
     bool editing_name;
     bool confirm_new;    /* overwrite dialog */
+    UiScroll menu_scroll; /* the main menu's rows, when the screen is short */
     bool creator_from_settings;
     Creator creator;
     char toast[96];
