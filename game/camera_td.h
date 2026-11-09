@@ -17,14 +17,6 @@
 #define CAM_PITCH_DEG 55.0f
 #define CAM_FOV_DEG 40.0f
 #define CAM_DISTANCE 19.0f
-/* Settings slider ranges */
-#define CAM_FOV_MIN 20.0f
-#define CAM_FOV_MAX 60.0f
-#define CAM_DISTANCE_MIN 8.0f
-#define CAM_DISTANCE_MAX 30.0f
-#define CAM_PITCH_MIN 35.0f
-#define CAM_PITCH_MAX 85.0f
-
 typedef struct TdCamera {
     float yaw;          /* radians, CAM_YAW_DEG */
     float pitch;        /* radians, negative = looking down */

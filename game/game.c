@@ -701,6 +701,9 @@ static void draw_xray(Game *g, MgApp *app, const AvatarLook *look, const AvatarP
 
 /* Touch stick / jump button, plus WASD, Shift, Space on desktop
  * (third-person: also camera drag, arrows and right-mouse drag). */
+/* The in-game HUD runs edge to edge on every model: under the island and the home indicator. */
+static ui_frame_t hud_frame(const MgApp *app) { return (ui_frame_t){app->width_pt, app->height_pt, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; }
+
 static ui_frame_t frame_of(const MgApp *app)
 {
     return (ui_frame_t){app->width_pt, app->height_pt, app->safe_left, app->safe_right, app->safe_top, app->safe_bottom, app->corner_clearance};
@@ -958,7 +961,7 @@ static void draw_net_badge(Game *g, MgApp *app)
     if ((!lobby_is_guest(&g->lobby) && g->lobby.state != LOBBY_HOSTING) || s->status == NET_JOINED) {
         return;
     }
-    const float cx = app->width_pt * 0.5f, y = app->safe_top + 104.0f; /* below the debug HUD lines */
+    const float cx = app->width_pt * 0.5f, y = 104.0f; /* below the debug HUD lines */
     const char *msg = s->status_text;
     float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
     ui_round_rect(app->gfx, &app->font, cx - mw * 0.5f - 12.0f, y, mw + 24.0f, 26.0f, 13.0f, ui_rgba(0xD94141E0));
@@ -1144,7 +1147,7 @@ static void lobby_follow(Game *g, MgApp *app)
         }
         if (g->fpage.open) {
             g->fpage.open = false;
-            g->fpage.editing_code = g->fpage.editing_search = false;
+            g->fpage.editing_search = false;
             friends_page(&g->friends, false);
         }
         g->pending_play = 4;
@@ -1287,7 +1290,7 @@ static HMM_Vec3 menu_hero_feet(const MgApp *app, FeState state)
     const HMM_Vec3 eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
     const HMM_Vec3 fwd = HMM_NormV3(HMM_SubV3(HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), eye));
     const float depth = (MENU_HERO_MID_Y - eye.Y) * fwd.Y + (MENU_HERO_Z - eye.Z) * fwd.Z;
-    const float centre = (frontend_menu_right(app, state) + app->width_pt - app->safe_right) * 0.5f;
+    const float centre = (frontend_menu_right(app, state) + app->width_pt) * 0.5f;
     const float ndc = centre / app->width_pt * 2.0f - 1.0f;
     const float aspect = app->width_pt / app->height_pt;
     return HMM_V3(eye.X + ndc * depth * HMM_TanF(HMM_AngleDeg(MENU_FOV_DEG) * 0.5f) * aspect, MENU_HERO_FEET_Y, MENU_HERO_Z);
@@ -1378,7 +1381,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         g->menu.open = true;
         SettingsAccount acct = account_view(g);
         MenuAction ma = settings_menu(&g->menu, &g->ui, &g->settings, &acct, app->width_pt, app->height_pt,
-                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, app->corner_clearance, "");
+                                      app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, "");
         handle_menu_action(g, app, ma);
         app_text_input(app, g->menu.editing_name);
         if (!g->menu.open && f->state == FE_SETTINGS) {
@@ -1877,7 +1880,7 @@ static void draw_ia_debug(Game *g, MgApp *app, int floor)
 /* The greeting card: bottom right, beside the preview */
 static void greet_rect(const Game *g, const MgApp *app, float r[4])
 {
-    const ui_frame_t cf = frame_of(app);
+    const ui_frame_t cf = hud_frame(app);
     const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f;
     r[0] = ui_safe_right(&cf) - UI_MARGIN - cf.corner - g->panel.size - 12.0f - cw;
     r[1] = ui_safe_bottom(&cf) - UI_MARGIN - cf.corner - ch;
@@ -2518,7 +2521,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin);
     } else {
         action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt, app->safe_left, app->safe_top, app->safe_right,
-                               app->safe_bottom, app->corner_clearance, g->status);
+                               app->safe_bottom, g->status);
     }
     if (s->show_stats != stats_was) {
         save_prefs(g); /* per device, and a kill must not lose it */
@@ -2550,7 +2553,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && (!autonav_active(&g->autonav) || s->force_lift_panel) &&
                             (elevator_contains(el, g->player.kin.pos, g->kparams.radius) || s->force_lift_panel);
     if (g->lift_panel_ok && el) {
-        const ui_frame_t lf = frame_of(app);
+        const ui_frame_t lf = hud_frame(app);
         elevator_panel_update(&g->lift_panel, mg_minf(app->frame_dt, 0.1f), menu_shown, &lf);
         const int due = elevator_panel_take(&g->lift_panel);
         if (due >= 0) {
@@ -2575,8 +2578,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->touch_cfg.radius_pt = 60.0f * k;
         g->touch_cfg.dead_zone_pt = s->dead_zone_pt * k;
         g->touch_cfg.jump_size_pt = PLAYER_JUMP_ENABLED ? 72.0f * k : 0.0f;
-        touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, app->safe_right,
-                              app->safe_bottom, app->time);
+        touch_controls_update(&g->touch, &g->touch_cfg, &app->input, app->width_pt, app->height_pt, 0.0f, 0.0f, app->time);
         if (g->touch.tapped_id == PREVIEW_TAP_ID) {
             interact_tap(g, app);
         } else if (g->touch.tapped_id >= LIFT_PANEL_TAP_ID && g->touch.tapped_id < LIFT_PANEL_TAP_ID + LIFT_PANEL_FLOORS) {
@@ -2676,11 +2678,6 @@ static void game_frame_inner(MgApp *app, float alpha)
 #else
         /* riding: the pivot rides with the car, so the floors cross-fade as it passes the slabs */
         float floor_y = g->riding ? feet.Y - g->ride_offset : scene_floor_y(g->scene, scene_floor_of(g->scene, feet));
-        if (!g->perf.active) { /* Settings; perf runs keep the reference view */
-            g->td.fov_y = HMM_AngleDeg(s->td_fov_deg);
-            g->td.distance = s->td_distance;
-            g->td.pitch = -HMM_AngleDeg(s->td_pitch_deg);
-        }
         tdcam_update(&g->td, feet, g->player.kin.vel, g->kparams.walk_speed, floor_y, mg_minf(app->frame_dt, 0.1f));
         tdcam_matrices(&g->td, aspect, &sp.view, &sp.proj, &sp.eye);
 #endif
@@ -2847,14 +2844,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         markers_hud(g, app, floor, feet);
     }
     {
-        const ui_frame_t cf = frame_of(app);
+        const ui_frame_t cf = hud_frame(app);
         float cpx, cpy, cps;
         ui_pause_rect(&cf, &cpx, &cpy, &cps);
         head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, ui_safe_right(&cf) - UI_MARGIN - cf.corner, cpy);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
-    touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, app->safe_left, app->height_pt,
-                        app->safe_bottom);
+    touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, 0.0f, app->height_pt, 0.0f);
     frontend_toast_draw(&g->fe, &g->ui, app);
     draw_name_tags(g, app, floor, player_floor, feet);
     HudInfo hud = {0};
@@ -2875,8 +2871,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     if (s->show_stats && !g->perf.active) { /* perf numbers never include the overlay */
-        const float hud_x = app->safe_left + 10.0f + app->corner_clearance;
-        hud_draw(app->gfx, &app->font, hud_x, STATS_Y(app->safe_top, app->corner_clearance), &hud);
+        hud_draw(app->gfx, &app->font, 10.0f, STATS_Y(0.0f, 0.0f), &hud);
     }
     if (s->show_safe_rect) {
         const ui_frame_t lf = frame_of(app);
@@ -2910,7 +2905,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         elevator_panel_draw_3d(&g->lift_panel, app->gfx, el->car_floor);
     }
     if (g->ia_ok) {
-        const ui_frame_t pf = frame_of(app);
+        const ui_frame_t pf = hud_frame(app);
         const bool hide_panel = g->menu.open || riding || (g->lift_panel_ok && g->lift_panel.slide > 0.0f && !g->hud_clamp_test);
         preview_panel_update(&g->panel, hide_panel || g->no_panels ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
         preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
@@ -3175,7 +3170,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
     const float w = app->width_pt, h = app->height_pt;
     float *res = g->hud_res;
     int rc = 0;
-    const ui_frame_t uf = frame_of(app);
+    const ui_frame_t uf = hud_frame(app);
     float px, py, ps;
     ui_pause_rect(&uf, &px, &py, &ps);
     const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
@@ -3206,7 +3201,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         rc++;
     }
     if (g->settings.show_stats && !g->perf.active) { /* the same box --autotest layout checks */
-        const float st[4] = {app->safe_left + 10.0f + app->corner_clearance, STATS_Y(app->safe_top, app->corner_clearance), 200.0f, 90.0f};
+        const float st[4] = {10.0f, STATS_Y(0.0f, 0.0f), 200.0f, 90.0f};
         memcpy(res + rc * 4, st, sizeof(st));
         rc++;
     }
@@ -3216,7 +3211,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         rc++;
     }
     g->hud_res_count = rc;
-    MarkerHudView v = {g->view_proj, w, h, app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, view_floor, res, rc};
+    MarkerHudView v = {g->view_proj, w, h, 0.0f, 0.0f, 0.0f, 0.0f, view_floor, res, rc};
     g->hud_count = marker_hud_layout(g->hud_in, n, &v, g->hud_out);
     marker_hud_draw(app->gfx, &app->font, g->hud_out, g->hud_count, view_floor);
     /* tap targets for the next frame's touch pass */
@@ -3456,7 +3451,7 @@ static void layout_autotest(Game *g, MgApp *app)
     if (!at || SDL_strcmp(at, "layout") != 0 || app->time < 3.0) {
         return;
     }
-    const ui_frame_t f = frame_of(app);
+    const ui_frame_t f = hud_frame(app);
     float px, py, ps;
     ui_pause_rect(&f, &px, &py, &ps);
     static const char *const orient[5] = {"unknown", "landscape (SDL)", "landscape-flipped (SDL)", "portrait", "portrait-flipped"};

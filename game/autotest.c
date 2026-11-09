@@ -82,8 +82,8 @@ static bool run_touch(Autotest *t, MgApp *app, const AutotestProbe *p, double el
 {
     const float sx = 90.0f, sy = app->height_pt * 0.8f;
     const float cx = app->width_pt * 0.7f, cy = app->height_pt * 0.35f;
-    const float jx = app->width_pt - app->safe_right - 28.0f - 36.0f;
-    const float jy = app->height_pt - SDL_max(app->safe_bottom, 16.0f) - 36.0f - 36.0f;
+    const float jx = app->width_pt - 28.0f - 36.0f;
+    const float jy = app->height_pt - 16.0f - 36.0f - 36.0f;
     switch (t->stage) {
     case 0:
         if (el > 0.5) {

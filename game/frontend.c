@@ -10,7 +10,10 @@
 #include "ui/head_icons.h"
 
 #define ROW_H 52.0f
+#define CONTINUE_H 72.0f
 #define PAD 16.0f
+#define EDGE 12.0f     /* the in-game HUD's margins: no safe-area insets on these screens either */
+#define TOP_EDGE 8.0f
 #define NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _"
 
 static const UiColor k_row = {0, 0, 0, 89};          /* rgba(0,0,0,0.35) */
@@ -278,16 +281,15 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
 /* The menu's left column, shared by the first-launch screens: the hero stands to its right. */
 static float column_w(const MgApp *app)
 {
-    const float x = app->safe_left + PAD;
-    return mg_minf(app->width_pt * 0.5f - x - PAD, 400.0f);
+    return mg_minf(app->width_pt * 0.5f - EDGE - PAD, 270.0f);
 }
 
-static float creator_w(const MgApp *app) { return app->width_pt * 0.58f - app->safe_right - PAD; }
+static float creator_w(const MgApp *app) { return app->width_pt * 0.58f - EDGE - 12.0f; }
 
 /* Title and divider; returns where the content starts. */
 static float column_top(Ui *ui, const char *title, const MgApp *app, float x, float w)
 {
-    float y = app->safe_top + PAD + 8.0f;
+    float y = TOP_EDGE + 8.0f;
     title_block(ui, title, x, y - 8.0f, w, false);
     y += 54.0f;
     ui_rect(ui->gfx, ui->font, x, y, w, 1.0f, ui_rgba(0xFFFFFF33));
@@ -297,11 +299,11 @@ static float column_top(Ui *ui, const char *title, const MgApp *app, float x, fl
 static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt;
-    float cx = app->safe_left + PAD, cw = column_w(app);
+    float cx = EDGE, cw = column_w(app);
     float y = column_top(ui, str("game_name"), app, cx, cw);
     y += wrapped(ui, cx, y, cw, 15.0f, ui_rgba(0xFFFFFFFF), str("description"), false) + 16.0f;
     const int buttons = (ctx->google_available || !ctx->apple_available ? 1 : 0) + (ctx->apple_available ? 1 : 0);
-    gfx_ui_blur_panel(ui->gfx, cx - 12.0f, y - 12.0f, cw + 24.0f, (float)buttons * 64.0f + 54.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
+    gfx_ui_blur_panel(ui->gfx, cx - 8.0f, y - 12.0f, cw + 16.0f, (float)buttons * 64.0f + 54.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
     FeAction a = FE_NONE;
     if (ctx->google_available || !ctx->apple_available) {
         if (pill(ui, "google", cx, y, cw, 0xFFFFFF, 0x1F1F1F, str("google"), 1, ctx->signin_busy)) {
@@ -337,13 +339,13 @@ static bool name_valid(const char *s)
 static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 {
     float w = app->width_pt;
-    float x = app->safe_left + PAD, cw = column_w(app);
-    float y = app->safe_top + PAD + 8.0f;
-    text_draw(ui->gfx, ui->font, x, y + 4.0f, 26.0f, ui_rgba(0xFFFFFFFF), str("username_title"));
+    float x = EDGE, cw = column_w(app);
+    float y = TOP_EDGE + 8.0f;
+    text_draw(ui->gfx, ui->font, x, y + 6.0f, 22.0f, ui_rgba(0xFFFFFFFF), str("username_title"));
     y += 54.0f;
     ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
     y += 16.0f;
-    gfx_ui_blur_panel(ui->gfx, x - 12.0f, y - 12.0f, cw + 24.0f, 170.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
+    gfx_ui_blur_panel(ui->gfx, x - 8.0f, y - 12.0f, cw + 16.0f, 170.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
     int ed = ui_text_field(ui, "username", x, y, cw, 52.0f, f->name, (int)sizeof(f->name), &f->editing_name,
                            NAME_CHARS);
     y += 60.0f;
@@ -365,9 +367,9 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
-    float x = app->safe_left + PAD, cw = creator_w(app), r = x + cw;
-    float y = app->safe_top + PAD;
-    float panel_h = h - y - mg_maxf(app->safe_bottom, PAD) - PAD;
+    float x = EDGE + 12.0f, cw = creator_w(app), r = x + cw; /* the frosted panel starts at the edge margin */
+    float y = TOP_EDGE + 8.0f;
+    float panel_h = h - y - EDGE - 8.0f;
     gfx_ui_blur_panel(ui->gfx, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 16.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
     ui_block(ui, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 16.0f);
     text_draw(ui->gfx, ui->font, x, y, 24.0f, ui_rgba(0xFFFFFFFF), str("creator_title"));
@@ -392,28 +394,42 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 
 float frontend_menu_right(const MgApp *app, FeState state)
 {
-    const float x = app->safe_left + PAD;
-    return x + (state == FE_CREATOR ? creator_w(app) + 12.0f : column_w(app));
+    return state == FE_CREATOR ? EDGE + 12.0f + creator_w(app) + 12.0f : EDGE + column_w(app);
 }
 
 static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
-    float x = app->safe_left + PAD, cw = mg_minf(w * 0.5f - x - PAD, 400.0f);
-    float y = app->safe_top + PAD + 8.0f;
-    head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, w - app->safe_right - PAD, y); /* the account, top right */
+    float x = EDGE, cw = column_w(app);
+    float y = TOP_EDGE + 8.0f;
     title_block(ui, str("menu_title"), x, y - 8.0f, cw, false);
     y += 54.0f;
     ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
     y += 12.0f;
     FeAction a = FE_NONE;
-    int row = 0;
+    /* the account, top right: opens Friends */
+    const float chip_r = w - EDGE, chip_w = head_chip_width(ui->font, ctx->name), chip_y = TOP_EDGE;
+    bool chip_held = false;
+    if (ui_hit_area(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, &chip_held) && !f->confirm_new) {
+        a = FE_OPEN_FRIENDS;
+    }
+    head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, chip_r, chip_y);
+    if (chip_held) {
+        ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(0xFFFFFF26));
+    }
+    if (ctx->friend_requests > 0) {
+        char n[8];
+        SDL_snprintf(n, sizeof(n), "%d", ctx->friend_requests);
+        ui_circle(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 11.0f, ui_rgba(0xE5484DFF));
+        text_draw_centered(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(0xFFFFFFFF), n);
+    }
     /* the rows scroll between the divider and the account line when the screen is short */
-    const float fy = h - mg_maxf(app->safe_bottom, 10.0f) - 22.0f;
-    const float rows_top = y, rows_view = mg_maxf(h - mg_maxf(app->safe_bottom, 10.0f) - 8.0f - y, ROW_H);
+    const float fy = h - EDGE - 16.0f;
+    const float bottom = h - EDGE; /* Continue sits here when there is a save */
+    const float rows_top = y, rows_view = mg_maxf(bottom - y - (ctx->has_save ? CONTINUE_H + 12.0f : 0.0f), ROW_H);
     const float rows_off = ui_scroll_begin(ui, &f->menu_scroll, x - 4.0f, rows_top, cw + 8.0f, rows_view, false);
     y -= rows_off;
-    if (menu_row(f, ui, app, row++, str("new_game"), x, y, cw, false, false, NULL)) {
+    if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, false, false, NULL)) {
         if (ctx->has_save) {
             f->confirm_new = true;
         } else {
@@ -421,33 +437,24 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
     }
     y += ROW_H + 8.0f;
-    if (ctx->has_save) {
-        if (menu_row(f, ui, app, row++, str("continue_game"), x, y, cw, false, false, NULL)) {
-            a = FE_CONTINUE;
-        }
-        y += ROW_H + 8.0f;
-    }
-    if (menu_row(f, ui, app, 30, str("friends"), x, y, cw, false, false, NULL)) {
-        a = FE_OPEN_FRIENDS;
-    }
-    if (ctx->friend_requests > 0) {
-        char n[8];
-        SDL_snprintf(n, sizeof(n), "%d", ctx->friend_requests);
-        ui_circle(ui->gfx, ui->font, x + cw - 28.0f, y + ROW_H * 0.5f, 13.0f, ui_rgba(0xE5484DFF));
-        text_draw_centered(ui->gfx, ui->font, x + cw - 28.0f, y + ROW_H * 0.5f, 14.0f, ui_rgba(0xFFFFFFFF), n);
-    }
-    y += ROW_H + 8.0f;
     if (menu_row(f, ui, app, 31, str("locker"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_CREATOR);
     }
     y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, row++, str("settings"), x, y, cw, false, false, NULL)) {
+    if (menu_row(f, ui, app, 2, str("settings"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
     y += ROW_H;
     ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
+    if (ctx->has_save) {
+        char label[48];
+        SDL_snprintf(label, sizeof(label), "%s##menurow1", str("continue_game"));
+        if (ui_button(ui, label, x, bottom - CONTINUE_H, cw, CONTINUE_H, true)) {
+            a = FE_CONTINUE;
+        }
+    }
     float vw = text_width(ui->font, ctx->version, 13.0f);
-    text_draw(ui->gfx, ui->font, w - app->safe_right - PAD - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
+    text_draw(ui->gfx, ui->font, w - EDGE - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
 
     if (f->confirm_new) { /* overwrite dialog */
         ui_block(ui, 0, 0, w, h);
@@ -470,11 +477,11 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     return a;
 }
 
-static void back_button(Frontend *f, Ui *ui, MgApp *app)
+static void back_button(Frontend *f, Ui *ui, MgApp *app, float bx)
 {
     char label[48];
     SDL_snprintf(label, sizeof(label), "   %s##feback", str("back"));
-    const float bx = app->safe_left + PAD, by = app->height_pt - mg_maxf(app->safe_bottom, PAD) - 48.0f;
+    const float by = app->height_pt - EDGE - 48.0f;
     if (ui_button(ui, label, bx, by, 110.0f, 44.0f, false)) {
         frontend_back(f);
     }
@@ -496,12 +503,12 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_USERNAME:
         a = username(f, ui, app);
-        back_button(f, ui, app);
+        back_button(f, ui, app, EDGE);
         break;
     case FE_CREATOR:
         a = creator(f, ui, app, ctx);
         if (f->depth > 0 && f->stack[f->depth - 1] != FE_USERNAME) {
-            back_button(f, ui, app);
+            back_button(f, ui, app, frontend_menu_right(app, FE_CREATOR) + 12.0f);
         }
         break;
     case FE_MAIN_MENU:

@@ -46,12 +46,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     float cx = x, cy = y;
     const float sliders_top = y;
 #ifndef MG_CAMERA_THIRDPERSON
-    ui_slider(ui, str("camera_fov"), cx, cy, cw, &s->td_fov_deg, CAM_FOV_MIN, CAM_FOV_MAX, "%.0f" TEXT_DEGREE);
-    cy += step;
-    ui_slider(ui, str("camera_distance"), cx, cy, cw, &s->td_distance, CAM_DISTANCE_MIN, CAM_DISTANCE_MAX, "%.1f m");
-    cy += step;
-    ui_slider(ui, str("camera_angle"), cx, cy, cw, &s->td_pitch_deg, CAM_PITCH_MIN, CAM_PITCH_MAX, "%.0f" TEXT_DEGREE);
-    cy += step;
     ui_toggle(ui, str("show_stats"), cx, cy, cw, &s->show_stats);
     cy += 44.0f;
     ui_label(ui, cx, cy, 15.0f, k_ui_theme.text_dim, str("chat_bubbles"));
@@ -400,14 +394,14 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
 }
 
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
-                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b, float corner,
+                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
                          const char *status)
 {
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
-    if (!m->open) { /* pause button, top-left */
-        const ui_frame_t uf = {w_pt, h_pt, safe_l, safe_r, safe_t, 0.0f, corner};
+    if (!m->open) { /* pause button, top-left: part of the edge-to-edge HUD */
+        const ui_frame_t uf = {w_pt, h_pt, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         float gs, gx, gy;
         ui_pause_rect(&uf, &gx, &gy, &gs);
         if (ui_hit_area(ui, "gear", gx - 6.0f, gy - 6.0f, gs + 12.0f, gs + 12.0f, &held)) {

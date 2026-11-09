@@ -13,12 +13,12 @@ typedef struct FriendsPage {
     bool open;
     int tab;       /* 0 friends, 1 requests, 2 add */
     UiScroll scroll[3];
-    char code_in[NET_CODE_LEN];
     char search_in[NET_NAME_LEN];
-    bool editing_code, editing_search;
+    bool editing_search;
     bool search_dirty;
     double search_at;
-    double copied_until;
+    char action_id[NET_ID_LEN];  /* a friend's action menu is up */
+    char action_name[NET_NAME_LEN];
     char confirm_id[NET_ID_LEN]; /* "Remove friend?" is up */
     char confirm_name[NET_NAME_LEN];
     char note[80];              /* last result of an action */

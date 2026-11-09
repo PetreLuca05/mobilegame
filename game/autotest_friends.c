@@ -41,13 +41,13 @@ typedef struct FtOp {
 #define NOTICE {OP_NOTICE, NULL, 0}
 #define JOIN {OP_TAP_P, "fjoin_%s", 0}
 #define ASKS_REFUSED(x) {OP_ASK_ERR, x, 0}
-#define ADD_BY_NAME(n) TAP("menurow30"), TAP("ftab2"), {OP_SET_SEARCH, n, 0}, {OP_SEARCH_HAS, NULL, 0}, {OP_TAP_P, "fres_%s", 0}, SLEEP(1.0)
-#define ADD_PEER TAP("menurow30"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0)
+#define ADD_BY_NAME(n) TAP("account_chip"), TAP("ftab2"), {OP_SET_SEARCH, n, 0}, {OP_SEARCH_HAS, NULL, 0}, {OP_TAP_P, "fres_%s", 0}, SLEEP(1.0)
+#define ADD_PEER TAP("account_chip"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0)
 
 static const FtOp k_a1[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_a", 0}, SIG("a_ready"),
     WAIT("b_req"), WAIT("c_req"), {OP_BADGE, NULL, 3},
-    TAP("menurow30"), TAP("ftab1"), SLEEP(1.5), SHOT("friends_requests"),
+    TAP("account_chip"), TAP("ftab1"), SLEEP(1.5), SHOT("friends_requests"),
     {OP_ACCEPT_ALL, NULL, 0}, {OP_FRIENDS, NULL, 3},
     TAP("ftab0"), SLEEP(1.5), SHOT("friends_list"), TAP("ftab2"), SLEEP(1.0), SHOT("friends_add"), TAP("ftab0"),
     SIG("a_accepted"), TAP("friends"), {OP_MENU, NULL, 0},
@@ -86,15 +86,15 @@ static const FtOp k_b[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_b", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("b_req"),
     WAIT("a_accepted"), TAP("ftab0"), WAIT("a_open"), ST(NET_FS_OPEN), SLEEP(1.0), SHOT("friends_open"), JOIN, SIG("b_asked"),
     {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_GUEST}, PLAYERS(2), {OP_NPC, NULL, 0}, WAIT("a_three"), WAIT("c_left"), WAIT("a_locked"),
-    TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0}, SLEEP(1.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_LOCKED), ASKS_REFUSED("lobby_locked"), SIG("b_checked"),
+    TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0}, SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), ST(NET_FS_LOCKED), ASKS_REFUSED("lobby_locked"), SIG("b_checked"),
     WAIT("a2_locked"), ST(NET_FS_LOCKED), SIG("b_saw_locked"),
     WAIT("a3_open"), ST(NET_FS_OPEN), SLEEP(11.0), JOIN, SIG("b_ask2"), {OP_JOIN_ERR, "declined", 0}, WAIT("a_declined"),
     SLEEP(11.0), JOIN, SIG("b_ask3"), {OP_JOIN_ERR, "declined", 0}, SIG("b_timeout_ok"),
     SLEEP(11.0), JOIN, SIG("b_ask4"), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, WAIT("a_kicked"),
-    SLEEP(1.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), SLEEP(11.0), JOIN, SIG("b_ask5"), {OP_PLAYING, NULL, 0}, PLAYERS(2), WAIT("a_leaving"),
-    {OP_MENU, NULL, 0}, SIG("b_menu"), SLEEP(1.0), TAP("menurow30"), TAP("ftab0"), WAIT("a_full"), ST(NET_FS_FULL), ASKS_REFUSED("lobby_full"), SIG("b_full_ok"),
+    SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), ST(NET_FS_OPEN), SLEEP(11.0), JOIN, SIG("b_ask5"), {OP_PLAYING, NULL, 0}, PLAYERS(2), WAIT("a_leaving"),
+    {OP_MENU, NULL, 0}, SIG("b_menu"), SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), WAIT("a_full"), ST(NET_FS_FULL), ASKS_REFUSED("lobby_full"), SIG("b_full_ok"),
     WAIT("a_watch"), {OP_SKIN, NULL, 0}, SIG("b_skin"), WAIT("a_rm_wait"),
-    {OP_TAP_P, "fmore_%s", 0}, TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0}, ASKS_REFUSED("not_friends"), SIG("b_removed"),
+    {OP_TAP_P, "fmore_%s", 0}, TAP("fa_remove"), TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0}, ASKS_REFUSED("not_friends"), SIG("b_removed"),
     TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0), SIG("b_req2"), WAIT("a_req_declined"), {OP_GONE, NULL, 0},
     {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0), SIG("b_req3"), TAP("ftab1"), SLEEP(1.0), {OP_TAP_P, "frq_x_%s", 0}, SLEEP(1.0), {OP_GONE, NULL, 0}, SIG("b_cancelled"),
     {OP_END, NULL, 0},
@@ -118,7 +118,7 @@ static const FtOp k_reinstall[] = {
 
 /* a short screen: the menu's last row is reached by dragging the list */
 static const FtOp k_scroll[] = {
-    {OP_READY, NULL, 0}, {OP_FE_STATE, NULL, FE_MAIN_MENU}, SLEEP(1.0), {OP_DRAG_UP, "menurow1", 0}, SLEEP(0.5), TAP("menurow2"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_END, NULL, 0},
+    {OP_READY, NULL, 0}, {OP_FE_STATE, NULL, FE_MAIN_MENU}, SLEEP(1.0), {OP_DRAG_UP, "menurow0", 0}, SLEEP(0.5), TAP("menurow2"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_END, NULL, 0},
 };
 
 /* --autotest link: the identity is $MG_LT_EMAIL (see tools/link_test.sh). Starts on Settings. */
@@ -158,7 +158,7 @@ static const FtOp k_dcode[] = {{OP_READY, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_
 static const FtOp k_dhost[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_PEER_ENV, NULL, 0},
     NOTICE_FRIEND_UP, TAP("notice_ok"), {OP_FRIENDS, NULL, 1}, /* request from the other device */
-    TAP("menurow30"), TAP("ftab0"), {OP_GONE, NULL, 0}, /* it removes us */
+    TAP("account_chip"), TAP("ftab0"), {OP_GONE, NULL, 0}, /* it removes us */
     TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1}, /* request to the other device */
     TAP("friends"), {OP_MENU, NULL, 0}, NEW_GAME,
     NOTICE, TAP("notice_ok"), PLAYERS(2), SLEEP(25.0), PLAYERS(1),
@@ -169,14 +169,14 @@ static const FtOp k_dhost[] = {
 };
 static const FtOp k_dguest[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PEER_ENV, NULL, 0},
-    TAP("menurow30"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1},
-    TAP("ftab0"), SLEEP(1.0), {OP_TAP_P, "fmore_%s", 0}, TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0},
+    TAP("account_chip"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1},
+    TAP("ftab0"), SLEEP(1.0), {OP_TAP_P, "fmore_%s", 0}, TAP("fa_remove"), TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0},
     NOTICE_FRIEND_UP, TAP("notice_ok"), {OP_FRIENDS, NULL, 1},
     ST(NET_FS_OPEN), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), SLEEP(28.0), TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0},
-    SLEEP(11.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_JOIN_ERR, "declined", 0},
+    SLEEP(11.0), TAP("account_chip"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_JOIN_ERR, "declined", 0},
     SLEEP(11.0), JOIN, {OP_JOIN_ERR, "declined", 0},
     SLEEP(11.0), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0},
-    SLEEP(11.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, {OP_END, NULL, 0},
+    SLEEP(11.0), TAP("account_chip"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, {OP_END, NULL, 0},
 };
 
 /* no network: the game plays, the switch is off, the list is the cached one */
@@ -336,7 +336,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         }
         break;
     case OP_SET_CODE:
-        SDL_snprintf(p->fpage->code_in, sizeof(p->fpage->code_in), "%s", t->peer_code);
+        SDL_snprintf(p->fpage->search_in, sizeof(p->fpage->search_in), "%s", t->peer_code);
         done = true;
         break;
     case OP_ACCEPT_ALL:
