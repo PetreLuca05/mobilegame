@@ -8,7 +8,7 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;

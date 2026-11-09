@@ -313,6 +313,19 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   visited_rooms u64 (bit = storey * 16 + chunk); every 30 s, on background,
   exit and "Save & back to menu". Offline play joins no Realtime room.
 
+## Friends and lobbies (FRIENDS-1)
+
+Every game is a lobby owned by its player; only friends get in, after the host says yes. No modes, no room codes.
+
+- Tables: `profiles.friend_code` (6 chars, trigger), `friendships` (select own), `player_status` and `lobby_members` and `lobby_join_attempts` (RPCs only: the token never leaves through a select). `profiles` has column grants: clients write only name + skin. Everything goes through `security definer` RPCs: `my_friend_code`, `friend_request_by_code`, `friend_search`, `friend_respond`, `friend_remove` (also cancels), `friends_list`, `status_heartbeat`, `status_clear`, `lobby_join_request`, `lobby_join_respond`, `lobby_kick`, `lobby_leave`. Errors are `raise exception '<code>'`, mapped by `friend_err_<code>` / `join_err_<code>` strings.
+- Topics: `user:<uid>` (receive only, whole app run: `friend_request`, `friend_accepted`, `join_request`, `join_accepted`, `join_declined`, `kicked`) and `room:<token>` (Presence + state), one socket. Host-announced member list on the room (broadcast `m`, empty = host closed); state from anyone off it is dropped.
+- A token lives for a session; `status_clear` shorter than 2 min (backgrounding) keeps it. Older than 90 s = offline. `start_tick` is the wall-clock ms of NPC tick 0.
+- `game/lobby.c`: `OFFLINE -> SOLO -> HOSTING`, `JOINING -> GUEST`; `lobby_start_host`, `lobby_start_guest`, `lobby_stop`, `lobby_set_open`, `lobby_ask_join`, `lobby_cancel_join`, `lobby_respond`, `lobby_kick`. `LOBBY_JOIN_APPROVAL` in `game/lobby.h`. A join's 15 s run from when its panel shows; join requests go before friend notices in the queue.
+- `game/friends.c`: `friends_page`, `friends_refresh`, `friends_request_code`, `friends_search`, `friends_respond`, `friends_remove`; `friends_cache.bin` is written by the network thread. `game/friends_page.c` is the page. `engine/ui/notice_panel.c` the top-centre panel (its rect is reserved from marker icons).
+- `engine/ui/head_icons.c` (A1): 64-cell atlas of account heads, keyed by skin hash, max 2 rendered per frame through one offscreen pass; 0 extra draws because `ui.frag` samples it as a second texture when u >= 2.
+- Prefs: `lobby_open` (default on). Strings: `assets/strings_ro.json` first, then `strings.json` as the fallback.
+- `tools/friends_test.sh OUT` runs `--autotest friends` on desktop: roles a1, a2, a3 (restarts), b, c, offline, plus a fourth account; files in `$MG_FT_SYNC` keep them in step. SQL: `supabase/tests/friends_test.sql`.
+
 ## Networking
 
 - `engine/net/net_transport.h` is the only API the game uses; `supabase_rt.c`
@@ -435,7 +448,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
-- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`) writes `perf_SCENARIO.json` to
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.

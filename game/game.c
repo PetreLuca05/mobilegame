@@ -303,6 +303,24 @@ static bool ensure_world(Game *g, MgApp *app)
 #define NOTICE_FRIEND_S 15.0
 #define NOTICE_INFO_S 3.0
 
+/* --autotest perf lobby4: three guests standing around and the join panel up, without a network */
+static void lobby4_fake(Game *g)
+{
+    static const NetSkin skins[3] = {{.hair = 2, .accessory = 1}, {.hair = 4, .accessory = 2, .skin = 3}, {.hair = 1, .accessory = 4, .skin = 5}};
+    for (int i = 0; i < 3; i++) {
+        RemotePlayer *r = &g->session.remotes[i];
+        r->active = r->visible = true;
+        SDL_snprintf(r->id, sizeof(r->id), "perf%d", i);
+        SDL_snprintf(r->meta.name, sizeof(r->meta.name), "Guest %d", i + 1);
+        r->meta.skin = skins[i];
+        r->look = avatar_look_from_skin(skins[i]);
+        r->pos = HMM_V3(-1.5f + 1.5f * (float)i, 0.1f, -1.5f);
+        r->sample.valid = true;
+        r->sample.pos = r->pos;
+    }
+    notice_push(&g->notice, NOTICE_JOIN, "perf", "Guest", &skins[0], str("notice_wants_join"), 100000.0);
+}
+
 static void on_net_event(void *user, const NetEvent *e)
 {
     Game *g = (Game *)user;
@@ -443,6 +461,9 @@ bool game_init(MgApp *app)
     lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
     g->lobby.epoch_ms = lobby_epoch;
     g->lobby.epoch_user = g;
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "lobby4") == 0) {
+        lobby4_fake(g);
+    }
     g->menu.lobby = &g->lobby;
     g->menu.friends = &g->friends;
     g->menu.heads = &g->heads;
