@@ -37,7 +37,7 @@ PAD = 6              # atlas px padding around each glyph
 ATLAS_SIZES = [(512, 512), (1024, 512), (1024, 768), (1024, 1024)]  # the smallest that fits
 CIRCLE = 64
 # Everything the font has from Latin-1 and Latin Extended-A, on top of ASCII
-BASE_CHARS = [chr(c) for c in range(32, 127)] + ["°", "•"]
+BASE_CHARS = [chr(c) for c in range(32, 127)] + ["°", "•", "—", "…"]
 LATIN_RANGE = range(0xA0, 0x180)
 # Romanian letters Fredoka does not have: built from its own letters. The cedilla forms
 # (U+015E, 015F, 0162, 0163) are not generated: the game maps them onto the comma ones.

@@ -62,7 +62,7 @@ bool text_init(TextFont *f, GfxContext *g)
         gl.yoff = rdf(p + 16);
         gl.advance = rdf(p + 20);
         gl.present = true;
-        static const uint32_t extras[][2] = {{0xB0, 1}, {0x2022, 2}, {0x2699, 3}, {0x2191, 4}};
+        static const uint32_t extras[][2] = {{0xB0, 1}, {0x2022, 2}, {0x2699, 3}, {0x2191, 4}, {0x2014, 5}, {0x2026, 6}};
         if (cp >= 32 && cp < TEXT_GLYPH_SLOTS) {
             f->glyphs[cp] = gl;
         }
@@ -80,15 +80,23 @@ bool text_init(TextFont *f, GfxContext *g)
     return gfx_set_ui_atlas(g, p, aw, ah);
 }
 
+/* Above the table: the two punctuation marks the copy uses have control-char slots */
+static uint32_t slot_of(uint32_t cp) { return cp == 0x2014 ? 5u : cp == 0x2026 ? 6u : cp; }
+
 static const TextGlyph *glyph_for(const TextFont *f, uint32_t cp)
 {
+    cp = slot_of(cp);
     if (cp < TEXT_GLYPH_SLOTS && f->glyphs[cp].present) {
         return &f->glyphs[cp];
     }
     return &f->glyphs['?'];
 }
 
-bool text_has_glyph(const TextFont *f, uint32_t cp) { return cp < TEXT_GLYPH_SLOTS && f->glyphs[cp].present; }
+bool text_has_glyph(const TextFont *f, uint32_t cp)
+{
+    cp = slot_of(cp);
+    return cp < TEXT_GLYPH_SLOTS && f->glyphs[cp].present;
+}
 
 /* The next code point of a UTF-8 string; a broken sequence is one '?' per byte. */
 static uint32_t next_cp(const char **ps)
