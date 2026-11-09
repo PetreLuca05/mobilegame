@@ -488,6 +488,7 @@ static const TapStep k_onboarding[] = {
     {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "cr2_0_2", true},   {FE_CREATOR, "cr2_1_4", true},
     {FE_CREATOR, "crtab3", false},  {FE_CREATOR, "cr3_0_1", true},   {FE_CREATOR, "crtab4", false},
     {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
+    {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */
 };
 static const TapStep k_new_game[] = {{FE_MAIN_MENU, "menurow0", false}};
 static const TapStep k_overwrite[] = {{FE_MAIN_MENU, "ow_new", false}};

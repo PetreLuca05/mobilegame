@@ -437,6 +437,10 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         text_draw_centered(ui->gfx, ui->font, x + cw - 28.0f, y + ROW_H * 0.5f, 14.0f, ui_rgba(0xFFFFFFFF), n);
     }
     y += ROW_H + 8.0f;
+    if (menu_row(f, ui, app, 31, str("locker"), x, y, cw, false, false, NULL)) {
+        frontend_go(f, FE_CREATOR);
+    }
+    y += ROW_H + 8.0f;
     if (menu_row(f, ui, app, row++, str("settings"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
@@ -444,12 +448,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
     float vw = text_width(ui->font, ctx->version, 13.0f);
     text_draw(ui->gfx, ui->font, w - app->safe_right - PAD - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
-
-    /* tapping the avatar opens the creator */
-    bool held;
-    if (!f->confirm_new && ui_hit_area(ui, "avatar", w * 0.62f, h * 0.15f, w * 0.26f, h * 0.7f, &held)) {
-        frontend_go(f, FE_CREATOR);
-    }
 
     if (f->confirm_new) { /* overwrite dialog */
         ui_block(ui, 0, 0, w, h);

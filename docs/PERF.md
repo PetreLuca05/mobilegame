@@ -279,3 +279,7 @@ Gate against the new baseline: passed. `corridor_f2` dropped 1 frame on its firs
 | `lift_panel` | 72.0 | 1.30 | 5.30 / 32 / 1.69 | 160 |
 | `interact_npc` | 97.3 | 1.39 | 5.81 / 35 / 2.03 | 162 |
 | `lobby4` | 95.4 | 1.30 | 5.69 / 34 / 1.95 | 161 |
+
+## Menu scenario (87b762a, iPad Air 4)
+
+`--autotest perf menu`: hospital, roaming NPCs (48 alive), hero, same budgets as gameplay. Gate: passed on its one rerun; the first run had 1 dropped frame and 4 small allocations (24-56 bytes) inside `render`, the same signature as the first `stress200` run. 76.2 draws (110 max), render 0.99 ms, GPU 6.14 ms / 37 % busy / 2.27 ms effective at Minimum clock (98 %), 172 MB.
