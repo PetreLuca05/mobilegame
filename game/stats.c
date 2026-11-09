@@ -1,10 +1,22 @@
 #include "stats.h"
 
 #include <math.h>
+#include <string.h>
 
-void stats_loaded(Stats *s, const NetStats *server, double now)
+void stats_loaded(Stats *s, const NetStats *server, const char *user_id, double now)
 {
-    s->base = *server;
+    NetStats b = *server;
+    if (s->loaded && strcmp(s->user_id, user_id) == 0) {
+        b.sessions -= s->flushed.sessions;
+        b.play_seconds -= s->flushed.play_seconds;
+        b.distance_m -= s->flushed.distance_m;
+        b.elevator_rides -= s->flushed.elevator_rides;
+        b.rooms_joined -= s->flushed.rooms_joined;
+    } else {
+        memset(&s->flushed, 0, sizeof(s->flushed));
+    }
+    s->base = b;
+    strncpy(s->user_id, user_id, sizeof(s->user_id) - 1);
     if (!s->loaded) {
         s->next_flush = now + STATS_FLUSH_S;
     }
@@ -35,6 +47,17 @@ NetStats stats_totals(const Stats *s)
     t.distance_m += (float)s->distance_m;
     t.elevator_rides += s->rides;
     t.rooms_joined += s->rooms;
+    return t;
+}
+
+NetStats stats_for_save(Stats *s)
+{
+    NetStats t = stats_totals(s);
+    s->flushed = (NetStats){.sessions = t.sessions - s->base.sessions,
+                            .play_seconds = t.play_seconds - s->base.play_seconds,
+                            .distance_m = t.distance_m - s->base.distance_m,
+                            .elevator_rides = t.elevator_rides - s->base.elevator_rides,
+                            .rooms_joined = t.rooms_joined - s->base.rooms_joined};
     return t;
 }
 

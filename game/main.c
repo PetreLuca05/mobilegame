@@ -6,7 +6,7 @@
 #include "platform/app.h"
 
 static const MgGameCallbacks k_game = {
-    .title = "Mobilegame",
+    .title = "Rezi",
     .init = game_init,
     .tick = game_tick,
     .frame = game_frame,

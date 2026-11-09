@@ -32,7 +32,7 @@ to `~/.android/debug.keystore` if you build Android locally).
    name `Mobilegame` → **Create**, then select it.
 2. Menu → **APIs & Services** → **OAuth consent screen** (shown as
    **Google Auth Platform**) → **Get started**:
-   - App name `Mobilegame`, user support email = yours → **Next**
+   - App name `Rezi`, user support email = yours → **Next**
    - Audience: **External** → **Next**
    - Contact email = yours → **Next** → agree → **Create**
 3. **Audience** → **Test users** → **Add users** → your Gmail → **Save**

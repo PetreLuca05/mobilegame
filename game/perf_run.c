@@ -32,6 +32,7 @@ static const Scenario k_scenarios[] = {
     {"interact_npc", 3.3f, 0.1f, -2.2f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* near a talker, preview up */
     {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"lobby4", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2}, /* 3 guests, join panel up, 200 NPCs */
+    {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: hospital, roaming NPCs, hero */
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
 

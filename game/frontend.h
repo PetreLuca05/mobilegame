@@ -66,6 +66,7 @@ typedef struct Frontend {
     int depth;
     GfxMeshId room, disc;
     float yaw, spin_vel;
+    float hero_turn;  /* creator: dragging turns the hero in front of the hospital */
     AvatarAnim anim;
     char name[NET_NAME_LEN];
     bool editing_name;
@@ -81,7 +82,7 @@ typedef struct Frontend {
 } Frontend;
 
 /* Where the main menu's buttons end, in pt from the left (the hero is centred in what is left). */
-float frontend_menu_right(const MgApp *app);
+float frontend_menu_right(const MgApp *app, FeState state);
 bool frontend_init(Frontend *f, GfxContext *g, Arena *scratch);
 void frontend_go(Frontend *f, FeState s); /* pushes the current state for Back */
 /* Android back / Escape: one state back; returns FE_EXIT on the welcome screen. */

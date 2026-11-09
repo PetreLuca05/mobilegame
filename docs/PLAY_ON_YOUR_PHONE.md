@@ -1,4 +1,4 @@
-# Play Mobilegame on your phone
+# Play Rezi on your phone
 
 ## Before you start (once): turn on online play
 
@@ -42,11 +42,11 @@ Pick one:
 3. Tap **Install**. If Google Play Protect warns about an unknown app, tap
    **More details → Install anyway** (it is your own app, not from the Play
    Store).
-4. Tap **Open**. Later you'll find **Mobilegame** in your app list.
+4. Tap **Open**. Later you'll find **Rezi** in your app list.
 
 Updating: install a newer APK over the old one. If Android says *App not
 installed* / *package conflicts*, the new file was signed with a different
-key: uninstall Mobilegame first, then install again.
+key: uninstall Rezi first, then install again.
 
 ---
 

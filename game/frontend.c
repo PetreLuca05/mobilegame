@@ -82,7 +82,11 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
 {
     GfxContext *g = app->gfx;
     if (ctx->world_behind) { /* the hospital is drawn already: the hero stands in front, turned 45 degrees to its right */
-        AvatarPose hero = {ctx->hero_feet, HMM_PI32 - HMM_AngleDeg(45.0f), HMM_V3(0, 0, 0), true, false, false, false};
+        const float turn_dt = mg_minf(app->frame_dt, 0.1f);
+        f->hero_turn = f->state == FE_CREATOR ? f->hero_turn + f->spin_vel * turn_dt : 0.0f;
+        f->spin_vel *= 1.0f - mg_minf(turn_dt * 3.0f, 1.0f);
+        AvatarPose hero = {ctx->hero_feet, HMM_PI32 - HMM_AngleDeg(45.0f) + f->hero_turn, HMM_V3(0, 0, 0), true, false, false, false};
+        hero.flat_ground = true; /* the contact disc */
         avatar_animate(&f->anim, &hero, mg_minf(app->frame_dt, 0.1f));
         AvatarLook hero_look = avatar_look_from_skin(*ctx->skin);
         avatar_draw(g, meshes, &hero_look, &hero, &f->anim, NULL);
@@ -271,21 +275,33 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
 
 /* ------------------------------------------------------------------ screens */
 
+/* The menu's left column, shared by the first-launch screens: the hero stands to its right. */
+static float column_w(const MgApp *app)
+{
+    const float x = app->safe_left + PAD;
+    return mg_minf(app->width_pt * 0.5f - x - PAD, 400.0f);
+}
+
+static float creator_w(const MgApp *app) { return app->width_pt * 0.58f - app->safe_right - PAD; }
+
+/* Title and divider; returns where the content starts. */
+static float column_top(Ui *ui, const char *title, const MgApp *app, float x, float w)
+{
+    float y = app->safe_top + PAD + 8.0f;
+    title_block(ui, title, x, y - 8.0f, w, false);
+    y += 54.0f;
+    ui_rect(ui->gfx, ui->font, x, y, w, 1.0f, ui_rgba(0xFFFFFF33));
+    return y + 12.0f;
+}
+
 static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
-    float w = app->width_pt, h = app->height_pt;
-    float l = app->safe_left + PAD, r = w - app->safe_right - PAD;
-    float top = app->safe_top + PAD + 8.0f;
-    title_block(ui, str("game_name"), l, top, r - l, true);
-    wrapped(ui, l + (r - l) * 0.15f, top + 56.0f, (r - l) * 0.7f, 16.0f, ui_rgba(0xFFFFFFCC), str("description"),
-            true);
-    /* buttons: right half, vertically centred in the middle band */
-    float cx = w * 0.5f + PAD, cw = mg_minf(r - cx, 360.0f);
-    cx += (r - cx - cw) * 0.5f;
-    int n = ctx->apple_available ? 2 : 1;
-    float block = (float)n * 52.0f + (float)(n - 1) * 12.0f + 12.0f + 30.0f;
-    float mid0 = h * 0.28f, mid1 = h * 0.80f;
-    float y = mid0 + (mid1 - mid0 - block) * 0.5f;
+    float w = app->width_pt;
+    float cx = app->safe_left + PAD, cw = column_w(app);
+    float y = column_top(ui, str("game_name"), app, cx, cw);
+    y += wrapped(ui, cx, y, cw, 15.0f, ui_rgba(0xFFFFFFFF), str("description"), false) + 16.0f;
+    const int buttons = (ctx->google_available || !ctx->apple_available ? 1 : 0) + (ctx->apple_available ? 1 : 0);
+    gfx_ui_blur_panel(ui->gfx, cx - 12.0f, y - 12.0f, cw + 24.0f, (float)buttons * 64.0f + 54.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
     FeAction a = FE_NONE;
     if (ctx->google_available || !ctx->apple_available) {
         if (pill(ui, "google", cx, y, cw, 0xFFFFFF, 0x1F1F1F, str("google"), 1, ctx->signin_busy)) {
@@ -320,11 +336,14 @@ static bool name_valid(const char *s)
 
 static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 {
-    float w = app->width_pt, h = app->height_pt;
-    float x = w * 0.5f + PAD, cw = mg_minf(w - app->safe_right - PAD - x, 380.0f);
-    float y = mg_maxf(app->safe_top + PAD, h * 0.22f);
-    text_draw(ui->gfx, ui->font, x, y, 26.0f, ui_rgba(0xFFFFFFFF), str("username_title"));
-    y += 48.0f;
+    float w = app->width_pt;
+    float x = app->safe_left + PAD, cw = column_w(app);
+    float y = app->safe_top + PAD + 8.0f;
+    text_draw(ui->gfx, ui->font, x, y + 4.0f, 26.0f, ui_rgba(0xFFFFFFFF), str("username_title"));
+    y += 54.0f;
+    ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
+    y += 16.0f;
+    gfx_ui_blur_panel(ui->gfx, x - 12.0f, y - 12.0f, cw + 24.0f, 170.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
     int ed = ui_text_field(ui, "username", x, y, cw, 52.0f, f->name, (int)sizeof(f->name), &f->editing_name,
                            NAME_CHARS);
     y += 60.0f;
@@ -346,7 +365,7 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
-    float x = w * 0.42f, r = w - app->safe_right - PAD, cw = r - x;
+    float x = app->safe_left + PAD, cw = creator_w(app), r = x + cw;
     float y = app->safe_top + PAD;
     float panel_h = h - y - mg_maxf(app->safe_bottom, PAD) - PAD;
     gfx_ui_blur_panel(ui->gfx, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 16.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
@@ -367,14 +386,14 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     if (ui_button(ui, label, x, y + panel_h - 110.0f, cw, 52.0f, true)) {
         a = FE_CREATOR_DONE;
     }
-    spin_drag(f, app, 0.0f, x - 12.0f);
+    spin_drag(f, app, r + 12.0f, w);
     return a;
 }
 
-float frontend_menu_right(const MgApp *app)
+float frontend_menu_right(const MgApp *app, FeState state)
 {
     const float x = app->safe_left + PAD;
-    return x + mg_minf(app->width_pt * 0.5f - x - PAD, 400.0f);
+    return x + (state == FE_CREATOR ? creator_w(app) + 12.0f : column_w(app));
 }
 
 static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
@@ -471,11 +490,7 @@ static void back_button(Frontend *f, Ui *ui, MgApp *app)
 FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes)
 {
     f->clicked = false;
-    float side = f->state == FE_MAIN_MENU ? 0.5f : -0.5f;
-    if (f->state == FE_CREATOR) {
-        side = -0.55f;
-    }
-    draw_scene(f, app, ctx, meshes, side);
+    draw_scene(f, app, ctx, meshes, 0.5f); /* the controls are on the left */
     FeAction a = FE_NONE;
     switch (f->state) {
     case FE_WELCOME:

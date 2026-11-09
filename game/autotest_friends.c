@@ -20,7 +20,7 @@ typedef enum FtOpKind {
     OP_ACCEPT_ALL, OP_FRIENDS, OP_ST, OP_BADGE, OP_NOTICE, OP_PLAYERS, OP_LOBBY, OP_TOKEN, OP_PLAYING, OP_MENU, OP_SLEEP, OP_SHOT,
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
-    OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
+    OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED, OP_STATS_FLUSH,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -125,7 +125,7 @@ static const FtOp k_scroll[] = {
 #define LSTATE(x) {OP_LINK_STATE, NULL, x}
 #define START_GUEST {OP_READY, NULL, 0}, {OP_UID_SAVE, NULL, 0}, {OP_GUEST, NULL, 1}
 static const FtOp k_l1[] = { /* new identity: linked in place */
-    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), TAP("google"), SHOT("overlay"),
+    START_GUEST, {OP_SEED, NULL, 0}, {OP_STATS_FLUSH, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), TAP("google"), SHOT("overlay"),
     {OP_GUEST, NULL, 0}, LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_READY, NULL, 0}, SLEEP(1.5), SHOT("account_linked"), SIG("l1_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_l2[] = { /* identity taken: confirm, merge, the account is loaded */
@@ -550,6 +550,12 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         net_save_stats(f->net, &p->stats->base);
         done = true;
         break;
+    case OP_STATS_FLUSH: { /* what the 60 s save does: this launch is on the server before the link reloads */
+        NetStats totals = stats_for_save(p->stats);
+        net_save_stats(f->net, &totals);
+        done = true;
+        break;
+    }
     case OP_SET_SEARCH:
         SDL_snprintf(p->fpage->search_in, sizeof(p->fpage->search_in), "%s", o->s);
         p->fpage->search_dirty = true;

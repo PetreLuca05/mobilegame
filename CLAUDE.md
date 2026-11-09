@@ -281,9 +281,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
   launch; later boots go straight to the menu), SETTINGS,
-  LOADING, PLAY. Main menu, Settings and Friends draw the real hospital from outside
-  behind the hero (`menu_world` in `game/game.c`, `MENU_*` camera, NPCs on `MENU_NPC_SEED`); the other screens
-  keep the locker room (avatar on a turntable). `npc_world_start` is a clean start (slots, ids, nav queue), so the
+  LOADING, PLAY. Welcome, Username, Creator, Main menu, Settings and Friends draw the real hospital from outside
+  behind the hero (`menu_world` in `game/game.c`, `MENU_*` camera, NPCs on `MENU_NPC_SEED`); controls in the left
+  column; the Creator opened from the game keeps the locker room. `npc_world_start` is a clean start (slots, ids, nav queue), so the
   menu's NPCs cannot change a game's deterministic sim. Back = Android
   back / Escape (exits from the welcome screen). Desktop: `--frontend
   welcome|username|creator|menu|settings`, `--play new|continue`.
@@ -458,7 +458,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
-- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`) writes `perf_SCENARIO.json` to
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.

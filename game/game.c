@@ -238,7 +238,7 @@ static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with not
 
 static bool perf_wants_npcs(const Game *g)
 {
-    return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0);
+    return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0 || SDL_strcmp(g->perf.scenario, "menu") == 0);
 }
 
 static bool has_flag(int argc, char **argv, const char *flag)
@@ -314,15 +314,15 @@ static bool ensure_world(Game *g, MgApp *app)
 #define CHIP_RESERVED_W 170.0f
 /* the main menu's view: from the gate, the hero in the right half */
 #define MENU_EYE_X 0.5f
-#define MENU_EYE_Y 0.9f
+#define MENU_EYE_Y 0.35f /* low enough to see the feet and the contact disc */
 #define MENU_EYE_Z 18.73f /* 2.53 m from the hero */
 #define MENU_LOOK_X 0.5f
-#define MENU_LOOK_Y 8.0f
+#define MENU_LOOK_Y 6.8f
 #define MENU_LOOK_Z 0.0f
 #define MENU_FOV_DEG 64.8f
 #define MENU_HERO_Z 16.2f
-#define MENU_HERO_MID_Y 1.0f  /* the part of the hero that is centred */
-#define MENU_HERO_FEET_Y (-0.3f) /* the body floats: this puts it on the ground */
+#define MENU_HERO_MID_Y 0.9f
+#define MENU_HERO_FEET_Y 0.0f /* the body floats over its contact disc, as in play */
 #define NOTICE_FRIEND_S 15.0
 #define NOTICE_INFO_S 3.0
 
@@ -530,6 +530,10 @@ bool game_init(MgApp *app)
         if (g->fe.state == FE_FRIENDS) {
             friends_page_open(&g->fpage, &g->friends);
         }
+    }
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
+        play_now = false;
+        g->fe.state = FE_MAIN_MENU;
     }
     const char *play_arg = arg_value(app->argc, app->argv, "--play"); /* desktop: new | continue */
     if (play_arg && !play_now) {
@@ -1278,12 +1282,12 @@ static void start_loading(Game *g, int what)
 #define MENU_NPC_SEED 0x4D454E55u /* a fixed crowd: nothing here is shared or saved */
 
 /* Halfway between the menu's buttons and the screen edge, wherever those are on this device */
-static HMM_Vec3 menu_hero_feet(const MgApp *app)
+static HMM_Vec3 menu_hero_feet(const MgApp *app, FeState state)
 {
     const HMM_Vec3 eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
     const HMM_Vec3 fwd = HMM_NormV3(HMM_SubV3(HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), eye));
     const float depth = (MENU_HERO_MID_Y - eye.Y) * fwd.Y + (MENU_HERO_Z - eye.Z) * fwd.Z;
-    const float centre = (frontend_menu_right(app) + app->width_pt - app->safe_right) * 0.5f;
+    const float centre = (frontend_menu_right(app, state) + app->width_pt - app->safe_right) * 0.5f;
     const float ndc = centre / app->width_pt * 2.0f - 1.0f;
     const float aspect = app->width_pt / app->height_pt;
     return HMM_V3(eye.X + ndc * depth * HMM_TanF(HMM_AngleDeg(MENU_FOV_DEG) * 0.5f) * aspect, MENU_HERO_FEET_Y, MENU_HERO_Z);
@@ -1293,10 +1297,11 @@ static HMM_Vec3 menu_hero_feet(const MgApp *app)
  * stays loaded for play. Off everywhere else, so a game starts its own sim from its own seed. */
 static bool menu_world(Game *g, MgApp *app)
 {
-    const HMM_Vec3 hero = menu_hero_feet(app);
+    const HMM_Vec3 hero = menu_hero_feet(app, g->fe.state);
     g->menu_hero = hero;
     const int st = g->fe.state;
-    if (st != FE_MAIN_MENU && st != FE_SETTINGS && st != FE_FRIENDS) {
+    const bool onboarding = (st == FE_WELCOME || st == FE_USERNAME || st == FE_CREATOR) && !g->play_paused;
+    if (st != FE_MAIN_MENU && st != FE_SETTINGS && st != FE_FRIENDS && !onboarding) {
         if (g->menu_world_on) {
             g->menu_world_on = false;
             npc_world_stop(&g->npcs);
@@ -2320,7 +2325,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     {
         PerfSample ps;
         gfx_get_stats(app->gfx, &ps.gs);
-        ps.sim = (uint32_t)g->crowd.pool.count + 1;
+        ps.sim = (uint32_t)(g->menu_world_on ? g->npcs.pool.count : g->crowd.pool.count) + 1;
         ps.rendered = g->rendered_last;
         ps.nav_bytes = g->nav ? nav_memory_bytes(g->nav) : 0;
         ps.npc_bytes = sizeof(npc_hot_t) * 2u * NPC_MAX + sizeof(npc_cold_t) * NPC_MAX;
@@ -2464,13 +2469,13 @@ static void game_frame_inner(MgApp *app, float alpha)
                 }
                 g->stats_queued = false;
             }
-            stats_loaded(&g->stats, &g->profile.stats, app->time);
+            stats_loaded(&g->stats, &g->profile.stats, g->profile.user_id, app->time);
             session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
             account_loaded(g, app);
         }
         g->stats.rooms = g->session.rooms_joined;
         if (stats_flush_due(&g->stats, app->time)) {
-            NetStats t = stats_totals(&g->stats);
+            NetStats t = stats_for_save(&g->stats);
             net_save_stats(g->net, &t);
         }
         g->local_look = session_my_look(&g->session);
@@ -3582,7 +3587,7 @@ static void flush_stats(Game *g)
         return; /* these numbers may belong to the account that is being replaced */
     }
     if (g->stats.loaded) {
-        NetStats t = stats_totals(&g->stats);
+        NetStats t = stats_for_save(&g->stats);
         net_save_stats(g->net, &t);
         return;
     }
