@@ -8,7 +8,7 @@
 #define PANEL_W 360.0f
 #define PANEL_H 64.0f
 #define HEAD_SIZE 44.0f
-#define BUTTON_W 68.0f
+#define BUTTON_W 82.0f
 
 void notice_push(NoticePanel *p, NoticeKind kind, const char *id, const char *name, const NetSkin *skin, const char *line, double duration)
 {
@@ -17,10 +17,26 @@ void notice_push(NoticePanel *p, NoticeKind kind, const char *id, const char *na
             return; /* already waiting */
         }
     }
+    /* someone waiting at the door goes before anything that can wait in the Requests tab */
+    int at = p->count;
+    if (kind == NOTICE_JOIN) {
+        at = p->count > 0 ? 1 : 0;
+        while (at < p->count && p->q[at].kind == NOTICE_JOIN) {
+            at++;
+        }
+        if (p->count == NOTICE_MAX && at < NOTICE_MAX) {
+            p->count--; /* the last friend notice; the request itself stays in the list */
+        }
+        if (p->count > 0 && p->q[0].kind != NOTICE_JOIN) {
+            p->leaving = true;
+        }
+    }
     if (p->count == NOTICE_MAX) {
         return;
     }
-    Notice *n = &p->q[p->count++];
+    memmove(&p->q[at + 1], &p->q[at], (size_t)(p->count - at) * sizeof(Notice));
+    p->count++;
+    Notice *n = &p->q[at];
     memset(n, 0, sizeof(*n));
     n->kind = kind;
     SDL_snprintf(n->id, sizeof(n->id), "%s", id);

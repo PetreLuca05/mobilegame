@@ -27,11 +27,22 @@
 #ifndef MG_AUTOTEST_H
 #define MG_AUTOTEST_H
 
+#include <SDL3/SDL.h>
+#include "autotest_friends.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
 #include "ui/widgets.h"
 
 typedef struct AutotestProbe {
+    /* --autotest friends */
+    struct Friends *friends;
+    struct Lobby *lobby;
+    struct FriendsPage *fpage;
+    struct NoticePanel *notice;
+    struct HeadIcons *heads;
+    NetSkin *my_skin;
+    const char *my_name;
+    uint32_t npc_sync_tick, npc_sync_hash;
     HMM_Vec3 player_pos;
     HMM_Vec3 player_vel;
     float cam_yaw_deg;
@@ -88,6 +99,8 @@ typedef struct AutotestOut {
     int nav_to;
 } AutotestOut;
 
+void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
+
 typedef struct TapStep {
     int state;       /* FeState the step waits for */
     const char *key; /* widget to tap (ui_find) */
@@ -115,6 +128,7 @@ typedef struct Autotest {
     int step_count;
     uint32_t it_fired, it_reached;
     bool it_hidden, it_priority;
+    FriendsTest ft;
     int it_rides, it_hover;
     int clamp_frames, clamp_edge, clamp_hidden;
 } Autotest;

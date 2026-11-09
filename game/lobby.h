@@ -15,7 +15,8 @@
 #define LOBBY_MAX_PLAYERS 4
 #define LOBBY_MAX_GUESTS (LOBBY_MAX_PLAYERS - 1)
 #define LOBBY_MAX_REQUESTS 4
-#define LOBBY_REQUEST_S 15.0
+#define LOBBY_REQUEST_S 15.0    /* from when its panel is on screen */
+#define LOBBY_QUEUED_S 45.0     /* waiting behind another request; the server keeps one for 60 s */
 #define LOBBY_JOIN_WAIT_S 20.0
 
 typedef enum LobbyState { LOBBY_OFFLINE, LOBBY_SOLO, LOBBY_HOSTING, LOBBY_JOINING, LOBBY_GUEST } LobbyState;
@@ -62,6 +63,8 @@ typedef struct Lobby {
     const char *ended;      /* string key: why the guest session is over */
     char joined_name[NET_NAME_LEN]; /* a guest came in */
     char join_error[64];    /* our request failed: its code, or "declined" / "timeout" */
+    char last_join_error[64]; /* the same, kept for the tests */
+    int debug_players;      /* --autotest friends: announced instead of the real count */
     /* GUEST */
     char host_id[NET_ID_LEN];
     double host_seen;
@@ -80,6 +83,8 @@ void lobby_set_open(Lobby *l, bool open);
 void lobby_ask_join(Lobby *l, const char *host);
 void lobby_cancel_join(Lobby *l);
 void lobby_respond(Lobby *l, const char *guest, bool accept);
+/* Its panel has just appeared: the host has 15 s from now. */
+void lobby_request_shown(Lobby *l, const char *guest);
 void lobby_kick(Lobby *l, const char *guest);
 /* App lifecycle */
 void lobby_background(Lobby *l);

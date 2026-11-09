@@ -8,14 +8,14 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "interact", "text", "hudclamp"};
+                                        "offline", "friends", "interact", "text", "hudclamp"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 12 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 13 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -29,6 +29,9 @@ void autotest_init(Autotest *t, int argc, char **argv)
     *t = (Autotest){0};
     t->kind = kind_of(argc, argv);
     for (int i = 1; i + 2 < argc; i++) {
+        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "friends") == 0) {
+            ft_init(&t->ft, argv[i + 2]);
+        }
         if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "screenshot") == 0) {
             SDL_snprintf(t->shot_name, sizeof(t->shot_name), "%s", argv[i + 2]);
         }
@@ -53,6 +56,7 @@ bool autotest_starts_in_game(int argc, char **argv)
 
 #define INTERACT_FINGER 77
 static void finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
+void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt) { finger(app, type, id, x_pt, y_pt); }
 
 /* A tap on the interact panel, in two halves so a frame passes between them */
 void autotest_tap_interact(MgApp *app, const AutotestProbe *p) { finger(app, SDL_EVENT_FINGER_DOWN, INTERACT_FINGER, p->interact_x, p->interact_y); }
@@ -1089,6 +1093,18 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_OFFLINE:
         finished = run_offline(t, app, p, el);
         break;
+    case AUTOTEST_FRIENDS: {
+        const int r = ft_run(&t->ft, app, p, out, el);
+        if (r < 0) {
+            finished = fail(t, "friends", t->ft.why);
+            break;
+        }
+        finished = r > 0;
+        if (finished) {
+            mg_log_info("AUTOTEST PASSED");
+        }
+        break;
+    }
     case AUTOTEST_INTERACT:
         finished = run_interact(t, app, p, out, el);
         break;

@@ -254,6 +254,7 @@ set(MG_GAME_SOURCES
   game/net_session.c
   game/friends.c
   game/friends_page.c
+  game/autotest_friends.c
   game/lobby.c
   game/frontend.c
   game/creator.c

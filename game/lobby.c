@@ -30,7 +30,7 @@ static void heartbeat(Lobby *l, int state)
     char body[NET_RPC_BODY];
     const double epoch = state && l->epoch_ms ? l->epoch_ms(l->epoch_user) : 0.0;
     SDL_snprintf(body, sizeof(body), "{\"p_state\":%d,\"p_lobby_open\":%s,\"p_map_id\":%d,\"p_players\":%d,\"p_npc_seed\":%d,\"p_start_tick\":%.0f}", state,
-                 state && l->open && hosting(l) ? "true" : "false", l->map_id, state ? session_player_count(l->session) : 0,
+                 state && l->open && hosting(l) ? "true" : "false", l->map_id, state ? (l->debug_players ? l->debug_players : session_player_count(l->session)) : 0,
                  state ? (int32_t)l->npc_seed : 0, epoch);
     net_rpc(l->session->net, NET_RPC_HEARTBEAT, body);
     l->next_heartbeat = l->now + HEARTBEAT_S;
@@ -153,6 +153,7 @@ void lobby_ask_join(Lobby *l, const char *host)
     l->state = LOBBY_JOINING;
     l->join_deadline = l->now + LOBBY_JOIN_WAIT_S;
     l->join_error[0] = 0;
+    l->last_join_error[0] = 0;
 }
 
 static void join_failed(Lobby *l, const char *why)
@@ -163,6 +164,7 @@ static void join_failed(Lobby *l, const char *why)
     l->state = l->join_from;
     l->join_host[0] = 0;
     SDL_snprintf(l->join_error, sizeof(l->join_error), "%s", why);
+    SDL_snprintf(l->last_join_error, sizeof(l->last_join_error), "%s", why);
     mg_log_info("lobby: join failed: %s", why);
 }
 
@@ -184,6 +186,7 @@ static void pop_request(Lobby *l, int i)
 
 static void send_respond(Lobby *l, const char *guest, bool accept)
 {
+    mg_log_info("lobby: %s %.8s at %.2f", accept ? "accepting" : "declining", guest, l->now);
     char body[NET_RPC_BODY];
     SDL_snprintf(body, sizeof(body), "{\"p_guest\":\"%s\",\"p_accept\":%s}", guest, accept ? "true" : "false");
     net_rpc(l->session->net, NET_RPC_JOIN_RESPOND, body);
@@ -213,6 +216,15 @@ void lobby_respond(Lobby *l, const char *guest, bool accept)
                 send_respond(l, guest, false);
             }
             return;
+        }
+    }
+}
+
+void lobby_request_shown(Lobby *l, const char *guest)
+{
+    for (int i = 0; i < l->request_count; i++) {
+        if (strcmp(l->requests[i].id, guest) == 0) {
+            l->requests[i].expires = l->now + LOBBY_REQUEST_S;
         }
     }
 }
@@ -268,7 +280,7 @@ static void on_push(Lobby *l, const NetPush *p)
 #if LOBBY_JOIN_APPROVAL
         for (int i = 0; i < l->request_count; i++) {
             if (strcmp(l->requests[i].id, p->from) == 0) {
-                l->requests[i].expires = l->now + LOBBY_REQUEST_S; /* asked again */
+                l->requests[i].expires = mg_maxf((float)(l->requests[i].expires - l->now), (float)LOBBY_REQUEST_S) + l->now; /* asked again */
                 return;
             }
         }
@@ -280,7 +292,7 @@ static void on_push(Lobby *l, const NetPush *p)
         SDL_snprintf(r->id, sizeof(r->id), "%s", p->from);
         SDL_snprintf(r->name, sizeof(r->name), "%s", p->name);
         r->skin = p->skin;
-        r->expires = l->now + LOBBY_REQUEST_S;
+        r->expires = l->now + LOBBY_QUEUED_S;
         r->shown = false;
 #else
         admit(l, p->from);
@@ -359,6 +371,7 @@ void lobby_tick(Lobby *l, double now)
     if (hosting(l)) {
         for (int i = l->request_count - 1; i >= 0; i--) {
             if (now >= l->requests[i].expires) {
+                mg_log_info("lobby: request expired (asked until %.2f, now %.2f)", l->requests[i].expires, now);
                 send_respond(l, l->requests[i].id, false);
                 pop_request(l, i);
             }

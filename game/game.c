@@ -143,6 +143,7 @@ typedef struct Game {
     bool ia_ok, ia_log;
     MgApp *ia_app;  /* for the interact callbacks */
     uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
+    uint32_t npc_sync_tick, npc_sync_hash; /* every 600 ticks, for the tests */
     Friends friends;
     Lobby lobby;
     HeadIcons heads;
@@ -427,7 +428,11 @@ bool game_init(MgApp *app)
     /* --autotest offline: an unresolvable host behaves like airplane mode */
     const char *atest = arg_value(app->argc, app->argv, "--autotest");
     perf_run_init(&g->perf, app->argc, app->argv);
-    const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active);
+    const char *ft_role = NULL;
+    for (int i = 1; atest && SDL_strcmp(atest, "friends") == 0 && i + 2 < app->argc; i++) {
+        ft_role = SDL_strcmp(app->argv[i], "--autotest") == 0 ? app->argv[i + 2] : ft_role;
+    }
+    const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active || (ft_role && SDL_strcmp(ft_role, "offline") == 0));
     NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3, false};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
@@ -487,7 +492,7 @@ bool game_init(MgApp *app)
     gfx_set_msaa(app->gfx, g->msaa_samples);
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
-    g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log");
+    g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log") || (atest && SDL_strcmp(atest, "friends") == 0);
     g->ia_log = has_flag(app->argc, app->argv, "--ia-log");
     if (atest && (SDL_strcmp(atest, "npcs-save") == 0 || SDL_strcmp(atest, "npcs-continue") == 0)) {
         g->offline_play = true;
@@ -1002,6 +1007,11 @@ static void lobby_follow(Game *g, MgApp *app)
         if (g->playing) { /* autosave + close our own session and lobby */
             leave_play(g, app);
         }
+        if (g->fpage.open) {
+            g->fpage.open = false;
+            g->fpage.editing_code = g->fpage.editing_search = false;
+            friends_page(&g->friends, false);
+        }
         g->pending_play = 4;
         g->load_step = 0;
         g->fe.depth = 0;
@@ -1052,6 +1062,9 @@ static void draw_notices(Game *g, MgApp *app)
     const NoticeResult res = notice_panel_draw(&g->notice, &g->ui, &g->heads, &f, app->time, mg_minf(app->frame_dt, 0.1f), str("friend_accept"),
                                                str("friend_decline"), &kind, id);
     if (g->notice.just_shown) {
+        if (g->notice.q[0].kind == NOTICE_JOIN) {
+            lobby_request_shown(&g->lobby, g->notice.q[0].id);
+        }
         if (g->settings.marker_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
         }
@@ -1401,6 +1414,8 @@ static void npc_step(Game *g, MgApp *app)
     arena_reset_to(&app->frame, mark);
     if (g->npc_sync_log && g->npcs.tick % 600u == 0u) {
         mg_log_info("npc-sync: tick %u hash %08x alive %d seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.pool.count, g->npcs.seed);
+        g->npc_sync_tick = g->npcs.tick;
+        g->npc_sync_hash = npc_world_hash(&g->npcs);
     }
 }
 
@@ -1995,7 +2010,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
-        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "interact") == 0 || SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
+        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "friends") == 0 || SDL_strcmp(at_kind, "interact") == 0 || SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
                                              perf_wants_npcs(g));
         if (!at_kind || roster_test) {
             const uint32_t seed = npc_seed_for(g, app);
@@ -2041,7 +2056,8 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->lamp_on = g->day_state.lamp_on;
 #endif
     Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
-    AutotestProbe probe = {g->player.kin.pos,
+    AutotestProbe probe = {&g->friends, &g->lobby, &g->fpage, &g->notice, &g->heads, &g->profile.skin, g->profile.display_name, g->npc_sync_tick, g->npc_sync_hash,
+                           g->player.kin.pos,
                            g->player.kin.vel,
 #ifdef MG_CAMERA_THIRDPERSON
                            HMM_ToDeg(g->cam.yaw),
@@ -2962,6 +2978,11 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         greet_rect(g, app, res + rc * 4);
         rc++;
     }
+    if (g->notice.count > 0 && g->notice.w > 0.0f) {
+        const float nr[4] = {g->notice.x, g->notice.y, g->notice.w, g->notice.h};
+        memcpy(res + rc * 4, nr, sizeof(nr));
+        rc++;
+    }
     if (g->settings.show_stats && !g->perf.active) { /* the same box --autotest layout checks */
         const float st[4] = {app->safe_left + 10.0f + app->corner_clearance, app->safe_top + 8.0f, 200.0f, 90.0f};
         memcpy(res + rc * 4, st, sizeof(st));
@@ -3221,10 +3242,12 @@ static void layout_autotest(Game *g, MgApp *app)
     mg_log_info("autotest layout: display orientation %s", orient[so >= 0 && so < 5 ? so : 0]);
     const float r = g->touch_cfg.radius_pt * 0.75f;
     const float stick_x = f.inset_l + 16.0f, stick_y = f.h - f.inset_b - 16.0f - 2.0f * r;
+    const float nk = f.h >= 600.0f ? 1.3f : 1.0f; /* the join panel, ui/notice_panel.c */
     const struct { const char *name; float x, y, w, h; } items[] = {
         {"pause", px, py, ps, ps},
         {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r},
         {"stats", f.inset_l + 10.0f + f.corner, f.inset_t + 8.0f, 200.0f, 90.0f},
+        {"notice", (f.w - 360.0f * nk) * 0.5f, f.inset_t + 8.0f, 360.0f * nk, 64.0f * nk},
     };
     bool ok = true;
     float left = 1e9f, right = 1e9f, top = 1e9f, bottom = 1e9f;
