@@ -44,3 +44,8 @@ Google and Apple are both `false` in `/auth/v1/settings`, and `config.local.h` h
 ## Tables
 
 `profiles`, `stats`, `friendships`, `player_status`, `lobby_members`, `lobby_join_attempts` are the user-owned tables. The learning, streak, quest, league and cosmetics tables named in the LINK-1 prompt (`learn_progress`, `learn_reviews`, `player_meta` and so on) do not exist yet; the coverage guard makes sure they get a rule when they arrive.
+
+## RLS review for guests
+
+Guests are role `authenticated`, the same as permanent users, and every policy keys on `auth.uid()`: `profiles` (public read, own write), `stats` (own), `friendships` (own, select only). `player_status`, `lobby_members`, `lobby_join_attempts` and `merge_tickets` have no client access. Realtime policies key on the uid and on lobby membership. Nothing should differ for guests, so no policy uses `is_anonymous` and none was changed; the only place the claim matters is the ticket pair, which checks it and re-checks the row.
+

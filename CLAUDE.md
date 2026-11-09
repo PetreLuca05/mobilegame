@@ -326,6 +326,12 @@ Every game is a lobby owned by its player; only friends get in, after the host s
 - Prefs: `lobby_open` (default on). Strings: `assets/strings_ro.json` first, then `strings.json` as the fallback.
 - `tools/friends_test.sh OUT` runs `--autotest friends` on desktop: roles a1, a2, a3 (restarts), b, c, offline, solo (0 room packets in 60 s), a4 (prefs and cache wiped, same account), plus a fourth account; c adds by name search, b and a3 cover friend-request decline and cancel; files in `$MG_FT_SYNC` keep them in step. SQL: `supabase/tests/friends_test.sql`.
 
+## Account linking (LINK-1)
+
+**Merge coverage rule, for every later migration:** a table with a foreign key to `auth.users` or `profiles` must be named (`public.<table>`) in `merge_ticket_redeem` with an explicit rule. `supabase/tests/link_test.sql` fails otherwise.
+
+Request shapes and the audit: `docs/ACCOUNT_LINKING.md`. RPCs: `merge_ticket_create` (guest), `merge_ticket_redeem` (existing account), `link_cleanup` (nightly, `pg_cron`).
+
 ## Networking
 
 - `engine/net/net_transport.h` is the only API the game uses; `supabase_rt.c`
