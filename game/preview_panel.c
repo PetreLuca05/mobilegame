@@ -13,6 +13,8 @@
 #define CORNER_FRACTION 0.206f /* 14 pt of a 136 pt panel, in unit-quad terms (2 units wide) */
 #define YAW_SWING HMM_AngleDeg(14.0f)
 #define YAW_HZ 0.35f
+#define HEAD_TAP_S 0.45f
+#define HEAD_DIST 1.8f /* fills most of the square */
 
 bool preview_panel_init(PreviewPanel *p, GfxContext *g, Arena *scratch)
 {
@@ -55,6 +57,7 @@ void preview_panel_update(PreviewPanel *p, const Interact *ia, float dt, const u
 {
     p->t += dt;
     p->punch = mg_maxf(p->punch - dt / 0.15f, 0.0f);
+    p->head_tap = mg_maxf(p->head_tap - dt / HEAD_TAP_S, 0.0f);
     p->crossfade = mg_maxf(p->crossfade - dt / CROSSFADE_S, 0.0f);
     if (ia->active != IA_NONE) {
         if (p->shown != ia->active) {
@@ -77,19 +80,24 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
     if (!preview_panel_visible(p) || !ia->hot[p->shown].used) {
         return;
     }
-    const float punch = 1.0f + 0.06f * p->punch;
+    const preview_desc_t *d = &ia->cold[p->shown].preview;
+    const bool head = ia->hot[p->shown].kind == IA_NPC && d->look != NULL;
+    const float tap = 1.0f - p->head_tap;
+    /* a head squashes, springs back past its size and settles */
+    const float punch = head ? 1.0f - (p->head_tap > 0.0f ? 0.3f * sinf(tap * 3.0f * HMM_PI32) * (1.0f - tap) : 0.0f) : 1.0f + 0.06f * p->punch;
     const float s = p->size * punch, x = p->x - (s - p->size) * 0.5f, y = p->y - (s - p->size) * 0.5f;
     /* background: a rounded card, behind the model */
-    const HMM_Mat4 ortho = HMM_M4D(1.0f);
-    gfx_inset_begin(g, x, y, s, s, &ortho, HMM_V3(0, 0, 1), 0.01f, 0.02f, false);
-    GfxMaterial bg = mat_unlit(HMM_V4(0.07f, 0.08f, 0.11f, 1.0f));
-    const HMM_Mat4 id = HMM_Translate(HMM_V3(0, 0, 0.5f));
-    gfx_draw(g, p->rounded, &id, &bg, GFX_DRAW_NO_SHADOW);
-    gfx_inset_end(g);
+    if (!head) {
+        const HMM_Mat4 ortho = HMM_M4D(1.0f);
+        gfx_inset_begin(g, x, y, s, s, &ortho, HMM_V3(0, 0, 1), 0.01f, 0.02f, false);
+        GfxMaterial bg = mat_unlit(HMM_V4(0.07f, 0.08f, 0.11f, 1.0f));
+        const HMM_Mat4 id = HMM_Translate(HMM_V3(0, 0, 0.5f));
+        gfx_draw(g, p->rounded, &id, &bg, GFX_DRAW_NO_SHADOW);
+        gfx_inset_end(g);
+    }
     /* the model, turning gently */
-    const preview_desc_t *d = &ia->cold[p->shown].preview;
     const bool avatar = d->look != NULL;
-    const float cy = avatar ? 0.72f : 0.0f, dist = avatar ? 5.6f : 2.2f; /* framed high: the label covers the bottom */
+    const float cy = head ? 0.0f : avatar ? 0.72f : 0.0f, dist = head ? HEAD_DIST : avatar ? 5.6f : 2.2f; /* framed high: the label covers the bottom */
     const HMM_Vec3 eye = HMM_V3(0.0f, cy, dist); /* the sun side: faces towards +Z are the lit ones */
     const HMM_Mat4 view = HMM_LookAt_RH(eye, HMM_V3(0.0f, cy, 0.0f), HMM_V3(0, 1, 0));
     const HMM_Mat4 proj = HMM_Perspective_RH_ZO(HMM_AngleDeg(28.0f), 1.0f, 0.2f, 12.0f);
@@ -103,6 +111,13 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
         pose.yaw = yaw + HMM_PI32; /* avatars look along -Z: turn them to the camera */
         pose.grounded = true;
         pose.hide = p->crossfade;
+        if (head) {
+            pose.head_only = true;
+            pose.head_pitch = p->head_tap > 0.0f ? -0.4f * sinf(tap * 2.0f * HMM_PI32) * (1.0f - tap) : 0.0f; /* a nod */
+            if (ia->hot[p->shown].flags & IA_DISABLED) {
+                pose.hide = mg_maxf(pose.hide, 0.35f); /* nothing to say: faded */
+            }
+        }
         avatar_animate(&p->anim, &pose, 1.0f / 60.0f);
         avatar_draw(g, m, d->look, &pose, &p->anim, NULL);
     } else if (d->mesh != GFX_MESH_NONE) {
@@ -119,6 +134,9 @@ void preview_panel_draw_ui(const PreviewPanel *p, const Interact *ia, GfxContext
 {
     if (!preview_panel_visible(p) || !ia->hot[p->shown].used) {
         return;
+    }
+    if (ia->hot[p->shown].kind == IA_NPC && ia->cold[p->shown].preview.look) {
+        return; /* just the head */
     }
     const UiColor rim = ui_rgba(0xFFFFFF55);
     const float r = 14.0f, x = p->x, y = p->y, s = p->size;

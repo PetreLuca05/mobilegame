@@ -1,6 +1,6 @@
-/* M8: the lift's 3D button panel, a strip down the left of the safe area while the player stands in
- * the car. Drawn in the main pass ahead of the world (a depth-range inset); the column comes from the
- * lift's floor count. Tap-only through the touch targets. */
+/* M8: the lift's 3D button panel, a floating cube at the right of the safe area while the player
+ * stands in the car. Drawn in the main pass ahead of the world (a depth-range inset); the column of
+ * buttons comes from the lift's floor count. Tap-only through the touch targets. */
 #ifndef MG_ELEVATOR_PANEL_H
 #define MG_ELEVATOR_PANEL_H
 
@@ -12,12 +12,13 @@
 #define LIFT_PANEL_TAP_ID 0xFFFFFF00u /* + floor, in TouchControls.targets */
 
 typedef struct ElevatorPanel {
-    GfxMeshId plate, buttons, ring;
+    GfxMeshId cube, button, ring;
     int floors;
-    float button_y[LIFT_PANEL_FLOORS]; /* local, -0.5 .. 0.5 */
+    float button_y[LIFT_PANEL_FLOORS]; /* on the cube's face, -0.5 .. 0.5 */
     float button_r;
+    float press_anim[LIFT_PANEL_FLOORS]; /* 1 just pressed .. 0 */
     float slide;         /* 0 hidden .. 1 shown */
-    float x, y, w, h;    /* the strip, pt */
+    float x, y, w, h;    /* the square the cube is drawn in, pt */
     int pressed;         /* -1 none */
     float press_t;       /* time until the ride starts */
     float blink_t;       /* tapped the floor we are on */
@@ -28,11 +29,13 @@ void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame
 bool elevator_panel_visible(const ElevatorPanel *p);
 /* A button's centre on screen, pt */
 void elevator_panel_button_pos(const ElevatorPanel *p, int floor, float *x, float *y);
-/* A press: lights the button. Returns the floor to ride to once its 0.4 s are up (see _take). */
+/* A button's radius on screen, pt */
+float elevator_panel_button_radius(const ElevatorPanel *p);
+/* A press: the button sinks and lights. The ride starts once its 0.4 s are up (see _take). */
 void elevator_panel_press(ElevatorPanel *p, int floor, int current_floor);
 /* The floor whose press has come due, -1 if none. */
 int elevator_panel_take(ElevatorPanel *p);
 void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_floor);
-void elevator_panel_draw_ui(const ElevatorPanel *p, GfxContext *g, const TextFont *f, int current_floor, const char *(*name)(int floor));
+void elevator_panel_draw_ui(const ElevatorPanel *p, GfxContext *g, const TextFont *f, int current_floor, const char *(*name)(int));
 
 #endif

@@ -1394,6 +1394,7 @@ static void interact_tap(Game *g, MgApp *app)
     (void)app;
     if (ia_use_active(&g->ia)) {
         g->panel.punch = 1.0f;
+        g->panel.head_tap = 1.0f;
         if (g->settings.marker_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK);
         }
@@ -1678,25 +1679,28 @@ static void interact_tick(Game *g, MgApp *app)
 }
 
 /* "..." clouds over those who want to talk: the active NPC, plus up to six faint ones nearby */
+static void draw_cloud_at(MgApp *app, float x, float y, bool active, float vis, float k)
+{
+    const float t = (float)app->time;
+    y += active ? 3.0f * HMM_SinF(t * 2.0f * HMM_PI32) : 0.0f;
+    const uint8_t alpha = (uint8_t)((active ? 235.0f : 95.0f) * vis);
+    const UiColor white = {255, 255, 255, alpha};
+    ui_circle(app->gfx, &app->font, x - 7.0f * k, y, 12.0f * k, white);
+    ui_circle(app->gfx, &app->font, x + 7.0f * k, y - k, 11.0f * k, white);
+    ui_circle(app->gfx, &app->font, x + k, y + 12.0f * k, 3.0f * k, white); /* tail */
+    for (int d = 0; d < 3; d++) {
+        const float phase = active ? fmodf(t / 0.9f + (float)d / 3.0f, 1.0f) : 0.0f; /* in sequence */
+        const float r = (active ? 1.8f + 1.4f * HMM_SinF(phase * HMM_PI32) : 2.0f) * k;
+        const UiColor dot = {40, 44, 54, alpha};
+        ui_circle(app->gfx, &app->font, x + ((float)d * 7.0f - 7.0f) * k, y, r, dot);
+    }
+}
+
 static void draw_one_cloud(Game *g, MgApp *app, HMM_Vec3 at, bool active, float vis)
 {
     HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(at, 1.0f));
-    if (c.W <= 0.01f) {
-        return;
-    }
-    const float t = (float)app->time;
-    const float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt;
-    const float y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt + (active ? 3.0f * HMM_SinF(t * 2.0f * HMM_PI32) : 0.0f);
-    const uint8_t alpha = (uint8_t)((active ? 235.0f : 95.0f) * vis);
-    const UiColor white = {255, 255, 255, alpha};
-    ui_circle(app->gfx, &app->font, x - 7.0f, y, 12.0f, white);
-    ui_circle(app->gfx, &app->font, x + 7.0f, y - 1.0f, 11.0f, white);
-    ui_circle(app->gfx, &app->font, x + 1.0f, y + 12.0f, 3.0f, white); /* tail */
-    for (int d = 0; d < 3; d++) {
-        const float phase = active ? fmodf(t / 0.9f + (float)d / 3.0f, 1.0f) : 0.0f; /* in sequence */
-        const float r = active ? 1.8f + 1.4f * HMM_SinF(phase * HMM_PI32) : 2.0f;
-        const UiColor dot = {40, 44, 54, alpha};
-        ui_circle(app->gfx, &app->font, x - 7.0f + (float)d * 7.0f, y, r, dot);
+    if (c.W > 0.01f) {
+        draw_cloud_at(app, (c.X / c.W * 0.5f + 0.5f) * app->width_pt, (0.5f - c.Y / c.W * 0.5f) * app->height_pt, active, vis, 1.0f);
     }
 }
 
@@ -2484,8 +2488,7 @@ void game_frame(MgApp *app, float alpha)
     hud.render_w = gs.width_px;
     hud.render_h = gs.height_px;
     if (s->show_stats && !g->perf.active) { /* perf numbers never include the overlay */
-        /* beside the lift panel while it is open */
-        const float hud_x = g->lift_panel_ok && g->lift_panel.slide > 0.0f ? g->lift_panel.x + g->lift_panel.w + 10.0f : app->safe_left + 10.0f + app->corner_clearance;
+        const float hud_x = app->safe_left + 10.0f + app->corner_clearance;
         hud_draw(app->gfx, &app->font, hud_x, app->safe_top + 8.0f, &hud);
     }
     if (s->show_safe_rect) {
@@ -2501,10 +2504,10 @@ void game_frame(MgApp *app, float alpha)
     }
     layout_autotest(g, app);
     draw_chat_bubbles(g, app, floor);
-    if (g->greet_t > 0.0f) { /* bottom centre of the safe rect */
+    if (g->greet_t > 0.0f) { /* bottom right, beside the preview card */
         g->greet_t = mg_maxf(g->greet_t - mg_minf(app->frame_dt, 0.1f), 0.0f);
         const ui_frame_t cf = frame_of(app);
-        const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f, cx = ui_safe_left(&cf) + (ui_safe_w(&cf) - cw) * 0.5f, cy = ui_safe_bottom(&cf) - UI_MARGIN - ch;
+        const float cw = mg_minf(ui_safe_w(&cf) * 0.5f, 420.0f), ch = 60.0f, cx = ui_safe_right(&cf) - UI_MARGIN - cf.corner - g->panel.size - 12.0f - cw, cy = ui_safe_bottom(&cf) - UI_MARGIN - ch;
         ui_round_rect(app->gfx, &app->font, cx, cy, cw, ch, 12.0f, ui_rgba(0x101218E8));
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 18.0f, 13.0f, ui_rgba(0xFFD166FF), g->greet_name);
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(0xFFFFFFFF), g->greet_line);
@@ -2519,6 +2522,10 @@ void game_frame(MgApp *app, float alpha)
         preview_panel_update(&g->panel, hide_panel || g->no_panels ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
         preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
         preview_panel_draw_ui(&g->panel, &g->ia, app->gfx, &app->font);
+        if (preview_panel_visible(&g->panel) && g->settings.chat_bubbles != 0 && g->ia.hot[g->panel.shown].kind == IA_NPC &&
+            (g->ia.hot[g->panel.shown].flags & IA_WANTS_CHAT)) {
+            draw_cloud_at(app, g->panel.x + g->panel.size * 0.82f, g->panel.y + g->panel.size * 0.12f, true, 1.0f, 1.5f);
+        }
     }
     if (s->show_profiler != g->prof_on && !g->perf.active) {
         g->prof_on = s->show_profiler;
@@ -2818,7 +2825,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet, bool
             g->touch.targets[nt].id = LIFT_PANEL_TAP_ID + (uint32_t)i;
             g->touch.targets[nt].x = bx;
             g->touch.targets[nt].y = by;
-            g->touch.targets[nt].half = 26.0f; /* 52 pt */
+            g->touch.targets[nt].half = mg_maxf(26.0f, elevator_panel_button_radius(&g->lift_panel) + 4.0f); /* at least 52 pt */
             nt++;
         }
     }

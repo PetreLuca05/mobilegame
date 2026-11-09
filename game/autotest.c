@@ -795,13 +795,19 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
                 return fail(t, "interact", "walking onto the marker fired it");
             }
             mg_log_info("autotest interact: %s panel up after %.1f s, not fired (ok)", names[i], el - t->step_start);
-            IT_SHOT(names[i]);
-            t->wait_until = el + 0.5;
-            t->stage = 3;
+            t->wait_until = el + 0.4; /* past the cross-fade */
+            t->stage = 200;
         } else if (el - t->step_start > 70.0) {
             mg_log_info("autotest interact: at %.1f %.1f, active %d, wanted %d, nav %d", (double)p->player_pos.X, (double)p->player_pos.Z,
                         p->active_slot, p->it_slot[i], p->nav_state);
             return fail(t, "interact", "the panel never showed the target");
+        }
+        break;
+    case 200:
+        if (el >= t->wait_until) {
+            IT_SHOT(names[i]);
+            t->wait_until = el + 0.5;
+            t->stage = 3;
         }
         break;
     case 3:

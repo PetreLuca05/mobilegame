@@ -1,5 +1,6 @@
 /* M8: the bottom-right panel with a live 3D preview of the active interactable. The model and the
  * panel's background are drawn in the main pass (depth-range viewports); label and rim are UI.
+ * An NPC is just a floating head, with no card: the game draws its speech cloud beside it.
  * Tap-only, through the touch targets. */
 #ifndef MG_PREVIEW_PANEL_H
 #define MG_PREVIEW_PANEL_H
@@ -15,6 +16,7 @@ typedef struct PreviewPanel {
     uint16_t shown;      /* slot being shown */
     float crossfade;     /* 1 just switched .. 0 */
     float punch;         /* tap feedback */
+    float head_tap;      /* an NPC's head being tapped: 1 .. 0 */
     float t;
     float x, y, size;    /* where it is, pt */
     GfxMeshId rounded;   /* unit rounded rect for the background */

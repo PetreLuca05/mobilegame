@@ -590,35 +590,37 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         draw_contact_shadow(g, m, p, world, look->age == AVATAR_CHILD ? 0.75f : 1.0f);
         return;
     }
-    outlined(&dc, female ? m->body_female : m->body, body_s, look->outfit);
-    /* chest details were modelled on the male body: scale them onto the female one */
-    HMM_Mat4 chest = female ? HMM_MulM4(body_s, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body_s;
-    const bool coat = look->outfit_style == OUTFIT_COAT;
-    if (look->outfit_style != OUTFIT_PLAIN) {
-        part(&dc, m->vneck, chest, look->trim, SURF_MATTE);
-    }
-    if (coat || look->accessory == ACC_STETHOSCOPE) {
-        part(&dc, m->scope, chest, 0xFFFFFF, SURF_GLOSSY);
-    }
-    if (coat) {
-        for (int i = 0; i < 3; i++) {
-            part(&dc, m->nose, HMM_MulM4(chest, HMM_Translate(body_surface(0.0f, 0.30f - 0.08f * (float)i, 0.004f))),
-                 BUTTON_COLOR, SURF_GLOSSY);
+    if (!p->head_only) {
+        outlined(&dc, female ? m->body_female : m->body, body_s, look->outfit);
+        /* chest details were modelled on the male body: scale them onto the female one */
+        HMM_Mat4 chest = female ? HMM_MulM4(body_s, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body_s;
+        const bool coat = look->outfit_style == OUTFIT_COAT;
+        if (look->outfit_style != OUTFIT_PLAIN) {
+            part(&dc, m->vneck, chest, look->trim, SURF_MATTE);
         }
-    }
-    if (look->decal == DECAL_CROSS) {
-        part(&dc, m->cross, chest, look->accent, SURF_GLOSSY);
-    } else if (look->decal == DECAL_POCKET) {
-        part(&dc, m->pocket, chest, look->outfit == 0xF5F7FA || look->outfit == 0xF2F2F2 ? 0xE6E9EE : look->accent,
-             SURF_MATTE);
-    } else if (look->decal != DECAL_NONE && look->accessory != ACC_STETHOSCOPE) {
-        part(&dc, m->decal, compose(chest, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
+        if (coat || look->accessory == ACC_STETHOSCOPE) {
+            part(&dc, m->scope, chest, 0xFFFFFF, SURF_GLOSSY);
+        }
+        if (coat) {
+            for (int i = 0; i < 3; i++) {
+                part(&dc, m->nose, HMM_MulM4(chest, HMM_Translate(body_surface(0.0f, 0.30f - 0.08f * (float)i, 0.004f))),
+                     BUTTON_COLOR, SURF_GLOSSY);
+            }
+        }
+        if (look->decal == DECAL_CROSS) {
+            part(&dc, m->cross, chest, look->accent, SURF_GLOSSY);
+        } else if (look->decal == DECAL_POCKET) {
+            part(&dc, m->pocket, chest, look->outfit == 0xF5F7FA || look->outfit == 0xF2F2F2 ? 0xE6E9EE : look->accent,
+                 SURF_MATTE);
+        } else if (look->decal != DECAL_NONE && look->accessory != ACC_STETHOSCOPE) {
+            part(&dc, m->decal, compose(chest, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
+        }
     }
 
     /* head rides on the body top, bobbing in opposite phase; smaller on the female body */
     const float body_h = (female ? BODY_H * 0.955f : BODY_H) * sh;
     const float hs = (female ? 0.956f : 1.0f) * head_k; /* 0.43 m head */
-    HMM_Mat4 head = compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob + p->head_lift, 0));
+    HMM_Mat4 head = p->head_only ? root : compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob + p->head_lift, 0));
     head = HMM_MulM4(head, HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0)));
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));
@@ -656,6 +658,10 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         er = HMM_MulM4(er, HMM_Rotate_RH(HMM_AngleDeg(-22.0f), HMM_V3(0, 0, 1)));
         outlined(&dc, m->ear, el, look->hair);
         outlined(&dc, m->ear, er, look->hair);
+    }
+
+    if (p->head_only) {
+        return;
     }
 
     /* hands: hip height, swing fore/aft while walking, both rise on jumps */

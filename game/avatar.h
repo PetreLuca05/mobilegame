@@ -86,6 +86,7 @@ typedef struct AvatarPose {
     float weight_tilt;          /* shifting weight, body roll */
     float stretch;              /* 0 .. 1: hands up */
     float head_lift;            /* metres: the head pops up for a chat */
+    bool head_only;             /* just the head, centred on `feet` (the interact preview) */
 } AvatarPose;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);
