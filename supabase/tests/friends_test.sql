@@ -11,6 +11,14 @@ declare
   d uuid := gen_random_uuid();
   e uuid := gen_random_uuid();
   f uuid := gen_random_uuid();
+  p uuid := gen_random_uuid(); -- FRIENDS-2: host
+  q uuid := gen_random_uuid();
+  r uuid := gen_random_uuid();
+  s_ uuid := gen_random_uuid(); -- stranger
+  t uuid := gen_random_uuid();
+  u_ uuid := gen_random_uuid();
+  v_ uuid := gen_random_uuid();
+  x uuid;
   a_code text; b_code text; token text; n int; v text;
 begin
   -- helpers live only for this session
@@ -214,11 +222,118 @@ begin
   select count(*) into n from public.lobby_members where host_id = a;
   if n <> 0 then raise exception 'TEST FAIL: members survived the session'; end if;
 
+  -- FRIENDS-2: states and invites
+  perform pg_temp.as_admin();
+  insert into auth.users (id, aud, role, is_anonymous)
+    select z, 'authenticated', 'authenticated', true from unnest(array[p, q, r, s_, t, u_, v_]) z;
+  insert into public.friendships (user_lo, user_hi, status, requested_by)
+    select least(p, z), greatest(p, z), 1, p from unnest(array[q, r, t, u_, v_]) z;
+  foreach x in array array[q, r, s_, t, u_, v_, p] loop
+    perform pg_temp.as_user(x);
+    perform public.status_heartbeat(1, true, 0, 1, 0, 0);
+  end loop;
+  -- a menu lobby shows as open, and as being in the menu
+  perform pg_temp.as_user(r);
+  if (select l.status from public.friends_list() l where l.user_id = p) <> 'open' then raise exception 'TEST FAIL: menu lobby not open'; end if;
+  if not (select l.in_menu from public.friends_list() l where l.user_id = p) then raise exception 'TEST FAIL: in_menu'; end if;
+  -- non-friend
+  perform pg_temp.as_user(p);
+  perform pg_temp.rejects(format('select public.lobby_invite(%L)', s_), 'not_friends');
+  -- the invite, then a duplicate inside 10 s
+  if public.lobby_invite(q) <> 'ok' then raise exception 'TEST FAIL: invite'; end if;
+  if public.lobby_invite(q) <> 'rate_limited' then raise exception 'TEST FAIL: duplicate invite'; end if;
+  perform pg_temp.rejects('select * from public.lobby_invites', 'permission denied');
+  perform pg_temp.as_admin();
+  select count(*) into n from public.lobby_invites where host_id = p and guest_id = q and expires_at between now() + interval '55 seconds' and now() + interval '61 seconds';
+  if n <> 1 then raise exception 'TEST FAIL: invite row'; end if;
+  -- in a game, not alone, offline
+  perform pg_temp.as_user(r);
+  perform public.status_heartbeat(2, true, 0, 1, 0, 0);
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(r) <> 'busy' then raise exception 'TEST FAIL: in game not busy'; end if;
+  perform pg_temp.as_user(r);
+  perform public.status_heartbeat(1, true, 0, 2, 0, 0);
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(r) <> 'busy' then raise exception 'TEST FAIL: not alone not busy'; end if;
+  perform pg_temp.as_user(r);
+  perform public.status_clear();
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(r) <> 'offline' then raise exception 'TEST FAIL: offline'; end if;
+  perform pg_temp.as_user(r);
+  perform public.status_heartbeat(1, true, 0, 1, 0, 0);
+  -- locked: an invited friend gets in, nobody else
+  perform pg_temp.as_user(p);
+  perform public.status_heartbeat(1, false, 0, 1, 0, 0);
+  perform pg_temp.as_user(u_);
+  perform pg_temp.rejects(format('select public.lobby_join_request(%L)', p), 'lobby_locked');
+  perform pg_temp.as_user(q);
+  perform public.lobby_join_request(p);
+  perform pg_temp.as_admin();
+  if (select count(*) from public.lobby_members where host_id = p and user_id = q) <> 1 then raise exception 'TEST FAIL: invited not in'; end if;
+  if (select count(*) from public.lobby_invites where host_id = p and guest_id = q) <> 0 then raise exception 'TEST FAIL: invite not used up'; end if;
+  if (select host_id from public.player_status where user_id = q) <> p then raise exception 'TEST FAIL: host_id'; end if;
+  -- expired: back to the ordinary path, which the lock refuses
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(r) <> 'ok' then raise exception 'TEST FAIL: invite r'; end if;
+  perform pg_temp.as_admin();
+  update public.lobby_invites set expires_at = now() - interval '1 second', created_at = now() - interval '61 seconds' where guest_id = r;
+  perform pg_temp.as_user(r);
+  perform pg_temp.rejects(format('select public.lobby_join_request(%L)', p), 'lobby_locked');
+  perform pg_temp.rejects(format('select public.invite_respond(%L, true)', p), 'invite_expired');
+  -- declined, then accepted through invite_respond
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(u_) <> 'ok' then raise exception 'TEST FAIL: invite u'; end if;
+  if public.lobby_invite(t) <> 'ok' then raise exception 'TEST FAIL: invite t'; end if;
+  perform pg_temp.as_user(u_);
+  perform public.invite_respond(p, false);
+  perform pg_temp.as_user(t);
+  perform public.invite_respond(p, true);
+  perform pg_temp.as_admin();
+  if (select count(*) from public.lobby_invites where host_id = p and guest_id = u_) <> 0 then raise exception 'TEST FAIL: decline kept the invite'; end if;
+  if (select count(*) from public.lobby_members where host_id = p and user_id = t) <> 1 then raise exception 'TEST FAIL: accept'; end if;
+  -- a guest is no host
+  perform pg_temp.as_user(q);
+  perform pg_temp.rejects(format('select public.lobby_invite(%L)', r), 'not_friends'); -- q and r are not friends
+  perform pg_temp.as_admin();
+  insert into public.friendships (user_lo, user_hi, status, requested_by) values (least(q, r), greatest(q, r), 1, q);
+  perform pg_temp.as_user(q);
+  perform pg_temp.rejects(format('select public.lobby_invite(%L)', r), 'not_host');
+  perform pg_temp.rejects('select public.lobby_return_to_menu()', 'not_host');
+  -- full: no new invite, and an old one cannot squeeze in
+  perform pg_temp.as_admin();
+  insert into public.lobby_members (host_id, user_id) values (p, v_);
+  update public.player_status set host_id = p where user_id = v_;
+  delete from public.lobby_invites where guest_id = r;
+  perform pg_temp.as_user(p);
+  if public.lobby_invite(r) <> 'full' then raise exception 'TEST FAIL: full'; end if;
+  perform pg_temp.as_admin();
+  insert into public.lobby_invites (host_id, guest_id, expires_at) values (p, r, now() + interval '30 seconds');
+  perform pg_temp.as_user(r);
+  perform pg_temp.rejects(format('select public.lobby_join_request(%L)', p), 'lobby_full');
+  -- back to the menu takes everyone
+  perform pg_temp.as_user(p);
+  perform public.status_heartbeat(2, true, 0, 4, 0, 0);
+  perform pg_temp.as_admin();
+  update public.player_status set state = 2 where user_id in (q, t, v_);
+  perform pg_temp.as_user(p);
+  perform public.lobby_return_to_menu();
+  perform pg_temp.as_admin();
+  if (select count(*) from public.player_status where user_id in (p, q, t, v_) and state = 1) <> 4 then raise exception 'TEST FAIL: return to menu'; end if;
+  if (select host_id from public.player_status where user_id = q) <> p then raise exception 'TEST FAIL: member lost the host'; end if;
+  -- a host whose lobby is in a game is seen as such
+  perform pg_temp.as_user(p);
+  perform public.status_heartbeat(2, true, 0, 4, 0, 0);
+  perform pg_temp.as_user(r);
+  if (select l.in_menu from public.friends_list() l where l.user_id = p) then raise exception 'TEST FAIL: in game shown as menu'; end if;
+
   -- anon can do none of it
   reset role;
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
   set local role anon;
   perform pg_temp.rejects('select public.friends_list()', 'permission denied');
+  perform pg_temp.rejects(format('select public.lobby_invite(%L)', q), 'permission denied');
+  perform pg_temp.rejects('select public.lobby_return_to_menu()', 'permission denied');
+  perform pg_temp.rejects(format('select public.invite_respond(%L, false)', p), 'permission denied');
   reset role;
 
   raise exception 'ALL FRIENDS SQL TESTS PASSED';
