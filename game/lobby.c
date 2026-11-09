@@ -10,9 +10,15 @@
 #define MEMBER_GRACE_S 30.0 /* a guest let in has this long to arrive */
 #define MAP_DEFAULT 0
 
-static bool hosting(const Lobby *l) { return l->state == LOBBY_SOLO || l->state == LOBBY_HOSTING; }
+static bool in_menu(const Lobby *l) { return l->state >= LOBBY_MENU_SOLO; }
+static bool hosting(const Lobby *l) { return l->state == LOBBY_SOLO || l->state == LOBBY_HOSTING || l->state == LOBBY_MENU_SOLO || l->state == LOBBY_MENU_HOSTING; }
+static bool is_guest(const Lobby *l) { return l->state == LOBBY_GUEST || l->state == LOBBY_MENU_GUEST; }
+/* player_status.state */
+static int wire_state(const Lobby *l) { return in_menu(l) ? 1 : 2; }
 
-bool lobby_is_guest(const Lobby *l) { return l->state == LOBBY_GUEST; }
+bool lobby_is_guest(const Lobby *l) { return is_guest(l); }
+bool lobby_in_menu(const Lobby *l) { return in_menu(l); }
+bool lobby_is_host(const Lobby *l) { return hosting(l); }
 
 bool lobby_can_toggle(const Lobby *l) { return hosting(l); }
 
@@ -28,7 +34,7 @@ void lobby_init(Lobby *l, NetSession *session, Friends *friends, bool open)
 static void heartbeat(Lobby *l, int state)
 {
     char body[NET_RPC_BODY];
-    const double epoch = state && l->epoch_ms ? l->epoch_ms(l->epoch_user) : 0.0;
+    const double epoch = state == 2 && l->epoch_ms ? l->epoch_ms(l->epoch_user) : 0.0;
     SDL_snprintf(body, sizeof(body), "{\"p_state\":%d,\"p_lobby_open\":%s,\"p_map_id\":%d,\"p_players\":%d,\"p_npc_seed\":%d,\"p_start_tick\":%.0f}", state,
                  state && l->open && hosting(l) ? "true" : "false", l->map_id, state ? (l->debug_players ? l->debug_players : session_player_count(l->session)) : 0,
                  state ? (int32_t)l->npc_seed : 0, epoch);
@@ -80,8 +86,21 @@ static void go_online(Lobby *l)
     l->member_count = 0;
     l->request_count = 0;
     l->last_players = 1;
+    heartbeat(l, 2);
+}
+
+/* FRIENDS-2: signed in and in the main menu, so a lobby of one, in its own room */
+static void go_menu(Lobby *l)
+{
+    l->state = LOBBY_MENU_SOLO;
+    l->token[0] = 0;
+    l->member_count = 0;
+    l->request_count = 0;
+    l->last_players = 1;
     heartbeat(l, 1);
 }
+
+void lobby_set_menu(Lobby *l, bool menu) { l->want_menu = menu; }
 
 void lobby_start_host(Lobby *l, int map_id, uint32_t npc_seed)
 {
@@ -89,6 +108,14 @@ void lobby_start_host(Lobby *l, int map_id, uint32_t npc_seed)
     l->map_id = map_id;
     l->npc_seed = npc_seed;
     l->ended = NULL;
+    if (in_menu(l) && hosting(l)) { /* everyone in the room comes along */
+        l->state = l->state == LOBBY_MENU_HOSTING ? LOBBY_HOSTING : LOBBY_SOLO;
+        session_set_menu(l->session, false);
+        const double epoch = l->epoch_ms ? l->epoch_ms(l->epoch_user) : 0.0;
+        net_send_room_cmd(l->session->net, NET_ROOM_START, map_id, (int32_t)npc_seed, epoch, l->save_hash);
+        heartbeat(l, 2);
+        return;
+    }
     l->state = LOBBY_OFFLINE;
     if (l->friends->signed_in) {
         go_online(l);
@@ -97,6 +124,7 @@ void lobby_start_host(Lobby *l, int map_id, uint32_t npc_seed)
 
 void lobby_start_guest(Lobby *l)
 {
+    const bool same_room = l->state == LOBBY_MENU_GUEST && strcmp(l->session->room_token, l->grant.room_token) == 0;
     l->state = LOBBY_GUEST;
     l->hosting_session = false;
     l->map_id = l->grant.map_id;
@@ -106,13 +134,165 @@ void lobby_start_guest(Lobby *l)
     l->request_count = 0;
     SDL_snprintf(l->host_id, sizeof(l->host_id), "%s", l->grant.from);
     l->host_seen = l->now;
+    if (!same_room) {
+        session_start_lobby(l->session, l->grant.room_token, l->grant.from);
+    }
+    session_set_menu(l->session, false);
+    heartbeat(l, 2);
+}
+
+void lobby_join_menu(Lobby *l)
+{
+    l->state = LOBBY_MENU_GUEST;
+    l->hosting_session = false;
+    l->map_id = l->grant.map_id;
+    l->ended = NULL;
+    l->member_count = 0;
+    l->request_count = 0;
+    SDL_snprintf(l->host_id, sizeof(l->host_id), "%s", l->grant.from);
+    l->host_seen = l->now;
     session_start_lobby(l->session, l->grant.room_token, l->grant.from);
+    session_set_menu(l->session, true);
     heartbeat(l, 1);
+}
+
+void lobby_return_to_menu(Lobby *l)
+{
+    if (!hosting(l) || in_menu(l)) {
+        return;
+    }
+    net_rpc(l->session->net, NET_RPC_RETURN_MENU, "{}");
+    net_send_room_cmd(l->session->net, NET_ROOM_TO_MENU, l->map_id, 0, 0.0, 0u);
+    l->state = l->state == LOBBY_HOSTING ? LOBBY_MENU_HOSTING : LOBBY_MENU_SOLO;
+    l->hosting_session = false;
+    session_set_menu(l->session, true);
+    heartbeat(l, 1);
+}
+
+int lobby_roster(const Lobby *l, LobbyRow rows[LOBBY_MAX_PLAYERS])
+{
+    const NetSession *s = l->session;
+    const char *host = hosting(l) ? l->friends->self_id : l->host_id;
+    int n = 0;
+    for (int i = 0; i < s->member_count && n < LOBBY_MAX_PLAYERS; i++) {
+        const char *id = s->members[i];
+        LobbyRow *r = &rows[n];
+        memset(r, 0, sizeof(*r));
+        SDL_snprintf(r->id, sizeof(r->id), "%s", id);
+        r->host = strcmp(id, host) == 0;
+        r->me = strcmp(id, l->friends->self_id) == 0;
+        if (r->me) {
+            SDL_snprintf(r->name, sizeof(r->name), "%s", s->my_name);
+            r->skin = s->my_skin;
+            n++;
+            continue;
+        }
+        for (int k = 0; k < SESSION_MAX_REMOTE; k++) {
+            if (s->remotes[k].active && strcmp(s->remotes[k].id, id) == 0) {
+                SDL_snprintf(r->name, sizeof(r->name), "%s", s->remotes[k].meta.name);
+                r->skin = s->remotes[k].meta.skin;
+                n++;
+                break;
+            }
+        }
+    }
+    if (n == 0) { /* no list yet: at least us */
+        memset(&rows[0], 0, sizeof(rows[0]));
+        SDL_snprintf(rows[0].id, sizeof(rows[0].id), "%s", l->friends->self_id);
+        SDL_snprintf(rows[0].name, sizeof(rows[0].name), "%s", s->my_name);
+        rows[0].skin = s->my_skin;
+        rows[0].host = hosting(l);
+        rows[0].me = true;
+        n = 1;
+    }
+    return n;
+}
+
+static int find_sent(const Lobby *l, const char *id)
+{
+    for (int i = 0; i < l->sent_count; i++) {
+        if (strcmp(l->sent[i].id, id) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void drop_sent(Lobby *l, int i) { l->sent[i] = l->sent[--l->sent_count]; }
+
+void lobby_invite_send(Lobby *l, const char *guest)
+{
+    if (!hosting(l) || l->sent_count == (int)MG_ARRAY_COUNT(l->sent) || find_sent(l, guest) >= 0) {
+        return;
+    }
+    char body[NET_RPC_BODY];
+    SDL_snprintf(body, sizeof(body), "{\"p_guest\":\"%s\"}", guest);
+    net_rpc(l->session->net, NET_RPC_INVITE, body);
+    LobbySent *m = &l->sent[l->sent_count++];
+    memset(m, 0, sizeof(*m));
+    SDL_snprintf(m->id, sizeof(m->id), "%s", guest);
+    m->until = l->now + LOBBY_INVITE_S;
+    m->cooldown = l->now + 10.0;
+}
+
+bool lobby_invite_sent(const Lobby *l, const char *guest) { return find_sent(l, guest) >= 0; }
+
+static int find_invite(const Lobby *l, const char *host)
+{
+    for (int i = 0; i < l->invite_count; i++) {
+        if (strcmp(l->invites[i].id, host) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void pop_invite(Lobby *l, int i)
+{
+    for (int k = i; k + 1 < l->invite_count; k++) {
+        l->invites[k] = l->invites[k + 1];
+    }
+    l->invite_count--;
+}
+
+static void send_invite_answer(Lobby *l, const char *host, bool accept)
+{
+    char body[NET_RPC_BODY];
+    SDL_snprintf(body, sizeof(body), "{\"p_host\":\"%s\",\"p_accept\":%s}", host, accept ? "true" : "false");
+    net_rpc(l->session->net, NET_RPC_INVITE_RESPOND, body);
+}
+
+void lobby_invite_shown(Lobby *l, const char *host)
+{
+    const int i = find_invite(l, host);
+    if (i >= 0) {
+        l->invites[i].expires = l->now + LOBBY_INVITE_PANEL_S;
+    }
+}
+
+void lobby_invite_answer(Lobby *l, const char *host, bool accept)
+{
+    const int i = find_invite(l, host);
+    if (i < 0) {
+        return;
+    }
+    pop_invite(l, i);
+    if (accept && (l->state == LOBBY_JOINING || is_guest(l))) {
+        return; /* already on the way somewhere else */
+    }
+    send_invite_answer(l, host, accept);
+    if (accept) {
+        SDL_snprintf(l->join_host, sizeof(l->join_host), "%s", host);
+        l->join_from = l->state;
+        l->state = LOBBY_JOINING;
+        l->join_deadline = l->now + LOBBY_JOIN_WAIT_S;
+        l->join_error[0] = 0;
+    }
 }
 
 void lobby_stop(Lobby *l)
 {
-    if (l->state == LOBBY_GUEST) {
+    if (is_guest(l)) {
         net_rpc(l->session->net, NET_RPC_LEAVE, "{}");
     } else if (hosting(l) && l->token[0]) {
         session_announce_closed(l->session);
@@ -136,13 +316,13 @@ void lobby_set_open(Lobby *l, bool open)
 {
     l->open = open;
     if (hosting(l)) {
-        heartbeat(l, 1);
+        heartbeat(l, wire_state(l));
     }
 }
 
 void lobby_ask_join(Lobby *l, const char *host)
 {
-    if (l->state == LOBBY_JOINING || l->state == LOBBY_GUEST) {
+    if (l->state == LOBBY_JOINING || is_guest(l)) {
         return;
     }
     char body[NET_RPC_BODY];
@@ -253,14 +433,14 @@ void lobby_background(Lobby *l)
 
 void lobby_foreground(Lobby *l)
 {
-    if (hosting(l) || l->state == LOBBY_GUEST) {
-        heartbeat(l, 1);
+    if (hosting(l) || is_guest(l)) {
+        heartbeat(l, wire_state(l));
     }
 }
 
 void lobby_quit(Lobby *l)
 {
-    if (l->state == LOBBY_GUEST) {
+    if (is_guest(l)) {
         net_rpc(l->session->net, NET_RPC_LEAVE, "{}");
     } else if (hosting(l) && l->token[0]) {
         session_announce_closed(l->session);
@@ -311,10 +491,53 @@ static void on_push(Lobby *l, const NetPush *p)
         }
         break;
     case NET_PUSH_KICKED:
-        if (l->state == LOBBY_GUEST && strcmp(p->from, l->host_id) == 0) {
+        if (is_guest(l) && strcmp(p->from, l->host_id) == 0) {
             l->ended = "lobby_kicked";
         }
         break;
+    case NET_PUSH_LOBBY_INVITE: {
+        /* the server only sends these to someone idle in their own menu, but the state may have moved on */
+        if (l->invite_count == LOBBY_MAX_REQUESTS || find_invite(l, p->from) >= 0 || l->state != LOBBY_MENU_SOLO) {
+            if (find_invite(l, p->from) < 0) {
+                send_invite_answer(l, p->from, false);
+            }
+            return;
+        }
+        LobbyRequest *r = &l->invites[l->invite_count++];
+        SDL_snprintf(r->id, sizeof(r->id), "%s", p->from);
+        SDL_snprintf(r->name, sizeof(r->name), "%s", p->name);
+        r->skin = p->skin;
+        r->expires = l->now + LOBBY_QUEUED_S;
+        r->shown = false;
+        break;
+    }
+    case NET_PUSH_MEMBER_JOINED: {
+        if (!hosting(l)) {
+            return;
+        }
+        const int sent = find_sent(l, p->from);
+        if (sent >= 0) {
+            drop_sent(l, sent);
+        }
+        prune_members(l);
+        if (find_member(l, p->from) < 0 && l->member_count < LOBBY_MAX_GUESTS) {
+            LobbyMember *m = &l->members[l->member_count++];
+            memset(m, 0, sizeof(*m));
+            SDL_snprintf(m->id, sizeof(m->id), "%s", p->from);
+            m->added_at = l->now;
+            m->invited = true;
+            publish_members(l);
+        }
+        break;
+    }
+    case NET_PUSH_INVITE_DECLINED: {
+        const int sent = find_sent(l, p->from);
+        if (sent >= 0) {
+            drop_sent(l, sent);
+        }
+        SDL_snprintf(l->declined_name, sizeof(l->declined_name), "%s", p->name);
+        break;
+    }
     default:
         break;
     }
@@ -328,6 +551,7 @@ static void on_heartbeat(Lobby *l, const char *token)
     SDL_snprintf(l->token, sizeof(l->token), "%s", token);
     mg_log_info("lobby: room open (%s)", l->open ? "open" : "locked");
     session_start_lobby(l->session, l->token, "");
+    session_set_menu(l->session, in_menu(l));
     publish_members(l);
 }
 
@@ -341,16 +565,47 @@ void lobby_on_event(Lobby *l, const NetEvent *e)
         const bool ok = e->http >= 200 && e->http < 300;
         if ((NetRpc)e->value == NET_RPC_HEARTBEAT && ok) {
             on_heartbeat(l, e->text);
-        } else if ((NetRpc)e->value == NET_RPC_JOIN_REQUEST && !ok) {
+        } else if (((NetRpc)e->value == NET_RPC_JOIN_REQUEST || (NetRpc)e->value == NET_RPC_INVITE_RESPOND) && !ok) {
             join_failed(l, e->text);
+        } else if ((NetRpc)e->value == NET_RPC_INVITE) {
+            int i = 0; /* the oldest unanswered one: calls run in order */
+            while (i < l->sent_count && l->sent[i].acked) {
+                i++;
+            }
+            if (i < l->sent_count) {
+                if (ok && strcmp(e->text, "ok") == 0) {
+                    l->sent[i].acked = true;
+                } else {
+                    SDL_snprintf(l->invite_error, sizeof(l->invite_error), "%s", ok ? e->text : "generic");
+                    drop_sent(l, i);
+                }
+            }
         }
         break;
     }
+    case NET_EV_ROOM_CMD:
+        if (l->state == LOBBY_MENU_GUEST && e->value == NET_ROOM_START && strcmp(e->text, l->host_id) == 0) {
+            memset(&l->grant, 0, sizeof(l->grant));
+            SDL_snprintf(l->grant.from, sizeof(l->grant.from), "%s", l->host_id);
+            SDL_snprintf(l->grant.room_token, sizeof(l->grant.room_token), "%s", l->session->room_token);
+            l->grant.map_id = e->push.map_id;
+            l->grant.npc_seed = e->push.npc_seed;
+            l->grant.start_tick = e->push.start_tick;
+            l->grant_ready = true;
+        } else if (l->state == LOBBY_GUEST && e->value == NET_ROOM_TO_MENU && strcmp(e->text, l->host_id) == 0) {
+            l->state = LOBBY_MENU_GUEST;
+            session_set_menu(l->session, true);
+            heartbeat(l, 1);
+            l->to_menu_ready = true;
+        }
+        break;
     case NET_EV_PEER_JOIN: {
         const int i = hosting(l) ? find_member(l, e->peer) : -1;
         if (i >= 0 && !l->members[i].announced) {
             l->members[i].announced = true;
             SDL_snprintf(l->joined_name, sizeof(l->joined_name), "%s", e->meta.name);
+            l->joined_invited = l->members[i].invited;
+            l->joined_skin = e->meta.skin;
         }
         break;
     }
@@ -364,6 +619,20 @@ void lobby_tick(Lobby *l, double now)
     l->now = now;
     if (l->hosting_session && l->state == LOBBY_OFFLINE && l->friends->signed_in) {
         go_online(l);
+    }
+    if (l->want_menu && !l->hosting_session && l->state == LOBBY_OFFLINE && l->friends->signed_in) {
+        go_menu(l);
+    }
+    for (int i = l->sent_count - 1; i >= 0; i--) {
+        if (now >= l->sent[i].until) {
+            drop_sent(l, i);
+        }
+    }
+    for (int i = l->invite_count - 1; i >= 0; i--) {
+        if (now >= l->invites[i].expires) { /* the panel timed out */
+            send_invite_answer(l, l->invites[i].id, false);
+            pop_invite(l, i);
+        }
     }
     if (l->state == LOBBY_JOINING && now >= l->join_deadline) {
         join_failed(l, "timeout");
@@ -379,12 +648,12 @@ void lobby_tick(Lobby *l, double now)
         const int players = session_player_count(l->session);
         if (players != l->last_players) {
             l->last_players = players;
-            l->state = players > 1 ? LOBBY_HOSTING : LOBBY_SOLO;
+            l->state = in_menu(l) ? (players > 1 ? LOBBY_MENU_HOSTING : LOBBY_MENU_SOLO) : (players > 1 ? LOBBY_HOSTING : LOBBY_SOLO);
             prune_members(l);
             publish_members(l);
-            heartbeat(l, 1);
+            heartbeat(l, wire_state(l));
         }
-    } else if (l->state == LOBBY_GUEST) {
+    } else if (is_guest(l)) {
         if (session_has_remote(l->session, l->host_id)) {
             l->host_seen = now;
         }
@@ -394,10 +663,10 @@ void lobby_tick(Lobby *l, double now)
             l->ended = "lobby_host_lost";
         }
     }
-    if ((hosting(l) || l->state == LOBBY_GUEST) && now >= l->next_heartbeat) {
+    if ((hosting(l) || is_guest(l)) && now >= l->next_heartbeat) {
         if (hosting(l) && l->token[0]) {
             publish_members(l);
         }
-        heartbeat(l, 1);
+        heartbeat(l, wire_state(l));
     }
 }

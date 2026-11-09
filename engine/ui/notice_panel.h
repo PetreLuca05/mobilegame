@@ -10,7 +10,7 @@
 
 #define NOTICE_MAX 4
 
-typedef enum NoticeKind { NOTICE_JOIN, NOTICE_FRIEND, NOTICE_INFO } NoticeKind;
+typedef enum NoticeKind { NOTICE_JOIN, NOTICE_FRIEND, NOTICE_INFO, NOTICE_INVITE } NoticeKind;
 typedef enum NoticeResult { NOTICE_NONE, NOTICE_ACCEPT, NOTICE_DECLINE } NoticeResult;
 
 typedef struct Notice {

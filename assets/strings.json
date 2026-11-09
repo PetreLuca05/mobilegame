@@ -1,4 +1,12 @@
 {
+  "notice_invite": "invited you to the lobby",
+  "invite_declined": "declined the invite",
+  "invite_err_full": "Your lobby is full",
+  "invite_err_busy": "That friend is busy",
+  "invite_err_offline": "That friend is offline",
+  "invite_err_rate_limited": "Wait a few seconds before inviting again",
+  "invite_err_generic": "Could not send the invite",
+  "join_err_invite_expired": "That invite has expired",
   "lobby_kicked": "The host removed you from the lobby",
   "lobby_host_closed": "The host closed the game",
   "lobby_host_lost": "Connection to the host was lost",

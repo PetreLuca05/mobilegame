@@ -805,8 +805,12 @@ static void leave_play(Game *g, MgApp *app)
 {
     (void)app;
     write_save(g);
-    session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
-    lobby_stop(&g->lobby);
+    if (lobby_is_host(&g->lobby) && !lobby_in_menu(&g->lobby)) { /* the whole lobby comes back with us */
+        lobby_return_to_menu(&g->lobby);
+    } else if (!lobby_in_menu(&g->lobby)) {
+        session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
+        lobby_stop(&g->lobby);
+    }
     g->playing = false;
     g->offline_play = false;
     g->menu.card = false;
@@ -852,6 +856,9 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         g->prefs.onboarding_done = false;
         g->prefs.auth_provider[0] = 0;
         save_prefs(g);
+        if (!g->playing) {
+            lobby_stop(&g->lobby);
+        }
         net_sign_out(g->net);
         if (!g->playing) {
             g->menu.open = false;
@@ -1140,6 +1147,42 @@ static void account_loaded(Game *g, MgApp *app)
 static void lobby_follow(Game *g, MgApp *app)
 {
     Lobby *l = &g->lobby;
+    if (l->to_menu_ready) { /* a guest: the host went back to the menu, the lobby stays */
+        l->to_menu_ready = false;
+        if (g->playing) {
+            leave_play(g, app);
+        }
+    }
+    if (l->declined_name[0]) {
+        char msg[96];
+        SDL_snprintf(msg, sizeof(msg), "%s %s", l->declined_name, str("invite_declined"));
+        frontend_toast(&g->fe, msg, app->time);
+        l->declined_name[0] = 0;
+    }
+    if (l->invite_error[0]) {
+        char key[48];
+        SDL_snprintf(key, sizeof(key), "invite_err_%s", l->invite_error);
+        const char *msg = str(key);
+        frontend_toast(&g->fe, msg == key ? str("invite_err_generic") : msg, app->time);
+        l->invite_error[0] = 0;
+    }
+    for (int i = 0; i < l->invite_count; i++) {
+        LobbyRequest *r = &l->invites[i];
+        if (!r->shown) {
+            r->shown = true;
+            notice_push(&g->notice, NOTICE_INVITE, r->id, r->name, &r->skin, str("notice_invite"), LOBBY_INVITE_PANEL_S);
+        }
+    }
+    if (l->grant_ready && l->grant.in_menu) { /* their lobby is in the menu: nothing to load */
+        l->grant_ready = false;
+        if (g->fpage.open) {
+            g->fpage.open = false;
+            g->fpage.editing_search = false;
+            friends_page(&g->friends, false);
+        }
+        lobby_join_menu(l);
+        session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+    }
     if (l->grant_ready) {
         l->grant_ready = false;
         if (g->playing) { /* autosave + close our own session and lobby */
@@ -1174,12 +1217,11 @@ static void lobby_follow(Game *g, MgApp *app)
     if (l->joined_name[0]) {
         char msg[96];
         SDL_snprintf(msg, sizeof(msg), "%s %s", l->joined_name, str("lobby_entered"));
-#if LOBBY_JOIN_APPROVAL
-        frontend_toast(&g->fe, msg, app->time);
-#else
-        const NetSkin none = {0};
-        notice_push(&g->notice, NOTICE_INFO, l->joined_name, l->joined_name, &none, str("lobby_entered"), NOTICE_INFO_S);
-#endif
+        if (l->joined_invited || !LOBBY_JOIN_APPROVAL) {
+            notice_push(&g->notice, NOTICE_INFO, l->joined_name, l->joined_name, &l->joined_skin, str("lobby_entered"), NOTICE_INFO_S);
+        } else {
+            frontend_toast(&g->fe, msg, app->time);
+        }
         l->joined_name[0] = 0;
     }
     for (int i = 0; i < l->request_count; i++) {
@@ -1202,6 +1244,8 @@ static void draw_notices(Game *g, MgApp *app)
     if (g->notice.just_shown) {
         if (g->notice.q[0].kind == NOTICE_JOIN) {
             lobby_request_shown(&g->lobby, g->notice.q[0].id);
+        } else if (g->notice.q[0].kind == NOTICE_INVITE) {
+            lobby_invite_shown(&g->lobby, g->notice.q[0].id);
         }
         if (g->settings.marker_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
@@ -1212,6 +1256,8 @@ static void draw_notices(Game *g, MgApp *app)
     }
     if (res != NOTICE_NONE && kind == NOTICE_JOIN) {
         lobby_respond(&g->lobby, id, res == NOTICE_ACCEPT);
+    } else if (res != NOTICE_NONE && kind == NOTICE_INVITE) {
+        lobby_invite_answer(&g->lobby, id, res == NOTICE_ACCEPT);
     } else if (res != NOTICE_NONE && kind == NOTICE_FRIEND) {
         friends_respond(&g->friends, id, res == NOTICE_ACCEPT);
     }
@@ -1265,6 +1311,7 @@ static void load_step(Game *g, MgApp *app)
             lobby_start_guest(&g->lobby);
             session_set_npc_epoch(&g->session, g->npc_epoch_ms);
         } else {
+            g->lobby.save_hash = g->pending_play == 3 ? g->save.npc_seed : 0u;
             lobby_start_host(&g->lobby, 0, npc_seed_for(g, app)); /* online when signed in; offline nothing leaves the device */
         }
         g->playing = true;
@@ -2400,6 +2447,11 @@ static void game_frame_inner(MgApp *app, float alpha)
                                   (el && elevator_busy(el) ? REP_RIDING : 0));
         PROF_SCOPE("net.poll");
         friends_tick(&g->friends, app->time);
+        {
+            const FeState st = g->fe.state;
+            lobby_set_menu(&g->lobby, !g->playing && g->prefs.onboarding_done && !g->play_paused &&
+                                          (st == FE_MAIN_MENU || st == FE_SETTINGS || st == FE_FRIENDS || st == FE_CREATOR));
+        }
         lobby_tick(&g->lobby, app->time);
         lobby_follow(g, app);
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,

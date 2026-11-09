@@ -39,6 +39,7 @@ typedef struct NetSession {
     bool members_known;
     int members_filling;       /* ids of the list still arriving */
     bool host_closed;
+    bool menu_only;        /* a menu lobby: Presence and room commands, no state packets */
     char topic[NET_TOPIC_LEN];
     char self_id[NET_ID_LEN];
     NetPeerMeta me;
@@ -73,6 +74,8 @@ void session_start_lobby(NetSession *s, const char *token, const char *host);
 /* Host: who may be heard in the room (sent to everyone in it). */
 void session_set_members(NetSession *s, const char (*ids)[NET_ID_LEN], int count);
 void session_announce_closed(NetSession *s);
+/* In the menu nobody sends state; going into a game starts it clean. */
+void session_set_menu(NetSession *s, bool menu);
 bool session_has_remote(const NetSession *s, const char *id);
 /* Tell peers we are going (app backgrounded / leaving); next tick of the
  * network thread then sends phx_leave. */

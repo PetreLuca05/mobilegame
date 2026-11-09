@@ -124,6 +124,18 @@ void session_announce_closed(NetSession *s)
     }
 }
 
+void session_set_menu(NetSession *s, bool menu)
+{
+    if (s->menu_only && !menu) {
+        for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
+            memset(&s->remotes[i].rx, 0, sizeof(s->remotes[i].rx));
+        }
+        memset(&s->sender, 0, sizeof(s->sender));
+        s->spawn_pending = true;
+    }
+    s->menu_only = menu;
+}
+
 bool session_has_remote(const NetSession *s, const char *id)
 {
     for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
@@ -150,6 +162,7 @@ void session_stop(NetSession *s)
         net_leave(s->net);
     }
     clear_remotes(s);
+    s->menu_only = false;
     s->mode = MODE_OFFLINE;
     s->members_known = false;
     s->member_count = 0;
@@ -354,7 +367,7 @@ void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_
             continue;
         }
         r->sample = rep_receiver_sample(&r->rx, now);
-        if (r->rx.packets > 0 && now - r->rx.last_recv > STALE_AFTER) {
+        if (!s->menu_only && r->rx.packets > 0 && now - r->rx.last_recv > STALE_AFTER) {
             /* crashed or lost its network: the server may take a minute to
              * notice, we do not wait for it */
             mg_log_info("session: %.8s silent for %.1f s, dropping", r->id, now - r->rx.last_recv);
@@ -367,7 +380,7 @@ void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_
             r->yaw = r->sample.yaw;
         }
     }
-    if (s->status == NET_JOINED && s->slot_announced) {
+    if (s->status == NET_JOINED && s->slot_announced && !s->menu_only) {
         RepState st = {0, tick, pos, vel, yaw, flags, floor};
         if (rep_sender_due(&s->sender, &st, session_player_count(s), now)) {
             uint8_t buf[REP_PACKET_SIZE];

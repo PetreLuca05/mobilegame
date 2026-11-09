@@ -19,15 +19,15 @@ void notice_push(NoticePanel *p, NoticeKind kind, const char *id, const char *na
     }
     /* someone waiting at the door goes before anything that can wait in the Requests tab */
     int at = p->count;
-    if (kind == NOTICE_JOIN) {
+    if (kind == NOTICE_JOIN || kind == NOTICE_INVITE) {
         at = p->count > 0 ? 1 : 0;
-        while (at < p->count && p->q[at].kind == NOTICE_JOIN) {
+        while (at < p->count && (p->q[at].kind == NOTICE_JOIN || p->q[at].kind == NOTICE_INVITE)) {
             at++;
         }
         if (p->count == NOTICE_MAX && at < NOTICE_MAX) {
             p->count--; /* the last friend notice; the request itself stays in the list */
         }
-        if (p->count > 0 && p->q[0].kind != NOTICE_JOIN) {
+        if (p->count > 0 && p->q[0].kind != NOTICE_JOIN && p->q[0].kind != NOTICE_INVITE) {
             p->leaving = true;
         }
     }

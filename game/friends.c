@@ -40,6 +40,7 @@ static void apply_rows(Friends *f, const NetFriendRow *rows, int count)
         f->status[i] = r->status;
         f->relation[i] = r->relation;
         f->players[i] = r->players;
+        f->in_menu[i] = r->in_menu;
         memcpy(f->name[i], r->name, NET_NAME_LEN);
         memcpy(f->code[i], r->code, NET_CODE_LEN);
         f->skin[i] = r->skin;

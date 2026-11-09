@@ -91,6 +91,7 @@ typedef enum NetEventType {
     NET_EV_RPC,         /* value = NetRpc, http = status (0 no network); text = the error code or the scalar answer */
     NET_EV_PUSH,        /* push = what arrived on user:<uid> */
     NET_EV_LINK,        /* value = NetLinkEvent; text = the identity's name (conflict) or the reason (failed) */
+    NET_EV_ROOM_CMD,    /* the host's start / to_menu: value = NetRoomCmd, text = sender, push = its fields */
     NET_EV_MEMBERS,     /* one per id of the host's list: peer, value = index, len = count; text = sender. Count 0: the host closed the room */
 } NetEventType;
 
@@ -108,6 +109,9 @@ typedef enum NetRpc {
     NET_RPC_JOIN_RESPOND,
     NET_RPC_KICK,
     NET_RPC_LEAVE,
+    NET_RPC_INVITE,         /* text = 'ok', 'full', 'busy', 'offline' or 'rate_limited' */
+    NET_RPC_INVITE_RESPOND,
+    NET_RPC_RETURN_MENU,
     NET_RPC_COUNT,
 } NetRpc;
 
@@ -139,6 +143,7 @@ typedef struct NetFriendRow {
     uint8_t relation; /* NetRelation */
     uint8_t status;   /* NetFriendStatus */
     uint8_t players;
+    uint8_t in_menu;  /* signed in and in the main menu, not in a game */
 } NetFriendRow;
 
 typedef enum NetPushType {
@@ -148,7 +153,12 @@ typedef enum NetPushType {
     NET_PUSH_JOIN_ACCEPTED,
     NET_PUSH_JOIN_DECLINED,
     NET_PUSH_KICKED,
+    NET_PUSH_LOBBY_INVITE,
+    NET_PUSH_MEMBER_JOINED,
+    NET_PUSH_INVITE_DECLINED,
 } NetPushType;
+
+typedef enum NetRoomCmd { NET_ROOM_START, NET_ROOM_TO_MENU } NetRoomCmd;
 
 typedef struct NetPush {
     NetPushType type;
@@ -160,6 +170,9 @@ typedef struct NetPush {
     int map_id;
     int32_t npc_seed;
     double start_tick;
+    bool in_menu;           /* join_accepted: the host is in the menu, not in a game */
+    int players;            /* lobby_invite */
+    uint32_t save_hash;     /* room start */
 } NetPush;
 
 typedef struct NetEvent {
@@ -242,6 +255,8 @@ int net_search_copy(NetTransport *n, NetFriendRow *out, int cap);
 void net_set_friends_cache(NetTransport *n, const char *path);
 /* Room channel: who may be heard here (`count` ids); 0 = the host is closing. */
 void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count);
+/* Room channel: the host takes everyone into the game, or back to the menu. */
+void net_send_room_cmd(NetTransport *n, NetRoomCmd cmd, int map_id, int32_t npc_seed, double start_tick, uint32_t save_hash);
 /* Broadcasts we have put on a room channel since launch (state and member lists; not Presence). */
 uint32_t net_room_sends(NetTransport *n);
 /* JSON string body (no quotes) */

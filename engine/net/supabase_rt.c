@@ -48,6 +48,7 @@ typedef enum NetCmdType {
     CMD_QUIET,
     CMD_USER_CHANNEL,
     CMD_MEMBERS,  /* list in NetTransport.members_out */
+    CMD_ROOM,     /* start / to_menu */
     CMD_LINK_MERGE,
     CMD_LINK_CANCEL,
 } NetCmdType;
@@ -61,6 +62,11 @@ typedef struct NetCmd {
     uint16_t len;
     bool flag;
     NetStats stats;
+    NetRoomCmd room;
+    int map_id;
+    int32_t npc_seed;
+    double start_tick;
+    uint32_t save_hash;
 } NetCmd;
 
 typedef enum LinkStage { LS_NONE, LS_TICKET, LS_CLEAR, LS_SIGNIN, LS_REDEEM, LS_CHECK } LinkStage;
@@ -401,6 +407,17 @@ static void send_members(NetTransport *n)
     SDL_AddAtomicInt(&n->room_sends, 1);
 }
 
+static void send_room_cmd(NetTransport *n, const NetCmd *c)
+{
+    n->ref++;
+    int l = snprintf(n->line, sizeof(n->line),
+                     "{\"topic\":\"realtime:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+                     "\"event\":\"c\",\"payload\":{\"u\":\"%s\",\"k\":%d,\"a\":%d,\"n\":%d,\"t\":%.0f,\"h\":%u}},\"ref\":\"%d\",\"join_ref\":\"%d\"}",
+                     n->topic, n->auth.user_id, (int)c->room, c->map_id, (int)c->npc_seed, c->start_tick, c->save_hash, n->ref, n->join_ref);
+    send_line(n, l);
+    SDL_AddAtomicInt(&n->room_sends, 1);
+}
+
 static void send_leave_topic(NetTransport *n, const char *topic, int join_ref)
 {
     n->ref++;
@@ -632,10 +649,38 @@ static void handle_members(NetTransport *n, const cJSON *inner)
     }
 }
 
+/* {"u":sender,"k":cmd,"a":map,"n":seed,"t":start tick,"h":save hash} */
+static void handle_room_cmd(NetTransport *n, const cJSON *inner)
+{
+    const cJSON *u = cJSON_GetObjectItemCaseSensitive(inner, "u");
+    const cJSON *k = cJSON_GetObjectItemCaseSensitive(inner, "k");
+    if (!cJSON_IsString(u) || !cJSON_IsNumber(k)) {
+        return;
+    }
+    const cJSON *a = cJSON_GetObjectItemCaseSensitive(inner, "a");
+    const cJSON *seed = cJSON_GetObjectItemCaseSensitive(inner, "n");
+    const cJSON *t = cJSON_GetObjectItemCaseSensitive(inner, "t");
+    const cJSON *h = cJSON_GetObjectItemCaseSensitive(inner, "h");
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_ROOM_CMD;
+    e.value = (int)k->valuedouble;
+    snprintf(e.text, sizeof(e.text), "%s", u->valuestring);
+    e.push.map_id = cJSON_IsNumber(a) ? (int)a->valuedouble : 0;
+    e.push.npc_seed = cJSON_IsNumber(seed) ? (int32_t)seed->valuedouble : 0;
+    e.push.start_tick = cJSON_IsNumber(t) ? t->valuedouble : 0.0;
+    e.push.save_hash = cJSON_IsNumber(h) ? (uint32_t)h->valuedouble : 0u;
+    push_event(n, &e);
+}
+
 static void handle_broadcast(NetTransport *n, const cJSON *payload)
 {
     const cJSON *ev = cJSON_GetObjectItemCaseSensitive(payload, "event");
     const cJSON *inner = cJSON_GetObjectItemCaseSensitive(payload, "payload");
+    if (cJSON_IsString(ev) && strcmp(ev->valuestring, "c") == 0 && inner) {
+        handle_room_cmd(n, inner);
+        return;
+    }
     if (cJSON_IsString(ev) && strcmp(ev->valuestring, "m") == 0 && inner) {
         handle_members(n, inner);
         return;
@@ -672,6 +717,8 @@ static void handle_push(NetTransport *n, const cJSON *payload)
         {"friend_request", NET_PUSH_FRIEND_REQUEST}, {"friend_accepted", NET_PUSH_FRIEND_ACCEPTED},
         {"join_request", NET_PUSH_JOIN_REQUEST},     {"join_accepted", NET_PUSH_JOIN_ACCEPTED},
         {"join_declined", NET_PUSH_JOIN_DECLINED},   {"kicked", NET_PUSH_KICKED},
+        {"lobby_invite", NET_PUSH_LOBBY_INVITE},     {"member_joined", NET_PUSH_MEMBER_JOINED},
+        {"invite_declined", NET_PUSH_INVITE_DECLINED},
     };
     const cJSON *ev = cJSON_GetObjectItemCaseSensitive(payload, "event");
     const cJSON *inner = cJSON_GetObjectItemCaseSensitive(payload, "payload");
@@ -694,6 +741,9 @@ static void handle_push(NetTransport *n, const cJSON *payload)
     if (!cJSON_IsString(from)) {
         from = cJSON_GetObjectItemCaseSensitive(inner, "host");
     }
+    if (!cJSON_IsString(from)) {
+        from = cJSON_GetObjectItemCaseSensitive(inner, "user");
+    }
     const cJSON *name = cJSON_GetObjectItemCaseSensitive(inner, "name");
     const cJSON *skin = cJSON_GetObjectItemCaseSensitive(inner, "skin");
     const cJSON *token = cJSON_GetObjectItemCaseSensitive(inner, "room_token");
@@ -709,6 +759,9 @@ static void handle_push(NetTransport *n, const cJSON *payload)
     p->map_id = cJSON_IsNumber(map_id) ? (int)map_id->valuedouble : 0;
     p->npc_seed = cJSON_IsNumber(seed) ? (int32_t)seed->valuedouble : 0;
     p->start_tick = cJSON_IsNumber(start) ? start->valuedouble : 0.0;
+    p->in_menu = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(inner, "in_menu"));
+    const cJSON *players = cJSON_GetObjectItemCaseSensitive(inner, "players");
+    p->players = cJSON_IsNumber(players) ? (int)players->valuedouble : 0;
     push_event(n, &e);
 }
 
@@ -885,6 +938,11 @@ static void process_commands(NetTransport *n)
         case CMD_MEMBERS:
             if (n->joined) {
                 send_members(n);
+            }
+            break;
+        case CMD_ROOM:
+            if (n->joined) {
+                send_room_cmd(n, &c);
             }
             break;
         case CMD_USER_CHANNEL:
@@ -1134,6 +1192,7 @@ static int parse_rows(const cJSON *arr, NetFriendRow *rows, int cap)
         const cJSON *rel = cJSON_GetObjectItemCaseSensitive(row, "relation");
         const cJSON *st = cJSON_GetObjectItemCaseSensitive(row, "status");
         const cJSON *pl = cJSON_GetObjectItemCaseSensitive(row, "players");
+        r->in_menu = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(row, "in_menu")) ? 1 : 0;
         snprintf(r->user_id, sizeof(r->user_id), "%s", cJSON_IsString(id) ? id->valuestring : "");
         snprintf(r->name, sizeof(r->name), "%s", cJSON_IsString(name) ? name->valuestring : "");
         snprintf(r->code, sizeof(r->code), "%s", cJSON_IsString(code) ? code->valuestring : "");
@@ -1231,6 +1290,7 @@ static void drive_rpc(NetTransport *n)
     static const char *const k_fn[NET_RPC_COUNT] = {
         "my_friend_code", "friends_list", "friend_search", "friend_request_by_code", "friend_respond", "friend_remove",
         "status_heartbeat", "status_clear", "lobby_join_request", "lobby_join_respond", "lobby_kick", "lobby_leave",
+        "lobby_invite", "invite_respond", "lobby_return_to_menu",
     };
     if (n->rpc.busy || n->cfg.public_test || n->link_stage != LS_NONE) {
         return; /* the merge owns the slot, and the token may belong to either account */
@@ -1805,6 +1865,22 @@ void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count)
     NetCmd c;
     memset(&c, 0, sizeof(c));
     c.type = CMD_MEMBERS;
+    push_cmd(n, &c);
+}
+
+void net_send_room_cmd(NetTransport *n, NetRoomCmd cmd, int map_id, int32_t npc_seed, double start_tick, uint32_t save_hash)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_ROOM;
+    c.room = cmd;
+    c.map_id = map_id;
+    c.npc_seed = npc_seed;
+    c.start_tick = start_tick;
+    c.save_hash = save_hash;
     push_cmd(n, &c);
 }
 

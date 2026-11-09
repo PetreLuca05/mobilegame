@@ -16,6 +16,7 @@ typedef struct Friends {
     uint8_t status[FRIEND_MAX];   /* NetFriendStatus */
     uint8_t relation[FRIEND_MAX]; /* NetRelation */
     uint8_t players[FRIEND_MAX];
+    uint8_t in_menu[FRIEND_MAX];
     /* cold */
     char name[FRIEND_MAX][NET_NAME_LEN];
     char code[FRIEND_MAX][NET_CODE_LEN];

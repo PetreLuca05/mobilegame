@@ -1,4 +1,12 @@
 {
+  "notice_invite": "te invită în lobby",
+  "invite_declined": "a refuzat invitația",
+  "invite_err_full": "Lobby-ul tău e plin",
+  "invite_err_busy": "Prietenul e ocupat",
+  "invite_err_offline": "Prietenul e offline",
+  "invite_err_rate_limited": "Așteaptă câteva secunde până inviți din nou",
+  "invite_err_generic": "Invitația nu s-a trimis",
+  "join_err_invite_expired": "Invitația a expirat",
   "friends": "Prieteni",
   "friends_tab_friends": "Prieteni",
   "friends_tab_requests": "Cereri",
