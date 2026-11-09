@@ -1064,6 +1064,7 @@ static void follow_account_link(Game *g, MgApp *app)
     }
     if (l->merged) {
         l->merged = false;
+        lobby_stop(&g->lobby); /* its room belonged to the guest that is gone */
         g->prefs.has_profile_cache = false; /* device data stays: settings and the save slot */
         g->stats.loaded = false;            /* this run's numbers are in the merged totals already */
         g->stats.play_seconds = g->stats.distance_m = 0.0;

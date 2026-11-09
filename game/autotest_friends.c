@@ -188,12 +188,29 @@ static const FtOp k_lw[] = { /* the Welcome screen's button goes through the sam
     {OP_FE_STATE, NULL, FE_MAIN_MENU}, {OP_NAME_IS, "Seeded", 0}, {OP_END, NULL, 0},
 };
 static const FtOp k_lp[] = { /* the pause card: saves, closes the lobby, opens Settings -> Account */
-    START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(0.5),
+    START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(0.5),
     TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 
 /* two devices: the order comes from what each side can see, no shared files */
 #define NOTICE_FRIEND_UP {OP_NOTICE, NULL, NOTICE_FRIEND}
+/* FRIENDS-2 on two devices: the iPad hosts, the Mac is invited. tools/friends2_two_device.sh */
+#define INVITE_ENV TAP("lobby_invite"), {OP_FRIENDS, NULL, 1}, SLEEP(1.0), {OP_TAP_P, "finvite_%s", 0}, SLEEP(0.5)
+static const FtOp k_d2h[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_PEER_ENV, NULL, 0},
+    NOTICE_FRIEND_UP, TAP("notice_ok"), {OP_FRIENDS, NULL, 1}, ROWS(1), SLEEP(4.0),
+    INVITE_ENV, BACK, {OP_INVITE_OVER, NULL, 0}, SLEEP(11.0), /* declined */
+    INVITE_ENV, BACK, NOTICE_K(NOTICE_INFO), ROWS(2), SLEEP(3.0), TAP("lobby_kick1"), ROWS(1), TAP("lobby_switch"), {OP_OPEN_IS, NULL, 0}, SLEEP(11.0), /* locked */
+    INVITE_ENV, BACK, ROWS(2), TAP("lobby_switch"), {OP_OPEN_IS, NULL, 1}, SLEEP(2.0),
+    NEW_GAME, PLAYERS(2), SLEEP(25.0), BACK_TO_MENU, ROWS(2), ROWS(1), SLEEP(1.0), {OP_END, NULL, 0},
+};
+static const FtOp k_d2g[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PEER_ENV, NULL, 0},
+    TAP("account_chip"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1}, BACK, ROWS(1),
+    NOTICE_K(NOTICE_INVITE), TAP("notice_no"), {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(2.0),
+    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), LOB(LOBBY_MENU_SOLO), ROWS(1),
+    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, ROWS(2), SLEEP(3.0), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SLEEP(1.0), {OP_END, NULL, 0},
+};
 static const FtOp k_dcode[] = {{OP_READY, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_END, NULL, 0}};
 static const FtOp k_dhost[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_PEER_ENV, NULL, 0},
@@ -231,7 +248,7 @@ void ft_init(FriendsTest *t, const char *role)
     SDL_snprintf(t->role, sizeof(t->role), "%s", role);
     const char *dir = SDL_getenv("MG_FT_SYNC");
     SDL_snprintf(t->dir, sizeof(t->dir), "%s", dir ? dir : "/tmp/mg_ft");
-    t->ops = strcmp(role, "ma") == 0 ? k_ma : strcmp(role, "mb") == 0 ? k_mb : strcmp(role, "mc") == 0 ? k_mc : strcmp(role, "md") == 0 ? k_md : strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
+    t->ops = strcmp(role, "d2h") == 0 ? k_d2h : strcmp(role, "d2g") == 0 ? k_d2g : strcmp(role, "ma") == 0 ? k_ma : strcmp(role, "mb") == 0 ? k_mb : strcmp(role, "mc") == 0 ? k_mc : strcmp(role, "md") == 0 ? k_md : strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
              : strcmp(role, "c") == 0 ? k_c
              : strcmp(role, "l1") == 0 ? k_l1 : strcmp(role, "l2") == 0 ? k_l2 : strcmp(role, "l3") == 0 ? k_l3 : strcmp(role, "l4") == 0 ? k_l4 : strcmp(role, "l5") == 0 ? k_l5
              : strcmp(role, "lw") == 0 ? k_lw : strcmp(role, "lp") == 0 ? k_lp : strcmp(role, "d_code") == 0 ? k_dcode : strcmp(role, "d_host") == 0 ? k_dhost

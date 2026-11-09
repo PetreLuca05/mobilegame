@@ -132,6 +132,7 @@ void session_set_menu(NetSession *s, bool menu)
         }
         memset(&s->sender, 0, sizeof(s->sender));
         s->spawn_pending = true;
+        s->rooms_joined++;
     }
     s->menu_only = menu;
 }
@@ -254,7 +255,7 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         s->joined_at = now;
         s->slot_announced = false;
         SDL_snprintf(s->status_text, sizeof(s->status_text), "in %s", s->topic);
-        s->rooms_joined++;
+        s->rooms_joined += s->menu_only ? 0 : 1; /* a game, not the lobby in the menu */
         break;
     case NET_EV_PROFILE:
         s->profile = e->profile;
