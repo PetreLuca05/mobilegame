@@ -57,6 +57,7 @@ typedef struct Interact {
     SpatialGrid grid;
     uint16_t active;     /* slot, or IA_NONE */
     uint32_t scans;
+    uint32_t fired[IA_KIND_COUNT]; /* uses, per kind */
 } Interact;
 
 bool ia_init(Interact *ia, Arena *perm);
@@ -72,5 +73,9 @@ void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int s
 /* Use the active one, once. False if there is none or it is disabled. */
 bool ia_use_active(Interact *ia);
 const char *ia_chip_text(ia_kind_t kind);
+/* What the scan should pick, by brute force (tests). */
+uint16_t ia_best_brute(const Interact *ia, HMM_Vec3 player, int storey, float yaw);
+/* Nearest one to a point on the floor, for the mouse. IA_NONE if nothing within `radius`. */
+uint16_t ia_near_point(const Interact *ia, float x, float z, int storey, float radius);
 
 #endif

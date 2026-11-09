@@ -121,6 +121,13 @@ void input_handle_event(MgInput *in, const SDL_Event *e, float width_pt, float h
         }
         break;
     case SDL_EVENT_MOUSE_MOTION:
+#if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
+        if (e->motion.which != SDL_TOUCH_MOUSEID) {
+            in->mouse_x = e->motion.x;
+            in->mouse_y = e->motion.y;
+            in->mouse_seen = true;
+        }
+#endif
         if (e->motion.which != SDL_TOUCH_MOUSEID && in->mouse_right) {
             in->mouse_dx += e->motion.xrel;
             in->mouse_dy += e->motion.yrel;

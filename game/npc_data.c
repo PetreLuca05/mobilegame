@@ -144,6 +144,28 @@ static NpcLookKind look_of(const char *s)
     return LOOK_CIVILIAN;
 }
 
+/* The font atlas is ASCII: Romanian letters become their plain forms, in place. */
+static void fold_diacritics(char *s)
+{
+    static const struct { unsigned char a, b; char to; } map[] = {
+        {0xC4, 0x83, 'a'}, {0xC4, 0x82, 'A'}, {0xC3, 0xA2, 'a'}, {0xC3, 0x82, 'A'}, {0xC3, 0xAE, 'i'}, {0xC3, 0x8E, 'I'},
+        {0xC8, 0x99, 's'}, {0xC8, 0x98, 'S'}, {0xC8, 0x9B, 't'}, {0xC8, 0x9A, 'T'},
+        {0xC5, 0x9F, 's'}, {0xC5, 0x9E, 'S'}, {0xC5, 0xA3, 't'}, {0xC5, 0xA2, 'T'},
+    };
+    char *w = s;
+    for (const char *r = s; *r;) {
+        char out = 0;
+        for (size_t i = 0; i < sizeof(map) / sizeof(map[0]) && !out; i++) {
+            if ((unsigned char)r[0] == map[i].a && (unsigned char)r[1] == map[i].b) {
+                out = map[i].to;
+            }
+        }
+        *w++ = out ? out : *r;
+        r += out ? 2 : 1;
+    }
+    *w = 0;
+}
+
 static int load_names(const cJSON *root, const char *key, const char **out, Arena *perm)
 {
     int n = 0;
@@ -155,6 +177,7 @@ static int load_names(const cJSON *root, const char *key, const char **out, Aren
             char *copy = ARENA_PUSH(perm, char, len);
             if (copy) {
                 memcpy(copy, it->valuestring, len);
+                fold_diacritics(copy);
                 out[n++] = copy;
             }
         }
@@ -229,6 +252,7 @@ bool npc_data_load(NpcData *d, Arena *perm)
                 char *copy = ARENA_PUSH(perm, char, len);
                 if (copy) {
                     memcpy(copy, it->valuestring, len);
+                    fold_diacritics(copy);
                     d->greetings[i][d->n_greetings[i]++] = copy;
                 }
             }

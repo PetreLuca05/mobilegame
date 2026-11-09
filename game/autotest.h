@@ -14,6 +14,9 @@
  *               when both players are in the room
  *   markers     tap a marker (walks), tap again (cancels), tap and arrive
  *               (reached, respawn), a drag from a marker becomes the stick
+ *   interact    walk to a call button, a marker and the receptionist (panel up, a drag does
+ *               nothing, a tap fires once), then the lift's 3D buttons, an auto-ride with no
+ *               panel, desktop hover, Pause -> Performance; scan lag against brute force
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -57,6 +60,18 @@ typedef struct AutotestProbe {
     bool interact_visible;     /* the preview panel is fully in */
     int interact_kind;         /* ia_kind_t of what it shows, -1 none */
     float interact_x, interact_y; /* its centre, pt */
+    bool show_stats;
+    int active_slot;           /* -1 none */
+    /* --autotest interact only */
+    uint32_t ia_fired[4];
+    int ia_enter_lag, ia_exit_lag; /* worst, ticks */
+    bool greeting;
+    int it_slot[3];            /* call button, marker, receptionist */
+    HMM_Vec3 it_stand[3];
+    HMM_Vec3 lift_at;
+    float lift_btn_x[3], lift_btn_y[3];
+    int hover_slot;            /* -1: none on screen, or no mouse */
+    float hover_x, hover_y;
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -97,6 +112,9 @@ typedef struct Autotest {
     char keys[4][8];
     TapStep steps[12];
     int step_count;
+    uint32_t it_fired, it_reached;
+    bool it_hidden;
+    int it_rides, it_hover;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

@@ -75,6 +75,22 @@ static bool facing_ok(const ia_hot_t *h, HMM_Vec3 p, float fx, float fz)
     return len < 0.2f || (dx * fx + dz * fz) / len >= FACING_DOT;
 }
 
+/* Does slot s take over from `best`? Someone who can be used comes before a greyed one standing closer
+ * (a queue must not hide the receptionist); then the nearest. */
+static bool beats(const Interact *ia, uint16_t s, uint16_t best, float best_d2, HMM_Vec3 player, float fx, float fz)
+{
+    const ia_hot_t *h = &ia->hot[s];
+    const float d2 = dist2_of(h, player);
+    if (d2 >= h->range * h->range || !facing_ok(h, player, fx, fz)) {
+        return false;
+    }
+    if (best == IA_NONE) {
+        return true;
+    }
+    const bool on = !(h->flags & IA_DISABLED), best_on = !(ia->hot[best].flags & IA_DISABLED);
+    return on != best_on ? on : d2 < best_d2;
+}
+
 void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int storey, float yaw)
 {
     if (tick % SCAN_EVERY != 0u) {
@@ -102,14 +118,10 @@ void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int s
     uint16_t best = IA_NONE;
     float best_d2 = 1e9f;
     for (int k = 0; k < count; k++) {
-        const ia_hot_t *h = &ia->hot[near[k]];
-        if (!h->used || grid_of(h->storey) != grid_of(storey)) {
-            continue;
-        }
-        const float d2 = dist2_of(h, player);
-        if (d2 < h->range * h->range && d2 < best_d2 && facing_ok(h, player, fx, fz)) {
-            best_d2 = d2;
-            best = near[k];
+        const uint16_t s = near[k];
+        if (ia->hot[s].used && grid_of(ia->hot[s].storey) == grid_of(storey) && beats(ia, s, best, best_d2, player, fx, fz)) {
+            best_d2 = dist2_of(&ia->hot[s], player);
+            best = s;
         }
     }
     if (best == IA_NONE) {
@@ -118,11 +130,41 @@ void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int s
     if (ia->active == IA_NONE) {
         ia->active = best;
     } else if (best != ia->active) {
+        const bool best_on = !(ia->hot[best].flags & IA_DISABLED), now_on = !(ia->hot[ia->active].flags & IA_DISABLED);
         const float now = sqrtf(dist2_of(&ia->hot[ia->active], player));
-        if (sqrtf(best_d2) + SWITCH_MARGIN < now) {
+        if ((best_on && !now_on) || (best_on == now_on && sqrtf(best_d2) + SWITCH_MARGIN < now)) {
             ia->active = best;
         }
     }
+}
+
+uint16_t ia_best_brute(const Interact *ia, HMM_Vec3 player, int storey, float yaw)
+{
+    const float fx = -sinf(yaw), fz = -cosf(yaw);
+    uint16_t best = IA_NONE;
+    float best_d2 = 1e9f;
+    for (uint16_t s = 0; s < ia->high_water; s++) {
+        if (ia->hot[s].used && grid_of(ia->hot[s].storey) == grid_of(storey) && beats(ia, s, best, best_d2, player, fx, fz)) {
+            best_d2 = dist2_of(&ia->hot[s], player);
+            best = s;
+        }
+    }
+    return best;
+}
+
+uint16_t ia_near_point(const Interact *ia, float x, float z, int storey, float radius)
+{
+    const HMM_Vec3 at = HMM_V3(x, 0.0f, z);
+    uint16_t best = IA_NONE;
+    float best_d2 = radius * radius;
+    for (uint16_t s = 0; s < ia->high_water; s++) {
+        const ia_hot_t *h = &ia->hot[s];
+        if (h->used && grid_of(h->storey) == grid_of(storey) && dist2_of(h, at) < best_d2) {
+            best_d2 = dist2_of(h, at);
+            best = s;
+        }
+    }
+    return best;
 }
 
 bool ia_use_active(Interact *ia)
@@ -131,6 +173,7 @@ bool ia_use_active(Interact *ia)
         return false;
     }
     const ia_cold_t *c = &ia->cold[ia->active];
+    ia->fired[ia->hot[ia->active].kind]++;
     if (c->on_interact) {
         c->on_interact(ia->hot[ia->active].ref, c->user);
     }

@@ -4,7 +4,7 @@ Standing rules for every milestone. Numbers and history are in [PERF.md](PERF.md
 
 ## The gate
 
-- Every milestone ends with a perf step: `--autotest perf` on all scenarios (`yard`, `lobby`, `corridor_f2`,
+- Every milestone ends with a perf step: `--autotest perf` on all scenarios (`lift_panel`, `interact_npc`, `yard`, `lobby`, `corridor_f2`,
   `stress200`) on the iPad Air 4 (and desktop for a labelled sanity check), compared with `docs/perf/after/`, reported
   PASS / FAIL per budget.
 - A milestone is not signed off if any budget is exceeded or regresses by more than 10 %.

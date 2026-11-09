@@ -2016,11 +2016,24 @@ static uint32_t draw_insets(GfxContext *g, SDL_GPURenderPass *pass, bool before_
         if (in->before_world != before_world) {
             continue;
         }
-        SDL_GPUViewport vp = {in->x * k, in->y * k, in->w * k, in->h * k, in->min_depth, in->max_depth};
+        /* a viewport must stay on the target: while a panel slides in, crop it and shift the projection */
+        const float x = in->x * k, y = in->y * k, w = in->w * k, h = in->h * k;
+        const float cx = fmaxf(x, 0.0f), cy = fmaxf(y, 0.0f);
+        const float cw = fminf(x + w, (float)g->target_w) - cx, ch = fminf(y + h, (float)g->target_h) - cy;
+        if (cw <= 0.0f || ch <= 0.0f) {
+            continue;
+        }
+        HMM_Mat4 crop = HMM_M4D(1.0f);
+        crop.Elements[0][0] = w / cw;
+        crop.Elements[1][1] = h / ch;
+        crop.Elements[3][0] = (2.0f * (x - cx) + w) / cw - 1.0f;
+        crop.Elements[3][1] = 1.0f - (2.0f * (y - cy) + h) / ch;
+        const HMM_Mat4 cropped = HMM_MulM4(crop, in->view_proj);
+        SDL_GPUViewport vp = {cx, cy, cw, ch, in->min_depth, in->max_depth};
         SDL_SetGPUViewport(pass, &vp);
-        SDL_Rect sc = {(int)(in->x * k), (int)(in->y * k), (int)(in->w * k + 0.5f), (int)(in->h * k + 0.5f)};
+        SDL_Rect sc = {(int)cx, (int)cy, (int)(cw + 0.5f), (int)(ch + 0.5f)};
         SDL_SetGPUScissor(pass, &sc);
-        push_frame_uniforms(g, &in->view_proj, in->eye, in->w * k, in->h * k, 0.0f);
+        push_frame_uniforms(g, &cropped, in->eye, cw, ch, 0.0f);
         count += draw_list(g, pass, TARGET_MAIN, false, i + 1);
     }
     if (g->inset_count > 0) {

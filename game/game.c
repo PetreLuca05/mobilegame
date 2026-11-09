@@ -138,6 +138,12 @@ typedef struct Game {
     bool lift_panel_ok;
     bool ia_ok, ia_log;
     MgApp *ia_app;  /* for the interact callbacks */
+    uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
+    bool ia_check;           /* --autotest interact: brute force against the scan */
+    bool no_panels;          /* --no-panels: A/B for the perf audit */
+    int player_storey_cached;
+    int ia_enter_run, ia_enter_lag, ia_exit_run, ia_exit_lag; /* ticks */
+    uint16_t ia_hover_slot;  /* --autotest interact */
     char greet_name[32], greet_line[96];
     float greet_t;
     uint32_t greet_count;
@@ -199,11 +205,19 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
 
 static void interact_setup(Game *g, MgApp *app);
 static void interact_tick(Game *g, MgApp *app);
+static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr);
+static void draw_ia_debug(Game *g, MgApp *app, int floor);
+static int grid_of_storey(int storey) { return storey < 0 ? 0 : storey; }
 static void interact_tap(Game *g, MgApp *app);
 static void lift_panel_press(Game *g, Elevator *el, int floor);
 static void marker_reached(Game *g, MgApp *app, marker_t *m);
 
 static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with nothing to show */
+
+static bool perf_wants_npcs(const Game *g)
+{
+    return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0);
+}
 
 static bool has_flag(int argc, char **argv, const char *flag)
 {
@@ -1463,6 +1477,7 @@ static void npc_unregistered(int index, void *user)
 static void interact_setup(Game *g, MgApp *app)
 {
     g->ia_app = app;
+    g->no_panels = has_flag(app->argc, app->argv, "--no-panels");
     g->ia_ok = ia_init(&g->ia, &app->perm) && preview_panel_init(&g->panel, app->gfx, &app->perm);
     g->npcs.on_spawned = npc_registered;
     g->npcs.on_despawned = npc_unregistered;
@@ -1480,10 +1495,107 @@ static void interact_setup(Game *g, MgApp *app)
         ia_add(&g->ia, IA_BUTTON, HMM_V3(b->x, b->y, b->z), IA_ENTER_RANGE, b->storey, IA_FACING_FREE, (uint16_t)b->storey, b->label, on_call_lift, g, button);
     }
     const float cx = (g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, cz = (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f;
+    const preview_desc_t any = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.4f, 0.8f, 0.9f, 1.0f)};
+    g->ia_any_slot = ia_add(&g->ia, IA_BUTTON, HMM_V3(0, -100.0f, 0), 0.1f, 99, IA_DISABLED | IA_FACING_FREE, 0, "Mesh", NULL, NULL, any);
+    g->ia_check = SDL_strcmp(arg_value(app->argc, app->argv, "--autotest") ? arg_value(app->argc, app->argv, "--autotest") : "", "interact") == 0;
+    g->ia_hover_slot = IA_NONE;
     const preview_desc_t lift = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.72f, 0.75f, 0.8f, 1.0f)};
     for (int f = 0; f < scene_floor_count(); f++) {
         ia_add(&g->ia, IA_ELEVATOR, HMM_V3(cx, (float)f * 4.0f, cz), IA_ENTER_RANGE, f, IA_FACING_FREE, (uint16_t)f, "Lift", on_call_lift, g, lift);
     }
+}
+
+/* Developer -> Show ranges (enter ring, thin exit ring; yellow = active), Show active id */
+static void draw_ia_debug(Game *g, MgApp *app, int floor)
+{
+    if (!g->ia_ok || !(g->settings.show_ia_ranges || g->settings.show_ia_active)) {
+        return;
+    }
+    const Interact *ia = &g->ia;
+    for (int s = 0; g->settings.show_ia_ranges && s < ia->high_water; s++) {
+        const ia_hot_t *h = &ia->hot[s];
+        if (!h->used || grid_of_storey(h->storey) != floor || s == g->ia_any_slot) {
+            continue;
+        }
+        const float y = scene_floor_y(g->scene, floor) + 0.02f, en = h->range, ex = en + (IA_EXIT_RANGE - IA_ENTER_RANGE);
+        GfxMaterial m = mat_unlit(s == ia->active ? HMM_V4(1.0f, 0.85f, 0.1f, 1.0f) : HMM_V4(0.2f, 0.9f, 0.5f, 1.0f));
+        HMM_Mat4 t = HMM_MulM4(HMM_Translate(HMM_V3(h->pos.X, y, h->pos.Z)), HMM_Scale(HMM_V3(en, 1.0f, en)));
+        gfx_draw(app->gfx, g->markers.ring, &t, &m, GFX_DRAW_NO_SHADOW);
+        t = HMM_MulM4(HMM_Translate(HMM_V3(h->pos.X, y, h->pos.Z)), HMM_Scale(HMM_V3(ex, 1.0f, ex)));
+        gfx_draw(app->gfx, g->markers.ring, &t, &m, GFX_DRAW_NO_SHADOW);
+    }
+    if (g->settings.show_ia_active) {
+        char line[96];
+        if (ia->active == IA_NONE) {
+            SDL_snprintf(line, sizeof(line), "interact: none (scan %u)", ia->scans);
+        } else {
+            const ia_hot_t *h = &ia->hot[ia->active];
+            SDL_snprintf(line, sizeof(line), "interact: #%u %s ref %u%s", (unsigned)ia->active, ia->cold[ia->active].label ? ia->cold[ia->active].label : "-",
+                         (unsigned)h->ref, (h->flags & IA_DISABLED) ? " (grey)" : "");
+        }
+        text_draw(app->gfx, &app->font, app->safe_left + 12.0f, app->height_pt - app->safe_bottom - 30.0f, 14.0f, ui_rgba(0xFFE680FF), line);
+    }
+}
+
+/* --autotest interact: where its targets are */
+static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
+{
+    const Interact *ia = &g->ia;
+    pr->active_slot = ia->active == IA_NONE ? -1 : (int)ia->active;
+    SDL_memcpy(pr->ia_fired, ia->fired, sizeof(pr->ia_fired));
+    pr->ia_enter_lag = g->ia_enter_lag;
+    pr->ia_exit_lag = g->ia_exit_lag;
+    pr->greeting = g->greet_t > 0.0f;
+    pr->lift_at = HMM_V3((g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, 0.1f, (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f);
+    for (int i = 0; i < 3; i++) {
+        pr->it_slot[i] = -1;
+    }
+    for (int s = 0; s < ia->high_water; s++) { /* the ground-floor call button, the marker */
+        const ia_hot_t *h = &ia->hot[s];
+        if (h->used && h->kind == IA_BUTTON && grid_of_storey(h->storey) == 0 && s != g->ia_any_slot && pr->it_slot[0] < 0) {
+            pr->it_slot[0] = s;
+            pr->it_stand[0] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
+        } else if (h->used && h->kind == IA_MARKER && pr->it_slot[1] < 0) {
+            pr->it_slot[1] = s;
+            pr->it_stand[1] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
+        }
+    }
+    const NpcPool *p = &g->npcs.pool;
+    const npc_hot_t *hot = p->hot[p->read];
+    for (int i = 0; i < p->count && g->npcs_on; i++) {
+        const npc_cold_t *c = &p->cold[i];
+        if (c->wants_chat && SDL_strcmp(g->npcs.data.archetypes[c->archetype].name, "receptionist") == 0) {
+            pr->it_slot[2] = c->ia_slot;
+            pr->it_stand[2] = HMM_V3(hot[i].x, 0.1f, hot[i].z + 1.35f); /* the public side of the desk */
+            break;
+        }
+    }
+    for (int f = 0; f < 3 && g->lift_panel_ok; f++) {
+        elevator_panel_button_pos(&g->lift_panel, f, &pr->lift_btn_x[f], &pr->lift_btn_y[f]);
+    }
+#if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
+    /* something on screen and far away, for the mouse */
+    pr->hover_slot = -1;
+    const HMM_Vec3 pos = g->player.kin.pos;
+    for (int s = 0; s < ia->high_water && pr->hover_slot < 0; s++) {
+        const ia_hot_t *h = &ia->hot[s];
+        const float dx = h->pos.X - pos.X, dz = h->pos.Z - pos.Z;
+        const bool still = h->kind != IA_NPC || (h->flags & IA_WANTS_CHAT); /* posted people stand still */
+        if (!h->used || !still || s == g->ia_any_slot || grid_of_storey(h->storey) != grid_of_storey(g->player_storey_cached) || dx * dx + dz * dz < 8.0f) {
+            continue;
+        }
+        HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4(h->pos.X, scene_floor_y(g->scene, grid_of_storey(h->storey)), h->pos.Z, 1.0f));
+        const float nx = c.X / c.W, ny = c.Y / c.W;
+        if (c.W > 0.0f && fabsf(nx) < 0.8f && fabsf(ny) < 0.8f) {
+            pr->hover_slot = s;
+            pr->hover_x = (nx * 0.5f + 0.5f) * app->width_pt;
+            pr->hover_y = (0.5f - ny * 0.5f) * app->height_pt;
+        }
+    }
+#else
+    pr->hover_slot = -1;
+    (void)app;
+#endif
 }
 
 /* Keep the registry in step with what moved, then choose the active one */
@@ -1527,8 +1639,39 @@ static void interact_tick(Game *g, MgApp *app)
     }
     const HMM_Vec3 pos = g->player.kin.pos;
     const int storey = scene_indoors(g->scene, pos) ? scene_floor_of(g->scene, pos) : -1;
+    g->player_storey_cached = storey;
     const uint16_t before = g->ia.active;
     ia_tick(&g->ia, &app->frame, app->clock.tick, pos, storey, g->player.yaw);
+    /* desktop: the mouse over something shows it too */
+    uint16_t hover = IA_NONE;
+    if (app->input.mouse_seen && !g->menu.open && !g->perf.active && (g->autotest.kind == 0 || g->ia_check)) {
+        HMM_Vec3 hit;
+        if (screen_to_floor(g, app, app->input.mouse_x, app->input.mouse_y, scene_floor_y(g->scene, storey < 0 ? 0 : storey), &hit)) {
+            hover = ia_near_point(&g->ia, hit.X, hit.Z, storey, 0.8f);
+        }
+    }
+    if (hover != IA_NONE) {
+        g->ia.active = hover;
+    }
+    if (g->settings.preview_any) {
+        const GfxMeshId meshes[] = {g->unit_box, g->markers.diamond, g->markers.ring, g->avatar_meshes.shadow};
+        const uint32_t pick = (app->clock.tick / 120u) % 4u;
+        g->ia.cold[g->ia_any_slot].preview.mesh = meshes[pick];
+        g->ia.active = g->ia_any_slot;
+    }
+    if (g->ia_check && !g->settings.preview_any) {
+        const uint16_t want = ia_best_brute(&g->ia, pos, storey, g->player.yaw);
+        g->ia_enter_run = g->ia.active == IA_NONE && want != IA_NONE ? g->ia_enter_run + 1 : 0;
+        g->ia_enter_lag = SDL_max(g->ia_enter_lag, g->ia_enter_run);
+        bool stale = false;
+        if (g->ia.active != IA_NONE && hover == IA_NONE) {
+            const ia_hot_t *h = &g->ia.hot[g->ia.active];
+            const float dx = h->pos.X - pos.X, dz = h->pos.Z - pos.Z, r = h->range + (IA_EXIT_RANGE - IA_ENTER_RANGE) + 0.05f;
+            stale = dx * dx + dz * dz > r * r;
+        }
+        g->ia_exit_run = stale ? g->ia_exit_run + 1 : 0;
+        g->ia_exit_lag = SDL_max(g->ia_exit_lag, g->ia_exit_run);
+    }
     if (g->ia_log && g->ia.active != before) {
         mg_log_info("interact: active %s", g->ia.active == IA_NONE ? "none" : g->ia.cold[g->ia.active].label);
     }
@@ -1591,7 +1734,7 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
     NpcPool *p = &g->npcs.pool;
     const npc_hot_t *hot = p->hot[p->read];
     const float dt = mg_minf(app->frame_dt, 0.1f), now = (float)g->npcs.tick + alpha;
-    const bool half = g->settings.npc_density < 1.0f && !(g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0);
+    const bool half = g->settings.npc_density < 1.0f && !perf_wants_npcs(g);
     const HMM_Vec3 me = g->player.kin.pos;
     uint8_t *lods = ARENA_PUSH(&app->frame, uint8_t, (size_t)p->count);
     if (!lods) {
@@ -1712,8 +1855,8 @@ void game_frame(MgApp *app, float alpha)
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
-        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
-                                             (g->perf.active && SDL_strcmp(g->perf.scenario, "npcs") == 0));
+        const bool roster_test = at_kind && (SDL_strcmp(at_kind, "interact") == 0 || SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
+                                             perf_wants_npcs(g));
         if (!at_kind || roster_test) {
             const uint32_t seed = npc_seed_for(g, app);
             const bool want = roster_test || s->npc_density > 0.0f; /* density Low only draws fewer: every client simulates the same people */
@@ -1793,6 +1936,12 @@ void game_frame(MgApp *app, float alpha)
                            g->ia_ok && g->ia.active != IA_NONE ? (int)g->ia.hot[g->ia.active].kind : -1,
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
+    probe.show_stats = s->show_stats;
+    if (g->ia_check && g->ia_ok && g->playing) {
+        interact_probe(g, app, &probe);
+    } else {
+        probe.active_slot = g->ia_ok ? (int)g->ia.active : -1;
+    }
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2013,7 +2162,7 @@ void game_frame(MgApp *app, float alpha)
     Elevator *el = scene_elevator(g->scene);
     const bool riding = el && elevator_busy(el);
     /* auto-nav rides on its own: no panel unless the player cancels */
-    const bool menu_shown = el && !riding && !g->menu.open && !autonav_active(&g->autonav) &&
+    const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && !autonav_active(&g->autonav) &&
                             (elevator_contains(el, g->player.kin.pos, g->kparams.radius) || s->force_lift_panel);
     if (g->lift_panel_ok && el) {
         const ui_frame_t lf = frame_of(app);
@@ -2231,6 +2380,7 @@ void game_frame(MgApp *app, float alpha)
             }
         }
         markers_draw(&g->markers, app->gfx, g->fade.vis, floor, (float)app->time, g->avatar_meshes.shadow);
+        draw_ia_debug(g, app, floor);
         marker_t *am = marker_get(&g->markers, g->active_marker);
         if (am && autonav_active(&g->autonav) && g->autonav.next >= 0) {
             markers_draw_path(&g->markers, app->gfx, &g->autonav.path, g->autonav.next, feet, floor, am->color_rgba, am->ring_t);
@@ -2366,7 +2516,7 @@ void game_frame(MgApp *app, float alpha)
     if (g->ia_ok) {
         const ui_frame_t pf = frame_of(app);
         const bool hide_panel = g->menu.open || riding || (g->lift_panel_ok && g->lift_panel.slide > 0.0f);
-        preview_panel_update(&g->panel, hide_panel ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
+        preview_panel_update(&g->panel, hide_panel || g->no_panels ? &k_no_interact : &g->ia, mg_minf(app->frame_dt, 0.1f), &pf);
         preview_panel_draw_3d(&g->panel, &g->ia, app->gfx, &g->avatar_meshes);
         preview_panel_draw_ui(&g->panel, &g->ia, app->gfx, &app->font);
     }
@@ -2527,7 +2677,10 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         float x, z;
         int st;
         const char *at = arg_value(app->argc, app->argv, "--autotest");
-        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active ? 0 : -1));
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && SDL_strcmp(at, "interact") == 0) ? 0 : -1));
+        if (at && SDL_strcmp(at, "interact") == 0) {
+            marker_add(ms, HMM_V3(10.4f, scene_floor_y(g->scene, 0), -3.0f), 0, MARKER_OBJECTIVE, 0xFF9F0AFF);
+        }
         if (one && SDL_sscanf(one, "%f,%f,%d", &x, &z, &st) == 3) {
             marker_add(ms, HMM_V3(x, scene_floor_y(g->scene, level_of(st)), z), st, MARKER_OBJECTIVE, 0xFF9F0AFF);
         }

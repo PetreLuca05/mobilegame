@@ -31,6 +31,8 @@ typedef struct MgInput {
     float right_down_x, right_down_y; /* where the right button went down (window pt) */
     bool right_click;                 /* desktop: right button released without a drag, this frame */
     float right_click_x, right_click_y;
+    float mouse_x, mouse_y; /* desktop: last position, pt */
+    bool mouse_seen;
     char text[32]; /* text typed this frame (ASCII subset) */
     int text_len;
 } MgInput;

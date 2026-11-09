@@ -12,7 +12,7 @@ import os
 import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc"]
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
@@ -48,6 +48,8 @@ def main():
             if not d or not g:
                 continue
             m = metrics(d, g)
+            if sc in ("lift_panel", "interact_npc") and d.get("panel_samples", 0) < 0.9 * d["samples"]:
+                problems.append(f"{dev} {sc}: the panel was up in only {d.get('panel_samples', 0)} of {d['samples']} frames")
             for name, (budget, stress_only) in BUDGETS.items():
                 if stress_only and sc != "stress200":
                     continue

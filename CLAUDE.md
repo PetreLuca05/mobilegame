@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--party ABCD`, `--world`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|offline|freeroam-create|freeroam-join CODE|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|offline|freeroam-create|freeroam-join CODE|screenshot NAME`,
 `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -396,6 +396,10 @@ ro.docvex.mobilegame --offline --time 19`, then export the
 
 - `game/interact.h`: `ia_add` / `ia_remove` / `ia_set_pos` / `ia_set_flags` (NPCs, wall buttons, markers, the lift). A 10 Hz scan through the spatial hash picks one active target (enter 2.0 m, exit 2.5 m, in front of the player unless `IA_FACING_FREE`).
 - NPCs that want to talk (`wants_chat`, re-evaluated at 2 Hz: receptionist, doctor at a desk, nurse at the station, anyone seated): the head lifts and a "..." cloud shows; up to 6 faint clouds within 4 m (`chat_bubbles`: off / active / all). Tap "Talk": a greeting card for 2.5 s (`assets/npc_names.json` greetings), `on_interact`, a nod. All of it is drawn, never simulated.
+- The scan prefers a usable target over a greyed one standing closer (a queue must not hide the receptionist), then the nearest. Desktop: the mouse over something shows it too (`ia_near_point`), E or a click uses it.
+- `preview_desc_t` (per interactable: `mesh` or `look`, `scale`, `yaw_offset`, `y_offset`, `color`) is what the card draws. Debug: Developer -> Show ranges, Show active id, Force elevator panel, Preview any mesh, Show safe rect.
+- `--autotest interact`: a call button, a marker and the receptionist (panel up, drag does nothing, a tap fires exactly once, walking onto the marker does not), the lift's 3D buttons to floor 2 and back, an auto-ride with no panel, desktop hover, Pause -> Performance; the scan is compared per tick with brute force (panel up/down within 2 scans = 12 ticks). Screenshots in `docs/autotest/interact/`. Perf: scenarios `lift_panel` and `interact_npc` (the gate fails if the panel was up in under 90 % of the frames), `--no-panels` for the A/B.
+- The font is ASCII: `npc_data.c` folds Romanian letters in names and greetings to plain ones.
 - `game/elevator_panel.c`: the 3D lift buttons down the left of the safe area while standing in the car (22 % of the safe width, an inset drawn before the world). The button column comes from the lift's floor count; a tap lights the button and dings, the ride starts 0.4 s later. Desktop: keys 0-9. Developer -> Force elevator panel. Auto-ride shows no panel; cancelling in the car does.
 - `game/preview_panel.c`: the bottom-right card. `gfx_inset_begin` / `gfx_inset_end` draw a small 3D picture inside the main pass with its own viewport, camera and depth range (no render target). Tap-only through `TouchControls.targets`. Desktop: E.
 

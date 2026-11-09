@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Runs --autotest perf on the connected devices and records the results.
-#   tools/perf_run.sh OUTDIR [--devices "ipad"] [--scenarios "yard lobby corridor_f2 stress200"]
+#   tools/perf_run.sh OUTDIR [--devices "ipad"] [--scenarios "yard lobby corridor_f2 stress200 npcs lift_panel interact_npc"]
 #                     [--seconds N] [--gpu] [--gate] [--no-json] [--tag NAME] [--extra "app args"]
 # Fails (non-zero, naming the file) if a run produced no new output: every file
 # must be newer than its run, carry that run's id and the commit at HEAD.
@@ -8,7 +8,7 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;

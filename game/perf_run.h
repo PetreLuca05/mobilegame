@@ -34,6 +34,7 @@ typedef struct PerfRun {
     double park_until;
     PerfSum f[PERF_FIELDS];
     uint32_t samples, sim_max, rendered_max;
+    uint32_t panel_samples; /* frames with the preview or the lift panel fully up */
     int thermal_worst;
     float resident_max;
     bool go_pending;

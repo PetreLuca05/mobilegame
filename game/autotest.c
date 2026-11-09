@@ -8,14 +8,14 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN };
+       AUTOTEST_OFFLINE, AUTOTEST_FR_CREATE, AUTOTEST_FR_JOIN, AUTOTEST_INTERACT };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "freeroam-create", "freeroam-join"};
+                                        "offline", "freeroam-create", "freeroam-join", "interact"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 11 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < 12 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -45,7 +45,7 @@ bool autotest_starts_in_game(int argc, char **argv)
             return SDL_strcmp(argv[i + 1], "touch") == 0 || SDL_strcmp(argv[i + 1], "route") == 0 ||
                    SDL_strcmp(argv[i + 1], "stickdir") == 0 || SDL_strcmp(argv[i + 1], "screenshot") == 0 ||
                    SDL_strcmp(argv[i + 1], "nav") == 0 || SDL_strcmp(argv[i + 1], "autonav") == 0 ||
-                   SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 ||
+                   SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 || SDL_strcmp(argv[i + 1], "interact") == 0 ||
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0;
@@ -731,6 +731,326 @@ static bool run_continue(Autotest *t, MgApp *app, const AutotestProbe *p)
     return true;
 }
 
+static void tap_later(Autotest *t, MgApp *app, float x, float y, double el, int next)
+{
+    finger(app, SDL_EVENT_FINGER_DOWN, INTERACT_FINGER, x, y);
+    t->tap_x = x;
+    t->tap_y = y;
+    t->wait_until = el + 0.1;
+    t->stage = next;
+}
+
+static void mouse_to(float x, float y)
+{
+    SDL_Event e;
+    SDL_zero(e);
+    e.type = SDL_EVENT_MOUSE_MOTION;
+    e.motion.x = x;
+    e.motion.y = y;
+    SDL_PushEvent(&e);
+}
+
+static void walk_to(AutotestOut *out, HMM_Vec3 at, int storey)
+{
+    out->nav_go = true;
+    out->nav_pos = at;
+    out->nav_to = storey;
+}
+
+#define IT_SHOT(name) SDL_snprintf(out->screenshot, sizeof(out->screenshot), "interact_%s", name)
+#define IT_NAV_IDLE(p) ((p)->nav_state == 0 || (p)->nav_state == 4)
+#define SCAN_LAG_MAX 12 /* the scan runs every 6 ticks: two scans */
+
+static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el)
+{
+    static const char *const names[3] = {"button", "marker", "receptionist"};
+    static const int kinds[3] = {1 /* IA_BUTTON */, 2 /* IA_MARKER */, 0 /* IA_NPC */};
+    const int i = t->step;
+    float x, y;
+    switch (t->stage) {
+    case 0: /* the NPCs need a moment to reach their posts */
+        if (p->playing && el > 4.0 && p->it_slot[0] >= 0 && p->it_slot[1] >= 0 && p->it_slot[2] >= 0) {
+            t->stage = 1;
+        } else if (el > 40.0) {
+            mg_log_info("autotest interact: targets button %d marker %d receptionist %d", p->it_slot[0], p->it_slot[1], p->it_slot[2]);
+            return fail(t, "interact", "a target is missing");
+        }
+        break;
+    case 1:
+        walk_to(out, p->it_stand[i], 0);
+        t->it_fired = p->ia_fired[kinds[i]];
+        t->it_reached = p->markers_reached;
+        t->it_hidden = i == 0;
+        t->wait_until = el + 0.4;
+        t->step_start = el;
+        t->stage = 2;
+        break;
+    case 2: /* walking there: the panel must have gone away since the last one */
+        t->it_hidden = t->it_hidden || (!p->interact_visible && p->active_slot < 0);
+        if (el >= t->wait_until && IT_NAV_IDLE(p) && p->active_slot == p->it_slot[i] && p->interact_visible) {
+            if (!t->it_hidden) {
+                return fail(t, "interact", "the panel never hid between two targets");
+            }
+            if (p->markers_reached != t->it_reached) {
+                return fail(t, "interact", "walking onto the marker fired it");
+            }
+            mg_log_info("autotest interact: %s panel up after %.1f s, not fired (ok)", names[i], el - t->step_start);
+            IT_SHOT(names[i]);
+            t->wait_until = el + 0.5;
+            t->stage = 3;
+        } else if (el - t->step_start > 70.0) {
+            mg_log_info("autotest interact: at %.1f %.1f, active %d, wanted %d, nav %d", (double)p->player_pos.X, (double)p->player_pos.Z,
+                        p->active_slot, p->it_slot[i], p->nav_state);
+            return fail(t, "interact", "the panel never showed the target");
+        }
+        break;
+    case 3:
+        if (el >= t->wait_until) { /* a drag that starts on the panel is not a tap */
+            finger(app, SDL_EVENT_FINGER_DOWN, INTERACT_FINGER, p->interact_x, p->interact_y);
+            t->wait_until = el + 0.1;
+            t->stage = 4;
+        }
+        break;
+    case 4:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_MOTION, INTERACT_FINGER, p->interact_x - 40.0f, p->interact_y);
+            t->wait_until = el + 0.35;
+            t->stage = 5;
+        }
+        break;
+    case 5:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, p->interact_x - 40.0f, p->interact_y);
+            t->wait_until = el + 0.3;
+            t->stage = 6;
+        }
+        break;
+    case 6:
+        if (el >= t->wait_until) {
+            if (p->ia_fired[kinds[i]] != t->it_fired) {
+                return fail(t, "interact", "a drag on the panel fired it");
+            }
+            tap_later(t, app, p->interact_x, p->interact_y, el, 7);
+        }
+        break;
+    case 7:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.5;
+            t->stage = 8;
+        }
+        break;
+    case 8:
+        if (el >= t->wait_until) {
+            const uint32_t n = p->ia_fired[kinds[i]] - t->it_fired;
+            if (n != 1) {
+                mg_log_info("autotest interact: %s fired %u times", names[i], n);
+                return fail(t, "interact", "a tap must fire exactly once");
+            }
+            if (i == 1 && p->markers_reached != t->it_reached + 1) {
+                return fail(t, "interact", "the tap did not reach the marker");
+            }
+            if (i == 2 && !p->greeting) {
+                return fail(t, "interact", "no greeting card");
+            }
+            mg_log_info("autotest interact: %s fired once by the tap (ok)", names[i]);
+            if (i == 2) {
+                IT_SHOT("greeting");
+            }
+            t->step++;
+            t->wait_until = el + 0.3;
+            t->stage = t->step < 3 ? 1 : 10;
+        }
+        break;
+    case 10: /* desktop: the mouse over something far away shows it */
+        if (el < t->wait_until) {
+            break;
+        }
+        if (p->hover_slot < 0) {
+            mg_log_info("autotest interact: hover skipped (no mouse here, or nothing on screen)");
+            t->stage = 20;
+            break;
+        }
+        t->it_hover = p->hover_slot;
+        mouse_to(p->hover_x, p->hover_y);
+        t->wait_until = el + 0.25;
+        t->stage = 11;
+        break;
+    case 11:
+        if (el >= t->wait_until) {
+            if (p->active_slot != t->it_hover) {
+                return fail(t, "interact", "the mouse over a target did not show it");
+            }
+            mouse_to(2.0f, 2.0f);
+            t->wait_until = el + 0.5;
+            t->stage = 12;
+        }
+        break;
+    case 12:
+        if (el >= t->wait_until) {
+            if (p->active_slot == t->it_hover) {
+                return fail(t, "interact", "the hovered target stayed after the mouse left");
+            }
+            mg_log_info("autotest interact: hover shows and clears (ok)");
+            t->stage = 20;
+        }
+        break;
+    case 20:
+        walk_to(out, p->lift_at, 0);
+        t->wait_until = el + 0.4;
+        t->step_start = el;
+        t->stage = 21;
+        break;
+    case 21:
+        if (el >= t->wait_until && IT_NAV_IDLE(p) && p->lift_panel_open && !p->riding) {
+            IT_SHOT("lift_slide");
+            t->it_rides = p->rides;
+            t->wait_until = el + 0.5; /* slid all the way in */
+            t->stage = 210;
+        } else if (el - t->step_start > 60.0) {
+            return fail(t, "interact", "the lift panel did not open in the car");
+        }
+        break;
+    case 210:
+        if (el >= t->wait_until) {
+            IT_SHOT("lift");
+            t->wait_until = el + 0.5;
+            t->stage = 22;
+        }
+        break;
+    case 22:
+        if (el >= t->wait_until) {
+            tap_later(t, app, p->lift_btn_x[2], p->lift_btn_y[2], el, 23);
+        }
+        break;
+    case 23:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->step_start = el;
+            t->wait_until = el + 1.0;
+            t->stage = 24;
+        }
+        break;
+    case 24:
+        if (el >= t->wait_until && p->floor == 2 && !p->riding && p->lift_panel_open) {
+            if (p->rides != t->it_rides + 1) {
+                return fail(t, "interact", "the button did not ride exactly once");
+            }
+            mg_log_info("autotest interact: rode to floor 2 by the 3D button (ok)");
+            t->wait_until = el + 0.8;
+            t->stage = 25;
+        } else if (el - t->step_start > 12.0) {
+            mg_log_info("autotest interact: floor %d riding %d panel %d", p->floor, p->riding, p->lift_panel_open);
+            return fail(t, "interact", "tapping floor 2 did not get there");
+        }
+        break;
+    case 25:
+        if (el >= t->wait_until) {
+            tap_later(t, app, p->lift_btn_x[0], p->lift_btn_y[0], el, 26);
+        }
+        break;
+    case 26:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->step_start = el;
+            t->wait_until = el + 1.0;
+            t->stage = 27;
+        }
+        break;
+    case 27:
+        if (el >= t->wait_until && p->floor == 0 && !p->riding) {
+            mg_log_info("autotest interact: rode back to G by the 3D button (ok)");
+            walk_to(out, HMM_V3(-10.4f, 4.1f, -3.0f), 1);
+            t->wait_until = el + 0.8; /* the panel slides out */
+            t->step_start = el;
+            t->stage = 30;
+        } else if (el - t->step_start > 12.0) {
+            return fail(t, "interact", "tapping G did not get there");
+        }
+        break;
+    case 30: /* an auto-ride shows no panel */
+        if (el >= t->wait_until && p->nav_state != 0 && p->nav_state != 4 && p->lift_panel_open) {
+            return fail(t, "interact", "the lift panel opened during an auto-ride");
+        }
+        if (el >= t->wait_until && p->nav_state == 4) {
+            mg_log_info("autotest interact: auto-ride to floor %d, no panel (ok)", p->floor);
+            t->stage = 40;
+        } else if (el - t->step_start > 70.0 || p->nav_state == 6) {
+            return fail(t, "interact", "the auto-ride did not arrive");
+        }
+        break;
+    case 40: /* Pause -> Performance */
+        if (ui_find(p->ui, "gear", &x, &y)) {
+            t->it_hidden = p->show_stats;
+            tap_later(t, app, x, y, el, 41);
+        }
+        break;
+    case 41:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.4;
+            t->stage = 42;
+        }
+        break;
+    case 42:
+        if (el >= t->wait_until && ui_find(p->ui, "p_perf", &x, &y)) {
+            tap_later(t, app, x, y, el, 43);
+        } else if (el >= t->wait_until + 3.0) {
+            return fail(t, "interact", "no Performance row on the pause card");
+        }
+        break;
+    case 43:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.3;
+            t->stage = 44;
+        }
+        break;
+    case 44:
+        if (el >= t->wait_until && ui_find(p->ui, "p_perf", &x, &y)) {
+            if (p->show_stats == t->it_hidden) {
+                return fail(t, "interact", "the Performance row did not toggle the stats");
+            }
+            tap_later(t, app, x, y, el, 45); /* and back */
+        }
+        break;
+    case 45:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.3;
+            t->stage = 46;
+        }
+        break;
+    case 46:
+        if (el >= t->wait_until && ui_find(p->ui, "p_resume", &x, &y)) {
+            if (p->show_stats != t->it_hidden) {
+                return fail(t, "interact", "the Performance row did not toggle back");
+            }
+            tap_later(t, app, x, y, el, 47);
+        }
+        break;
+    case 47:
+        if (el >= t->wait_until) {
+            finger(app, SDL_EVENT_FINGER_UP, INTERACT_FINGER, t->tap_x, t->tap_y);
+            t->wait_until = el + 0.3;
+            t->stage = 48;
+        }
+        break;
+    default:
+        if (el >= t->wait_until) {
+            mg_log_info("autotest interact: scan lag: panel up %d ticks, down %d ticks (limit %d)", p->ia_enter_lag, p->ia_exit_lag, SCAN_LAG_MAX);
+            if (p->ia_enter_lag > SCAN_LAG_MAX || p->ia_exit_lag > SCAN_LAG_MAX) {
+                return fail(t, "interact", "the scan lags behind the player");
+            }
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = true;
+            return true;
+        }
+        break;
+    }
+    return false;
+}
+
 bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out)
 {
     *out = (AutotestOut){0};
@@ -767,6 +1087,9 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_OFFLINE:
         finished = run_offline(t, app, p, el);
+        break;
+    case AUTOTEST_INTERACT:
+        finished = run_interact(t, app, p, out, el);
         break;
     case AUTOTEST_FR_CREATE:
     case AUTOTEST_FR_JOIN:

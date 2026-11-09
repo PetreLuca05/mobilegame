@@ -28,6 +28,8 @@ static const Scenario k_scenarios[] = {
     {"yard", -12.0f, 0.1f, 10.0f, 0, 0.0f, {{-20.0f, 10.0f, -1}, {20.0f, 10.0f, -1}}, 2},
     {"lobby", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2},
     {"corridor_f2", -10.4f, 8.1f, -3.0f, 0, 0.0f, {{10.4f, -3.0f, 2}, {-10.4f, -3.0f, 2}}, 2},
+    {"lift_panel", 0.0f, 0.1f, -13.84f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* stands in the car, panel open */
+    {"interact_npc", 3.3f, 0.1f, -2.2f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* near a talker, preview up */
     {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
@@ -161,6 +163,7 @@ static void write_report(const PerfRun *p, MgApp *app)
             MB(app->perm.size), MB(app->perm.used), MB(app->perm.peak), MB(app->frame.peak), MB(p->last.nav_bytes), MB(p->last.npc_bytes));
 #undef MB
     }
+    PUT("\"panel_samples\": %u,\n", p->panel_samples);
     if (p->extra_json[0]) {
         PUT("%s,\n", p->extra_json);
     }
@@ -225,7 +228,7 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
         mg_log_info("perf: recording %s for %.0f s", p->scenario, p->seconds);
     }
     /* walk the route: the next leg once the last one has ended */
-    if (app->time >= p->park_until && app->time >= p->next_go && probe->nav_state != 1 && probe->nav_state != 2 && probe->nav_state != 3) {
+    if (p->wp_count > 0 && app->time >= p->park_until && app->time >= p->next_go && probe->nav_state != 1 && probe->nav_state != 2 && probe->nav_state != 3) {
         if (probe->nav_state == 6) {
             p->failed++;
         }
@@ -251,6 +254,7 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     add(&p->f[PERF_GPU_MAIN], (double)g->gpu_main_ms);
     add(&p->f[PERF_GPU_UI], (double)g->gpu_ui_ms);
     p->samples++;
+    p->panel_samples += probe->interact_visible || probe->lift_panel_open;
     p->sim_max = s->sim > p->sim_max ? s->sim : p->sim_max;
     p->rendered_max = s->rendered > p->rendered_max ? s->rendered : p->rendered_max;
     int th = device_thermal_state();

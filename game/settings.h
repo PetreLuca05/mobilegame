@@ -22,6 +22,9 @@ typedef struct GameSettings {
     bool show_slots;        /* debug: NPC slots */
     bool show_safe_rect;    /* debug: the safe rect and the insets */
     bool force_lift_panel;  /* debug */
+    bool show_ia_ranges;    /* debug: enter and exit rings */
+    bool show_ia_active;    /* debug: the active one, as text */
+    bool preview_any;       /* debug: the panel cycles through meshes */
     bool show_packages;     /* debug: archetype + step over each NPC */
     bool show_npc_paths;    /* debug */
     bool freeze_npcs;       /* debug */
