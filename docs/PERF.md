@@ -152,7 +152,7 @@ Inside the arena: nav grids 7.6 MB, NPC storage 0.9 MB; audio is in the arena an
 | Render thread priority | Done, log shows 45 on the iPad | |
 | Heap allocations | 0 in every recorded run | Counted on the HUD and in the JSON. Debug builds do not abort; `--gate` fails on any allocation outside a screenshot |
 | Vertex-shader avatar animation | **Deferred** (accepted) | Avatars are instanced with matrices composed on the CPU. `npc.draw` is the cost it would save: under 0.2 ms per frame with 200 NPCs; expected saving about half of that, and it needs a part id per instance. Candidate when the fidelity work starts |
-| Avatar draws | **Deferred debt:** about 20 draws on average in the stress scene, target 10 or fewer | Each part type and hair style is its own mesh; the 150 budget is met. Revisit when the map changes |
+| Avatar draws | **Done** (FRIENDS-1): the x-ray silhouettes were the part that scaled with players, 24 uninstanced draws each (49 rim + 49 fill of 163 in `lobby4`). They now have instanced pipelines, like the toon, outline, unlit and ground-sprite parts: one draw per mesh and kind across all avatars and NPCs, with colour per instance. `lobby4` on the Mac: 162.7 -> 96.7 draws (max 102), same 659 instances | Player count no longer scales the draw count; each distinct part mesh on screen still costs one draw per kind |
 | Static world draws | **Deferred debt:** 68 in the yard scene including UI, target 25 or fewer | Tree canopies and text remain separate; the 150 and 100 limits are met. Revisit with chunked static geometry when the map changes |
 | Unattributed iPad render time | **Deferred:** about 0.7 ms of `render` outside the sort and encode scopes | Break it down the next time a perf pass runs |
 | Menu avatar preview | Still an offscreen render target | Menu only, no gameplay cost; M8 replaces it with a viewport in the main pass |
@@ -239,7 +239,7 @@ tools/perf_run.sh docs/perf/run1 --gpu --gate
 
 ## FRIENDS-1 (desktop sanity only)
 
-`lobby4` (3 fake guests, join panel up, 200 dummies) on the Mac, new camera, labelled sanity, not the gate: 163 draws average, 168 max (budget 150, an iPad budget), 4 passes, 0 heap allocations in the frame, 1 dropped frame of 1800, 200 MB resident. The iPad Air 4 was unavailable, so neither the gate nor the generation-frame GPU cost is measured.
+`lobby4` (3 fake guests, join panel up, 200 dummies) on the Mac, new camera, labelled sanity, not the gate: 163 draws average, 168 max before the x-ray instancing, 96.7 average, 102 max after (budget 150, an iPad budget; target 110), 4 passes, 0 heap allocations in the frame, 1 dropped frame of 1800, 200 MB resident. The iPad Air 4 was unavailable, so neither the gate nor the generation-frame GPU cost is measured.
 
 Steady state the four passes are main, two blur (the frosted pause disc, since `e99c268`) and UI; head icons add none. Heads are generated at most 2 per frame in one extra offscreen pass, only while the queue is not empty.
 

@@ -277,6 +277,7 @@ struct GfxContext {
     SDL_GPUTransferBuffer *inst_tb[GFX_BUFFER_RING];
     uint32_t ring;
     SDL_GPUGraphicsPipeline *inst_pipe[GFX_MAT_COUNT][2]; /* opaque, dithered; NULL = per-draw path */
+    SDL_GPUGraphicsPipeline *inst_xray_always[2];         /* rim, fill: "X-ray always" (depth test ALWAYS) */
     SDL_GPUGraphicsPipeline *floor_dither;
     uint32_t draw_count;
     GfxStats stats;
@@ -521,6 +522,31 @@ static bool create_pipelines(GfxContext *g)
                     g->inst_pipe[k_inst[k].kind][1] = make_pipeline(g, &d);
                 }
             }
+            /* x-ray: always dithered, so only the second slot; the one thing that scaled with the player count */
+            for (int x = 0; x < 2; x++) {
+                const GfxMaterialKind kind = x ? GFX_MAT_XRAY : GFX_MAT_XRAY_RIM;
+                const MaterialProgram *mp = material_program(kind);
+                PipeDesc d = {
+                    .vs = load_shader(g, x ? "toon_inst.vert" : "xray_rim_inst.vert", 2, 0),
+                    .fs = load_shader(g, "xray_inst.frag", 2, 0),
+                    .layout = LAYOUT_MESH,
+                    .instanced = true,
+                    .depth_test = true,
+                    .depth_write = mp->depth_write,
+                    .cull = mp->cull_front ? SDL_GPU_CULLMODE_FRONT : (mp->cull_back ? SDL_GPU_CULLMODE_BACK : SDL_GPU_CULLMODE_NONE),
+                    .front = front,
+                    .color_fmt = fmt,
+                    .samples = samples,
+                    .depth_greater = mp->depth_greater,
+                };
+                g->inst_pipe[kind][1] = make_pipeline(g, &d);
+                d.depth_greater = false;
+                d.depth_always = true;
+                g->inst_xray_always[x] = make_pipeline(g, &d);
+                if (!g->inst_pipe[kind][1] || !g->inst_xray_always[x]) {
+                    return false;
+                }
+            }
             const MaterialProgram *fp = material_program(GFX_MAT_FLOOR);
             PipeDesc fd = {
                 .vs = load_shader(g, fp->vert, fp->vert_ubos, 0),
@@ -687,6 +713,9 @@ static void release_pipelines(GfxContext *g)
         }
     }
     for (int k = 0; k < GFX_MAT_COUNT; k++) {
+        if (k < 2) {
+            RELEASE_PIPE(g->inst_xray_always[k]);
+        }
         RELEASE_PIPE(g->inst_pipe[k][0]);
         RELEASE_PIPE(g->inst_pipe[k][1]);
     }
@@ -1291,6 +1320,8 @@ static int draw_bucket(const DrawItem *d)
     return d->hide > 0.0f ? 3 : 0;
 }
 
+static bool xray_always(const DrawItem *d) { return (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f; }
+
 static bool instanceable(const GfxContext *g, const DrawItem *d)
 {
     if ((d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) || d->inset) {
@@ -1375,7 +1406,8 @@ static void build_instances(GfxContext *g)
         for (; j < g->draw_count; j++) {
             const DrawItem *e = &g->draws[g->order[j]];
             if (e->kind != d->kind || e->mesh != d->mesh || (e->hide > 0.0f) != dither || !instanceable(g, e) ||
-                draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count) {
+                draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count ||
+                xray_always(e) != xray_always(d)) {
                 break;
             }
             if (g->inst_count >= GFX_MAX_INSTANCES) {
@@ -1491,7 +1523,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             continue;
         }
         if (can_instance && g->run_len[i] > 0) {
-            SDL_GPUGraphicsPipeline *ip = g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0];
+            SDL_GPUGraphicsPipeline *ip = xray_always(d) ? g->inst_xray_always[d->kind == GFX_MAT_XRAY] : g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0];
             if (ip != bound_pipe) {
                 SDL_BindGPUGraphicsPipeline(pass, ip);
                 bound_pipe = ip;
