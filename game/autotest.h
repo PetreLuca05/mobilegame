@@ -90,6 +90,7 @@ typedef struct AutotestProbe {
     const float *hud_res;      /* what marker icons stay out of: x, y, w, h */
     int hud_res_count;
     bool text_ok;              /* --autotest text: every Romanian letter has its glyph */
+    struct Frontend *fe;
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */

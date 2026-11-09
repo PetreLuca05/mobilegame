@@ -12,6 +12,7 @@
 #ifndef MG_FRONTEND_H
 #define MG_FRONTEND_H
 
+#include "lobby.h"
 #include "avatar.h"
 #include "creator.h"
 #include "platform/app.h"
@@ -39,6 +40,10 @@ typedef enum FeAction {
     FE_NEW_GAME,      /* confirmed (overwrite asked if a save exists) */
     FE_CONTINUE,
     FE_OPEN_FRIENDS,
+    FE_OPEN_INVITE,   /* the Friends page, in invite mode */
+    FE_LOBBY_TOGGLE,
+    FE_LOBBY_KICK,    /* Frontend.kick_id */
+    FE_LOBBY_LEAVE,
     FE_LOAD_STEP,     /* LOADING: build the next part of the world */
     FE_EXIT,
 } FeAction;
@@ -58,7 +63,25 @@ typedef struct FrontendCtx {
     struct HeadIcons *heads;
     float load_progress;  /* LOADING: 0..1 */
     const char *version;
+    /* FRIENDS-2: the lobby on the menu */
+    bool lobby_visible;   /* signed in, in a menu lobby */
+    bool lobby_host, lobby_open;
+    const LobbyRow *rows;
+    int row_count;
+    HMM_Vec3 slots[LOBBY_MAX_PLAYERS];
 } FrontendCtx;
+
+/* A player standing in the menu scene; goes on fading out after they have left the list */
+typedef struct FeAvatar {
+    bool active, listed;
+    char id[NET_ID_LEN];
+    NetSkin skin;
+    int at;       /* slot */
+    float fade;   /* 0 .. 1 */
+    bool host;
+    char name[NET_NAME_LEN];
+    AvatarAnim anim;
+} FeAvatar;
 
 typedef struct Frontend {
     FeState state;
@@ -79,10 +102,16 @@ typedef struct Frontend {
     int pressed_row;     /* 60 ms press feedback */
     double pressed_at;
     bool clicked;        /* a row was activated this frame (click sound) */
+    char kick_id[NET_ID_LEN];
+    FeAvatar avatars[LOBBY_MAX_PLAYERS + 2];
+    float lobby_x, lobby_y, lobby_w, lobby_h; /* where the panel was last drawn, for the layout test */
 } Frontend;
 
 /* Where the main menu's buttons end, in pt from the left (the hero is centred in what is left). */
 float frontend_menu_right(const MgApp *app, FeState state);
+/* Where the free space right of the menu column ends: the lobby panel, or the screen edge. */
+float frontend_menu_free_right(const MgApp *app, bool lobby_panel);
+void frontend_draw_crown(GfxContext *g, const TextFont *font, float x, float y, float size);
 bool frontend_init(Frontend *f, GfxContext *g, Arena *scratch);
 void frontend_go(Frontend *f, FeState s); /* pushes the current state for Back */
 /* Android back / Escape: one state back; returns FE_EXIT on the welcome screen. */

@@ -27,6 +27,7 @@ static const char *err_text(const char *prefix, const char *code)
 void friends_page_open(FriendsPage *p, Friends *f)
 {
     p->open = true;
+    p->invite_mode = false;
     p->confirm_id[0] = 0;
     p->action_id[0] = 0;
     p->note[0] = 0;
@@ -41,6 +42,40 @@ static bool small_button(Ui *ui, const char *text, const char *id, float x, floa
     char label[96];
     SDL_snprintf(label, sizeof(label), "%s##%s", text, id);
     return ui_button(ui, label, x, y, w, 44.0f, hi);
+}
+
+static void disabled_chip(Ui *ui, const char *text, float x, float y, float w)
+{
+    ui_round_rect(ui->gfx, ui->font, x, y + 6.0f, w, 32.0f, 10.0f, ui_rgba(0xFFFFFF1A));
+    text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + 22.0f, 13.0f, ui_rgba(0xFFFFFF80), text);
+}
+
+/* A menu row that does nothing yet, and says so */
+static void soon_row(Ui *ui, const char *text, float x, float y, float w)
+{
+    ui_round_rect(ui->gfx, ui->font, x, y, w, 44.0f, 10.0f, ui_rgba(0xFFFFFF14));
+    text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + 22.0f, 15.0f, ui_rgba(0xFFFFFF66), text);
+    const char *tag = str("friend_soon");
+    const float tw = text_width(ui->font, tag, 11.0f) + 14.0f;
+    ui_round_rect(ui->gfx, ui->font, x + w - tw - 8.0f, y + 12.0f, tw, 20.0f, 10.0f, ui_rgba(0xFFFFFF26));
+    text_draw_centered(ui->gfx, ui->font, x + w - tw * 0.5f - 8.0f, y + 22.0f, 11.0f, ui_rgba(0xFFFFFFB3), tag);
+}
+
+static bool in_my_lobby(const Lobby *l, const char *id)
+{
+    const NetSession *s = l->session;
+    for (int i = 0; i < s->member_count; i++) {
+        if (strcmp(s->members[i], id) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Alone in their own menu: the only ones an invite reaches */
+static bool can_invite(const Friends *f, int i)
+{
+    return !f->stale && f->status[i] != NET_FS_OFFLINE && f->in_menu[i] && f->players[i] <= 1 && f->status[i] != NET_FS_IN_OTHER_LOBBY;
 }
 
 static float row_text(Ui *ui, const char *name, const char *sub, float x, float y, bool faded)
@@ -63,48 +98,66 @@ static float tab_friends(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons
     const float y0 = y;
     int shown = 0;
     char id[32];
-    for (int o = 0; o < f->count; o++) {
-        const int i = f->order[o];
-        if (f->relation[i] != NET_REL_FRIEND) {
-            continue;
+    const int passes = p->invite_mode ? 2 : 1; /* invite mode: whoever can be invited first */
+    for (int pass = 0; pass < passes; pass++) {
+        for (int o = 0; o < f->count; o++) {
+            const int i = f->order[o];
+            if (f->relation[i] != NET_REL_FRIEND || (p->invite_mode && can_invite(f, i) != (pass == 0))) {
+                continue;
+            }
+            shown++;
+            const bool away = f->stale || f->status[i] == NET_FS_OFFLINE;
+            const bool waiting = l->state == LOBBY_JOINING && strcmp(l->join_host, f->id[i]) == 0;
+            head_icon_draw(h, ui->gfx, ui->font, &f->skin[i], f->name[i], x + head * 0.5f, y + ROW_H * 0.5f, head, away);
+            /* grey offline, blue in the menu, green in a game */
+            const uint32_t dot = away ? 0x8A8F98FF : f->in_menu[i] ? 0x3B82F6FF : 0x34C759FF;
+            ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 8.0f, ui_rgba(0x14171FFF));
+            ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 6.0f, ui_rgba(dot));
+            const char *sub = waiting ? str("friend_waiting") : status_text(f, i);
+            if (p->invite_mode && !can_invite(f, i)) { /* why not */
+                sub = str(away ? "invite_reason_offline" : f->in_menu[i] ? "invite_reason_busy" : "invite_reason_in_game");
+            }
+            row_text(ui, f->name[i], sub, x + head + 10.0f, y, away);
+            float rx = x + w;
+            const float bw = 96.0f;
+            if (!f->stale && !p->invite_mode) {
+                rx -= 44.0f;
+                SDL_snprintf(id, sizeof(id), "fmore_%s", f->code[i]);
+                if (small_button(ui, "", id, rx, y + 6.0f, 44.0f, false)) {
+                    SDL_snprintf(p->action_id, sizeof(p->action_id), "%s", f->id[i]);
+                    SDL_snprintf(p->action_name, sizeof(p->action_name), "%s", f->name[i]);
+                }
+                for (int bar = 0; bar < 3; bar++) { /* the menu icon */
+                    ui_round_rect(ui->gfx, ui->font, rx + 13.0f, y + 21.0f + (float)bar * 6.0f, 18.0f, 2.5f, 1.25f, ui_rgba(0xFFFFFFFF));
+                }
+                rx -= 8.0f;
+            }
+            if (waiting) {
+                if (small_button(ui, str("friend_cancel"), "fjoin_cancel", rx - bw, y + 6.0f, bw, false)) {
+                    lobby_cancel_join(l);
+                }
+                rx -= bw + 8.0f;
+            } else if (!away && !p->invite_mode && f->status[i] == NET_FS_OPEN) {
+                SDL_snprintf(id, sizeof(id), "fjoin_%s", f->code[i]);
+                if (small_button(ui, str("friend_join"), id, rx - bw, y + 6.0f, bw, true)) {
+                    lobby_ask_join(l, f->id[i]);
+                }
+                rx -= bw + 8.0f;
+            }
+            if (!away && lobby_is_host(l) && !in_my_lobby(l, f->id[i])) {
+                if (lobby_invite_sent(l, f->id[i])) {
+                    disabled_chip(ui, str("friend_invite_sent"), rx - bw, y + 6.0f, bw);
+                } else if (can_invite(f, i)) {
+                    SDL_snprintf(id, sizeof(id), "finvite_%s", f->code[i]);
+                    if (small_button(ui, str("friend_invite"), id, rx - bw, y + 6.0f, bw, true)) {
+                        lobby_invite_send(l, f->id[i]);
+                    }
+                } else if (!waiting) {
+                    disabled_chip(ui, str("friend_invite"), rx - bw, y + 6.0f, bw);
+                }
+            }
+            y += ROW_H + 4.0f;
         }
-        shown++;
-        const bool waiting = l->state == LOBBY_JOINING && strcmp(l->join_host, f->id[i]) == 0;
-        const bool away = f->stale || f->status[i] == NET_FS_OFFLINE;
-        head_icon_draw(h, ui->gfx, ui->font, &f->skin[i], f->name[i], x + head * 0.5f, y + ROW_H * 0.5f, head, away);
-        /* grey offline, blue in the menu, green in a game */
-        const uint32_t dot = away ? 0x8A8F98FF : f->status[i] == NET_FS_MENU ? 0x3B82F6FF : 0x34C759FF;
-        ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 8.0f, ui_rgba(0x14171FFF));
-        ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 6.0f, ui_rgba(dot));
-        row_text(ui, f->name[i], waiting ? str("friend_waiting") : status_text(f, i), x + head + 10.0f, y, away);
-        float rx = x + w;
-        if (!f->stale) {
-            rx -= 44.0f;
-            SDL_snprintf(id, sizeof(id), "fmore_%s", f->code[i]);
-            if (small_button(ui, "", id, rx, y + 6.0f, 44.0f, false)) {
-                SDL_snprintf(p->action_id, sizeof(p->action_id), "%s", f->id[i]);
-                SDL_snprintf(p->action_name, sizeof(p->action_name), "%s", f->name[i]);
-            }
-            for (int bar = 0; bar < 3; bar++) { /* the menu icon */
-                ui_round_rect(ui->gfx, ui->font, rx + 13.0f, y + 21.0f + (float)bar * 6.0f, 18.0f, 2.5f, 1.25f, ui_rgba(0xFFFFFFFF));
-            }
-            rx -= 8.0f;
-        }
-        const float bw = 110.0f;
-        if (waiting) {
-            if (small_button(ui, str("friend_cancel"), "fjoin_cancel", rx - bw, y + 6.0f, bw, false)) {
-                lobby_cancel_join(l);
-            }
-        } else if (!away && f->status[i] == NET_FS_OPEN) {
-            SDL_snprintf(id, sizeof(id), "fjoin_%s", f->code[i]);
-            if (small_button(ui, str("friend_join"), id, rx - bw, y + 6.0f, bw, true)) {
-                lobby_ask_join(l, f->id[i]);
-            }
-        } else if (!away) {
-            SDL_snprintf(id, sizeof(id), "finvite_%s", f->code[i]);
-            small_button(ui, str("friend_invite"), id, rx - bw, y + 6.0f, bw, true); /* no invites on the server yet */
-        }
-        y += ROW_H + 4.0f;
     }
     if (shown == 0) {
         text_draw(ui->gfx, ui->font, x, y + 10.0f, 15.0f, ui_rgba(0xFFFFFF99), str("friends_none"));
@@ -186,6 +239,16 @@ static float friends_header(FriendsPage *p, Ui *ui, Friends *f, MgApp *app, floa
         text_draw(ui->gfx, ui->font, x, y, 15.0f, ui_rgba(0xFFFFFF99), str("friends_offline_note"));
         return y + 30.0f - y0;
     }
+    /* your own code, the one way to be found when the name is common */
+    char code[48];
+    SDL_snprintf(code, sizeof(code), "%s %s", str("friend_your_code"), f->my_code[0] ? f->my_code : "------");
+    text_draw(ui->gfx, ui->font, x, y, 18.0f, ui_rgba(0xFFFFFFFF), code);
+    text_draw(ui->gfx, ui->font, x, y + 24.0f, 13.0f, ui_rgba(0xFFFFFF80), str("friend_code_hint"));
+    if (f->my_code[0] && small_button(ui, str(app->time < p->copied_until ? "friend_copied" : "friend_copy"), "fcopy", x + w - 110.0f, y, 110.0f, false)) {
+        SDL_SetClipboardText(f->my_code);
+        p->copied_until = app->time + 1.5;
+    }
+    y += 54.0f;
     text_draw(ui->gfx, ui->font, x, y, 13.0f, ui_rgba(0xFFFFFF80), str("friend_search_field"));
     y += 20.0f;
     const int ed = ui_text_field(ui, "fsearch", x, y, w, 44.0f, p->search_in, (int)sizeof(p->search_in), &p->editing_search, SEARCH_CHARS);
@@ -305,6 +368,13 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
     const float x = x0 + lw + 2.0f * pad, w = x0 + inner_w - x;
     y = y0 + 4.0f;
     text_draw(ui->gfx, ui->font, x, y + 4.0f, 22.0f, ui_rgba(0xFFFFFFFF), str(tabs[p->tab]));
+    if (p->invite_mode) { /* how much room is left */
+        LobbyRow rows[LOBBY_MAX_PLAYERS];
+        char line[32];
+        SDL_snprintf(line, sizeof(line), "%s %d/%d", str("lobby_title"), lobby_roster(l, rows), LOBBY_MAX_PLAYERS);
+        const float tw = text_width(ui->font, line, 15.0f);
+        text_draw(ui->gfx, ui->font, x + w - tw, y + 9.0f, 15.0f, ui_rgba(0xFFFFFFB3), line);
+    }
     y += 40.0f;
     if (p->tab == 2) {
         y += friends_header(p, ui, f, app, x, y, w);
@@ -348,11 +418,22 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
             p->action_id[0] = 0;
         }
         ay += step;
-        small_button(ui, str("friend_block"), "fa_block", ax, ay, aw, false); /* block, report, invite: not wired up yet */
+        soon_row(ui, str("friend_block"), ax, ay, aw);
         ay += step;
-        small_button(ui, str("friend_report"), "fa_report", ax, ay, aw, false);
+        soon_row(ui, str("friend_report"), ax, ay, aw);
         ay += step;
-        small_button(ui, str("friend_invite"), "fa_invite", ax, ay, aw, false);
+        int who = -1;
+        for (int i = 0; i < f->count; i++) {
+            who = strcmp(f->id[i], p->action_id) == 0 ? i : who;
+        }
+        if (who >= 0 && lobby_is_host(l) && !lobby_invite_sent(l, p->action_id) && can_invite(f, who)) {
+            if (small_button(ui, str("friend_invite"), "fa_invite", ax, ay, aw, true)) {
+                lobby_invite_send(l, p->action_id);
+                p->action_id[0] = 0;
+            }
+        } else {
+            disabled_chip(ui, str(who >= 0 && lobby_invite_sent(l, p->action_id) ? "friend_invite_sent" : "friend_invite"), ax, ay - 6.0f, aw);
+        }
         ay += step;
         if (small_button(ui, str("friend_cancel"), "fa_cancel", ax, ay, aw, false)) {
             p->action_id[0] = 0;

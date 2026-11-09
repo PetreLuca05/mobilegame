@@ -11,6 +11,9 @@
 
 #define ROW_H 52.0f
 #define CONTINUE_H 72.0f
+#define LOBBY_PANEL_W 270.0f
+#define LOBBY_ROW_H 48.0f
+#define LOBBY_SLOT_FADE_S 0.25f
 #define PAD 16.0f
 #define EDGE 12.0f     /* the in-game HUD's margins: no safe-area insets on these screens either */
 #define TOP_EDGE 8.0f
@@ -84,6 +87,57 @@ void frontend_toast(Frontend *f, const char *msg, double now)
 static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes, float side)
 {
     GfxContext *g = app->gfx;
+    if (ctx->world_behind && f->state == FE_MAIN_MENU && ctx->row_count > 0) { /* the whole lobby, in a line */
+        const float dt = mg_minf(app->frame_dt, 0.1f);
+        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
+            f->avatars[e].listed = false;
+        }
+        for (int i = 0; i < ctx->row_count; i++) {
+            const LobbyRow *r = &ctx->rows[i];
+            int found = -1, free_at = -1;
+            for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
+                if (f->avatars[e].active && strcmp(f->avatars[e].id, r->id) == 0) {
+                    found = e;
+                } else if (!f->avatars[e].active && free_at < 0) {
+                    free_at = e;
+                }
+            }
+            if (found < 0 && free_at >= 0) {
+                found = free_at;
+                memset(&f->avatars[found], 0, sizeof(f->avatars[found]));
+                f->avatars[found].active = true;
+                SDL_snprintf(f->avatars[found].id, sizeof(f->avatars[found].id), "%s", r->id);
+            }
+            if (found >= 0) {
+                FeAvatar *av = &f->avatars[found];
+                av->listed = true;
+                av->at = i;
+                av->skin = r->skin;
+                av->host = r->host;
+                SDL_snprintf(av->name, sizeof(av->name), "%s", r->name);
+            }
+        }
+        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
+            FeAvatar *av = &f->avatars[e];
+            if (!av->active) {
+                continue;
+            }
+            av->fade = av->listed ? mg_minf(av->fade + dt / LOBBY_SLOT_FADE_S, 1.0f) : mg_maxf(av->fade - dt / LOBBY_SLOT_FADE_S, 0.0f);
+            if (av->fade <= 0.0f && !av->listed) {
+                av->active = false;
+                continue;
+            }
+            /* the host keeps the hero's turn; the others look slightly inward */
+            const float yaw = av->at == 0 ? HMM_PI32 - HMM_AngleDeg(45.0f) : HMM_PI32 + HMM_AngleDeg(14.0f);
+            AvatarPose pose = {ctx->slots[av->at], yaw, HMM_V3(0, 0, 0), true, false, false, false};
+            pose.flat_ground = true;
+            pose.hide = 1.0f - av->fade;
+            avatar_animate(&av->anim, &pose, dt);
+            AvatarLook look = avatar_look_from_skin(av->skin);
+            avatar_draw(g, meshes, &look, &pose, &av->anim, NULL);
+        }
+        return;
+    }
     if (ctx->world_behind) { /* the hospital is drawn already: the hero stands in front, turned 45 degrees to its right */
         const float turn_dt = mg_minf(app->frame_dt, 0.1f);
         f->hero_turn = f->state == FE_CREATOR ? f->hero_turn + f->spin_vel * turn_dt : 0.0f;
@@ -397,6 +451,91 @@ float frontend_menu_right(const MgApp *app, FeState state)
     return state == FE_CREATOR ? EDGE + 12.0f + creator_w(app) + 12.0f : EDGE + column_w(app);
 }
 
+float frontend_menu_free_right(const MgApp *app, bool lobby_panel)
+{
+    return lobby_panel ? app->width_pt - EDGE - LOBBY_PANEL_W - 8.0f : app->width_pt;
+}
+
+void frontend_draw_crown(GfxContext *g, const TextFont *font, float x, float y, float size)
+{
+    const UiColor gold = ui_rgba(0xFFC940FF);
+    const float s = size / 14.0f, t = 2.0f * s;
+    const float px[7] = {0.0f, 0.0f, 4.0f, 7.0f, 10.0f, 14.0f, 14.0f}, py[7] = {11.0f, 3.0f, 6.5f, 0.5f, 6.5f, 3.0f, 11.0f};
+    for (int i = 0; i < 6; i++) {
+        ui_line(g, font, x + px[i] * s, y + py[i] * s, x + px[i + 1] * s, y + py[i + 1] * s, t, gold);
+    }
+    ui_line(g, font, x, y + 11.0f * s, x + 14.0f * s, y + 11.0f * s, t, gold);
+}
+
+/* Right side, under the account chip: header, then one row per player. */
+static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx, float top, FeAction *a)
+{
+    const float pw = LOBBY_PANEL_W, x = app->width_pt - EDGE - pw;
+    float y = top;
+    char title[32];
+    SDL_snprintf(title, sizeof(title), "%s \xC2\xB7 %d/%d", str("lobby_title"), ctx->row_count, LOBBY_MAX_PLAYERS);
+    if (ctx->lobby_host) {
+        text_draw(ui->gfx, ui->font, x + 4.0f, y + 3.0f, 16.0f, ui_rgba(0xFFFFFFFF), title);
+        text_draw(ui->gfx, ui->font, x + 4.0f, y + 24.0f, 12.0f, ui_rgba(0xFFFFFFB3), str(ctx->lobby_open ? "lobby_open" : "lobby_locked"));
+        const float bw = 92.0f, sw = 46.0f, sh = 26.0f, sx = x + pw - bw - 10.0f - sw, sy = y + 9.0f;
+        bool held;
+        if (ui_hit_area(ui, "lobby_switch", sx - 6.0f, y, sw + 12.0f, 44.0f, &held) && !f->confirm_new) {
+            *a = FE_LOBBY_TOGGLE;
+        }
+        ui_round_rect(ui->gfx, ui->font, sx, sy, sw, sh, sh * 0.5f, ctx->lobby_open ? ui_rgba(0x34C759FF) : ui_rgba(0xFFFFFF40));
+        ui_circle(ui->gfx, ui->font, ctx->lobby_open ? sx + sw - sh * 0.5f : sx + sh * 0.5f, sy + sh * 0.5f, sh * 0.5f - 3.0f, ui_rgba(0xFFFFFFFF));
+        char label[48];
+        SDL_snprintf(label, sizeof(label), "%s##lobby_invite", str("friend_invite"));
+        if (ui_button(ui, label, x + pw - bw, y, bw, 44.0f, true) && !f->confirm_new) {
+            *a = FE_OPEN_INVITE;
+        }
+    } else {
+        text_draw(ui->gfx, ui->font, x + 4.0f, y + 12.0f, 16.0f, ui_rgba(0xFFFFFFFF), title);
+    }
+    y += 44.0f + 8.0f;
+    for (int i = 0; i < ctx->row_count; i++) {
+        const LobbyRow *r = &ctx->rows[i];
+        ui_round_rect(ui->gfx, ui->font, x, y, pw, LOBBY_ROW_H, 12.0f, k_row);
+        head_icon_draw(ctx->heads, ui->gfx, ui->font, &r->skin, r->name, x + 26.0f, y + LOBBY_ROW_H * 0.5f, 40.0f, false);
+        const float tx = x + 52.0f;
+        float room = pw - 52.0f - 8.0f;
+        char id[24];
+        if (ctx->lobby_host && !r->me) { /* kick */
+            const float cx = x + pw - 24.0f, cy = y + LOBBY_ROW_H * 0.5f;
+            SDL_snprintf(id, sizeof(id), "lobby_kick%d", i);
+            bool held;
+            if (ui_hit_area(ui, id, cx - 22.0f, cy - 22.0f, 44.0f, 44.0f, &held) && !f->confirm_new) {
+                SDL_snprintf(f->kick_id, sizeof(f->kick_id), "%s", r->id);
+                *a = FE_LOBBY_KICK;
+            }
+            ui_circle(ui->gfx, ui->font, cx, cy, 16.0f, held ? ui_rgba(0xFFFFFF55) : ui_rgba(0xFFFFFF26));
+            ui_line(ui->gfx, ui->font, cx - 5.0f, cy - 5.0f, cx + 5.0f, cy + 5.0f, 2.5f, ui_rgba(0xFFFFFFFF));
+            ui_line(ui->gfx, ui->font, cx + 5.0f, cy - 5.0f, cx - 5.0f, cy + 5.0f, 2.5f, ui_rgba(0xFFFFFFFF));
+            room -= 44.0f;
+        } else if (!ctx->lobby_host && r->me) { /* leave */
+            char label[48];
+            SDL_snprintf(label, sizeof(label), "%s##lobby_leave", str("lobby_leave"));
+            if (ui_button(ui, label, x + pw - 72.0f, y + 5.0f, 66.0f, 38.0f, false) && !f->confirm_new) {
+                *a = FE_LOBBY_LEAVE;
+            }
+            room -= 72.0f;
+        }
+        room -= r->host ? 22.0f : 0.0f; /* the crown */
+        float size = 16.0f;
+        const float tw = text_width(ui->font, r->name, size);
+        size = tw > room ? size * room / tw : size;
+        text_draw(ui->gfx, ui->font, tx, y + LOBBY_ROW_H * 0.5f - size * 0.65f, size, ui_rgba(0xFFFFFFFF), r->name);
+        if (r->host) {
+            frontend_draw_crown(ui->gfx, ui->font, tx + text_width(ui->font, r->name, size) + 6.0f, y + LOBBY_ROW_H * 0.5f - 7.0f, 14.0f);
+        }
+        y += LOBBY_ROW_H + 8.0f;
+    }
+    f->lobby_x = x;
+    f->lobby_y = top;
+    f->lobby_w = pw;
+    f->lobby_h = y - top - 8.0f;
+}
+
 static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
@@ -408,14 +547,18 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     y += 12.0f;
     FeAction a = FE_NONE;
     /* the account, top right: opens Friends */
-    const float chip_r = w - EDGE, chip_w = head_chip_width(ui->font, ctx->name), chip_y = TOP_EDGE;
+    const float chip_r = w - EDGE, chip_w = head_chip_width(ui->font, ctx->lobby_visible ? ctx->name : str("lobby_offline_chip")), chip_y = TOP_EDGE;
     bool chip_held = false;
     if (ui_hit_area(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, &chip_held) && !f->confirm_new) {
         a = FE_OPEN_FRIENDS;
     }
-    head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, chip_r, chip_y);
+    const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
+    head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, chip_name, chip_r, chip_y);
     if (chip_held) {
         ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(0xFFFFFF26));
+    }
+    if (ctx->lobby_visible) {
+        lobby_panel(f, ui, app, ctx, chip_y + 44.0f + 8.0f, &a);
     }
     if (ctx->friend_requests > 0) {
         char n[8];
@@ -426,10 +569,14 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     /* the rows scroll between the divider and the account line when the screen is short */
     const float fy = h - EDGE - 16.0f;
     const float bottom = h - EDGE; /* Continue sits here when there is a save */
-    const float rows_top = y, rows_view = mg_maxf(bottom - y - (ctx->has_save ? CONTINUE_H + 12.0f : 0.0f), ROW_H);
+    const bool guest = ctx->lobby_visible && !ctx->lobby_host; /* only the host starts the game */
+    const bool show_continue = ctx->has_save && !guest;
+    const float rows_top = y, rows_view = mg_maxf(bottom - y - (show_continue ? CONTINUE_H + 12.0f : 0.0f), ROW_H);
     const float rows_off = ui_scroll_begin(ui, &f->menu_scroll, x - 4.0f, rows_top, cw + 8.0f, rows_view, false);
     y -= rows_off;
-    if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, false, false, NULL)) {
+    if (guest) {
+        menu_row(f, ui, app, 0, str("lobby_wait_host"), x, y, cw, false, true, NULL);
+    } else if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, false, false, NULL)) {
         if (ctx->has_save) {
             f->confirm_new = true;
         } else {
@@ -446,7 +593,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     }
     y += ROW_H;
     ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
-    if (ctx->has_save) {
+    if (show_continue) {
         char label[48];
         SDL_snprintf(label, sizeof(label), "%s##menurow1", str("continue_game"));
         if (ui_button(ui, label, x, bottom - CONTINUE_H, cw, CONTINUE_H, true)) {

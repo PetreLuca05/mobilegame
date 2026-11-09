@@ -155,6 +155,12 @@ typedef struct Game {
     NoticePanel notice;
     AccountLink link;
     bool menu_world_on;    /* the hospital and its NPCs are the menu's backdrop */
+    float menu_dist, menu_eye_z;
+    HMM_Vec3 menu_slots[LOBBY_MAX_PLAYERS];
+    LobbyRow menu_rows[LOBBY_MAX_PLAYERS];
+    int menu_row_count;
+    bool lobby_visible;
+    bool demo_lobby;       /* --autotest perf menu, --autotest lobbylayout */
     HMM_Vec3 menu_hero;
     float frame_alpha;
     bool ia_check;           /* --autotest interact: brute force against the scan */
@@ -315,7 +321,8 @@ static bool ensure_world(Game *g, MgApp *app)
 /* the main menu's view: from the gate, the hero in the right half */
 #define MENU_EYE_X 0.5f
 #define MENU_EYE_Y 0.35f /* low enough to see the feet and the contact disc */
-#define MENU_EYE_Z 18.73f /* 2.53 m from the hero */
+#define MENU_HERO_DIST 2.53f /* the camera, from the hero; further back when the lobby needs the room */
+#define MENU_SLOT_GAP 0.9f
 #define MENU_LOOK_X 0.5f
 #define MENU_LOOK_Y 6.8f
 #define MENU_LOOK_Z 0.0f
@@ -534,6 +541,12 @@ bool game_init(MgApp *app)
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
         play_now = false;
         g->fe.state = FE_MAIN_MENU;
+        g->demo_lobby = true;
+    }
+    if (arg_value(app->argc, app->argv, "--autotest") && SDL_strcmp(arg_value(app->argc, app->argv, "--autotest"), "lobbylayout") == 0) {
+        play_now = false;
+        g->fe.state = FE_MAIN_MENU;
+        g->demo_lobby = true;
     }
     const char *play_arg = arg_value(app->argc, app->argv, "--play"); /* desktop: new | continue */
     if (play_arg && !play_now) {
@@ -1332,22 +1345,36 @@ static void start_loading(Game *g, int what)
 #define MENU_NPC_SEED 0x4D454E55u /* a fixed crowd: nothing here is shared or saved */
 
 /* Halfway between the menu's buttons and the screen edge, wherever those are on this device */
-static HMM_Vec3 menu_hero_feet(const MgApp *app, FeState state)
+/* The players' spots: centred in the free space between the menu column and the lobby panel, the camera
+ * backing off as the line grows so it always fits. */
+static void menu_layout(Game *g, const MgApp *app)
 {
-    const HMM_Vec3 eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
+    const FeState state = g->fe.state;
+    const bool panel = state == FE_MAIN_MENU && g->lobby_visible;
+    const int n = panel && g->menu_row_count > 0 ? g->menu_row_count : 1;
+    const float free_l = frontend_menu_right(app, state), free_r = frontend_menu_free_right(app, panel);
+    const float tan_half = HMM_TanF(HMM_AngleDeg(MENU_FOV_DEG) * 0.5f);
+    const float line_m = (float)(n - 1) * MENU_SLOT_GAP + (n > 1 ? 1.5f : 1.1f);
+    const float target = mg_maxf(MENU_HERO_DIST, line_m * app->height_pt / (2.0f * tan_half * mg_maxf(free_r - free_l, 80.0f)));
+    g->menu_dist = g->menu_dist <= 0.0f ? target : g->menu_dist + (target - g->menu_dist) * mg_minf(app->frame_dt * 6.0f, 1.0f);
+    g->menu_eye_z = MENU_HERO_Z + g->menu_dist;
+    const HMM_Vec3 eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, g->menu_eye_z);
     const HMM_Vec3 fwd = HMM_NormV3(HMM_SubV3(HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), eye));
     const float depth = (MENU_HERO_MID_Y - eye.Y) * fwd.Y + (MENU_HERO_Z - eye.Z) * fwd.Z;
-    const float centre = (frontend_menu_right(app, state) + app->width_pt) * 0.5f;
-    const float ndc = centre / app->width_pt * 2.0f - 1.0f;
+    const float ndc = (free_l + free_r) * 0.5f / app->width_pt * 2.0f - 1.0f;
     const float aspect = app->width_pt / app->height_pt;
-    return HMM_V3(eye.X + ndc * depth * HMM_TanF(HMM_AngleDeg(MENU_FOV_DEG) * 0.5f) * aspect, MENU_HERO_FEET_Y, MENU_HERO_Z);
+    const float cx = eye.X + ndc * depth * tan_half * aspect;
+    for (int i = 0; i < LOBBY_MAX_PLAYERS; i++) {
+        g->menu_slots[i] = HMM_V3(cx + ((float)i - (float)(n - 1) * 0.5f) * MENU_SLOT_GAP, MENU_HERO_FEET_Y, MENU_HERO_Z);
+    }
 }
 
 /* The main menu's backdrop: the hospital from outside, its NPCs going about their day. The world
  * stays loaded for play. Off everywhere else, so a game starts its own sim from its own seed. */
 static bool menu_world(Game *g, MgApp *app)
 {
-    const HMM_Vec3 hero = menu_hero_feet(app, g->fe.state);
+    menu_layout(g, app);
+    const HMM_Vec3 hero = g->menu_slots[0];
     g->menu_hero = hero;
     const int st = g->fe.state;
     const bool onboarding = (st == FE_WELCOME || st == FE_USERNAME || st == FE_CREATOR) && !g->play_paused;
@@ -1372,7 +1399,7 @@ static bool menu_world(Game *g, MgApp *app)
     }
     const float aspect = app->width_pt / app->height_pt;
     GfxSceneParams sp = {0};
-    sp.eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, MENU_EYE_Z);
+    sp.eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, g->menu_eye_z);
     sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), HMM_V3(0, 1, 0));
     sp.proj = camera_projection(HMM_AngleDeg(MENU_FOV_DEG), aspect, 0.1f, 300.0f, 0.0f);
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
@@ -1390,6 +1417,41 @@ static bool menu_world(Game *g, MgApp *app)
     return true;
 }
 
+/* --autotest lobbylayout: four players; panel, tags and avatars stay clear of each other and of the chip. */
+static void lobby_layout_check(Game *g, MgApp *app, const FrontendCtx *ctx)
+{
+    const float w = app->width_pt, chip_b = 8.0f + 44.0f, col_r = frontend_menu_right(app, FE_MAIN_MENU);
+    const float px = g->fe.lobby_x, py = g->fe.lobby_y, pw = g->fe.lobby_w, ph = g->fe.lobby_h;
+    const char *bad = NULL;
+    if (py < chip_b || py + ph > app->height_pt || px + pw > w || px < col_r) {
+        bad = "the panel does not fit under the chip, right of the menu column";
+    }
+    for (int i = 0; i < ctx->row_count && !bad; i++) {
+        const float head = 2.2f;
+        const HMM_Vec3 top = HMM_AddV3(ctx->slots[i], HMM_V3(0, head, 0));
+        const HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(top, 1.0f));
+        const float x = (c.X / c.W * 0.5f + 0.5f) * w, y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
+        const float tw = text_width(&app->font, ctx->rows[i].name, 12.0f) * 0.5f + (ctx->rows[i].host ? 18.0f : 2.0f);
+        if (x - tw < col_r || x + tw > px) {
+            bad = "a name tag overlaps the menu column or the lobby panel";
+        } else if (y < chip_b && x + tw > w - 200.0f) {
+            bad = "a name tag overlaps the chip";
+        }
+        const HMM_Vec4 f1 = HMM_MulM4V4(g->view_proj, HMM_V4V(HMM_AddV3(ctx->slots[i], HMM_V3(-0.55f, 1.0f, 0)), 1.0f));
+        const HMM_Vec4 f2 = HMM_MulM4V4(g->view_proj, HMM_V4V(HMM_AddV3(ctx->slots[i], HMM_V3(0.55f, 1.0f, 0)), 1.0f));
+        const float al = (f1.X / f1.W * 0.5f + 0.5f) * w, ar = (f2.X / f2.W * 0.5f + 0.5f) * w;
+        if (!bad && (al < col_r || ar > px)) {
+            bad = "an avatar overlaps the menu column or the lobby panel";
+        }
+    }
+    mg_log_info("autotest lobbylayout: %.0f x %.0f, panel %.0f,%.0f %.0f x %.0f, %d rows", (double)w, (double)app->height_pt, (double)px, (double)py, (double)pw, (double)ph, ctx->row_count);
+    if (bad) {
+        mg_log_error("autotest lobbylayout: %s", bad);
+    }
+    mg_log_info("AUTOTEST %s", bad ? "FAILED" : "PASSED");
+    app->quit_requested = true;
+}
+
 /* Everything outside PLAY: menu scene, screens, their actions. */
 static void frontend_flow(Game *g, MgApp *app, bool back)
 {
@@ -1404,6 +1466,24 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     }
     poll_sign_in(g, app);
     g->ui.input_off = account_link_active(&g->link); /* the screens underneath take no touches */
+    g->lobby_visible = lobby_in_menu(&g->lobby) && g->friends.signed_in;
+    g->menu_row_count = g->lobby_visible ? lobby_roster(&g->lobby, g->menu_rows) : 0;
+    if (g->demo_lobby) { /* perf and layout: a full lobby without the network */
+        static const char *const names[LOBBY_MAX_PLAYERS] = {"Ana", "Bogdan", "Clara", "Dan"};
+        g->lobby_visible = true;
+        g->menu_row_count = LOBBY_MAX_PLAYERS;
+        for (int i = 0; i < LOBBY_MAX_PLAYERS; i++) {
+            LobbyRow *r = &g->menu_rows[i];
+            SDL_zerop(r);
+            SDL_snprintf(r->id, sizeof(r->id), "demo%d", i);
+            SDL_snprintf(r->name, sizeof(r->name), "%s", names[i]);
+            r->skin = AVATAR_DEFAULT_SKIN;
+            r->skin.suit = (uint8_t)(i * 2);
+            r->skin.hair = (uint8_t)(i + 1);
+            r->host = i == 0;
+            r->me = i == 0;
+        }
+    }
     const bool world_behind = menu_world(g, app);
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
@@ -1419,7 +1499,32 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        &g->heads,
                        g->load_step / 2.0f,
                        MG_VERSION};
+    ctx.lobby_visible = g->lobby_visible;
+    ctx.lobby_host = g->demo_lobby || lobby_is_host(&g->lobby);
+    ctx.lobby_open = g->lobby.open;
+    ctx.rows = g->menu_rows;
+    ctx.row_count = g->menu_row_count;
+    memcpy(ctx.slots, g->menu_slots, sizeof(ctx.slots));
     FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
+    if (g->demo_lobby && !g->perf.active && f->state == FE_MAIN_MENU && app->time - g->start_time > 3.0 && g->start_time > 0.0) {
+        lobby_layout_check(g, app, &ctx);
+    }
+    if (f->state == FE_MAIN_MENU && world_behind && g->lobby_visible) { /* the players' name tags, the same style as in play */
+        const float head = 2.2f;
+        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
+            const FeAvatar *av = &f->avatars[e];
+            if (!av->active || av->fade < 0.5f) {
+                continue;
+            }
+            const HMM_Vec3 top = HMM_AddV3(ctx.slots[av->at], HMM_V3(0, head, 0));
+            HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(top, 1.0f));
+            if (av->host && c.W > 0.01f) {
+                const float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt, y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
+                frontend_draw_crown(app->gfx, &app->font, x - text_width(&app->font, av->name, 12.0f) * 0.5f - 16.0f, y - 6.0f, 12.0f);
+            }
+            name_tag(g, app, top, av->name);
+        }
+    }
     if (f->state == FE_FRIENDS && friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
         frontend_back(f);
     }
@@ -1492,6 +1597,23 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     case FE_OPEN_FRIENDS:
         friends_page_open(&g->fpage, &g->friends);
         frontend_go(f, FE_FRIENDS);
+        break;
+    case FE_OPEN_INVITE:
+        friends_page_open(&g->fpage, &g->friends);
+        g->fpage.invite_mode = true;
+        g->fpage.tab = 0;
+        frontend_go(f, FE_FRIENDS);
+        break;
+    case FE_LOBBY_TOGGLE:
+        lobby_set_open(&g->lobby, !g->lobby.open);
+        g->prefs.lobby_open = g->lobby.open;
+        save_prefs(g);
+        break;
+    case FE_LOBBY_KICK:
+        lobby_kick(&g->lobby, f->kick_id);
+        break;
+    case FE_LOBBY_LEAVE:
+        lobby_stop(&g->lobby);
         break;
     case FE_LOAD_STEP:
         load_step(g, app);
@@ -2370,6 +2492,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     } else {
         probe.active_slot = g->ia_ok ? (int)g->ia.active : -1;
     }
+    probe.fe = &g->fe;
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2449,8 +2572,8 @@ static void game_frame_inner(MgApp *app, float alpha)
         friends_tick(&g->friends, app->time);
         {
             const FeState st = g->fe.state;
-            lobby_set_menu(&g->lobby, !g->playing && g->prefs.onboarding_done && !g->play_paused &&
-                                          (st == FE_MAIN_MENU || st == FE_SETTINGS || st == FE_FRIENDS || st == FE_CREATOR));
+            lobby_set_menu(&g->lobby, !g->playing && !g->play_paused &&
+                                          (st == FE_MAIN_MENU || st == FE_SETTINGS || st == FE_FRIENDS || (st == FE_CREATOR && g->prefs.onboarding_done)));
         }
         lobby_tick(&g->lobby, app->time);
         lobby_follow(g, app);

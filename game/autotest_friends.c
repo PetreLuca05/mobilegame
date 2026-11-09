@@ -21,6 +21,7 @@ typedef enum FtOpKind {
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
     OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED, OP_STATS_FLUSH,
+    OP_ROWS, OP_AVATARS, OP_INVITE_OVER,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -92,7 +93,7 @@ static const FtOp k_b[] = {
     SLEEP(11.0), JOIN, SIG("b_ask3"), {OP_JOIN_ERR, "declined", 0}, SIG("b_timeout_ok"),
     SLEEP(11.0), JOIN, SIG("b_ask4"), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, WAIT("a_kicked"),
     SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), ST(NET_FS_OPEN), SLEEP(11.0), JOIN, SIG("b_ask5"), {OP_PLAYING, NULL, 0}, PLAYERS(2), WAIT("a_leaving"),
-    {OP_MENU, NULL, 0}, SIG("b_menu"), SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), WAIT("a_full"), ST(NET_FS_FULL), ASKS_REFUSED("lobby_full"), SIG("b_full_ok"),
+    {OP_MENU, NULL, 0}, SLEEP(1.0), TAP("lobby_leave"), {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SIG("b_menu"), SLEEP(1.0), TAP("account_chip"), TAP("ftab0"), WAIT("a_full"), ST(NET_FS_FULL), ASKS_REFUSED("lobby_full"), SIG("b_full_ok"),
     WAIT("a_watch"), {OP_SKIN, NULL, 0}, SIG("b_skin"), WAIT("a_rm_wait"),
     {OP_TAP_P, "fmore_%s", 0}, TAP("fa_remove"), TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0}, ASKS_REFUSED("not_friends"), SIG("b_removed"),
     TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), SLEEP(1.0), SIG("b_req2"), WAIT("a_req_declined"), {OP_GONE, NULL, 0},
@@ -104,6 +105,45 @@ static const FtOp k_c[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_BY_NAME("Ana"), SIG("c_req"),
     WAIT("a_accepted"), TAP("ftab0"), WAIT("a_b_ok"), ST(NET_FS_OPEN), JOIN, SIG("c_asked"), {OP_PLAYING, NULL, 0}, PLAYERS(3), WAIT("a_three"),
     TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0}, SIG("c_left"), {OP_END, NULL, 0},
+};
+
+/* FRIENDS-2 / A2.1: four accounts, the lobby in the menu. tools/friends2_test.sh */
+#define NOTICE_K(k) {OP_NOTICE, NULL, k}
+#define ROWS(n) {OP_ROWS, NULL, n}, {OP_AVATARS, NULL, n}
+#define LOB(s) {OP_LOBBY, NULL, s}
+#define INVITE(code) TAP("lobby_invite"), {OP_READ_PEER, code, 0}, {OP_FRIENDS, NULL, 3}, SLEEP(1.0), {OP_TAP_P, "finvite_%s", 0}, SLEEP(0.5)
+#define BACK TAP("friends"), {OP_FE_STATE, NULL, FE_MAIN_MENU}
+static const FtOp k_ma[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_a", 0}, SIG("a_ready"), WAIT("b_req"), WAIT("c_req"), WAIT("d_req"), {OP_BADGE, NULL, 3},
+    TAP("account_chip"), TAP("ftab1"), SLEEP(1.0), {OP_ACCEPT_ALL, NULL, 0}, {OP_FRIENDS, NULL, 3}, BACK, SIG("a_accepted"),
+    ROWS(1), SLEEP(0.5), SHOT("lobby_solo"), {OP_OPEN_IS, NULL, 1},
+    WAIT("b_menu"), INVITE("code_b"), SHOT("invite_mode"), BACK, NOTICE_K(NOTICE_INFO), SHOT("joined_panel"), ROWS(2), SIG("a_b_in"), WAIT("b_checked"),
+    TAP("lobby_switch"), {OP_OPEN_IS, NULL, 0}, SLEEP(1.5), SIG("a_locked"), WAIT("c_menu"), INVITE("code_c"), BACK, ROWS(3), SIG("a_c_in"), WAIT("c_checked"),
+    WAIT("d_refused"), WAIT("d_menu"), INVITE("code_d"), BACK, ROWS(4), SLEEP(0.5), SHOT("lobby_host_4p"), SIG("a_four"), WAIT("b4"), WAIT("c4"), WAIT("d4"),
+    TAP("lobby_kick3"), ROWS(3), SIG("a_kicked_d"), WAIT("d_solo"), WAIT("c_left"), ROWS(2),
+    TAP("lobby_kick1"), ROWS(1), SIG("a_kicked_b"), WAIT("b_solo"), SLEEP(11.0), INVITE("code_b"), BACK, ROWS(2), SIG("a_b_again"),
+    TAP("lobby_switch"), {OP_OPEN_IS, NULL, 1},
+    NEW_GAME, PLAYERS(2), SIG("a_started"), {OP_NPC, NULL, 0}, WAIT("b_played"), BACK_TO_MENU, ROWS(2), SIG("a_back"), WAIT("b_left"), ROWS(1),
+    WAIT("c_idle"), INVITE("code_c"), BACK, SIG("a_invited_c"), {OP_INVITE_OVER, NULL, 0}, SIG("a_done"), {OP_END, NULL, 0},
+};
+static const FtOp k_mb[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_b", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("b_req"), WAIT("a_accepted"),
+    BACK, ROWS(1), SIG("b_menu"), NOTICE_K(NOTICE_INVITE), SHOT("invite_panel"), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SLEEP(0.5), SHOT("lobby_guest"), SIG("b_checked"),
+    WAIT("a_four"), ROWS(4), SIG("b4"), WAIT("a_kicked_d"), ROWS(3), WAIT("c_left"), ROWS(2),
+    WAIT("a_kicked_b"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("b_solo"), NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SIG("b_again"),
+    WAIT("a_started"), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_NPC, NULL, 0}, SIG("b_played"), {OP_MENU, NULL, 0}, ROWS(2), WAIT("a_back"), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SIG("b_left"), {OP_END, NULL, 0},
+};
+static const FtOp k_mc[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_c", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("c_req"), WAIT("a_accepted"),
+    BACK, ROWS(1), SIG("c_menu"), NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(3), SIG("c_checked"),
+    WAIT("a_four"), ROWS(4), SIG("c4"), WAIT("a_kicked_d"), ROWS(3), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("c_left"),
+    SLEEP(1.0), SIG("c_idle"), NOTICE_K(NOTICE_INVITE), SIG("c_noticed"), WAIT("a_done"), {OP_END, NULL, 0}, /* the panel runs out by itself */
+};
+static const FtOp k_md[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_d", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("d_req"), WAIT("a_accepted"),
+    TAP("ftab0"), {OP_FRIENDS, NULL, 1}, WAIT("a_locked"), ST(NET_FS_LOCKED), ASKS_REFUSED("lobby_locked"), SIG("d_refused"), BACK, ROWS(1), SIG("d_menu"),
+    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(4), SLEEP(0.5), SHOT("lobby_guest_4p"), SIG("d4"),
+    WAIT("a_kicked_d"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("d_solo"), {OP_END, NULL, 0},
 };
 
 /* a solo game online: not one broadcast on the room channel for 60 s */
@@ -191,7 +231,7 @@ void ft_init(FriendsTest *t, const char *role)
     SDL_snprintf(t->role, sizeof(t->role), "%s", role);
     const char *dir = SDL_getenv("MG_FT_SYNC");
     SDL_snprintf(t->dir, sizeof(t->dir), "%s", dir ? dir : "/tmp/mg_ft");
-    t->ops = strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
+    t->ops = strcmp(role, "ma") == 0 ? k_ma : strcmp(role, "mb") == 0 ? k_mb : strcmp(role, "mc") == 0 ? k_mc : strcmp(role, "md") == 0 ? k_md : strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
              : strcmp(role, "c") == 0 ? k_c
              : strcmp(role, "l1") == 0 ? k_l1 : strcmp(role, "l2") == 0 ? k_l2 : strcmp(role, "l3") == 0 ? k_l3 : strcmp(role, "l4") == 0 ? k_l4 : strcmp(role, "l5") == 0 ? k_l5
              : strcmp(role, "lw") == 0 ? k_lw : strcmp(role, "lp") == 0 ? k_lp : strcmp(role, "d_code") == 0 ? k_dcode : strcmp(role, "d_host") == 0 ? k_dhost
@@ -549,6 +589,24 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         p->stats->loaded = true;
         net_save_stats(f->net, &p->stats->base);
         done = true;
+        break;
+    case OP_ROWS: { /* the lobby on the menu: exactly this many players, the host first */
+        LobbyRow rows[LOBBY_MAX_PLAYERS];
+        const int n = lobby_roster(l, rows);
+        done = lobby_in_menu(l) && n == (int)o->n && rows[0].host;
+        break;
+    }
+    case OP_AVATARS: { /* in the scene, and so with a name tag: as many as the list */
+        int n = 0;
+        for (int k = 0; k < (int)MG_ARRAY_COUNT(p->fe->avatars); k++) {
+            n += p->fe->avatars[k].active && p->fe->avatars[k].listed && p->fe->avatars[k].fade >= 1.0f ? 1 : 0;
+        }
+        done = n == (int)o->n;
+        break;
+    }
+    case OP_INVITE_OVER:
+        find_peer(t, f, &i);
+        done = !lobby_invite_sent(l, t->peer_id);
         break;
     case OP_STATS_FLUSH: { /* what the 60 s save does: this launch is on the server before the link reloads */
         NetStats totals = stats_for_save(p->stats);

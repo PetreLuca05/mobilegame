@@ -12,6 +12,8 @@
 typedef struct FriendsPage {
     bool open;
     int tab;       /* 0 friends, 1 requests, 2 add */
+    bool invite_mode; /* opened from the lobby's Invite button */
+    double copied_until;
     UiScroll scroll[3];
     char search_in[NET_NAME_LEN];
     bool editing_search;
