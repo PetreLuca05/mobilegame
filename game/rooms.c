@@ -64,12 +64,6 @@ int slot_add_seat(RoomGraph *g, uint32_t tag, int storey, float x, float z, floa
 
 int slot_add(RoomGraph *g, uint32_t tag, int storey, float x, float z, float yaw) { return slot_add_seat(g, tag, storey, x, z, x, z, yaw); }
 
-void room_add_button(RoomGraph *g, float x, float y, float z, int storey, const char *label)
-{
-    if (g->button_count < ROOM_BUTTONS_MAX) {
-        g->buttons[g->button_count++] = (RoomButton){x, y, z, (int8_t)storey, label};
-    }
-}
 
 void slot_set_group(RoomGraph *g, int id, int group, int order)
 {

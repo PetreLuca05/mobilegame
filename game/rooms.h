@@ -61,18 +61,7 @@ typedef struct RoomDoor {
     int16_t a, b; /* the rooms it joins */
 } RoomDoor;
 
-/* Something on a wall to press; the lift's call buttons today. */
-typedef struct RoomButton {
-    float x, y, z;
-    int8_t storey;
-    const char *label;
-} RoomButton;
-
-#define ROOM_BUTTONS_MAX 16
-
 typedef struct RoomGraph {
-    RoomButton buttons[ROOM_BUTTONS_MAX];
-    int button_count;
     Room rooms[ROOMS_MAX];
     RoomDoor doors[ROOM_DOORS_MAX];
     Slot slots[SLOTS_MAX];
@@ -87,7 +76,6 @@ void room_add_door(RoomGraph *g, int a, int b, float x, float z);
 int slot_add(RoomGraph *g, uint32_t tag, int storey, float x, float z, float yaw);
 /* A slot where the body sits at (seat_x, seat_z), reached from (x, z). */
 int slot_add_seat(RoomGraph *g, uint32_t tag, int storey, float x, float z, float seat_x, float seat_z, float yaw);
-void room_add_button(RoomGraph *g, float x, float y, float z, int storey, const char *label);
 void slot_set_group(RoomGraph *g, int id, int group, int order);
 void slot_set_flags(RoomGraph *g, int id, unsigned flags);
 

@@ -815,8 +815,8 @@ static void walk_to(AutotestOut *out, HMM_Vec3 at, int storey)
 
 static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el)
 {
-    static const char *const names[3] = {"button", "marker", "receptionist"};
-    static const int kinds[3] = {1 /* IA_BUTTON */, 2 /* IA_MARKER */, 0 /* IA_NPC */};
+    static const char *const names[3] = {"lift_door", "marker", "receptionist"};
+    static const int kinds[3] = {3 /* IA_ELEVATOR */, 2 /* IA_MARKER */, 0 /* IA_NPC */};
     const int i = t->step;
     float x, y;
     switch (t->stage) {
@@ -824,7 +824,7 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
         if (p->playing && el > 4.0 && p->it_slot[0] >= 0 && p->it_slot[1] >= 0 && p->it_slot[2] >= 0) {
             t->stage = 1;
         } else if (el > 40.0) {
-            mg_log_info("autotest interact: targets button %d marker %d receptionist %d", p->it_slot[0], p->it_slot[1], p->it_slot[2]);
+            mg_log_info("autotest interact: targets lift door %d marker %d receptionist %d", p->it_slot[0], p->it_slot[1], p->it_slot[2]);
             return fail(t, "interact", "a target is missing");
         }
         break;

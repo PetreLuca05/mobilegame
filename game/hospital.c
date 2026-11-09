@@ -837,9 +837,6 @@ static void rooms_common(RoomGraph *g, int f)
     room_add(g, "Lift lobby", ROOM_LIFT_LOBBY, f, -2.5f, NB1, 2.5f, CORR_N);
     room_add(g, "Stairs", ROOM_STAIRS, f, -6.0f, NB0, -2.5f, NB1);
     slot_add(g, SLOT_LIFT_LOBBY, f, 0.0f, -11.4f, YAW_PZ);
-    const float by = (float)f * HOSP_STOREY + 1.2f;
-    room_add_button(g, -1.5f, by, -12.72f, f, "Call lift");
-    room_add_button(g, 1.5f, by, -12.72f, f, "Call lift");
     static const float mop[4] = {-12.0f, -6.0f, 6.0f, 12.0f};
     for (int i = 0; i < 4; i++) {
         slot_add(g, SLOT_MOP_SPOT, f, mop[i], -9.4f, i < 2 ? YAW_PX : YAW_NX);

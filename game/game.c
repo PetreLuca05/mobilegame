@@ -1499,11 +1499,6 @@ static void interact_setup(Game *g, MgApp *app)
     if (!g->ia_ok) {
         return;
     }
-    const preview_desc_t button = {g->unit_box, NULL, 0.22f, 0.0f, 0.0f, HMM_V4(0.85f, 0.25f, 0.2f, 1.0f)};
-    for (int i = 0; i < g->rooms.button_count; i++) {
-        const RoomButton *b = &g->rooms.buttons[i];
-        ia_add(&g->ia, IA_BUTTON, HMM_V3(b->x, b->y, b->z), IA_ENTER_RANGE, b->storey, IA_FACING_FREE, (uint16_t)b->storey, b->label, on_call_lift, g, button);
-    }
     const float cx = (g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, cz = (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f;
     const preview_desc_t any = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.4f, 0.8f, 0.9f, 1.0f)};
     g->ia_any_slot = ia_add(&g->ia, IA_BUTTON, HMM_V3(0, -100.0f, 0), 0.1f, 99, IA_DISABLED | IA_FACING_FREE, 0, "Mesh", NULL, NULL, any);
@@ -1572,11 +1567,11 @@ static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
     for (int i = 0; i < 3; i++) {
         pr->it_slot[i] = -1;
     }
-    for (int s = 0; s < ia->high_water; s++) { /* the ground-floor call button, the marker */
+    for (int s = 0; s < ia->high_water; s++) { /* the lift at ground level, the marker */
         const ia_hot_t *h = &ia->hot[s];
-        if (h->used && h->kind == IA_BUTTON && grid_of_storey(h->storey) == 0 && s != g->ia_any_slot && pr->it_slot[0] < 0) {
+        if (h->used && h->kind == IA_ELEVATOR && grid_of_storey(h->storey) == 0 && pr->it_slot[0] < 0) {
             pr->it_slot[0] = s;
-            pr->it_stand[0] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
+            pr->it_stand[0] = HMM_V3(h->pos.X, 0.1f, h->pos.Z + 1.2f); /* in front of the doors */
         } else if (h->used && h->kind == IA_MARKER && pr->it_slot[1] < 0) {
             pr->it_slot[1] = s;
             pr->it_stand[1] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
