@@ -2,7 +2,7 @@
  *
  *   WELCOME -> USERNAME -> CREATOR -> MAIN_MENU      (first launch)
  *   MAIN_MENU -> New Game / Continue -> LOADING -> PLAY (my own lobby, or offline)
- *   MAIN_MENU -> SETTINGS
+ *   MAIN_MENU -> SETTINGS, FRIENDS
  *
  * Outside PLAY the "locker room" is shown: a 6 x 6 m room with one spot
  * light and the player's avatar on a turntable (main pass, same avatar.c as
@@ -23,6 +23,7 @@ typedef enum FeState {
     FE_CREATOR,
     FE_MAIN_MENU,
     FE_SETTINGS,
+    FE_FRIENDS,       /* drawn by the game, like SETTINGS */
     FE_LOADING,
     FE_PLAY,
 } FeState;
@@ -37,6 +38,7 @@ typedef enum FeAction {
     FE_CREATOR_DONE,
     FE_NEW_GAME,      /* confirmed (overwrite asked if a save exists) */
     FE_CONTINUE,
+    FE_OPEN_FRIENDS,
     FE_LOAD_STEP,     /* LOADING: build the next part of the world */
     FE_EXIT,
 } FeAction;
@@ -50,6 +52,8 @@ typedef struct FrontendCtx {
     bool google_available, apple_available;
     bool signin_busy;
     bool has_save;
+    int friend_requests;  /* the Friends row's red badge */
+    struct HeadIcons *heads;
     float load_progress;  /* LOADING: 0..1 */
     const char *version;
 } FrontendCtx;

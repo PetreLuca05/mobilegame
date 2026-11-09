@@ -6,7 +6,7 @@
 #include "core/assets.h"
 #include "core/log.h"
 
-#define MAX_STRINGS 128
+#define MAX_STRINGS 320
 
 typedef struct StringEntry {
     const char *key, *value;
@@ -34,13 +34,11 @@ static const char *copy(Arena *a, const char *s)
     return d;
 }
 
-bool strings_init(Arena *perm)
+static bool load_table(StringTable *t, Arena *perm, const char *path)
 {
-    StringTable *t = g_strings_table();
-    const MgAsset *a = mg_asset_find("assets/strings.json");
+    const MgAsset *a = mg_asset_find(path);
     cJSON *j = a ? cJSON_ParseWithLength((const char *)a->data, a->size) : NULL;
     if (!j) {
-        mg_log_error("strings: assets/strings.json missing or invalid");
         return false;
     }
     const cJSON *it;
@@ -53,6 +51,18 @@ bool strings_init(Arena *perm)
         }
     }
     cJSON_Delete(j);
+    return true;
+}
+
+/* Romanian first: str() takes the first match, so what it lacks falls back to English */
+bool strings_init(Arena *perm)
+{
+    StringTable *t = g_strings_table();
+    load_table(t, perm, "assets/strings_ro.json");
+    if (!load_table(t, perm, "assets/strings.json")) {
+        mg_log_error("strings: assets/strings.json missing or invalid");
+        return false;
+    }
     return true;
 }
 

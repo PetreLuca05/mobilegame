@@ -62,7 +62,7 @@ Desktop test flags: `--offline`, `--profile NAME`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
 `--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
-`--screenshot-at S:NAME[,S:NAME...]`, `--public-test`, `--skin P,H,A`
+`--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
 to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).
 Args also work on a phone: `xcrun devicectl device process launch --console

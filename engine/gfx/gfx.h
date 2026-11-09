@@ -180,6 +180,13 @@ bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg);
 #endif
 /* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
 GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
+/* Head icons (ui/head_icons.c): draws between begin and end land in one cell of the
+ * 8 x 8 atlas, through a small offscreen pass that only exists on frames that use it.
+ * In UI quads, u + 2 samples this atlas. */
+#define GFX_HEAD_PX 128
+#define GFX_HEADS_PER_FRAME 2
+void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM_Vec3 eye);
+#define gfx_head_cell_end gfx_inset_end
 /* Frosted panel behind this frame's UI: the 3D image under it, blurred at
  * quarter resolution, mixed towards tint.rgb by tint.a, rounded corners.
  * Drawn before (under) all UI quads. Up to 4 per frame. */

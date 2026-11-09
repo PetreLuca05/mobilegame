@@ -58,6 +58,8 @@
 #include "platform/haptics.h"
 #include "friends.h"
 #include "lobby.h"
+#include "friends_page.h"
+#include "ui/head_icons.h"
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
@@ -142,6 +144,8 @@ typedef struct Game {
     uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
     Friends friends;
     Lobby lobby;
+    HeadIcons heads;
+    FriendsPage fpage;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -302,6 +306,28 @@ static void on_net_event(void *user, const NetEvent *e)
 
 static double wall_clock_ms(void);
 
+/* One head icon, for ui/head_icons.c: the interact preview's floating head, turned 15 degrees */
+static void draw_head_icon(void *user, GfxContext *gfx, const NetSkin *skin)
+{
+    Game *g = (Game *)user;
+    const AvatarLook look = avatar_look_from_skin(*skin);
+    AvatarPose pose;
+    SDL_zero(pose);
+    pose.yaw = HMM_PI32 + HMM_AngleDeg(15.0f); /* avatars look along -Z: turn them to the camera */
+    pose.grounded = true;
+    pose.head_only = true;
+    AvatarAnim anim;
+    SDL_zero(anim);
+    avatar_animate(&anim, &pose, 1.0f / 60.0f);
+    avatar_draw(gfx, &g->avatar_meshes, &look, &pose, &anim, NULL);
+}
+
+static uint32_t head_icon_rgb(void *user, const NetSkin *skin)
+{
+    (void)user;
+    return avatar_skin_rgb(skin->skin);
+}
+
 /* Wall clock of NPC tick 0, as the sim stands: a guest catches up from it */
 static double lobby_epoch(void *user)
 {
@@ -400,6 +426,7 @@ bool game_init(MgApp *app)
     friends_init(&g->friends, g->net, profile ? profile : "");
     g->session.listener = on_net_event;
     g->session.listener_user = g;
+    head_icons_init(&g->heads, draw_head_icon, head_icon_rgb, g);
     lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
     g->lobby.epoch_ms = lobby_epoch;
     g->lobby.epoch_user = g;
@@ -413,11 +440,14 @@ bool game_init(MgApp *app)
     const char *fe_arg = arg_value(app->argc, app->argv, "--frontend"); /* desktop: start on a screen */
     g->fe.state = g->prefs.onboarding_done ? FE_MAIN_MENU : FE_WELCOME;
     if (fe_arg) {
-        static const char *const names[] = {"welcome", "username", "creator", "menu", "settings"};
+        static const char *const names[] = {"welcome", "username", "creator", "menu", "settings", "friends"};
         for (int i = 0; i < 6; i++) {
             if (SDL_strcmp(fe_arg, names[i]) == 0) {
                 g->fe.state = (FeState)i;
             }
+        }
+        if (g->fe.state == FE_FRIENDS) {
+            friends_page_open(&g->fpage, &g->friends);
         }
     }
     const char *play_arg = arg_value(app->argc, app->argv, "--play"); /* desktop: new | continue */
@@ -961,6 +991,13 @@ static void lobby_follow(Game *g, MgApp *app)
         g->fe.depth = 0;
         g->fe.state = FE_LOADING;
     }
+    if (l->join_error[0]) {
+        char key[80];
+        SDL_snprintf(key, sizeof(key), "join_err_%s", l->join_error);
+        const char *msg = str(key);
+        frontend_toast(&g->fe, msg == key ? str("join_err_generic") : msg, app->time);
+        l->join_error[0] = 0;
+    }
     if (l->ended) {
         frontend_toast(&g->fe, str(l->ended), app->time);
         l->ended = NULL;
@@ -1064,9 +1101,14 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        g->net && apple_auth_available(g->google),
                        g->google_busy,
                        g->has_save,
+                       g->friends.incoming,
+                       &g->heads,
                        g->load_step / 2.0f,
                        MG_VERSION};
     FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
+    if (f->state == FE_FRIENDS && friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
+        frontend_back(f);
+    }
     if (f->state == FE_SETTINGS) { /* the settings panel, full screen over the menu */
         g->menu.open = true;
         SettingsAccount acct = account_view(g);
@@ -1124,6 +1166,10 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     case FE_CONTINUE:
         start_loading(g, 3);
         break;
+    case FE_OPEN_FRIENDS:
+        friends_page_open(&g->fpage, &g->friends);
+        frontend_go(f, FE_FRIENDS);
+        break;
     case FE_LOAD_STEP:
         load_step(g, app);
         break;
@@ -1133,7 +1179,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     default:
         break;
     }
-    app_text_input(app, f->editing_name);
+    app_text_input(app, f->editing_name || friends_page_editing(&g->fpage));
 }
 
 typedef struct CrowdCull {
@@ -1881,7 +1927,16 @@ static void update_thermal(Game *g, MgApp *app)
     g->thermal = t;
 }
 
+static void game_frame_inner(MgApp *app, float alpha);
+
 void game_frame(MgApp *app, float alpha)
+{
+    game_frame_inner(app, alpha);
+    Game *g = (Game *)app->game;
+    head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
+}
+
+static void game_frame_inner(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     GameSettings *s = &g->settings;
@@ -2048,7 +2103,7 @@ void game_frame(MgApp *app, float alpha)
     }
     if ((int)g->fe.state != g->logged_fe) { /* screen changes, for device logs */
         static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU",
-                                            "SETTINGS", "LOADING", "PLAY"};
+                                            "SETTINGS", "FRIENDS", "LOADING", "PLAY"};
         g->logged_fe = (int)g->fe.state;
         mg_log_info("frontend: %s", names[g->logged_fe]);
     }

@@ -7,6 +7,7 @@
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 #include "strings.h"
+#include "ui/head_icons.h"
 
 #define ROW_H 52.0f
 #define PAD 16.0f
@@ -390,6 +391,16 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
         y += ROW_H + 8.0f;
     }
+    if (menu_row(f, ui, app, 30, str("friends"), x, y, cw, false, false, NULL)) {
+        a = FE_OPEN_FRIENDS;
+    }
+    if (ctx->friend_requests > 0) {
+        char n[8];
+        SDL_snprintf(n, sizeof(n), "%d", ctx->friend_requests);
+        ui_circle(ui->gfx, ui->font, x + cw - 28.0f, y + ROW_H * 0.5f, 13.0f, ui_rgba(0xE5484DFF));
+        text_draw_centered(ui->gfx, ui->font, x + cw - 28.0f, y + ROW_H * 0.5f, 14.0f, ui_rgba(0xFFFFFFFF), n);
+    }
+    y += ROW_H + 8.0f;
     if (menu_row(f, ui, app, row++, str("settings"), x, y, cw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
@@ -402,7 +413,8 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
                      SDL_strcmp(ctx->provider, "apple") == 0 ? str("provider_apple") : str("provider_google"));
     }
     float fy = h - mg_maxf(app->safe_bottom, 10.0f) - 22.0f;
-    text_draw(ui->gfx, ui->font, x, fy, 13.0f, ui_rgba(0xFFFFFF99), who);
+    head_icon_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, ctx->name, x + 13.0f, fy + 8.0f, 26.0f, false);
+    text_draw(ui->gfx, ui->font, x + 32.0f, fy, 13.0f, ui_rgba(0xFFFFFF99), who);
     float vw = text_width(ui->font, ctx->version, 13.0f);
     text_draw(ui->gfx, ui->font, w - app->safe_right - PAD - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
 

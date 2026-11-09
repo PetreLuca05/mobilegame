@@ -380,6 +380,8 @@ static const char *const k_accessory_names[AVATAR_ACCESSORIES] = {"None", "Sungl
 
 static uint8_t clampu(uint8_t v, int n) { return v < n ? v : 0; }
 
+uint32_t avatar_skin_rgb(uint8_t skin) { return k_skin_colors[skin % AVATAR_SKIN_COLORS]; }
+
 AvatarLook avatar_look_from_skin(NetSkin s)
 {
     const Suit *suit = &k_suits[clampu(s.suit, AVATAR_SUITS)];

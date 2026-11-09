@@ -97,6 +97,7 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
   ${CMAKE_SOURCE_DIR}/assets/cacert.pem
   ${CMAKE_SOURCE_DIR}/assets/strings.json
+  ${CMAKE_SOURCE_DIR}/assets/strings_ro.json
   ${CMAKE_SOURCE_DIR}/assets/npcs.json
   ${CMAKE_SOURCE_DIR}/assets/npc_names.json
 )
@@ -171,6 +172,7 @@ add_library(mg_engine STATIC
   engine/net/supabase_rest.c
   engine/net/supabase_rpc.c
   engine/net/replication.c
+  engine/ui/head_icons.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
@@ -250,6 +252,7 @@ set(MG_GAME_SOURCES
   game/scenery.c
   game/net_session.c
   game/friends.c
+  game/friends_page.c
   game/lobby.c
   game/frontend.c
   game/creator.c

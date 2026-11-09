@@ -147,13 +147,14 @@ typedef struct ShaderCacheEntry {
 } ShaderCacheEntry;
 
 #define GPU_TIMING_RING 8
-#define GFX_MAX_INSETS 4
+#define GFX_MAX_INSETS 6
 typedef struct GfxInset {
     float x, y, w, h;      /* pt */
     HMM_Mat4 view_proj;
     HMM_Vec3 eye;
     float min_depth, max_depth;
     bool before_world;
+    int head_cell;         /* >= 0: a head icon for this atlas cell (offscreen, not the main pass) */
 } GfxInset;
 
 typedef struct GpuTimingSlot {
@@ -201,6 +202,8 @@ struct GfxContext {
     float preview_rect[4]; /* x, y, size, corner radius (pt) */
     HMM_Vec4 preview_bg;
     SDL_GPUTexture *preview_color, *preview_msaa, *preview_depth;
+    SDL_GPUTexture *head_atlas;                  /* 8 x 8 cells of GFX_HEAD_PX */
+    SDL_GPUTexture *head_color, *head_msaa, *head_depth; /* room for GFX_HEADS_PER_FRAME cells */
     ShaderCacheEntry shaders[GFX_MAX_SHADERS];
     uint32_t shader_count;
 
@@ -553,7 +556,7 @@ static bool create_pipelines(GfxContext *g)
     }
     PipeDesc ui = {
         .vs = load_shader(g, "ui.vert", 1, 0),
-        .fs = load_shader(g, "ui.frag", 0, 1),
+        .fs = load_shader(g, "ui.frag", 0, 2),
         .layout = LAYOUT_UI,
         .blend = true,
         .cull = SDL_GPU_CULLMODE_NONE,
@@ -715,7 +718,7 @@ static void apply_msaa(GfxContext *g)
     SDL_WaitForGPUIdle(g->dev);
     release_pipelines(g);
     release_targets(g);
-    SDL_GPUTexture **pv[] = {&g->preview_color, &g->preview_msaa, &g->preview_depth};
+    SDL_GPUTexture **pv[] = {&g->preview_color, &g->preview_msaa, &g->preview_depth, &g->head_color, &g->head_msaa, &g->head_depth};
     for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
         if (*pv[i]) {
             SDL_ReleaseGPUTexture(g->dev, *pv[i]);
@@ -1079,7 +1082,7 @@ void gfx_shutdown(GfxContext *g)
         SDL_ReleaseGPUSampler(g->dev, g->point_clamp);
     }
 #endif
-    SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth};
+    SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth, g->head_atlas, g->head_color, g->head_msaa, g->head_depth};
     for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
         if (pv[i]) {
             SDL_ReleaseGPUTexture(g->dev, pv[i]);
@@ -2013,7 +2016,7 @@ static uint32_t draw_insets(GfxContext *g, SDL_GPURenderPass *pass, bool before_
     const float k = g->ui_w_pt > 0.0f ? (float)g->target_w / g->ui_w_pt : 1.0f;
     for (int i = 0; i < g->inset_count; i++) {
         const GfxInset *in = &g->insets[i];
-        if (in->before_world != before_world) {
+        if (in->before_world != before_world || in->head_cell >= 0) {
             continue;
         }
         /* a viewport must stay on the target: while a panel slides in, crop it and shift the projection */
@@ -2051,8 +2054,16 @@ void gfx_inset_begin(GfxContext *g, float x, float y, float w, float h, const HM
         return;
     }
     GfxInset *in = &g->insets[g->inset_count++];
-    *in = (GfxInset){x, y, w, h, *view_proj, eye, min_depth, max_depth, before_world};
+    *in = (GfxInset){x, y, w, h, *view_proj, eye, min_depth, max_depth, before_world, -1};
     g->current_inset = g->inset_count;
+}
+
+void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM_Vec3 eye)
+{
+    gfx_inset_begin(g, 0.0f, 0.0f, 0.0f, 0.0f, view_proj, eye, 0.0f, 1.0f, false);
+    if (g->current_inset) {
+        g->insets[g->current_inset - 1].head_cell = cell;
+    }
 }
 
 void gfx_inset_end(GfxContext *g) { g->current_inset = 0; }
@@ -2098,6 +2109,99 @@ static void render_preview(GfxContext *g)
     push_frame_uniforms(g, &vp, c->eye, (float)GFX_PREVIEW_PX, (float)GFX_PREVIEW_PX, 0.0f);
     draw_list(g, rp, TARGET_MAIN, true, 0);
     SDL_EndGPURenderPass(rp);
+}
+
+/* Head icons waiting this frame: one small pass, then each is copied to its atlas cell. Returns the draws. */
+static uint32_t render_heads(GfxContext *g)
+{
+    int jobs = 0;
+    for (int i = 0; i < g->inset_count; i++) {
+        jobs += g->insets[i].head_cell >= 0 ? 1 : 0;
+    }
+    if (jobs == 0) {
+        return 0;
+    }
+    const uint32_t tw = GFX_HEAD_PX * GFX_HEADS_PER_FRAME, th = GFX_HEAD_PX;
+    const SDL_GPUTextureUsageFlags rt = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    if (!g->head_atlas) {
+        g->head_atlas = make_texture(g, g->color_fmt, GFX_HEAD_PX * 8, GFX_HEAD_PX * 8, rt, SDL_GPU_SAMPLECOUNT_1);
+        if (g->head_atlas) { /* never sampled before it is clear */
+            SDL_GPUColorTargetInfo clear;
+            SDL_zero(clear);
+            clear.texture = g->head_atlas;
+            clear.load_op = SDL_GPU_LOADOP_CLEAR;
+            clear.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_EndGPURenderPass(SDL_BeginGPURenderPass(g->cmd, &clear, 1, NULL));
+        }
+    }
+    if (!g->head_color) {
+        g->head_color = make_texture(g, g->color_fmt, tw, th, rt, SDL_GPU_SAMPLECOUNT_1);
+        if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
+            g->head_msaa = make_texture(g, g->color_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
+        }
+        g->head_depth = make_texture(g, g->depth_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
+    }
+    if (!g->head_atlas || !g->head_color || !g->head_depth || (g->msaa != SDL_GPU_SAMPLECOUNT_1 && !g->head_msaa)) {
+        return 0;
+    }
+    SDL_GPUColorTargetInfo cti;
+    SDL_zero(cti);
+    cti.load_op = SDL_GPU_LOADOP_CLEAR; /* transparent */
+    if (g->head_msaa) {
+        cti.texture = g->head_msaa;
+        cti.store_op = SDL_GPU_STOREOP_RESOLVE;
+        cti.resolve_texture = g->head_color;
+    } else {
+        cti.texture = g->head_color;
+        cti.store_op = SDL_GPU_STOREOP_STORE;
+    }
+    SDL_GPUDepthStencilTargetInfo dti;
+    SDL_zero(dti);
+    dti.texture = g->head_depth;
+    dti.clear_depth = 1.0f;
+    dti.load_op = SDL_GPU_LOADOP_CLEAR;
+    dti.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    dti.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    dti.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, &cti, 1, &dti);
+    uint32_t draws = 0;
+    int slot = 0;
+    for (int i = 0; i < g->inset_count && slot < GFX_HEADS_PER_FRAME; i++) {
+        const GfxInset *in = &g->insets[i];
+        if (in->head_cell < 0) {
+            continue;
+        }
+        SDL_GPUViewport vp = {(float)slot * GFX_HEAD_PX, 0.0f, GFX_HEAD_PX, GFX_HEAD_PX, 0.0f, 1.0f};
+        SDL_SetGPUViewport(rp, &vp);
+        SDL_Rect sc = {slot * GFX_HEAD_PX, 0, GFX_HEAD_PX, GFX_HEAD_PX};
+        SDL_SetGPUScissor(rp, &sc);
+        push_frame_uniforms(g, &in->view_proj, in->eye, GFX_HEAD_PX, GFX_HEAD_PX, 0.0f);
+        draws += draw_list(g, rp, TARGET_MAIN, false, i + 1);
+        slot++;
+    }
+    SDL_EndGPURenderPass(rp);
+    slot = 0;
+    for (int i = 0; i < g->inset_count && slot < GFX_HEADS_PER_FRAME; i++) {
+        const int cell = g->insets[i].head_cell;
+        if (cell < 0) {
+            continue;
+        }
+        SDL_GPUBlitInfo b;
+        SDL_zero(b);
+        b.source.texture = g->head_color;
+        b.source.x = (Uint32)slot * GFX_HEAD_PX;
+        b.source.w = b.source.h = GFX_HEAD_PX;
+        b.destination.texture = g->head_atlas;
+        b.destination.x = (Uint32)(cell % 8) * GFX_HEAD_PX;
+        b.destination.y = (Uint32)(cell / 8) * GFX_HEAD_PX;
+        b.destination.w = b.destination.h = GFX_HEAD_PX;
+        b.load_op = SDL_GPU_LOADOP_LOAD;
+        b.filter = SDL_GPU_FILTER_NEAREST;
+        SDL_BlitGPUTexture(g->cmd, &b);
+        slot++;
+    }
+    g->stats.passes++;
+    return draws;
 }
 
 static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
@@ -2300,6 +2404,7 @@ static void frame_end(GfxContext *g)
         render_preview(g);
         g->stats.passes++;
     }
+    const uint32_t head_draws = render_heads(g);
 
     /* main pass */
     SDL_GPUColorTargetInfo cti;
@@ -2337,7 +2442,7 @@ static void frame_end(GfxContext *g)
 #ifndef MG_RENDER_FULL
         push_frame_uniforms(g, &view_proj, s->eye, (float)g->target_w, (float)g->target_h, 0.0f);
 #endif
-        g->stats.draws = pre_world + draw_list(g, pass, TARGET_MAIN, false, 0);
+        g->stats.draws = head_draws + pre_world + draw_list(g, pass, TARGET_MAIN, false, 0);
         g->stats.draws += draw_insets(g, pass, false);
     }
 
@@ -2390,8 +2495,8 @@ static void frame_end(GfxContext *g)
         SDL_GPUBufferBinding ibb = {g->ui_ib, 0};
         SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
         SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-        SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas, g->ui_sampler};
-        SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+        SDL_GPUTextureSamplerBinding tsb[2] = {{g->ui_atlas, g->ui_sampler}, {g->head_atlas ? g->head_atlas : g->dummy_tex, g->linear_clamp}};
+        SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
         g->stats.pipe_binds++;
         g->stats.tex_binds++;
         g->stats.uniform_bytes += (uint32_t)sizeof(screen);

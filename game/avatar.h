@@ -91,6 +91,7 @@ typedef struct AvatarPose {
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);
 AvatarLook avatar_look_from_skin(NetSkin skin);
+uint32_t avatar_skin_rgb(uint8_t skin); /* 0xRRGGBB */
 /* Placeholder look for a peer whose Presence has not arrived yet. */
 AvatarLook avatar_look_for_slot(int slot);
 const char *avatar_palette_name(int i);

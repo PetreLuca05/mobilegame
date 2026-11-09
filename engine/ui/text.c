@@ -203,6 +203,14 @@ void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, fl
     text_draw(g, f, cx - w * 0.5f, cy - h * 0.55f, size_pt, c, s);
 }
 
+void ui_textured_quad(GfxContext *g, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, UiColor c)
+{
+    GfxUiVertex *v = gfx_ui_quads(g, 1);
+    if (v) {
+        put_quad(v, x0, y0, x1, y1, u0, v0, u1, v1, c);
+    }
+}
+
 void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c)
 {
     GfxUiVertex *v = gfx_ui_quads(g, 1);

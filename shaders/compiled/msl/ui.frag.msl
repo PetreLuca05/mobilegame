@@ -14,14 +14,32 @@ struct PSMain_in
     float4 i_col [[user(locn1)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], texture2d<float> u_atlas [[texture(0)]], sampler u_sampler [[sampler(0)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], texture2d<float> u_atlas [[texture(0)]], texture2d<float> u_heads [[texture(1)]], sampler u_sampler [[sampler(0)]], sampler u_heads_sampler [[sampler(1)]])
 {
     PSMain_out out = {};
-    float4 _98 = u_atlas.sample(u_sampler, in.i_uv);
-    float _99 = _98.x;
-    float _103 = fast::max(fwidth(_99), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
-    float _112 = smoothstep(0.5 - _103, 0.5 + _103, _99) * in.i_col.w;
-    out._entryPointOutput = float4(in.i_col.xyz * _112, _112);
+    float4 _310;
+    do
+    {
+        if (in.i_uv.x >= 2.0)
+        {
+            float2 _204 = float2(in.i_uv.x - 2.0, in.i_uv.y);
+            float _211 = length(fract(_204 * 8.0) - float2(0.5)) * 2.0;
+            float _214 = fast::max(fwidth(_211), 0.001000000047497451305389404296875);
+            float _219 = 1.0 - smoothstep(1.0 - _214, 1.0, _211);
+            float _225 = smoothstep(0.89999997615814208984375 - _214, 0.89999997615814208984375, _211) * _219;
+            float4 _230 = u_heads.sample(u_heads_sampler, _204);
+            float4 _186 = _230;
+            _310 = float4((mix(_230.xyz, in.i_col.xyz, float3(_225)) * _219) * in.i_col.w, fast::max(_186.w * _219, _225) * in.i_col.w);
+            break;
+        }
+        float4 _265 = u_atlas.sample(u_sampler, in.i_uv);
+        float _266 = _265.x;
+        float _270 = fast::max(fwidth(_266), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+        float _279 = smoothstep(0.5 - _270, 0.5 + _270, _266) * in.i_col.w;
+        _310 = float4(in.i_col.xyz * _279, _279);
+        break;
+    } while(false);
+    out._entryPointOutput = _310;
     return out;
 }
 
