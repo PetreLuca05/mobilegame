@@ -815,16 +815,16 @@ static void walk_to(AutotestOut *out, HMM_Vec3 at, int storey)
 
 static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double el)
 {
-    static const char *const names[3] = {"lift_door", "marker", "receptionist"};
-    static const int kinds[3] = {3 /* IA_ELEVATOR */, 2 /* IA_MARKER */, 0 /* IA_NPC */};
+    static const char *const names[2] = {"marker", "receptionist"};
+    static const int kinds[2] = {2 /* IA_MARKER */, 0 /* IA_NPC */};
     const int i = t->step;
     float x, y;
     switch (t->stage) {
     case 0: /* the NPCs need a moment to reach their posts */
-        if (p->playing && el > 4.0 && p->it_slot[0] >= 0 && p->it_slot[1] >= 0 && p->it_slot[2] >= 0) {
+        if (p->playing && el > 4.0 && p->it_slot[0] >= 0 && p->it_slot[1] >= 0) {
             t->stage = 1;
         } else if (el > 40.0) {
-            mg_log_info("autotest interact: targets lift door %d marker %d receptionist %d", p->it_slot[0], p->it_slot[1], p->it_slot[2]);
+            mg_log_info("autotest interact: targets marker %d receptionist %d", p->it_slot[0], p->it_slot[1]);
             return fail(t, "interact", "a target is missing");
         }
         break;
@@ -906,22 +906,22 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
                 mg_log_info("autotest interact: %s fired %u times", names[i], n);
                 return fail(t, "interact", "a tap must fire exactly once");
             }
-            if (i == 1 && p->markers_reached != t->it_reached + 1) {
+            if (i == 0 && p->markers_reached != t->it_reached + 1) {
                 return fail(t, "interact", "the tap did not reach the marker");
             }
-            if (i == 2 && !p->greeting) {
+            if (i == 1 && !p->greeting) {
                 return fail(t, "interact", "no greeting card");
             }
             mg_log_info("autotest interact: %s fired once by the tap (ok)", names[i]);
-            if (i == 2 && !t->it_priority) {
+            if (i == 1 && !t->it_priority) {
                 return fail(t, "interact", "the receptionist has no interact_priority");
             }
-            if (i == 2) {
+            if (i == 1) {
                 IT_SHOT("greeting");
             }
             t->step++;
             t->wait_until = el + 0.3;
-            t->stage = t->step < 3 ? 1 : 10;
+            t->stage = t->step < 2 ? 1 : 10;
         }
         break;
     case 10: /* desktop: the mouse over something far away shows it */

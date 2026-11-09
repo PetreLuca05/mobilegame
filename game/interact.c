@@ -197,6 +197,6 @@ bool ia_use_active(Interact *ia)
 
 const char *ia_chip_text(ia_kind_t kind)
 {
-    static const char *const k[IA_KIND_COUNT] = {"Talk", "Press", "Collect", "Ride"};
+    static const char *const k[IA_KIND_COUNT] = {"Talk", "Press", "Collect"};
     return k[kind];
 }

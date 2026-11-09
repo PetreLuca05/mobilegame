@@ -12,7 +12,7 @@
 #define IA_ENTER_RANGE 2.0f
 #define IA_EXIT_RANGE 2.5f
 
-typedef enum ia_kind_t { IA_NPC, IA_BUTTON, IA_MARKER, IA_ELEVATOR, IA_KIND_COUNT } ia_kind_t;
+typedef enum ia_kind_t { IA_NPC, IA_BUTTON, IA_MARKER, IA_KIND_COUNT } ia_kind_t;
 
 #define IA_WANTS_CHAT 1u
 #define IA_DISABLED 2u

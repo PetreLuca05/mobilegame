@@ -1418,15 +1418,6 @@ static void lift_panel_press(Game *g, Elevator *el, int floor)
     elevator_panel_press(&g->lift_panel, floor, el->car_floor);
 }
 
-static void on_call_lift(uint16_t ref, void *user)
-{
-    Game *g = (Game *)user;
-    Elevator *el = scene_elevator(g->scene);
-    if (el) {
-        elevator_request(el, (int)ref);
-    }
-}
-
 static void on_marker_interact(uint16_t ref, void *user)
 {
     Game *g = (Game *)user;
@@ -1499,15 +1490,10 @@ static void interact_setup(Game *g, MgApp *app)
     if (!g->ia_ok) {
         return;
     }
-    const float cx = (g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, cz = (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f;
     const preview_desc_t any = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.4f, 0.8f, 0.9f, 1.0f)};
     g->ia_any_slot = ia_add(&g->ia, IA_BUTTON, HMM_V3(0, -100.0f, 0), 0.1f, 99, IA_DISABLED | IA_FACING_FREE, 0, "Mesh", NULL, NULL, any);
     g->ia_check = SDL_strcmp(arg_value(app->argc, app->argv, "--autotest") ? arg_value(app->argc, app->argv, "--autotest") : "", "interact") == 0;
     g->ia_hover_slot = IA_NONE;
-    const preview_desc_t lift = {g->unit_box, NULL, 0.3f, 0.0f, 0.0f, HMM_V4(0.72f, 0.75f, 0.8f, 1.0f)};
-    for (int f = 0; f < scene_floor_count(); f++) {
-        ia_add(&g->ia, IA_ELEVATOR, HMM_V3(cx, (float)f * 4.0f, cz), IA_ENTER_RANGE, f, IA_FACING_FREE, (uint16_t)f, "Lift", on_call_lift, g, lift);
-    }
 }
 
 /* Developer -> Show ranges (enter ring, thin exit ring; yellow = active), Show active id */
@@ -1564,17 +1550,14 @@ static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
     pr->ia_exit_lag = g->ia_exit_lag;
     pr->greeting = g->greet_t > 0.0f;
     pr->lift_at = HMM_V3((g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, 0.1f, (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 2; i++) {
         pr->it_slot[i] = -1;
     }
-    for (int s = 0; s < ia->high_water; s++) { /* the lift at ground level, the marker */
+    for (int s = 0; s < ia->high_water; s++) { /* the marker */
         const ia_hot_t *h = &ia->hot[s];
-        if (h->used && h->kind == IA_ELEVATOR && grid_of_storey(h->storey) == 0 && pr->it_slot[0] < 0) {
+        if (h->used && h->kind == IA_MARKER && pr->it_slot[0] < 0) {
             pr->it_slot[0] = s;
-            pr->it_stand[0] = HMM_V3(h->pos.X, 0.1f, h->pos.Z + 1.2f); /* in front of the doors */
-        } else if (h->used && h->kind == IA_MARKER && pr->it_slot[1] < 0) {
-            pr->it_slot[1] = s;
-            pr->it_stand[1] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
+            pr->it_stand[0] = HMM_V3(h->pos.X, 0.1f, h->pos.Z);
         }
     }
     const NpcPool *p = &g->npcs.pool;
@@ -1582,8 +1565,8 @@ static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
     for (int i = 0; i < p->count && g->npcs_on; i++) {
         const npc_cold_t *c = &p->cold[i];
         if (c->wants_chat && SDL_strcmp(g->npcs.data.archetypes[c->archetype].name, "receptionist") == 0) {
-            pr->it_slot[2] = c->ia_slot;
-            pr->it_stand[2] = HMM_V3(hot[i].x, 0.1f, hot[i].z + 1.35f); /* the public side of the desk */
+            pr->it_slot[1] = c->ia_slot;
+            pr->it_stand[1] = HMM_V3(hot[i].x, 0.1f, hot[i].z + 1.35f); /* the public side of the desk */
             break;
         }
     }

@@ -14,7 +14,7 @@
  *               when both players are in the room
  *   markers     tap a marker (walks), tap again (cancels), tap and arrive
  *               (reached, respawn), a drag from a marker becomes the stick
- *   interact    walk to the lift doors, a marker and the receptionist (panel up, a drag does
+ *   interact    walk to a marker and the receptionist (panel up, a drag does
  *               nothing, a tap fires once), then the lift's 3D buttons, an auto-ride with no
  *               panel, desktop hover, Pause -> Performance; scan lag against brute force
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
@@ -65,11 +65,11 @@ typedef struct AutotestProbe {
     bool show_stats;
     int active_slot;           /* -1 none */
     /* --autotest interact only */
-    uint32_t ia_fired[4];
+    uint32_t ia_fired[3];
     int ia_enter_lag, ia_exit_lag; /* worst, ticks */
     bool greeting;
-    int it_slot[3];            /* lift doors, marker, receptionist */
-    HMM_Vec3 it_stand[3];
+    int it_slot[2];            /* marker, receptionist */
+    HMM_Vec3 it_stand[2];
     HMM_Vec3 lift_at;
     float lift_btn_x[3], lift_btn_y[3];
     int hover_slot;            /* -1: none on screen, or no mouse */

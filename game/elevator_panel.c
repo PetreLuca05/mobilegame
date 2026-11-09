@@ -9,23 +9,23 @@
 #define SLIDE_OUT_S 0.25f
 #define PRESS_DELAY 0.4f
 #define HEIGHT_FRACTION 0.7125f /* of the safe height */
-#define VIEW_ASPECT 0.72f     /* the area it is drawn in, width / height */
+#define VIEW_ASPECT 0.5f     /* the area it is drawn in, width / height */
 #define VIEW_HALF 0.6f        /* how much of its height that area shows, up and down from the centre */
-#define SLAB_HALF_W 0.31f
+#define SLAB_HALF_W 0.2f
 #define SLAB_HALF_H 0.5f
-#define SLAB_HALF_D 0.12f
+#define SLAB_HALF_D 0.07f
 #define SLAB_YAW (-20.0f)     /* the buttons face the middle of the screen; a turn about the vertical only, so its upright edges stay parallel to the screen edge */
-#define BUTTON_MAX_R 0.11f
+#define BUTTON_MAX_R 0.125f
 #define BUTTON_H 0.04f
 #define BUTTON_SINK 0.032f
 #define FACE_LIFT 0.002f      /* the buttons and the ring stand on the front plate */
 #define LABEL_LIFT 0.004f     /* over whatever it is printed on */
 #define LABEL_EM 1.2f         /* of the button radius */
-#define INDICATOR_Y 0.415f
-#define INDICATOR_HALF_W 0.09f
-#define INDICATOR_HALF_H 0.055f
+#define INDICATOR_Y 0.44f
+#define INDICATOR_HALF_W 0.08f
+#define INDICATOR_HALF_H 0.045f
 #define INDICATOR_THICK 0.003f
-#define INDICATOR_EM 0.075f
+#define INDICATOR_EM 0.065f
 #define PRESS_ANIM_S 0.3f
 #define FOV_DEG 28.0f
 
@@ -46,9 +46,9 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     mb_box(&mb, HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT)), HMM_V3(INDICATOR_HALF_W, INDICATOR_HALF_H, INDICATOR_THICK), HMM_V4(0.08f, 0.09f, 0.12f, 1.0f));
     p->slab = mb_upload(&mb, g);
     /* the column, top floor first, under the floor indicator */
-    const float top = 0.2f, bottom = -0.38f;
+    const float top = 0.235f, bottom = -0.345f;
     const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
-    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.3575f : BUTTON_MAX_R);
+    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.43f : BUTTON_MAX_R);
     for (int i = 0; i < p->floors; i++) {
         p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
     }
@@ -184,7 +184,7 @@ void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_f
         GfxMaterial ink = mat_text(HMM_V4(0.125f, 0.141f, 0.172f, 1.0f));
         gfx_draw(g, p->label[i], &lm, &ink, GFX_DRAW_NO_SHADOW);
     }
-    const float rr = r * 1.18f;
+    const float rr = r * 1.12f;
     if (current_floor >= 0 && current_floor < p->floors && (p->blink_t <= 0.0f || fmodf(p->blink_t, 0.16f) < 0.08f)) { /* where the car is */
         const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[current_floor], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(rr, rr, 1.0f))));
         GfxMaterial dim = mat_toon_emissive(mg_rgb(0x5A7FB0), 0.5f);
