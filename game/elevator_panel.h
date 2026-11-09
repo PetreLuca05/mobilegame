@@ -1,4 +1,4 @@
-/* M8: the lift's 3D button panel, a floating cube at the right of the safe area while the player
+/* M8: the lift's 3D button panel, a floating 3D rectangle at the right of the safe area while the player
  * stands in the car. Drawn in the main pass ahead of the world (a depth-range inset); the column of
  * buttons comes from the lift's floor count. Tap-only through the touch targets. */
 #ifndef MG_ELEVATOR_PANEL_H
@@ -12,13 +12,13 @@
 #define LIFT_PANEL_TAP_ID 0xFFFFFF00u /* + floor, in TouchControls.targets */
 
 typedef struct ElevatorPanel {
-    GfxMeshId cube, button, ring;
+    GfxMeshId slab, button, ring;
     int floors;
-    float button_y[LIFT_PANEL_FLOORS]; /* on the cube's face, -0.5 .. 0.5 */
+    float button_y[LIFT_PANEL_FLOORS]; /* on the slab's face, -0.5 .. 0.5 */
     float button_r;
     float press_anim[LIFT_PANEL_FLOORS]; /* 1 just pressed .. 0 */
     float slide;         /* 0 hidden .. 1 shown */
-    float x, y, w, h;    /* the square the cube is drawn in, pt */
+    float x, y, w, h;    /* the area the slab is drawn in, pt */
     int pressed;         /* -1 none */
     float press_t;       /* time until the ride starts */
     float blink_t;       /* tapped the floor we are on */
