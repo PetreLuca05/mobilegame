@@ -1708,9 +1708,7 @@ static void draw_cloud_at(MgApp *app, float x, float y, bool active, float vis, 
     y += active ? 3.0f * HMM_SinF(t * 2.0f * HMM_PI32) : 0.0f;
     const uint8_t alpha = (uint8_t)((active ? 235.0f : 95.0f) * vis);
     const UiColor white = {255, 255, 255, alpha};
-    ui_circle(app->gfx, &app->font, x - 7.0f * k, y, 12.0f * k, white);
-    ui_circle(app->gfx, &app->font, x + 7.0f * k, y - k, 11.0f * k, white);
-    ui_circle(app->gfx, &app->font, x + k, y + 12.0f * k, 3.0f * k, white); /* tail */
+    ui_round_rect(app->gfx, &app->font, x - 19.0f * k, y - 12.0f * k, 38.0f * k, 24.0f * k, 12.0f * k, white); /* one shape: overlapping ones show through each other */
     for (int d = 0; d < 3; d++) {
         const float phase = active ? fmodf(t / 0.9f + (float)d / 3.0f, 1.0f) : 0.0f; /* in sequence */
         const float r = (active ? 1.8f + 1.4f * HMM_SinF(phase * HMM_PI32) : 2.0f) * k;
