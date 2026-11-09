@@ -2530,7 +2530,7 @@ void game_frame(MgApp *app, float alpha)
         float gr[4];
         greet_rect(g, app, gr);
         const float cw = gr[2], ch = gr[3], cx = gr[0], cy = gr[1];
-        ui_round_rect(app->gfx, &app->font, cx, cy, cw, ch, 12.0f, ui_rgba(0x101218E8));
+        gfx_ui_blur_panel(app->gfx, cx, cy, cw, ch, 12.0f, HMM_V4(0.06f, 0.07f, 0.09f, 0.6f));
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 18.0f, 13.0f, ui_rgba(0xFFD166FF), g->greet_name);
         text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(0xFFFFFFFF), g->greet_line);
     }

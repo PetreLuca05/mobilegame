@@ -270,7 +270,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
   `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
 
-- In-game menu: pause button (two bars, drawn with `ui_rect`) / Back = centred pause card, max 420 pt (Resume, Settings,
+- In-game menu: pause button (34 pt frosted disc, two rounded bars) / Back = centred pause card, max 420 pt (Resume, Settings,
   Save & back to menu, Disconnect in a room); Settings' back arrow returns to
   it. Arrows are drawn with `ui_line` (the font has no left arrow).
 - `--autotest offline`: an unresolvable host behaves like airplane mode; count

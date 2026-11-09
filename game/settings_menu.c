@@ -332,11 +332,10 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
             m->from_card = false;
             SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
         }
-        ui_circle(ui->gfx, ui->font, gx + gs * 0.5f, gy + gs * 0.5f, gs * 0.5f,
-                  held ? ui_rgba(0x1E2230F0) : ui_rgba(0x1E2230A0));
-        const float bar_w = 5.0f, bar_h = 20.0f, bar_gap = 6.0f, bar_top = gy + (gs - bar_h) * 0.5f;
-        ui_rect(ui->gfx, ui->font, gx + gs * 0.5f - bar_gap * 0.5f - bar_w, bar_top, bar_w, bar_h, ui_rgba(0xFFFFFFFF));
-        ui_rect(ui->gfx, ui->font, gx + gs * 0.5f + bar_gap * 0.5f, bar_top, bar_w, bar_h, ui_rgba(0xFFFFFFFF));
+        gfx_ui_blur_panel(ui->gfx, gx, gy, gs, gs, gs * 0.5f, HMM_V4(0.12f, 0.13f, 0.19f, held ? 0.8f : 0.4f));
+        const float bar_w = 4.0f, bar_h = 15.0f, bar_gap = 5.0f, bar_r = 1.5f, bar_top = gy + (gs - bar_h) * 0.5f;
+        ui_round_rect(ui->gfx, ui->font, gx + gs * 0.5f - bar_gap * 0.5f - bar_w, bar_top, bar_w, bar_h, bar_r, ui_rgba(0xFFFFFFFF));
+        ui_round_rect(ui->gfx, ui->font, gx + gs * 0.5f + bar_gap * 0.5f, bar_top, bar_w, bar_h, bar_r, ui_rgba(0xFFFFFFFF));
         m->editing_name = false;
         if (!m->open) {
             return MENU_NONE;
