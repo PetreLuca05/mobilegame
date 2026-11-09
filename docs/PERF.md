@@ -226,7 +226,7 @@ Perf gate passed on all seven scenarios, including the new `lift_panel` and `int
 | NPC preview head, draws | 100.3 | 86.0 | +14.3 | <= 3 | 6, **exceeded** |
 | Scan + registry, CPU (p95 frame) | 0.05 ms | - | - | <= 0.03 per scan | 0.06 |
 
-The head is drawn part by part in its own inset (head, hair, outlines, eyes, nose, mouth), not instanced, hence the draws. Lift-panel draw figures up to and including `aff8719` (the iPad's 67) exclude the panel: `GfxStats.draws` did not count insets drawn before the world. Fixed in `3f29211`.
+The head is drawn part by part in its own inset (head, hair, outlines, eyes, nose, mouth), not instanced, hence the draws. Lift-panel draw figures up to and including `aff8719` (the iPad's 67) exclude the panel: `GfxStats.draws` did not count insets drawn before the world. Fixed in `3f29211`. True number on the iPad, rerun at `1e0b900` (after the lift panel and frosted pause button changes): 76 draws, 4 passes (the frosted pause disc makes the two blur passes run on every play frame), 0 dropped, GPU 5.32 ms, 32 % busy, 1.70 ms effective, clock Minimum 99 %.
 
 Font atlas: 512x512 -> 1024x512, +256 KB; no separate texture budget, resident memory 151 MB against 300.
 
