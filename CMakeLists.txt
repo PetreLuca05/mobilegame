@@ -169,6 +169,7 @@ add_library(mg_engine STATIC
   engine/net/supabase_auth.c
   engine/net/supabase_rt.c
   engine/net/supabase_rest.c
+  engine/net/supabase_rpc.c
   engine/net/replication.c
 )
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
@@ -248,6 +249,7 @@ set(MG_GAME_SOURCES
   game/avatar.c
   game/scenery.c
   game/net_session.c
+  game/friends.c
   game/frontend.c
   game/creator.c
   game/modes.c

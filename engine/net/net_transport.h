@@ -17,7 +17,12 @@
 #define NET_ID_LEN 40        /* user id (uuid) + NUL */
 #define NET_NAME_LEN 24
 #define NET_STATE_MAX 64     /* bytes of one state payload */
-#define NET_TOPIC_LEN 24
+#define NET_TOPIC_LEN 48     /* "user:" + uuid */
+#define NET_CODE_LEN 8       /* friend code + NUL */
+#define NET_TOKEN_LEN 20     /* lobby room token + NUL */
+#define NET_RPC_BODY 200     /* JSON arguments of one call */
+#define NET_FRIEND_ROWS 120
+#define NET_SEARCH_ROWS 10
 
 typedef enum NetStatus {
     NET_OFFLINE,        /* not in a room */
@@ -82,7 +87,70 @@ typedef enum NetEventType {
     NET_EV_ROOM_FULL,   /* value = players already in the room */
     NET_EV_PROFILE,     /* profile = our account, loaded or switched (sign-in / Google link) */
     NET_EV_ACCOUNT_ERROR, /* text = what failed (load, save, link) */
+    NET_EV_USER_CHANNEL, /* value = 1 joined user:<uid>, 0 refused or lost (text = why) */
+    NET_EV_RPC,         /* value = NetRpc, http = status (0 no network); text = the error code or the scalar answer */
+    NET_EV_PUSH,        /* push = what arrived on user:<uid> */
 } NetEventType;
+
+/* Postgres functions of the friends migration */
+typedef enum NetRpc {
+    NET_RPC_MY_CODE,
+    NET_RPC_FRIENDS_LIST,   /* rows: net_friends_copy */
+    NET_RPC_FRIEND_SEARCH,  /* rows: net_search_copy */
+    NET_RPC_FRIEND_REQUEST,
+    NET_RPC_FRIEND_RESPOND,
+    NET_RPC_FRIEND_REMOVE,
+    NET_RPC_HEARTBEAT,      /* text = the room token */
+    NET_RPC_STATUS_CLEAR,
+    NET_RPC_JOIN_REQUEST,
+    NET_RPC_JOIN_RESPOND,
+    NET_RPC_KICK,
+    NET_RPC_LEAVE,
+    NET_RPC_COUNT,
+} NetRpc;
+
+typedef enum NetRelation { NET_REL_FRIEND, NET_REL_INCOMING, NET_REL_OUTGOING } NetRelation;
+
+typedef enum NetFriendStatus {
+    NET_FS_OFFLINE,
+    NET_FS_MENU,
+    NET_FS_OPEN,
+    NET_FS_LOCKED,
+    NET_FS_FULL,
+    NET_FS_IN_OTHER_LOBBY,
+} NetFriendStatus;
+
+/* One row of friends_list() or friend_search() (search has no user_id) */
+typedef struct NetFriendRow {
+    char user_id[NET_ID_LEN];
+    char name[NET_NAME_LEN];
+    char code[NET_CODE_LEN];
+    NetSkin skin;
+    uint8_t relation; /* NetRelation */
+    uint8_t status;   /* NetFriendStatus */
+    uint8_t players;
+} NetFriendRow;
+
+typedef enum NetPushType {
+    NET_PUSH_FRIEND_REQUEST,
+    NET_PUSH_FRIEND_ACCEPTED,
+    NET_PUSH_JOIN_REQUEST,
+    NET_PUSH_JOIN_ACCEPTED,
+    NET_PUSH_JOIN_DECLINED,
+    NET_PUSH_KICKED,
+} NetPushType;
+
+typedef struct NetPush {
+    NetPushType type;
+    char from[NET_ID_LEN];  /* who asked, or the host */
+    char name[NET_NAME_LEN];
+    NetSkin skin;
+    /* join_accepted */
+    char room_token[NET_TOKEN_LEN];
+    int map_id;
+    int32_t npc_seed;
+    double start_tick;
+} NetPush;
 
 typedef struct NetEvent {
     NetEventType type;
@@ -93,6 +161,8 @@ typedef struct NetEvent {
     uint16_t len;
     char text[96];
     NetProfile profile;
+    int http;
+    NetPush push;
 } NetEvent;
 
 typedef struct NetConfig {
@@ -144,5 +214,20 @@ void net_save_stats(NetTransport *n, const NetStats *totals);
 void net_link_idp(NetTransport *n, const char *provider, const char *id_token, const char *nonce);
 /* Drop the session; a fresh guest (new profile) signs in. */
 void net_sign_out(NetTransport *n);
+
+/* The private channel user:<uid>, for the whole app run (pushes: NET_EV_PUSH).
+ * It shares the socket with the room channel. */
+void net_user_channel(NetTransport *n, bool on);
+/* Queue a Postgres function; `json_body` is its named arguments ("{}" for
+ * none). Answers with NET_EV_RPC. Repeats of the list and the heartbeat
+ * merge while they wait, the newest arguments win. */
+void net_rpc(NetTransport *n, NetRpc rpc, const char *json_body);
+/* The rows of the last answer. Return how many were copied. */
+int net_friends_copy(NetTransport *n, NetFriendRow *out, int cap);
+int net_search_copy(NetTransport *n, NetFriendRow *out, int cap);
+/* The network thread keeps the friend list here (see friends.h); "" = no file. */
+void net_set_friends_cache(NetTransport *n, const char *path);
+/* JSON string body (no quotes) */
+void net_json_escape(char *out, size_t cap, const char *s);
 
 #endif

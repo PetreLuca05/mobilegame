@@ -1,7 +1,9 @@
 /* Desktop network diagnostics (not shipped):
  *   mg_nettest probe                  HTTPS + WebSocket + heartbeat RTT, no sign-in needed
  *   mg_nettest join ROOM PROFILE SEC  sign in, join room:ROOM, send state at 10 Hz, print events
- * Two `join` instances with different PROFILEs must see each other. */
+ * Two `join` instances with different PROFILEs must see each other.
+ *   mg_nettest friends PROFILE SEC [CODE]  user:<uid> channel + friend calls: print my code and list,
+ *                                     accept any request pushed to us; with CODE, send a request to it */
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,6 +152,8 @@ static int join(const char *room, const char *profile, double seconds)
             case NET_EV_ACCOUNT_ERROR:
                 printf("[%s] account error: %s\n", profile, e.text);
                 break;
+            default:
+                break;
             }
         }
         double now = (double)SDL_GetTicksNS() * 1e-9;
@@ -168,6 +172,70 @@ static int join(const char *room, const char *profile, double seconds)
     SDL_Delay(300);
     net_destroy(n);
     return states > 0 ? 0 : 1;
+}
+
+static int friends(const char *profile, double seconds, const char *code)
+{
+    Arena perm;
+    static uint8_t mem[4u << 20];
+    arena_init(&perm, mem, sizeof(mem));
+    NetConfig cfg = {MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile, 25, 0, false};
+    NetTransport *n = net_create(&perm, &cfg);
+    if (!n) {
+        return 2;
+    }
+    net_account_start(n);
+    static NetFriendRow rows[NET_FRIEND_ROWS];
+    double start = (double)SDL_GetTicksNS() * 1e-9;
+    bool channel = false;
+    int pushes = 0;
+    while ((double)SDL_GetTicksNS() * 1e-9 - start < seconds) {
+        NetEvent e;
+        while (net_poll(n, &e)) {
+            char body[NET_RPC_BODY];
+            switch (e.type) {
+            case NET_EV_PROFILE:
+                printf("[%s] signed in %.8s \"%s\"\n", profile, e.profile.user_id, e.profile.display_name);
+                net_user_channel(n, true);
+                net_rpc(n, NET_RPC_MY_CODE, "{}");
+                break;
+            case NET_EV_USER_CHANNEL:
+                printf("[%s] user channel: %s %s\n", profile, e.value ? "joined" : "refused", e.text);
+                channel = e.value != 0;
+                if (channel && code) {
+                    snprintf(body, sizeof(body), "{\"p_code\":\"%s\"}", code);
+                    net_rpc(n, NET_RPC_FRIEND_REQUEST, body);
+                }
+                net_rpc(n, NET_RPC_FRIENDS_LIST, "{}");
+                break;
+            case NET_EV_RPC:
+                printf("[%s] rpc %d: HTTP %d %s\n", profile, e.value, e.http, e.text);
+                if (e.value == NET_RPC_FRIENDS_LIST) {
+                    int c = net_friends_copy(n, rows, NET_FRIEND_ROWS);
+                    for (int i = 0; i < c; i++) {
+                        printf("[%s]   %s %s rel %d status %d players %d\n", profile, rows[i].name, rows[i].code, rows[i].relation,
+                               rows[i].status, rows[i].players);
+                    }
+                }
+                break;
+            case NET_EV_PUSH:
+                printf("[%s] push %d from %.8s \"%s\"\n", profile, (int)e.push.type, e.push.from, e.push.name);
+                pushes++;
+                if (e.push.type == NET_PUSH_FRIEND_REQUEST) {
+                    snprintf(body, sizeof(body), "{\"p_other\":\"%s\",\"p_accept\":true}", e.push.from);
+                    net_rpc(n, NET_RPC_FRIEND_RESPOND, body);
+                }
+                net_rpc(n, NET_RPC_FRIENDS_LIST, "{}");
+                break;
+            default:
+                break;
+            }
+        }
+        SDL_Delay(10);
+    }
+    printf("[%s] summary: channel %d, pushes %d\n", profile, channel, pushes);
+    net_destroy(n);
+    return channel ? 0 : 1;
 }
 
 /* Load the account of `profile`; with a name, write name + skin and exit
@@ -219,6 +287,9 @@ int main(int argc, char **argv)
     if (argc >= 5 && strcmp(argv[1], "join") == 0) {
         g_public = argc >= 6 && strcmp(argv[5], "--public") == 0;
         return join(argv[2], argv[3], SDL_atof(argv[4]));
+    }
+    if (argc >= 4 && strcmp(argv[1], "friends") == 0) {
+        return friends(argv[2], atof(argv[3]), argc >= 5 ? argv[4] : NULL);
     }
     if (argc >= 3 && strcmp(argv[1], "profile") == 0) {
         if (argc >= 7) {

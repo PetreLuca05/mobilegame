@@ -268,6 +268,8 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
             clear_remotes(s);
         }
         break;
+    default: /* user channel, calls and pushes: the listener's */
+        break;
     }
 }
 
@@ -280,6 +282,9 @@ void session_update(NetSession *s, double now, uint32_t tick, HMM_Vec3 pos, HMM_
     NetEvent e;
     while (net_poll(s->net, &e)) {
         handle_event(s, &e, now);
+        if (s->listener) {
+            s->listener(s->listener_user, &e);
+        }
     }
     if (s->mode == MODE_OFFLINE) {
         return;

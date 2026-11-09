@@ -59,6 +59,9 @@ typedef struct NetSession {
     bool profile_new;      /* a NET_EV_PROFILE arrived since the game last looked */
     char account_error[96];
     int rooms_joined;      /* rooms joined this run (stats) */
+    /* every event, after the session has handled it (friends, lobby) */
+    void (*listener)(void *user, const NetEvent *e);
+    void *listener_user;
 } NetSession;
 
 void session_init(NetSession *s, NetTransport *net);

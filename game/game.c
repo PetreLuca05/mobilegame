@@ -57,6 +57,7 @@
 #include "markers.h"
 #include "nav_debug.h"
 #include "platform/haptics.h"
+#include "friends.h"
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
@@ -139,6 +140,7 @@ typedef struct Game {
     bool ia_ok, ia_log;
     MgApp *ia_app;  /* for the interact callbacks */
     uint16_t ia_any_slot;    /* Developer -> Preview any mesh */
+    Friends friends;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
@@ -290,6 +292,12 @@ static bool ensure_world(Game *g, MgApp *app)
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
 
+static void on_net_event(void *user, const NetEvent *e)
+{
+    Game *g = (Game *)user;
+    friends_on_event(&g->friends, e);
+}
+
 bool game_init(MgApp *app)
 {
     Game *g = ARENA_PUSH(&app->perm, Game, 1);
@@ -378,6 +386,9 @@ bool game_init(MgApp *app)
                       has_flag(app->argc, app->argv, "--public-test")};
     g->net = net_create(&app->perm, &ncfg);
     session_init(&g->session, g->net);
+    friends_init(&g->friends, g->net, profile ? profile : "");
+    g->session.listener = on_net_event;
+    g->session.listener_user = g;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     const char *party = arg_value(app->argc, app->argv, "--party");
@@ -2037,6 +2048,7 @@ void game_frame(MgApp *app, float alpha)
                                   (g->player.sprint ? REP_SPRINTING : 0) |
                                   (el && elevator_busy(el) ? REP_RIDING : 0));
         PROF_SCOPE("net.poll");
+        friends_tick(&g->friends, app->time);
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
                        (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
         if (el) { /* someone riding from our landing: their doors close here too */
