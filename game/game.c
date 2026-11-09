@@ -390,6 +390,9 @@ static uint32_t head_icon_rgb(void *user, const NetSkin *skin)
 static double lobby_epoch(void *user)
 {
     const Game *g = (const Game *)user;
+    if (g->npc_epoch_ms > 0.0) {
+        return g->npc_epoch_ms;
+    }
     const uint32_t tick = g->npcs_on && g->npcs.tick > g->npc_resume_tick ? g->npcs.tick : g->npc_resume_tick;
     return wall_clock_ms() - (double)tick / 0.06;
 }
@@ -824,6 +827,8 @@ static void leave_play(Game *g, MgApp *app)
         session_say_goodbye(&g->session, 0, g->player.kin.pos, g->player.yaw);
         lobby_stop(&g->lobby);
     }
+    g->npc_epoch_ms = 0.0; /* the next game has its own tick 0 */
+    session_set_npc_epoch(&g->session, 0.0);
     g->playing = false;
     g->offline_play = false;
     g->menu.card = false;
@@ -1325,6 +1330,10 @@ static void load_step(Game *g, MgApp *app)
             session_set_npc_epoch(&g->session, g->npc_epoch_ms);
         } else {
             g->lobby.save_hash = g->pending_play == 3 ? g->save.npc_seed : 0u;
+            if (lobby_in_menu(&g->lobby) && lobby_is_host(&g->lobby)) { /* tick 0 is now, whatever the menu's backdrop has been doing */
+                g->npc_epoch_ms = wall_clock_ms() - (double)g->npc_resume_tick / 0.06;
+                session_set_npc_epoch(&g->session, g->npc_epoch_ms);
+            }
             lobby_start_host(&g->lobby, 0, npc_seed_for(g, app)); /* online when signed in; offline nothing leaves the device */
         }
         g->playing = true;
@@ -2413,7 +2422,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->npcs_on = false;
         npc_world_stop(&g->npcs);
     }
-    if (g->npcs_on) {
+    if (g->npcs_on && g->playing) { /* the menu's backdrop has no room tick */
         npc_room_epoch(g);
     }
     npc_catch_up(g, app);

@@ -123,7 +123,7 @@ static const FtOp k_ma[] = {
     TAP("lobby_kick3"), ROWS(3), SIG("a_kicked_d"), WAIT("d_solo"), WAIT("c_left"), ROWS(2),
     TAP("lobby_kick1"), ROWS(1), SIG("a_kicked_b"), WAIT("b_solo"), SLEEP(11.0), INVITE("code_b"), BACK, ROWS(2), SIG("a_b_again"),
     TAP("lobby_switch"), {OP_OPEN_IS, NULL, 1},
-    NEW_GAME, PLAYERS(2), SIG("a_started"), {OP_NPC, NULL, 0}, WAIT("b_played"), BACK_TO_MENU, ROWS(2), SIG("a_back"), WAIT("b_left"), ROWS(1),
+    NEW_GAME, PLAYERS(2), SIG("a_started"), WAIT("b_in_game"), {OP_NPC, NULL, 0}, SIG("a_npc"), WAIT("b_played"), BACK_TO_MENU, ROWS(2), SIG("a_back"), WAIT("b_left"), ROWS(1),
     WAIT("c_idle"), INVITE("code_c"), BACK, SIG("a_invited_c"), {OP_INVITE_OVER, NULL, 0}, SIG("a_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_mb[] = {
@@ -131,7 +131,7 @@ static const FtOp k_mb[] = {
     BACK, ROWS(1), SIG("b_menu"), NOTICE_K(NOTICE_INVITE), SHOT("invite_panel"), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SLEEP(0.5), SHOT("lobby_guest"), SIG("b_checked"),
     WAIT("a_four"), ROWS(4), SIG("b4"), WAIT("a_kicked_d"), ROWS(3), WAIT("c_left"), ROWS(2),
     WAIT("a_kicked_b"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("b_solo"), NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SIG("b_again"),
-    WAIT("a_started"), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_NPC, NULL, 0}, SIG("b_played"), {OP_MENU, NULL, 0}, ROWS(2), WAIT("a_back"), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SIG("b_left"), {OP_END, NULL, 0},
+    WAIT("a_started"), {OP_PLAYING, NULL, 0}, PLAYERS(2), SIG("b_in_game"), {OP_NPC, NULL, 0}, SIG("b_played"), {OP_MENU, NULL, 0}, ROWS(2), WAIT("a_back"), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SIG("b_left"), {OP_END, NULL, 0},
 };
 static const FtOp k_mc[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_c", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("c_req"), WAIT("a_accepted"),
@@ -323,6 +323,13 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         t->started = now;
         mg_log_info("autotest friends %s: op %d (%d) %s", t->role, t->pc, (int)o->op, o->s ? o->s : "");
     }
+    if (p->npc_sync_tick && p->npc_sync_tick != t->npc_seen) { /* published all the time: the other side may be slower to look */
+        t->npc_seen = p->npc_sync_tick;
+        char name[48], mine[24];
+        SDL_snprintf(name, sizeof(name), "npc_%u_%s", p->npc_sync_tick, t->role);
+        SDL_snprintf(mine, sizeof(mine), "%08x", p->npc_sync_hash);
+        sync_write(t, name, mine);
+    }
     char id[64], text[64];
     int i = -1;
     bool done = false;
@@ -458,17 +465,10 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         done = l->open == (o->n != 0.0);
         break;
     case OP_NPC:
-        if (p->npc_sync_tick && p->npc_sync_tick != t->npc_seen) {
-            t->npc_seen = p->npc_sync_tick;
-            char name[48], mine[24];
-            SDL_snprintf(name, sizeof(name), "npc_%u_%s", p->npc_sync_tick, t->role);
-            SDL_snprintf(mine, sizeof(mine), "%08x", p->npc_sync_hash);
-            sync_write(t, name, mine);
-        }
         for (uint32_t tick = t->npc_seen; tick > 0 && !done && tick + 3000 > t->npc_seen; tick -= 600) {
             char mine_file[48], theirs[48], a[24], b[24];
             SDL_snprintf(mine_file, sizeof(mine_file), "npc_%u_%s", tick, t->role);
-            SDL_snprintf(theirs, sizeof(theirs), "npc_%u_%s", tick, strcmp(t->role, "a1") == 0 ? "b" : "a1");
+            SDL_snprintf(theirs, sizeof(theirs), "npc_%u_%s", tick, strcmp(t->role, "a1") == 0 ? "b" : strcmp(t->role, "ma") == 0 ? "mb" : strcmp(t->role, "mb") == 0 ? "ma" : "a1");
             if (sync_read(t, mine_file, a, sizeof(a)) && sync_read(t, theirs, b, sizeof(b))) {
                 if (strcmp(a, b) != 0) {
                     SDL_snprintf(t->why, sizeof(t->why), "NPC hash differs at tick %u: %s vs %s", tick, a, b);
