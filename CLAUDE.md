@@ -330,7 +330,9 @@ Every game is a lobby owned by its player; only friends get in, after the host s
 
 **Merge coverage rule, for every later migration:** a table with a foreign key to `auth.users` or `profiles` must be named (`public.<table>`) in `merge_ticket_redeem` with an explicit rule. `supabase/tests/link_test.sql` fails otherwise.
 
-Request shapes and the audit: `docs/ACCOUNT_LINKING.md`. RPCs: `merge_ticket_create` (guest), `merge_ticket_redeem` (existing account), `link_cleanup` (nightly, `pg_cron`).
+Flow (`game/account_link.c`, stages in `engine/net/supabase_rt.c`, sessions in `supabase_auth.c`): the provider token, then a `link_identity` grant with the guest JWT. Success = Case A, same user. `identity_already_exists` = Case B: dialog, then ticket (as the guest), `status_clear`, sign-in (held in memory, not persisted), redeem. Any failure before the redeem restores the guest. If the connection dies during the redeem, `merge_ticket_used` settles whether it committed. The merge clears `profile_cache`, `friends_cache.bin` and the head atlas; settings and the save slot stay. Menu only; the pause card saves and returns to the menu first. `tools/link_test.sh OUT CLI` runs `--autotest friends l1..l5` from a `-DMG_TEST_AUTH=ON` desktop build (`build/desktop_link`), where email + password stand in for the ID token.
+
+Request shapes and the audit: `docs/ACCOUNT_LINKING.md`. RPCs: `merge_ticket_create` (guest), `merge_ticket_redeem` (existing account), `merge_ticket_used` (did it commit), `link_cleanup` (nightly, `pg_cron`).
 
 ## Networking
 

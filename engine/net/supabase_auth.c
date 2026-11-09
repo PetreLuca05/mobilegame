@@ -342,8 +342,8 @@ static void test_probe_done(SupaAuth *a, int status)
         link_conflict(a);
         return;
     }
-    if (status == 0) {
-        snprintf(a->link_error, sizeof(a->link_error), "network error");
+    if (status != 400) { /* 400 is "wrong password": there is no such account yet */
+        snprintf(a->link_error, sizeof(a->link_error), "probe HTTP %d", status);
         a->state = AUTH_OK;
         a->link_outcome = -1;
         return;
