@@ -244,3 +244,23 @@ tools/perf_run.sh docs/perf/run1 --gpu --gate
 Steady state the four passes are main, two blur (the frosted pause disc, since `e99c268`) and UI; head icons add none. Accepted at FRIENDS-1 review as the known cost of the frosted button: the `lobby4` gate asserts no new passes against that pre-FRIENDS baseline of 4. If the blur ever has to go, it goes, but not in this milestone. Heads are generated at most 2 per frame in one extra offscreen pass, only while the queue is not empty.
 
 The three-instance friends test generated 6 heads into 6 cells, longest placeholder 1 frame.
+
+## Rebaseline after the fixed camera (e034fd2, iPad Air 4)
+
+`docs/perf/after/` now holds this run: all scenarios at the current camera (FOV 40, distance 19, angle 55), with the frosted pause disc. Older files were from `aff8719` (`1e0b900` for `lift_panel`). Every GPU run's dominant clock state was Minimum.
+
+| Scenario | Draws old -> new | Passes | Render ms | GPU effective ms | Memory MB |
+|---|---|---|---|---|---|
+| `yard` | 68.0 -> 64.0 | 2 -> 4 | 1.06 -> 1.21 | 1.37 -> 1.72 | 152 -> 156 |
+| `lobby` | 67.5 -> 63.5 | 2 -> 4 | 1.07 -> 1.31 | 1.16 -> 1.63 | 151 -> 152 |
+| `corridor_f2` | 87.1 -> 83.1 | 2 -> 4 | 1.11 -> 1.36 | 1.30 -> 1.81 | 151 -> 153 |
+| `stress200` | 89.2 -> 86.6 | 2 -> 4 | 1.09 -> 1.25 | 1.37 -> 2.01 | 161 -> 168 |
+| `npcs` | 89.1 -> 89.2 | 2 -> 4 | 1.09 -> 1.38 | 1.29 -> 1.90 | 155 -> 154 |
+| `lift_panel` | 76.0 -> 72.0 | 4 -> 4 | 1.40 -> 1.37 | 1.70 -> 1.71 | 153 -> 154 |
+| `interact_npc` | 100.3 -> 93.3 | 2 -> 4 | 1.73 -> 1.38 | 1.41 -> 1.93 | 154 -> 154 |
+| `lobby4` | new: 95.4 | 4 | 1.64 | 1.91 | 162 |
+
+Against the old baseline, GPU effective and render time rise 10 to 55 % in the scenarios that gained the two blur passes and the wider view; `lift_panel` already had both blur passes, and moved within noise. All of it is inside the budgets (GPU 8 ms, render 2 ms). Draws fall everywhere, from the instanced x-ray.
+
+Gate against the new baseline: passed. `corridor_f2` dropped 1 frame on its first run and 0 on its one rerun, which is the file kept here.
+

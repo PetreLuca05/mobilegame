@@ -1,1 +1,1 @@
-{"device": "ipad", "scenario": "npcs", "commit": "aff8719", "fps": 60, "gpu_frame_ms": 4.63, "busy_pct": 28, "effective_ms": 1.29, "clock": "Minimum", "clock_share_pct": 99}
+{"device": "ipad", "scenario": "npcs", "commit": "e034fd2", "fps": 60, "gpu_frame_ms": 5.62, "busy_pct": 34, "effective_ms": 1.9, "clock": "Minimum", "clock_share_pct": 97}
