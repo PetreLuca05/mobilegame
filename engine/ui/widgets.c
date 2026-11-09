@@ -45,6 +45,7 @@ void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
     ui->gfx = gfx;
     ui->font = font;
     ui->in = in;
+    ui->input_off = false;
     ui->seen_count = 0;
     if (ui->active_id && (ui->active_touch < 0 || !ui->in->touches[ui->active_touch].active)) {
         /* touch ended last frame: releases are handled by the widget this frame */
@@ -60,6 +61,9 @@ void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
  * may take over a touch a backdrop swallowed. */
 static int claim_as(Ui *ui, float x, float y, float w, float h, int owner)
 {
+    if (ui->input_off) {
+        return -1;
+    }
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
         MgTouch *t = &ui->in->touches[i];
         bool free = t->owner == MG_TOUCH_FREE || (owner == UI_TOUCH_OWNER && t->owner == UI_BLOCK_OWNER);
@@ -245,7 +249,7 @@ float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, b
     if (s->touch > 0 && !ui->in->touches[s->touch - 1].active) {
         s->touch = 0;
     }
-    for (int i = 0; s->touch == 0 && i < MG_MAX_TOUCHES; i++) {
+    for (int i = 0; !ui->input_off && s->touch == 0 && i < MG_MAX_TOUCHES; i++) {
         MgTouch *t = &ui->in->touches[i];
         if (!t->active || t->owner == UI_SCROLL_OWNER || t->x0 < x || t->x0 > x + w || t->y0 < y || t->y0 > y + h) {
             continue;

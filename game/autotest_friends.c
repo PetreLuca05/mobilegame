@@ -20,7 +20,7 @@ typedef enum FtOpKind {
     OP_ACCEPT_ALL, OP_FRIENDS, OP_ST, OP_BADGE, OP_NOTICE, OP_PLAYERS, OP_LOBBY, OP_TOKEN, OP_PLAYING, OP_MENU, OP_SLEEP, OP_SHOT,
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
-    OP_DRAG_UP, OP_FE_STATE, OP_LINK, OP_LINK_STATE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
+    OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -125,22 +125,58 @@ static const FtOp k_scroll[] = {
 #define LSTATE(x) {OP_LINK_STATE, NULL, x}
 #define START_GUEST {OP_READY, NULL, 0}, {OP_UID_SAVE, NULL, 0}, {OP_GUEST, NULL, 1}
 static const FtOp k_l1[] = { /* new identity: linked in place */
-    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), {OP_LINK, NULL, 0}, SHOT("overlay"),
+    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), TAP("google"), SHOT("overlay"),
     {OP_GUEST, NULL, 0}, LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_READY, NULL, 0}, SLEEP(1.5), SHOT("account_linked"), SIG("l1_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_l2[] = { /* identity taken: confirm, merge, the account is loaded */
-    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), SLEEP(0.5), SHOT("dialog"), TAP("link_continue"), LSTATE(AL_RESULT), SLEEP(1.0), SHOT("result"),
+    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), SLEEP(0.5), SHOT("dialog"), TAP("link_continue"), LSTATE(AL_RESULT), SLEEP(1.0), SHOT("result"),
     TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0}, {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, SIG("l2_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_l3[] = { /* cancel: nothing changed */
-    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 static const FtOp k_l4[] = { /* the connection dies before the merge: the guest comes back (run with MG_TEST_AUTH_FAIL=redeem) */
-    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_MERGING), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_MERGING), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 static const FtOp k_l5[] = { /* reinstall: a fresh guest signs in and everything is back */
-    START_GUEST, TAP("tab1"), {OP_LINK, NULL, 0}, LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0},
     {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, {OP_END, NULL, 0},
+};
+
+static const FtOp k_lw[] = { /* the Welcome screen's button goes through the same flow */
+    START_GUEST, {OP_FE_STATE, NULL, FE_WELCOME}, TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0},
+    {OP_FE_STATE, NULL, FE_MAIN_MENU}, {OP_NAME_IS, "Seeded", 0}, {OP_END, NULL, 0},
+};
+static const FtOp k_lp[] = { /* the pause card: saves, closes the lobby, opens Settings -> Account */
+    START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(0.5),
+    TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+};
+
+/* two devices: the order comes from what each side can see, no shared files */
+#define NOTICE_FRIEND_UP {OP_NOTICE, NULL, NOTICE_FRIEND}
+static const FtOp k_dcode[] = {{OP_READY, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_END, NULL, 0}};
+static const FtOp k_dhost[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_PEER_ENV, NULL, 0},
+    NOTICE_FRIEND_UP, TAP("notice_ok"), {OP_FRIENDS, NULL, 1}, /* request from the other device */
+    TAP("menurow30"), TAP("ftab0"), {OP_GONE, NULL, 0}, /* it removes us */
+    TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1}, /* request to the other device */
+    TAP("friends"), {OP_MENU, NULL, 0}, NEW_GAME,
+    NOTICE, TAP("notice_ok"), PLAYERS(2), SLEEP(25.0), PLAYERS(1),
+    NOTICE, TAP("notice_no"),
+    NOTICE, {OP_NOTICE_GONE, NULL, 0}, /* 15 s, no answer */
+    NOTICE, TAP("notice_ok"), PLAYERS(2), TAP("gear"), TAP("p_kick0"), SLEEP(1.0), TAP("p_resume"), PLAYERS(1),
+    NOTICE, TAP("notice_ok"), PLAYERS(2), SLEEP(5.0), BACK_TO_MENU, SLEEP(1.0), {OP_END, NULL, 0},
+};
+static const FtOp k_dguest[] = {
+    {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PEER_ENV, NULL, 0},
+    TAP("menurow30"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1},
+    TAP("ftab0"), SLEEP(1.0), {OP_TAP_P, "fmore_%s", 0}, TAP("frm_yes"), SLEEP(2.0), {OP_GONE, NULL, 0},
+    NOTICE_FRIEND_UP, TAP("notice_ok"), {OP_FRIENDS, NULL, 1},
+    ST(NET_FS_OPEN), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), SLEEP(28.0), TAP("gear"), TAP("p_leave"), {OP_MENU, NULL, 0},
+    SLEEP(11.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_JOIN_ERR, "declined", 0},
+    SLEEP(11.0), JOIN, {OP_JOIN_ERR, "declined", 0},
+    SLEEP(11.0), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0},
+    SLEEP(11.0), TAP("menurow30"), TAP("ftab0"), ST(NET_FS_OPEN), JOIN, {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, {OP_END, NULL, 0},
 };
 
 /* no network: the game plays, the switch is off, the list is the cached one */
@@ -158,7 +194,8 @@ void ft_init(FriendsTest *t, const char *role)
     t->ops = strcmp(role, "a1") == 0 ? k_a1 : strcmp(role, "a2") == 0 ? k_a2 : strcmp(role, "a3") == 0 ? k_a3 : strcmp(role, "b") == 0 ? k_b
              : strcmp(role, "c") == 0 ? k_c
              : strcmp(role, "l1") == 0 ? k_l1 : strcmp(role, "l2") == 0 ? k_l2 : strcmp(role, "l3") == 0 ? k_l3 : strcmp(role, "l4") == 0 ? k_l4 : strcmp(role, "l5") == 0 ? k_l5
-             : strcmp(role, "scroll") == 0 ? k_scroll : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
+             : strcmp(role, "lw") == 0 ? k_lw : strcmp(role, "lp") == 0 ? k_lp : strcmp(role, "d_code") == 0 ? k_dcode : strcmp(role, "d_host") == 0 ? k_dhost
+             : strcmp(role, "d_guest") == 0 ? k_dguest : strcmp(role, "scroll") == 0 ? k_scroll : strcmp(role, "solo") == 0 ? k_solo : strcmp(role, "a4") == 0 ? k_reinstall : k_offline;
 }
 
 static void sync_path(const FriendsTest *t, const char *name, char *out, size_t cap) { SDL_snprintf(out, cap, "%s/%s", t->dir, name); }
@@ -336,7 +373,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         break;
     case OP_NOTICE: {
         const NoticePanel *n = p->notice;
-        if (n->count > 0 && n->slide >= 1.0f && n->q[0].kind == NOTICE_JOIN) {
+        if (n->count > 0 && n->slide >= 1.0f && (int)n->q[0].kind == (int)o->n) {
             const float want_x = (app->width_pt - n->w) * 0.5f;
             if (SDL_fabsf(n->x - want_x) > 0.5f || SDL_fabsf(n->y - ((float)app->safe_top + 8.0f)) > 0.5f) {
                 return fail_now(t, "the panel is not top-centre, 8 pt below the safe inset");
@@ -468,27 +505,28 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             done = true;
         }
         break;
-    case OP_LINK: {
-#ifdef MG_TEST_AUTH
-        char cred[160];
-        SDL_snprintf(cred, sizeof(cred), "%s mgtest-password-1", SDL_getenv("MG_LT_EMAIL"));
-        account_link_begin(p->link, "test", cred, "");
+    case OP_LOG_CODE:
+        mg_log_info("autotest friends: my code %s", f->my_code);
         done = true;
-#else
-        return fail_now(t, "build with -DMG_TEST_AUTH=ON");
-#endif
+        break;
+    case OP_PEER_ENV: {
+        const char *code = SDL_getenv("MG_FT_PEER");
+        if (!code || !code[0]) {
+            return fail_now(t, "MG_FT_PEER is not set");
+        }
+        SDL_snprintf(t->peer_code, sizeof(t->peer_code), "%s", code);
+        done = true;
         break;
     }
+    case OP_NOTICE_GONE:
+        done = p->notice->count == 0;
+        break;
     case OP_LINK_STATE:
         done = (int)p->link->state == (int)o->n;
         break;
     case OP_UID_SAVE:
         SDL_snprintf(t->saved_uid, sizeof(t->saved_uid), "%s", f->self_id);
-        {
-            char name[32];
-            SDL_snprintf(name, sizeof(name), "uid_%s", t->role);
-            sync_write(t, name, f->self_id);
-        }
+        mg_log_info("autotest link: uid %s", f->self_id); /* tools/link_test.sh reads the log */
         done = true;
         break;
     case OP_UID_SAME:

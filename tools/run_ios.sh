@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 TEAM="${MG_IOS_TEAM_ID:-}"
 CONFIG="${CONFIG:-Debug}"
-BUILD=build/ios
+BUILD="${MG_IOS_BUILD:-build/ios}"
 if [[ -z "$TEAM" ]]; then
     echo "Set MG_IOS_TEAM_ID to your Apple developer team ID (Xcode > Settings > Accounts)." >&2
     exit 1
@@ -20,7 +20,7 @@ cmake -S . -B "$BUILD" -G Xcode \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
     -DCMAKE_OSX_ARCHITECTURES=arm64 \
     -DMG_IOS_TEAM_ID="$TEAM" \
-    -DMG_IOS_APPLE_SIGNIN="${MG_IOS_APPLE_SIGNIN:-OFF}"
+    -DMG_IOS_APPLE_SIGNIN="${MG_IOS_APPLE_SIGNIN:-OFF}" ${MG_IOS_CMAKE_EXTRA:-}
 if [[ "${1:-}" == "--open" ]]; then
     open "$BUILD/mobilegame.xcodeproj"
     exit 0

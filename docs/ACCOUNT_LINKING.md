@@ -37,6 +37,13 @@ The server verifies an ID token statelessly (signature, audience, expiry, nonce 
 
 The real defect was in the fallback. On any 4xx containing "already", `link_done` signed in to the existing account and set `delete_guest`, which called `delete_anonymous_self` with the guest's token: no confirmation, no merge, and the guest's progress was deleted. It matched on the message text as well. LINK-1 replaces this.
 
+## Human-only steps
+
+These need a person in a dashboard; nothing in this repo can do them:
+
+- Supabase: Authentication -> Sign In / Providers -> User Signups -> "Allow manual linking" ON -> Save.
+- Google OAuth clients and the Google provider: `docs/GOOGLE_SIGN_IN.md` sections 1 to 4.
+
 ## Project state
 
 Google and Apple are both `false` in `/auth/v1/settings`, and `config.local.h` has no `MG_GOOGLE_*`. Real Google needs `docs/GOOGLE_SIGN_IN.md` sections 1 to 4.

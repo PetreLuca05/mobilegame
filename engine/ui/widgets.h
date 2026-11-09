@@ -17,6 +17,7 @@ typedef struct Ui {
     MgInput *in;
     uint32_t active_id; /* widget currently holding a touch */
     int active_touch;
+    bool input_off;     /* a modal is up: what is drawn underneath takes no touches (cleared by ui_begin) */
     bool clip_on;       /* inside a scroll region: taps outside it are ignored */
     float clip[4];
     /* tappable widgets of the last frame (self-tests tap them by id) */

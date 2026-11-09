@@ -475,6 +475,11 @@ bool game_init(MgApp *app)
     g->menu.my_name = g->profile.display_name;
     g->menu.my_skin = &g->profile.skin;
     session_set_identity(&g->session, g->profile.display_name, g->profile.skin);
+#ifdef MG_TEST_AUTH
+    if (has_flag(app->argc, app->argv, "--test-fresh-guest")) {
+        net_sign_out(g->net); /* a device keeps one keychain: this is what a new install starts from */
+    }
+#endif
     net_account_start(g->net); /* guest sign-in + profile/stats, also for offline play */
     /* the front end comes first unless a test flag already chose to play */
     bool play_now = has_flag(app->argc, app->argv, "--offline") ||
@@ -774,6 +779,10 @@ static void leave_play(Game *g, MgApp *app)
     save_prefs(g);
 }
 
+#ifdef MG_TEST_AUTH
+static void test_sign_in(Game *g);
+#endif
+
 static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
 {
     switch (a) {
@@ -789,6 +798,10 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
     case MENU_GOOGLE:
         g->account_msg[0] = 0;
         g->session.account_error[0] = 0;
+#ifdef MG_TEST_AUTH
+        test_sign_in(g);
+        break;
+#endif
         g->google_busy = google_auth_start(g->google, app->window);
         break;
     case MENU_SIGN_OUT:
@@ -941,10 +954,15 @@ static void apply_tier(Game *g, MgApp *app)
 static SettingsAccount account_view(Game *g)
 {
     g->menu.is_guest = g->profile.guest;
+#ifdef MG_TEST_AUTH
+    const bool test_google = true;
+#else
+    const bool test_google = false;
+#endif
     SettingsAccount a = {g->profile.display_name,
                          g->profile.email,
                          g->profile.guest || !g->profile_loaded,
-                         g->net && google_auth_available(g->google),
+                         g->net && (test_google || google_auth_available(g->google)),
                          g->net && apple_auth_available(g->google),
                          g->prefs.auth_provider,
                          g->google_busy,
@@ -954,6 +972,17 @@ static SettingsAccount account_view(Game *g)
 
 /* Native sign-in sheet finished: hand the token to Supabase to link. */
 /* What the link flow settled: the provider, and after a merge everything cached for the old identity */
+#ifdef MG_TEST_AUTH
+/* The sign-in buttons, without a provider sheet: $MG_LT_EMAIL stands in for the identity */
+static void test_sign_in(Game *g)
+{
+    char cred[160];
+    SDL_snprintf(cred, sizeof(cred), "%s mgtest-password-1", SDL_getenv("MG_LT_EMAIL"));
+    g->google_busy = true;
+    account_link_begin(&g->link, "test", cred, "");
+}
+#endif
+
 static void follow_account_link(Game *g, MgApp *app)
 {
     AccountLink *l = &g->link;
@@ -1224,9 +1253,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         return;
     }
     poll_sign_in(g, app);
-    if (account_link_active(&g->link)) { /* first, so the screens underneath cannot take a touch */
-        ui_block(&g->ui, 0, 0, app->width_pt, app->height_pt);
-    }
+    g->ui.input_off = account_link_active(&g->link); /* the screens underneath take no touches */
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
                        g->profile.guest || !g->profile_loaded,
@@ -1255,15 +1282,21 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             frontend_back(f);
             save_prefs(g);
         }
+        g->ui.input_off = false;
         account_link_draw(&g->link, &g->ui, &g->heads, app, app->time);
         return;
     }
+    g->ui.input_off = false;
     account_link_draw(&g->link, &g->ui, &g->heads, app, app->time);
     if (f->clicked) {
         audio_click(g->audio);
     }
     switch (a) {
     case FE_SIGN_IN_GOOGLE:
+#ifdef MG_TEST_AUTH
+        test_sign_in(g);
+        break;
+#endif
         g->google_busy = google_auth_start(g->google, app->window);
         break;
     case FE_SIGN_IN_APPLE:
@@ -2286,7 +2319,6 @@ static void game_frame_inner(MgApp *app, float alpha)
             g->session.profile_new = false;
             g->profile = g->session.profile;
             g->profile_loaded = true;
-            g->google_busy = false;
             if (!g->profile.guest && SDL_strcmp(g->profile.display_name, "Player") == 0 && g->profile.google_name[0]) {
                 /* first link: take the first name from the Google account (2-16 safe chars) */
                 char name[NET_NAME_LEN];

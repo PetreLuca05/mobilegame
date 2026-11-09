@@ -4,8 +4,8 @@
 #include <string.h>
 
 #include <SDL3/SDL_timer.h>
-#ifdef MG_TEST_AUTH
-#include <SDL3/SDL.h>
+#if defined(MG_TEST_AUTH) && defined(NDEBUG)
+#error "MG_TEST_AUTH must never reach a release build"
 #endif
 
 #include "cJSON.h"
@@ -208,14 +208,9 @@ bool supa_auth_ready(const SupaAuth *a)
 void supa_auth_update(SupaAuth *a, struct mg_mgr *mgr, double now)
 {
 #ifdef MG_TEST_AUTH
-    if (a->state == AUTH_TEST_CONVERT) {
-        char path[320];
-        snprintf(path, sizeof(path), "%s/convert_done", SDL_getenv("MG_FT_SYNC"));
-        if (SDL_GetPathInfo(path, NULL)) {
-            SDL_RemovePath(path);
-            a->test_convert = true;
-            refresh(a, mgr); /* the new token says is_anonymous = false */
-        }
+    if (a->state == AUTH_TEST_CONVERT && now >= a->test_next) { /* a refreshed token says when the script has done it */
+        a->test_convert = true;
+        refresh(a, mgr);
     }
 #endif
     if (a->state == AUTH_OK && a->expires_at > 0.0 && now > a->expires_at - REFRESH_MARGIN_S) {
@@ -348,11 +343,9 @@ static void test_probe_done(SupaAuth *a, int status)
         a->link_outcome = -1;
         return;
     }
-    char path[320], text[160];
-    snprintf(path, sizeof(path), "%s/convert_request", SDL_getenv("MG_FT_SYNC"));
-    snprintf(text, sizeof(text), "%s %s", a->user_id, a->link_token);
-    SDL_SaveFile(path, text, strlen(text));
+    mg_log_info("link-test: convert_request %s", a->user_id); /* tools/link_test.sh reads the log */
     a->state = AUTH_TEST_CONVERT;
+    a->test_next = (double)SDL_GetTicks() / 1000.0 + 2.0;
 }
 #endif
 
@@ -369,9 +362,14 @@ static void request_done(void *user, int status, const char *body, size_t len)
         test_probe_done(a, status);
         return;
     }
-    if (a->test_convert && status == 200 && take_session(a, body, len)) {
+    if (a->test_convert) {
         a->test_convert = false;
-        link_linked(a);
+        if (status == 200 && take_session(a, body, len) && !a->is_anonymous) {
+            link_linked(a);
+        } else {
+            a->state = AUTH_TEST_CONVERT;
+            a->test_next = (double)SDL_GetTicks() / 1000.0 + 2.0;
+        }
         return;
     }
 #endif

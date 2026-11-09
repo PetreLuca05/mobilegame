@@ -58,7 +58,8 @@ typedef struct SupaAuth {
     int signin_outcome;     /* -> caller: 1 signed in to the existing account, -1 failed */
     char link_name[NET_NAME_LEN]; /* the provider's name for the identity (the dialog) */
 #ifdef MG_TEST_AUTH
-    bool test_convert;
+    bool test_convert;  /* the next refresh is the check */
+    double test_next;
 #endif
     bool account_changed;   /* -> caller: reload profile, rejoin with the new identity */
     char link_error[128];   /* -> caller: report and clear */
