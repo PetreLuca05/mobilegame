@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -212,7 +212,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   walls"; Developer -> "X-ray always". Toon outlines are pure black.
 - Name tags: 12 pt, white 0.6, black outline, 0.5 m over the head, only for
   avatars on the view floor; own tag off by default ("Show my name tag").
-- Prefs keys: `perf_hud` (default off; Pause -> Performance, Settings -> "Show performance stats", Developer -> "Performance stats"; the top-left text, saved at once), `show_own_name`
+- Prefs keys: `perf_hud` (default off; Pause -> Performance, Settings -> "Show performance stats", Developer -> "Performance stats"; the top-left text under the account chip, saved at once), `show_own_name`
   (the M5 camera keys are ignored and dropped on the next write).
 
 - Save slot v2: `yaw` is the camera yaw; v1 saves still load (player facing).
@@ -269,7 +269,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
   `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
 
-- In-game menu: pause button (top left, 34 pt frosted disc, two rounded bars), account chip (avatar + name, top right, also on the main menu, where tapping it opens Friends) / Back = centred pause card, max 420 pt (Resume, Settings,
+- In-game menu: pause button (top right in play, 34 pt frosted disc, two rounded bars), account chip (avatar + name; top left in play, top right on the main menu, where tapping it opens Friends) / Back = centred pause card, max 420 pt (Resume, Settings,
   Save & back to menu, Disconnect in a room); Settings' back arrow returns to
   it. Arrows are drawn with `ui_line` (the font has no left arrow).
 - `--autotest offline`: an unresolvable host behaves like airplane mode; count
@@ -356,6 +356,14 @@ Books are islands; a book's levels are hospitals on it (book 1 Kumar, 9 levels, 
 - `game/world_progress.c`: `world_level_completion(wp, book, level)` -> `{done, total}` (0/0 until content packs exist; test builds, `MG_PROF`, take `--debug level-progress <level> <percent>` and the pause card's "+25 %"). Island = mean of the hospitals' percentages, "—" while every one is 0/0. Per book `{last_level, ambulance_at, updated_ms}` in `prefs.json` `world`; `book_state` on Supabase (owner-only RLS, `book_state_set(p_book, p_level, p_at_ms)`, the newer choice wins, merged in `merge_ticket_redeem`), read with the profile, written on Join / Continue.
 - Menu: New Game (overwrite confirm, clean slot, ambulance on the start pad, island in BOOKS; a tap drives to the last played hospital) / Maps (`menurow4`, tag "Kumar 23%": ARRIVED on the last played one) / Locker / Settings, big Continue (straight into the hospital: level, floor, position; the room's first spawn no longer moves a Continue). Pause card: "Map" (`p_map`, saves, back to the menu, the island). Join: same level as the save -> Continue, else the level from its entrance (save totals carry on); in a lobby `map_id` = the level index. Save v5 adds `book_id`, `level_id` (older saves load as kumar / gastro).
 - Desktop: `--frontend books|map`. Tests: `--autotest worldmap` (steps in `game/autotest_world.h`; screenshots in `docs/autotest/worldmap/`); `save`, `offline` and the friends scripts drive the island after New Game. SQL: `supabase/tests/world_test.sql` (`ALL WORLD SQL TESTS PASSED`). Perf scenarios `worldmap` (overview), `worldmap_travel` (driving round the island), `island` (parked, card up).
+
+## Islands and voyages (WORLD-2)
+
+- `books.json` lists every book (Kumar, Lawrance) plus the shared `ambulance` and `vehicles` meshes. Each `<book>.island.json` has `id`, `book_number`, `world_pos`; its layout is local to that position. Each island has its own palette in its mesh, its own props, ambulance (shared mesh), last hospital, parked spot and completion.
+- `meshgen` v2: `i <group> x y z axis <x|y|z>` = a spinning part and its axis (instances carry a kind: point, box, spinner). `vehicles.mgmesh`: plane, helicopter, boat, submarine bodies and their spinners.
+- `game/worldmap.c`: `WorldMap.isles[]`, `cur`, `wm_cur()`. An island is drawn only when its bounds are in the frustum. BOOKS has the previous / next island's button (`wm_isl_prev`, `wm_isl_next`, arrow keys; a tap on the other island works too); the top bar's `wm_islands` returns to BOOKS. `VOYAGE`: no input; a cubic Bezier between coast points (the farthest terrain vertex above y 0.5 within 10 deg of the other island, x 0.965 air / 1.2 sea), bowed 70 / 110 to a random side; per-vehicle progress, height and attitude profiles, spinners, a wake behind the boat, the submarine under the opaque sea with a periscope wake and a surface shadow; camera A overview -> follow -> B overview at ease 2.2/s. Ends in BOOKS on the destination.
+- `world_next_ride` (`game/world_progress.c`): a bag of the four in a random order on the game's xorshift stream (`npc_rand`), redrawn if it starts with the last trip's vehicle or is a rotation of either of the two previous bags. Stored in `prefs.json` `rides` (and a copy in save v6). `--debug ride <plane|helicopter|boat|submarine>` forces the next one. `prefs.json` `last_book`: Maps opens that island. In a lobby `map_id` = book * 64 + level.
+- Tests: `tools/worldmap2_test.sh` (`--autotest worldmap2`, then `--autotest worldmap2 relaunch`; pictures `worldmap2_<vehicle>`), perf scenario `worldmap_voyage` (by plane back and forth).
 
 ## Networking
 
@@ -479,7 +487,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
-- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `worldmap`, `worldmap_travel`, `island`) writes `perf_SCENARIO.json` to
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.
