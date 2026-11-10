@@ -345,7 +345,7 @@ static bool path0(const LibNav *n, HMM_Vec2 from, HMM_Vec2 to, LibPath *out)
     while (i < np - 1) {
         int j = np - 1;
         while (j > i + 1 && !lib_nav_los(n, S->pts[i], S->pts[j])) j--;
-        if (out->n >= LIB_PATH_MAX) return false;
+        if (out->n >= LIB_NAV_PATH_MAX) return false;
         out->pts[out->n++] = S->pts[j];
         i = j;
     }

@@ -46,6 +46,9 @@ typedef struct LibraryTest {
     bool finger_down, fresh, second; /* second: the timed Maps / Back, no pictures */
     bool dissolve_seen;
     float dissolve_first;
+    /* every NPC, every menu frame: on a walkable cell, moving or posted as its route says */
+    int npc_frames, npc_bad;
+    char npc_why[160];
     char why[200];
 } LibraryTest;
 

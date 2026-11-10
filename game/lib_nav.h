@@ -51,9 +51,9 @@ typedef struct LibNav {
     LibNavScratch *scr; /* = &scratch; writable through a const LibNav * */
 } LibNav;
 
-#define LIB_PATH_MAX 48
+#define LIB_NAV_PATH_MAX 48
 typedef struct LibPath {
-    HMM_Vec2 pts[LIB_PATH_MAX]; /* waypoints after `from` (the prototype's path array) */
+    HMM_Vec2 pts[LIB_NAV_PATH_MAX]; /* waypoints after `from` (the prototype's path array) */
     int n;
     bool last_straight; /* the goal is in a blocked cell: the final stretch leaves the grid */
 } LibPath;

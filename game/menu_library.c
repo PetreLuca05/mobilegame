@@ -219,6 +219,7 @@ static void npcs_reset(MenuLibrary *L)
         n->yaw_deg = d->seated ? d->seat_yaw_deg : d->route_n && d->route[0].has_face ? d->route[0].face_deg : 0.0f;
         n->cart_yaw_deg = n->yaw_deg;
         n->cart = n->pos; /* placed ahead on the first step */
+        n->path.n = 0, n->pi = 0;
         SDL_zero(n->anim);
         lib_study_init(&n->study, &L->sc, 101u + (uint32_t)i);
         if (d->seated && d->read_s[1] > 0.0f) {
@@ -234,6 +235,15 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->scale = 1.0f;
     if (!load_scene(&L->sc)) {
         return false;
+    }
+    { /* the walk grid (kept: it lives as long as the library) */
+        const MgAsset *a = mg_asset_find("assets/menu/library.scene.json");
+        cJSON *root = cJSON_ParseWithLength((const char *)a->data, a->size);
+        L->nav = ARENA_PUSH(scratch, LibNav, 1);
+        if (!lib_nav_bake(L->nav, root)) {
+            L->nav = NULL;
+        }
+        cJSON_Delete(root);
     }
     const size_t mark = arena_mark(scratch);
     Mgmb mb;
@@ -750,24 +760,41 @@ static void npc_step(MenuLibrary *L, int i, float dt)
             n->yaw_deg = st->face_deg;
         }
         n->t += dt;
-        if (st->wait_s >= 0.0f && n->t >= st->wait_s && d->speed > 0.0f) {
-            n->waiting = false;
-            n->step = (n->step + 1) % d->route_n;
-            n->t = 0.0f;
+        if (!(st->wait_s >= 0.0f && n->t >= st->wait_s && d->speed > 0.0f)) {
+            return;
         }
-        return;
-    }
-    const HMM_Vec2 to = HMM_SubV2(st->p, n->pos);
-    const float dist = HMM_LenV2(to), stride = d->speed * dt;
-    if (dist <= stride) {
-        n->pos = st->p;
-        n->waiting = true;
+        n->waiting = false; /* the wait is over: on to the next stop, walking from this frame */
+        n->step = (n->step + 1) % d->route_n;
         n->t = 0.0f;
-    } else {
-        const HMM_Vec2 dir = HMM_DivV2F(to, dist);
-        n->pos = HMM_AddV2(n->pos, HMM_MulV2F(dir, stride));
-        n->vel = HMM_MulV2F(dir, d->speed);
-        n->yaw_deg = yaw_of(dir);
+        n->path.n = 0;
+        st = &d->route[n->step];
+    }
+    if (n->path.n == 0) { /* a new leg: A* on the walk grid, string-pulled; straight if there is no grid */
+        if (!L->nav || !lib_nav_path(L->nav, n->pos, st->p, NULL, 0, &n->path) || n->path.n == 0) {
+            n->path.pts[0] = st->p, n->path.n = 1;
+        }
+        n->pi = 0;
+    }
+    float stride = d->speed * dt;
+    for (;;) { /* walk the stride along the waypoints; corners carry the rest of it */
+        const HMM_Vec2 to = HMM_SubV2(n->path.pts[n->pi], n->pos);
+        const float dist = HMM_LenV2(to);
+        if (dist > stride) {
+            const HMM_Vec2 dir = HMM_DivV2F(to, dist);
+            n->pos = HMM_AddV2(n->pos, HMM_MulV2F(dir, stride));
+            n->vel = HMM_MulV2F(dir, d->speed);
+            n->yaw_deg = yaw_of(dir);
+            break;
+        }
+        if (n->pi + 1 >= n->path.n) { /* the post */
+            n->pos = st->p;
+            n->waiting = true;
+            n->t = 0.0f;
+            n->path.n = 0;
+            break;
+        }
+        n->pos = n->path.pts[n->pi++];
+        stride -= dist;
     }
     if (d->push_cart && !(n->waiting && st->act == LIB_ACT_BROWSE)) { /* the cart rides 0.75 m ahead while pushed */
         const float yw = HMM_AngleDeg(n->yaw_deg);

@@ -10,6 +10,7 @@
 #include "lib_study.h"
 #include "lobby.h"
 #include "lib_move.h"
+#include "lib_nav.h"
 #include "platform/app.h"
 
 #define LIB_SEATS 4
@@ -49,6 +50,8 @@ typedef struct LibNpc {
     float yaw_deg, cart_yaw_deg;
     AvatarAnim anim;
     LibStudy study;
+    LibPath path; /* this leg on the hall's walk grid (n 0: not searched yet) */
+    int pi;       /* the waypoint walked to */
 } LibNpc;
 
 typedef struct LibSeat {
@@ -146,6 +149,7 @@ typedef struct MenuLibrary {
     AvatarAnim hero_anim;
     LibMember seat[LIB_SEATS];
     LibNpc npc[LIB_NPCS];
+    LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
     bool creator;      /* the Locker is open */
     float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
