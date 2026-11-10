@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|stick|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -156,6 +156,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   elevator. Stick / WASD: up = screen up = north.
   These are fixed: no Settings sliders; old `td_*` pref keys are ignored and dropped on the next write.
 - Touch zones: left 45 % = floating stick (60 pt radius, scaled up on iPad; dead zone pref `stick_dead_zone`, default 30 pt); the rest is UI (and marker taps).
+- Stick look (UI-1b, `engine/ui/stick_view.c`, docs/UI.md): drawn only; the input in `touch_controls.c` is pinned by `tests/stick_golden.txt` (ctest). Never change `touch_controls_update` without re-recording on purpose (`mg_tests --record-stick tests/stick_golden.txt`) and saying so. Idle stick in the real safe rect. `--autotest stick`.
 - `-DMG_CAMERA=thirdperson` builds the M1-M4 orbit camera (`camera_tp.c`,
   wall sphere-cast, right-half camera drag) for engine tests; not shipped.
 - `--autotest stickdir --spawn -12,0.1,10`: stick up/right/down/left walk

@@ -116,3 +116,11 @@ Reduced (Settings -> Animații interfață -> Reduse, or iOS Reduce Motion): no 
 ### Tests and numbers
 
 `--autotest ui` (`game/autotest_ui.h`): test screen + every real screen; screenshots `ui_*` in `docs/autotest/ui/`. Perf scenario `ui_juice` (menu + lobby panel, a toast and a T3 reward every 2 s); the gate checks UI update (`ui.anim` + `ui.fx`) <= 2 x 0.05 ms, UI submit (`render.ui`) <= 2 x 0.15 ms and at most 3 UI draws on every scenario.
+
+## The stick (UI-1b)
+
+`engine/ui/stick_view.c` draws the movement stick; `engine/ui/touch_controls.c` still owns the input and is pinned by `tests/stick_golden.txt` (ctest feeds a scripted path to `touch_controls_update` for the iPhone, iPad and both dead-zone ends and compares every tick). The view only reads `TouchControls`.
+
+- Geometry from the R = 75 design scaled by R / 75 (R = 60 pt, x1.4 max on iPad): base (white 60 %, 3 pt white border, ink 18 % lip 6 pt down), dashed ring at 3/4 R, centre dot, knob 68 (primary, primary_lip 7 pt, 4 pt highlight). Six shape instances (base and border are one: `stroke < 0` = filled with a border in colour 2); 12 for the 200 ms crossfade after a release.
+- States: idle at the rest spot (bottom-left of the real safe rect, 55 %); touched (100 % in 80 ms, pop 0.8 -> 1.05 -> 1 in 260 ms, knob squash 90 ms blending into the stretch); dragging (no smoothing; stretch 1 + 0.12 k along, 1 - 0.08 k across); full speed (ring solid accent + 16 % fill in 200 ms, `UI_SND_TICK` + light haptic, re-armed below 0.70 R, at most every 400 ms); released (input zero on the release tick; the drawn knob springs 1 -> -0.2 -> 0.08 -> -0.02 -> 0 over 420 ms; the stick fades out in place over the spring's last 200 ms while the idle one fades in at the rest spot); hidden (menu, pause, friends, lift panel: 150 ms); autonav (idle, the dot turns accent). Reduced: no pop, squash, stretch or spring; home in 100 ms linear.
+- Constants: `k_ui.stick_*`. Tests: ctest (golden), `--autotest stick`, `stickdir`, `layout`; pictures in `docs/autotest/stick/`.

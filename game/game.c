@@ -142,6 +142,7 @@ typedef struct Game {
     char status[96];
     Autotest autotest;
     UiTest uitest; /* --autotest ui */
+    bool sys_reduce_motion, sys_reduce_logged;
     PerfRun perf;
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
@@ -3002,7 +3003,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
     {
         PROF_SCOPE("ui.anim");
-        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion() || g->uitest.reduced);
+        const bool sys_reduce = app_reduce_motion();
+        if (sys_reduce != g->sys_reduce_motion || !g->sys_reduce_logged) { /* logged for the on-device check */
+            g->sys_reduce_motion = sys_reduce, g->sys_reduce_logged = true;
+            mg_log_info("ui: system Reduce Motion %s", sys_reduce ? "on" : "off");
+        }
+        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || sys_reduce || g->uitest.reduced);
     }
     g->ui_fx.haptics = s->haptics;
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
