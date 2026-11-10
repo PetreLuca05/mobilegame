@@ -132,6 +132,7 @@ static void remember(Ui *ui, const char *label, float x, float y, float w, float
     ui->seen[i].w = w;
     ui->seen[i].h = h;
     ui->seen[i].rect_only = false;
+    ui->seen[i].hclass = HC_NONE;
 }
 
 void ui_remember(Ui *ui, const char *id, float x, float y, float w, float h)
@@ -193,6 +194,9 @@ bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, boo
     const int hc = ui->hclass;
     ui->hclass = HC_LINK; /* the default for the next one: links, rows, hit areas */
     remember(ui, label, x, y, w, h);
+    if (ui->seen_count > 0 && ui->seen[ui->seen_count - 1].key == id) {
+        ui->seen[ui->seen_count - 1].hclass = (int8_t)hc;
+    }
     int t = claim(ui, x, y, w, h);
     if (t >= 0) {
         ui_haptic(k_haptic_class[hc].down); /* the one touch-down haptic call for every widget kind */

@@ -2687,6 +2687,7 @@ void game_frame(MgApp *app, float alpha)
         ui_fx_update_draw(&g->ui_fx, app->gfx, app->width_pt, app->height_pt); /* over every screen */
     }
     head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
+    ui_haptics_flush(); /* this frame's strongest haptic, on the frame of its input */
 }
 
 static void game_frame_inner(MgApp *app, float alpha)
@@ -2867,6 +2868,10 @@ static void game_frame_inner(MgApp *app, float alpha)
         world_debug_progress(&g->prefs.world, ato.debug_level, ato.debug_pct);
         maps_tag_update(g);
         mg_log_info("world: test progress %s = %d%%", ato.debug_level, ato.debug_pct);
+    }
+    if (ato.set_haptics > 0) {
+        g->settings.haptics = ato.set_haptics - 1;
+        ui_haptic_set_level((HapticLevel)g->settings.haptics);
     }
     if (ato.add_marker_left && g->playing) {
         const HMM_Vec3 at = HMM_AddV3(g->player.kin.pos, HMM_V3(-5.0f, 0.0f, 0.0f));

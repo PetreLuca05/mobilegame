@@ -35,7 +35,8 @@ typedef struct UiTest {
     uint64_t fired_frame[UT_BUTTONS], up_frame;
     double t_down[UT_BUTTONS], t_up[UT_BUTTONS];
     bool was_active[UT_BUTTONS];
-    float bx[UT_BUTTONS], by[UT_BUTTONS]; /* centres (the disabled one is no target, so ui_find has no rect) */
+    float bx[UT_BUTTONS], by[UT_BUTTONS];
+    uint64_t down_fi[UT_BUTTONS], up_fi[UT_BUTTONS]; /* app frames of the last press and action (haptics test) */ /* centres (the disabled one is no target, so ui_find has no rect) */
     bool toggle;
     int tab;
     int counter, counter_shown;

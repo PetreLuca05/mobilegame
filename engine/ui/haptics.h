@@ -1,8 +1,9 @@
-/* HAPTIC-1: the only way the game plays a haptic. ui_haptic(HAPTIC_*) -> the limiter (one start
- * per 50 ms; inside the window only something stronger than what started it gets through; a frame's
- * requests keep the strongest) -> the level (Oprit / Fin x0.6 without R1 / Complet) -> the recorder
- * (256 entries, always) and the hardware (iPhone Core Haptics; a silent no-op without a Taptic Engine).
- * Nothing outside this file and platform/ios/haptics.m touches haptic hardware. */
+/* HAPTIC-1: the only way the game plays a haptic. ui_haptic(HAPTIC_*) -> the limiter (one start per
+ * 50 ms: a frame's requests keep the strongest, which starts at the end of that frame; one inside the
+ * window of the last start is dropped; slider steps have their own 20-a-second channel) -> the level
+ * (Oprit / Fin x0.6 without R1 / Complet) -> the recorder (256 entries, always) and the hardware
+ * (iPhone Core Haptics; a silent no-op without a Taptic Engine). Nothing outside this file and
+ * platform/ios/haptics.m touches haptic hardware. */
 #ifndef MG_UI_HAPTICS_H
 #define MG_UI_HAPTICS_H
 
@@ -25,6 +26,7 @@ void ui_haptics_init(void);                     /* builds the players off the fi
 void ui_haptics_frame(uint64_t frame, double now); /* once per frame, before the UI */
 void ui_haptics_active(bool active);            /* foreground / background */
 void ui_haptic(HapticId id);
+void ui_haptics_flush(void);                    /* end of the frame: the frame's strongest request starts */
 void ui_haptic_scaled(HapticId id, float k);   /* rising sequences: intensity x k */
 void ui_haptic_set_level(HapticLevel level);
 HapticLevel ui_haptic_level(void);

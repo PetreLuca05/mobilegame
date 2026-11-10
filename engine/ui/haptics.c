@@ -2,7 +2,7 @@
 
 #include "platform/haptics.h"
 
-#define WINDOW_S 0.05 /* at most one start per 50 ms */
+#define WINDOW_S 0.048 /* at most one start per 50 ms (2 ms slack: three 60 Hz frames are 50 ms, give or take rounding) */
 
 /* The haptic engine is one per device, like the audio device: this module keeps its state. */
 static struct {
@@ -11,11 +11,12 @@ static struct {
     bool active;
     uint64_t frame;
     double now;
-    double last_start;
-    float last_strength; /* of the start that opened the window */
+    double last_start, last_step;
+    int pending;         /* this frame's strongest request, HAPTIC_NONE if none */
+    float pending_k, pending_strength;
     HapticRecord ring[HAPTIC_RECORDS];
     uint64_t total;
-} H = {HAPTIC_LEVEL_FULL, -1, true, 0, 0.0, -1e9, 0.0f, {{0}}, 0};
+} H = {HAPTIC_LEVEL_FULL, -1, true, 0, 0.0, -1e9, -1e9, HAPTIC_NONE, 1.0f, 0.0f, {{0}}, 0};
 
 static float peak(const HapticEntry *e, int *at)
 {
@@ -44,6 +45,20 @@ void ui_haptics_active(bool active)
     haptic_hw_active(active);
 }
 
+/* record it and play it (the level scales the intensity) */
+static void start(HapticId id, float k)
+{
+    const HapticEntry *e = &k_haptics[id];
+    const float level = H.level == HAPTIC_LEVEL_FINE ? 0.6f : 1.0f;
+    int at = 0;
+    const float strength = peak(e, &at) * k * level;
+    H.ring[H.total % HAPTIC_RECORDS] = (HapticRecord){(int16_t)id, strength, e->ev[at].sharpness, H.frame};
+    H.total++;
+    if (ui_haptic_supported()) {
+        haptic_hw_play((int)id, k * level);
+    }
+}
+
 void ui_haptic(HapticId id) { ui_haptic_scaled(id, 1.0f); }
 
 void ui_haptic_scaled(HapticId id, float k)
@@ -55,22 +70,30 @@ void ui_haptic_scaled(HapticId id, float k)
     if (H.level == HAPTIC_LEVEL_FINE && e->rank <= 1) {
         return; /* Fin: nothing at R1 or below */
     }
-    const float level = H.level == HAPTIC_LEVEL_FINE ? 0.6f : 1.0f;
     int at = 0;
-    const float strength = peak(e, &at) * k * level;
-    /* one start per 50 ms; inside the window only something stronger than what opened it */
-    if (H.now - H.last_start < WINDOW_S && strength <= H.last_strength) {
+    const float strength = peak(e, &at) * k;
+    if (id == HAPTIC_SLIDER_STEP) { /* its own channel, at most 20 a second, so a step never blocks the end bump */
+        if (H.now - H.last_step >= WINDOW_S) {
+            H.last_step = H.now;
+            start(id, k);
+        }
         return;
     }
-    if (H.now - H.last_start >= WINDOW_S) {
+    if (H.pending == HAPTIC_NONE || strength > H.pending_strength) { /* a frame's requests: the strongest plays */
+        H.pending = id, H.pending_k = k, H.pending_strength = strength;
+    }
+}
+
+void ui_haptics_flush(void)
+{
+    if (H.pending == HAPTIC_NONE) {
+        return;
+    }
+    if (H.now - H.last_start >= WINDOW_S) { /* one start per 50 ms; inside the window it is dropped */
         H.last_start = H.now;
+        start((HapticId)H.pending, H.pending_k);
     }
-    H.last_strength = strength;
-    H.ring[H.total % HAPTIC_RECORDS] = (HapticRecord){(int16_t)id, strength, e->ev[at].sharpness, H.frame};
-    H.total++;
-    if (ui_haptic_supported()) {
-        haptic_hw_play((int)id, k * level);
-    }
+    H.pending = HAPTIC_NONE;
 }
 
 void ui_haptic_set_level(HapticLevel level) { H.level = level; }

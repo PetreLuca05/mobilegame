@@ -296,6 +296,7 @@ set(MG_GAME_SOURCES
   game/autotest_world.c
   game/autotest_ui.c
   game/autotest_stick.c
+  game/autotest_haptics.c
   game/lobby.c
   game/frontend.c
   game/creator.c

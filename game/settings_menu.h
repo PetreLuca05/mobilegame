@@ -61,6 +61,9 @@ typedef struct SettingsMenu {
     UiScroll players_scroll, card_scroll;
     int tab; /* 0 game, 1 skin */
     bool dev_open;
+    bool lab_open;  /* HAPTIC-1 Haptic lab (debug builds): every table entry, tap to play */
+    int lab_tab;
+    UiScroll lab_scroll;
     UiScroll game_scroll, skin_scroll, rows[3];
     char name[NET_NAME_LEN];
     bool editing_name; /* keep the on-screen keyboard up while true */

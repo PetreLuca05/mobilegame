@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   haptics     HAPTIC-1: coverage, order, same frame, limiter, setting, sequences, lifecycle (autotest_haptics.h)
  *   stick       UI-1b: release spring, full-speed ticks, marker taps, reduced motion, safe rect (autotest_stick.h)
  *   ui          UI-1: press / release / tiers / reduced motion / targets / screenshots (autotest_ui.h)
  *   worldmap2   WORLD-2: two islands, the four vehicles, the shuffle rule (tools/worldmap2_test.sh adds the relaunch)
@@ -33,6 +34,7 @@
 
 #include <SDL3/SDL.h>
 #include "autotest_friends.h"
+#include "autotest_haptics.h"
 #include "autotest_stick.h"
 #include "autotest_ui.h"
 #include "autotest_world.h"
@@ -123,6 +125,7 @@ typedef struct AutotestOut {
     char last_book[24];    /* worldmap2: make this the island played last */
     bool save_prefs;       /* worldmap2: write prefs.json now (the ride bag) */
     bool add_marker_left;  /* stick: an objective marker 5 m west of the player */
+    int set_haptics;       /* haptics: 1 + the Vibrații level to set, 0 none */
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -161,6 +164,7 @@ typedef struct Autotest {
     char wt_phase[16]; /* worldmap2: "" or "relaunch" */
     WtTap map_tap; /* save / offline: through the island after New Game */
     StickTest st;
+    HapticTest ht;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

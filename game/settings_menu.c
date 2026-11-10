@@ -142,6 +142,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     }
     y += 56.0f;
     if (m->dev_open) {
+#ifndef NDEBUG
+        if (ui_button(ui, "Haptic lab##hlab", x, y, cw, k_ui.target_min, false)) {
+            m->lab_open = true;
+        }
+        y += 56.0f;
+#endif
         ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
         ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->show_triggers);
         y += wide ? 52.0f : 104.0f;
@@ -441,10 +447,52 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     return action;
 }
 
+#ifndef NDEBUG
+/* HAPTIC-1 Haptic lab: every entry by name, rank and sharpness, a tap plays it; the second tab plays the ranks
+ * and the composites. How the feel is reviewed on the iPhone. */
+static void haptic_lab(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
+{
+    const float w = mg_minf(w_pt - 40.0f, 620.0f), h = h_pt - 40.0f;
+    float x, y;
+    ui_modal(ui, "hlab", w, h, &x, &y);
+    ui_text(ui, TEXT_FACE_DISPLAY, x + 20.0f, y + 14.0f, 22.0f, ui_rgba(k_ui.ink), "Haptic lab");
+    if (ui_icon_button(ui, "hlab_close", UI_ICON_CLOSE, x + w - 64.0f, y + 10.0f, k_ui.icon_button, UI_V_SECONDARY)) {
+        m->lab_open = false;
+    }
+    static const char *const tabs[2] = {"Entries", "Ranks + patterns"};
+    ui_tabs(ui, "hlab_tab", tabs, 2, &m->lab_tab, x + 20.0f, y + 72.0f, w - 40.0f, k_ui.target_min);
+    static const HapticId demo[] = {HAPTIC_DEMO_R1, HAPTIC_DEMO_R2, HAPTIC_DEMO_R3, HAPTIC_DEMO_R4, HAPTIC_DEMO_R5, HAPTIC_CORRECT,
+                                    HAPTIC_WRONG, HAPTIC_WARNING_MODAL, HAPTIC_NOTICE, HAPTIC_MAIN, HAPTIC_COMPLETE};
+    const int count = m->lab_tab == 0 ? HAPTIC_COUNT : (int)(sizeof(demo) / sizeof(demo[0]));
+    const float top = y + 128.0f, view = h - 140.0f, row = 50.0f;
+    const float off = ui_scroll_begin(ui, &m->lab_scroll, x + 12.0f, top, w - 24.0f, view, false);
+    for (int i = 0; i < count; i++) {
+        const HapticId id = m->lab_tab == 0 ? (HapticId)i : demo[i];
+        const HapticEntry *e = &k_haptics[id];
+        const float ry = top + (float)i * (row + 6.0f) - off;
+        char rid[24], info[64];
+        SDL_snprintf(rid, sizeof(rid), "hlab_%d", (int)id);
+        ui->hclass = HC_NONE; /* the row plays only the entry under test */
+        if (ui_row(ui, rid, x + 20.0f, ry, w - 40.0f, row, true)) {
+            ui_haptic(id);
+        }
+        ui_text(ui, TEXT_FACE_BOLD, x + 36.0f, ry + 14.0f, k_ui.t_body, ui_rgba(k_ui.ink), e->name);
+        SDL_snprintf(info, sizeof(info), "R%d  %.2f / %.1f  x%d", e->rank, (double)e->ev[0].intensity, (double)e->ev[0].sharpness, e->n);
+        ui_text(ui, TEXT_FACE_BODY, x + w - 200.0f, ry + 15.0f, k_ui.t_small, ui_rgba(k_ui.ink_soft), info);
+    }
+    ui_scroll_end(ui, &m->lab_scroll, view, (float)count * (row + 6.0f));
+    ui_modal_end(ui);
+}
+#endif
+
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
                          float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
                          const char *status)
 {
+    const bool lab = m->lab_open && m->open && !m->card;
+    if (lab) {
+        ui->input_off = true; /* the page under the lab takes no touches */
+    }
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
@@ -516,5 +564,11 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     if (!m->open) {
         m->editing_name = false;
     }
+#ifndef NDEBUG
+    if (lab) {
+        ui->input_off = false;
+        haptic_lab(m, ui, w_pt, h_pt);
+    }
+#endif
     return action;
 }

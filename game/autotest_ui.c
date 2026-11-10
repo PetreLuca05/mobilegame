@@ -46,12 +46,14 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
         const bool active = ui->active_id == ui_key(k_button_id[b]) && ui->press_inside;
         if (active && !t->was_active[b]) {
             t->t_down[b] = now;
+            t->down_fi[b] = app->frame_index;
         }
         t->was_active[b] = active;
         if (hit) {
             t->fired[b]++;
             t->fired_frame[b] = t->frame;
             t->t_up[b] = now;
+            t->up_fi[b] = app->frame_index;
         }
         x += (b == 2 ? size : bw) + gap;
     }
@@ -63,12 +65,14 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
     const float y3 = y2 + 44.0f + 24.0f, aw = (r - l - gap) * 0.5f;
     if (ui_answer(ui, "ut_ans0", "Corect", l, y3, aw, (UiAnswer)t->answer[0])) {
         t->answer[0] = UI_ANS_OK, t->answer[1] = UI_ANS_DIM;
+        ui_haptic(HAPTIC_CORRECT);
         ui_pop(ui, "ut_ans0");
         ui_tier_at(ui, "ut_ans0", UI_T2);
     }
     if (ui_answer(ui, "ut_ans1", "Greșit", l + aw + gap, y3, aw, (UiAnswer)t->answer[1]) || t->cmd_wrong) {
         t->cmd_wrong = false;
         t->answer[1] = UI_ANS_BAD, t->answer[0] = UI_ANS_REVEAL;
+        ui_haptic(HAPTIC_WRONG);
         ui_shake(ui, "ut_ans1", 10.0f);
         ui_tier_at(ui, "ut_ans1", UI_T2_FAIL);
     }
