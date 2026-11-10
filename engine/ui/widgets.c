@@ -302,6 +302,8 @@ float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float 
     return 3.0f * (key_h + gap);
 }
 
+#define UI_SCROLL_OVERDRAW 12.0f /* pt drawn past a scroll viewport's ends: the release stretch (1.12 from the bottom) is ~7 pt */
+
 float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, bool horizontal)
 {
     if (s->touch > 0 && !ui->in->touches[s->touch - 1].active) {
@@ -330,7 +332,14 @@ float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, b
     }
     float max_off = mg_maxf(s->content - (horizontal ? w : h), 0.0f);
     s->offset = mg_clampf(s->offset, 0.0f, max_off);
-    gfx_ui_clip(ui->gfx, x, y, w, h);
+    /* What is drawn: no clip across the scroll axis (nothing scrolls out that way) and a margin along it,
+     * so press squash, lips, breathe, enter and stagger never cut a widget. Touches keep the exact viewport. */
+    const float big = 1e5f, pad = UI_SCROLL_OVERDRAW;
+    if (horizontal) {
+        gfx_ui_clip(ui->gfx, x - pad, -big, w + 2.0f * pad, 2.0f * big);
+    } else {
+        gfx_ui_clip(ui->gfx, -big, y - pad, 2.0f * big, h + 2.0f * pad);
+    }
     ui->clip_on = true;
     ui->clip[0] = x;
     ui->clip[1] = y;
