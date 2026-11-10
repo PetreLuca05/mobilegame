@@ -75,6 +75,8 @@
 #include "ui/hud.h"
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
+#include "ui/tilt.h"
+#include "platform/motion.h"
 #include "ui/touch_controls.h"
 #include "ui/ui_widgets.h"
 #include "world_data.h"
@@ -143,6 +145,10 @@ typedef struct Game {
     char status[96];
     Autotest autotest;
     UiTest uitest; /* --autotest ui */
+    Tilt tilt;      /* TILT-1: device tilt for the UI (visual only) */
+    float tilt_s;   /* this tick's strength S */
+    bool motion_on, tilt_debug, test_low_power;
+    float tilt_debug_x, tilt_debug_y;
     bool sys_reduce_motion, sys_reduce_logged;
     bool pause_was_open;
     PerfRun perf;
@@ -447,6 +453,13 @@ bool game_init(MgApp *app)
             world_debug_progress(&g->prefs.world, app->argv[i + 2], SDL_atoi(app->argv[i + 3]));
         }
     }
+    tilt_init(&g->tilt);
+    for (int i = 1; i + 3 < app->argc; i++) { /* --debug tilt <tx> <ty>: the tilt target, no sensor */
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "tilt") == 0) {
+            g->tilt_debug = true;
+            g->tilt_debug_x = (float)SDL_atof(app->argv[i + 2]), g->tilt_debug_y = (float)SDL_atof(app->argv[i + 3]);
+        }
+    }
     for (int i = 1; i + 2 < app->argc; i++) { /* --debug ride <plane|helicopter|boat|submarine>: the next trip */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "ride") == 0) {
             g->prefs.world.rides.forced = world_ride_from_name(app->argv[i + 2]);
@@ -663,9 +676,41 @@ bool game_init(MgApp *app)
 
 static void npc_step(Game *g, MgApp *app);
 
+/* TILT-1, on the fixed tick: the strength, the sensor only while it is needed, the spring. */
+static void tilt_step(Game *g, MgApp *app)
+{
+    const bool reduced = g->settings.ui_motion == 1 || app_reduce_motion() || g->uitest.reduced;
+    g->tilt_s = tilt_strength(g->settings.ui_tilt, reduced, motion_low_power() || g->test_low_power);
+    const bool want = g->tilt_s > 0.0f && !app->background;
+    if (want != g->motion_on) { /* 60 Hz only while active and S > 0; activation snaps the neutral pose */
+        g->motion_on = want;
+        if (want) {
+            motion_start();
+        } else {
+            motion_stop();
+        }
+        g->tilt.have_neutral = false;
+    }
+    float sx = 0.0f, sy = 0.0f, gx, gy, gz;
+    const bool have = g->motion_on && motion_gravity(&gx, &gy, &gz);
+    if (have) {
+        tilt_screen_gravity(gx, gy, gz, SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay()) == SDL_ORIENTATION_LANDSCAPE_FLIPPED, &sx, &sy);
+    }
+    /* desktop and tests: --debug tilt, or the mouse while T is held */
+    g->tilt.forced = g->tilt_debug || app->input.key_down[SDL_SCANCODE_T];
+    if (app->input.key_down[SDL_SCANCODE_T] && app->input.mouse_seen) {
+        g->tilt.target_x = mg_clampf((app->input.mouse_x - app->width_pt * 0.5f) / (app->width_pt * 0.5f), -1.0f, 1.0f);
+        g->tilt.target_y = mg_clampf((app->input.mouse_y - app->height_pt * 0.5f) / (app->height_pt * 0.5f), -1.0f, 1.0f);
+    } else if (g->tilt_debug) {
+        g->tilt.target_x = g->tilt_debug_x, g->tilt.target_y = g->tilt_debug_y;
+    }
+    tilt_tick(&g->tilt, MG_TICK_DT, have, sx, sy, app->time);
+}
+
 void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
+    tilt_step(g, app);
     if (!g->playing) {
         if (g->fe.state == FE_MAP) {
             worldmap_tick(&g->wm, MG_TICK_DT);
@@ -4193,6 +4238,8 @@ void game_pause(MgApp *app)
     lobby_background(&g->lobby);
     net_set_background(g->net, true); /* leave the room: others see us go at once */
     ui_haptics_active(false); /* the engine stops; nothing plays in the background */
+    motion_stop(); /* tilt: the sensor stops; tilt_step restarts it and snaps the neutral pose */
+    g->motion_on = false;
 }
 
 void game_resume(MgApp *app)

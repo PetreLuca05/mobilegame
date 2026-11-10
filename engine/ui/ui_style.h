@@ -58,6 +58,13 @@ typedef struct UiStyleTable {
     float stick_idle_alpha, stick_in_s, stick_pop_s, stick_pop_from, stick_pop_peak, stick_stretch_along, stick_stretch_across;
     float stick_rearm_at, stick_tick_gap_s, stick_release_s, stick_fade_s, stick_hide_s, stick_reduced_s;
     float stick_rel_t[5], stick_rel_k[5], stick_rel_along[5], stick_rel_across[5];
+    /* TILT-1 (signs: +1 / -1 per axis, flipped here if the hand check finds an axis inverted) */
+    float tilt_sign_x, tilt_sign_y, tilt_dead_deg, tilt_range_deg, tilt_neutral_s, tilt_spring_hz, tilt_spring_damping;
+    float tilt_shake_speed, tilt_shake_gap_s, tilt_jiggle_stagger_s;
+    float tilt_depth[5];                 /* max shift (pt) per depth 0..4 */
+    float tilt_lip_x, tilt_lip_y;        /* lip swing: (-0.7 L tx, -0.4 L ty) from rest */
+    float tilt_highlight_pt, tilt_gloss_w, tilt_gloss_alpha, tilt_gloss_travel, tilt_title_lip, tilt_hud, tilt_edge_pt;
+    float tilt_cam_yaw_deg, tilt_cam_pitch_deg;
     /* sound: gain, pitch jitter */
     float sound_gain, sound_jitter;
 } UiStyleTable;
@@ -113,6 +120,12 @@ static const UiStyleTable k_ui = {
     .stick_rel_k = {1.0f, -0.2f, 0.08f, -0.02f, 0.0f},
     .stick_rel_along = {1.0f, 0.94f, 1.03f, 1.0f, 1.0f},
     .stick_rel_across = {1.0f, 1.08f, 0.97f, 1.0f, 1.0f},
+    .tilt_sign_x = 1.0f, .tilt_sign_y = 1.0f, .tilt_dead_deg = 1.0f, .tilt_range_deg = 20.0f, .tilt_neutral_s = 4.0f, .tilt_spring_hz = 3.0f,
+    .tilt_spring_damping = 0.5f, .tilt_shake_speed = 6.0f, .tilt_shake_gap_s = 2.0f, .tilt_jiggle_stagger_s = 0.015f,
+    .tilt_depth = {0.0f, 4.0f, 7.0f, 10.0f, 14.0f},
+    .tilt_lip_x = 0.7f, .tilt_lip_y = 0.4f,
+    .tilt_highlight_pt = 2.0f, .tilt_gloss_w = 0.4f, .tilt_gloss_alpha = 0.18f, .tilt_gloss_travel = 0.3f, .tilt_title_lip = 1.5f, .tilt_hud = 0.5f,
+    .tilt_edge_pt = 14.0f, .tilt_cam_yaw_deg = 1.2f, .tilt_cam_pitch_deg = 0.8f,
     .sound_gain = 0.07f, .sound_jitter = 0.03f,
 };
 

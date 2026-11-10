@@ -32,6 +32,7 @@ typedef struct GameSettings {
     int haptics;            /* HAPTIC-1 Vibrații: 0 Oprit, 1 Fin, 2 Complet (pref "haptics"; old true / false -> 2 / 0) */
     bool ui_sounds;         /* every UI sound: buttons, toggles, rewards, markers (was marker_sounds) */
     int ui_motion;          /* UI-1: 0 full, 1 reduced (also when iOS Reduce Motion is on) */
+    int ui_tilt;            /* TILT-1 Efect 3D la înclinare: 0 Oprit, 1 Fin, 2 Complet */
     bool test_markers;      /* debug: scatter markers to tap */
     float test_marker_count; /* 1..16 */
     bool show_all_paths;    /* debug: a path preview for every marker */
@@ -72,6 +73,7 @@ static inline void settings_default(GameSettings *s)
     s->haptics = 2;
     s->ui_sounds = true;
     s->ui_motion = 0;
+    s->ui_tilt = 2;
 #ifdef NDEBUG
     s->test_markers = false;
 #else
