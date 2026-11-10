@@ -80,6 +80,8 @@ int main(int argc, char **argv)
     const mgpk_prop_t *prop = table(MGPK_PROPS, sizeof(mgpk_prop_t), &nprop);
     const mgpk_slot_t *slot = table(MGPK_SLOTS, sizeof(mgpk_slot_t), &nslot);
     const mgpk_figlabel_t *fig = table(MGPK_FIGLABELS, sizeof(mgpk_figlabel_t), &nfig);
+    uint32_t nfurn;
+    const mgpk_furniture_t *furn = table(MGPK_FURNITURE, sizeof(mgpk_furniture_t), &nfurn);
     if (g_bad) return 1;
     if (g_hdr->fact_count != nfact || g_hdr->item_count != nitem) BAD("header counts differ from the tables");
 
@@ -157,8 +159,15 @@ int main(int argc, char **argv)
         }
         if (bytes > big_bytes) { big_bytes = bytes; big = i; big_steps = s->step_count; }
     }
-    for (uint32_t i = 0; i < nprop; i++) { str_ok(prop[i].id, "prop", i); str_ok(prop[i].kind, "prop", i); str_ok(prop[i].label, "prop", i); IDX(prop[i].room, nroom, "prop room", i); }
-    for (uint32_t i = 0; i < nslot; i++) { str_ok(slot[i].id, "slot", i); str_ok(slot[i].kind, "slot", i); IDX(slot[i].room, nroom, "slot room", i); }
+    for (uint32_t i = 0; i < nprop; i++) { str_ok(prop[i].id, "prop", i); str_ok(prop[i].kind, "prop", i); str_ok(prop[i].label, "prop", i); IDX(prop[i].room, nroom, "prop room", i);
+        if (prop[i].furniture != 0xFFFF) { IDX(prop[i].furniture, nfurn, "prop furniture", i); if (prop[i].furniture < nfurn && furn[prop[i].furniture].room != prop[i].room) BAD("prop %u: its furniture is in another room", i); } }
+    uint32_t nfdoor = 0;
+    for (uint32_t i = 0; i < nfurn; i++) { str_ok(furn[i].id, "furniture", i); str_ok(furn[i].kind, "furniture", i);
+        if (furn[i].room != 0xFFFF) IDX(furn[i].room, nroom, "furniture room", i);
+        if (furn[i].mount > MGPK_MOUNT_DOOR) BAD("furniture %u: mount %u", i, furn[i].mount);
+        if (furn[i].mount == MGPK_MOUNT_DOOR) nfdoor++; }
+    for (uint32_t i = 0; i < nslot; i++) { str_ok(slot[i].id, "slot", i); str_ok(slot[i].kind, "slot", i); IDX(slot[i].room, nroom, "slot room", i);
+        if (slot[i].furniture != 0xFFFF) IDX(slot[i].furniture, nfurn, "slot furniture", i); }
     for (uint32_t i = 0; i < nfig; i++) {
         str_ok(fig[i].fig, "figlabel", i); str_ok(fig[i].text, "figlabel", i);
         if (fig[i].x1 > fig[i].w || fig[i].y1 > fig[i].h || fig[i].x0 > fig[i].x1 || fig[i].y0 > fig[i].y1) BAD("figlabel %u: box outside the crop", i);
@@ -175,6 +184,7 @@ int main(int argc, char **argv)
            nroom, ntopic, natom, nfact, nitem, nopt, nref, nscript, required, parts, nstep, nprop, nslot, nfig);
     printf("string_table_bytes=%u\nstrings=%u\nlongest_string_bytes=%u\n", nstr, nstrings, longest);
     printf("largest_script=%s\nlargest_script_steps=%u\nlargest_script_string_bytes=%llu\n", g_str + script[big].id, big_steps, (unsigned long long)big_bytes);
+    printf("furniture=%u\ndoor_leaves=%u\n", nfurn - nfdoor, nfdoor);
     printf("problems=%u\n", g_bad);
     free(buf);
     return g_bad ? 1 : 0;

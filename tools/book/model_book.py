@@ -21,11 +21,11 @@ def main(pack, model_html, out):
     F = {f['id']: i for i, f in enumerate(facts)}
     I = {it['id']: i for i, it in enumerate(items)}
     anchors, AX = [], {}
-    for m in re.finditer(r'^iprop\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"([^"]*)"(\s+on_model)?', mp, re.M):
+    for m in re.finditer(r'^iprop\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"([^"]*)"(\s+on_model\s+\S+)?', mp, re.M):
         AX[m.group(3)] = len(anchors)
         anchors.append({'id': m.group(3), 't': 'p', 'f': int(m.group(1)), 'room': m.group(2), 'k': m.group(4), 'x': float(m.group(5)),
                         'z': float(m.group(6)), 'yaw': int(float(m.group(7))), 'label': m.group(8), 'onm': bool(m.group(9)), 's': []})
-    for m in re.finditer(r'^islot\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(\s+on_model)?', mp, re.M):
+    for m in re.finditer(r'^islot\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(\s+on_model\s+\S+)?', mp, re.M):
         AX[m.group(3)] = len(anchors)
         anchors.append({'id': m.group(3), 't': 'n', 'f': int(m.group(1)), 'room': m.group(2), 'k': m.group(4), 'x': float(m.group(5)),
                         'z': float(m.group(6)), 'yaw': int(float(m.group(7))), 'label': '', 'onm': bool(m.group(8)), 's': []})

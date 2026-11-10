@@ -4,7 +4,7 @@
   compile.py PACK [topic ...]     (no topic = every module in tools/book/topics/)
 Topic modules are re-run only when named (or when no topic is named); the merge always reads every PACK/topics/*.json.
 """
-import importlib.util, json, os, sys
+import re, importlib.util, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -83,6 +83,14 @@ def merge(pack):
     PK = json.load(open(os.path.join(pack, 'prop_kinds.json'), encoding='utf-8'))
     for k, v in PK['kinds'].items():
         lines.append(f'#   {k:12s} {v["w"]:.2f} x {v["d"]:.2f}  {v["mount"]:4s}  {v["status"]:8s}  {v["desc"]}')
+    FURN = {m.group(3): (int(m.group(1)), m.group(2), float(m.group(5)), float(m.group(6)), int(float(m.group(7))))
+            for m in re.finditer(r'^prop\s+(-?\d+)\s+(\S+)\s+(\S+\.\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', src, re.M)}
+    for p in props + slots:                        # an anchor on the model's own furniture takes its place from the record
+        ref = p.get('on_model')
+        if ref:
+            if ref not in FURN or FURN[ref][1] != p['room']:
+                raise SystemExit(f'{p["id"]}: on_model {ref} is not a furniture record of room {p["room"]}')
+            p['x'], p['z'], p['yaw'] = FURN[ref][2], FURN[ref][3], FURN[ref][4]
     for p in props:
         if p['model'] not in PK['model_to_kind']:
             raise SystemExit(f'prop {p["id"]}: model {p["model"]} has no kind in prop_kinds.json')
@@ -97,9 +105,9 @@ def merge(pack):
         tops = sorted(set(p['topic'] for p in P + S))
         lines.append(f'# room {r} ({", ".join(tops)}): {len(P)} props, {len(S)} slots')
         for p in P:
-            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"' + (' on_model' if p.get('on_model') else ''))
+            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"' + (f' on_model {p["on_model"]}' if p.get('on_model') else ''))
         for p in S:
-            lines.append(f'islot {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]}' + (' on_model' if p.get('on_model') else ''))
+            lines.append(f'islot {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]}' + (f' on_model {p["on_model"]}' if p.get('on_model') else ''))
     open(os.path.join(pack, 'institute.map'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
     json.dump(exempt, open(os.path.join(pack, 'exam_exempt.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     # lock: the atom text every fact / item was written against (check.py lists what changed since)

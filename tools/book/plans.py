@@ -17,7 +17,6 @@ def main(pack):
     src = open(os.path.join(pack, 'institute.map'), encoding='utf-8').read()
     rooms, ips, isl = c.parse_map(src)
     onm = c.on_model_ids(src)
-    occ = c.load_occupancy(pack)
     K = json.load(open(os.path.join(pack, 'prop_kinds.json'), encoding='utf-8'))
     orig = {}
     op = os.path.join(pack, 'institute_original.map')
@@ -39,12 +38,13 @@ def main(pack):
     for f in range(4):
         im = Image.new('RGB', (W, H + 60), (250, 249, 246))
         d = ImageDraw.Draw(im)
-        g = occ['g'][f]
-        for j in range(occ['nz']):
-            for i in range(occ['nx']):
-                if g[j * occ['nx'] + i]:
-                    x, z = occ['x0'] + i * occ['c'], occ['z0'] + j * occ['c']
-                    d.rectangle([X(x), Z(z), X(x + occ['c']), Z(z + occ['c'])], fill=(214, 214, 210))
+        for rid, r in rooms.items():               # the map's furniture records (grey)
+            if r['floor'] != f:
+                continue
+            for fid, kind, x, z, yaw, w, dd, mount in r.get('furn', []):
+                if mount in ('free', 'wall', 'floor'):
+                    rc = c.footprint(x, z, yaw, w, dd)
+                    d.rectangle([X(rc[0]), Z(rc[1]), X(rc[2]), Z(rc[3])], fill=(232, 232, 228) if mount == 'floor' else (214, 214, 210))
         for rid, r in rooms.items():
             if r['floor'] != f:
                 continue
@@ -76,7 +76,7 @@ def main(pack):
             lab = f"{kind}: {', '.join(by_anchor.get(pid, [])) or '-'}"
             d.text((X(rc[2]) + 2, Z(rc[1]) - 2), lab, font=f_s, fill=(20, 20, 20))
         d.text((PAD, H + 10), f'Storey {f}: green = book prop, blue = NPC point, violet = on the model\'s own furniture, orange = moved '
-               f'(line from the authored position), grey = the model\'s furniture. Tick = facing direction. Labels: kind: script ids.',
+               f'(line from the authored position), grey = the furniture records of institute.map. Tick = facing direction. Labels: kind: script ids.',
                font=f_m, fill=(20, 20, 20))
         im.save(os.path.join(pack, 'plan', f'{f}.png'), optimize=True)
     moves.sort(key=lambda m: -m['m'])

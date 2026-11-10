@@ -124,6 +124,10 @@ def parse_map(mapsrc):
         m = re.match(r'slot\s+-?\d+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
         if m and cur:
             rooms[cur]['slots'].append((m.group(1), float(m.group(2)), float(m.group(3)), float(m.group(4))))
+    for m in re.finditer(r'^prop\s+(-?\d+)\s+(\S+)\s+(\S+\.\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(wall|free|floor|door)', mapsrc, re.M):
+        if m.group(2) in rooms:                   # furniture of the institute model, one record per piece
+            rooms[m.group(2)].setdefault('furn', []).append((m.group(3), m.group(4), float(m.group(5)), float(m.group(6)), float(m.group(7)),
+                                                             float(m.group(8)), float(m.group(9)), m.group(11)))
     iprops = [(int(a), b, c, d, float(e), float(f), float(g), h) for a, b, c, d, e, f, g, h in
               re.findall(r'^iprop\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"([^"]*)"', mapsrc, re.M)]
     islots = [(int(a), b, c, d, float(e), float(f), float(g)) for a, b, c, d, e, f, g in
@@ -145,10 +149,14 @@ def room_objects(room, rid, iprops, islots, kinds):
     """every object of a room: (name, rect, mount, is_new)"""
     K, SK, MF = kinds['kinds'], kinds['slot_kinds'], kinds['map_slot_furniture']
     objs = []
-    for kind, x, z, yaw in room['slots']:
-        f = MF.get(kind)
-        if f:
-            objs.append((f'map slot {kind}@{x},{z}', footprint(x, z, yaw, f['w'], f['d']), 'free', False))
+    for fid, kind, x, z, yaw, w, d, mount in room.get('furn', []):
+        if mount in ('free', 'wall'):             # rugs are walked on; door leaves: the door approach rule covers their swing
+            objs.append((fid, footprint(x, z, yaw, w, d), mount, False))
+    if not room.get('furn'):
+        for kind, x, z, yaw in room['slots']:
+            f = MF.get(kind)
+            if f:
+                objs.append((f'map slot {kind}@{x},{z}', footprint(x, z, yaw, f['w'], f['d']), 'free', False))
     for fl, r, pid, kind, x, z, yaw, _ in iprops:
         if r == rid:
             k = K.get(kind, {'w': 0.6, 'd': 0.6, 'mount': 'free'})
@@ -188,8 +196,8 @@ def occ_hits(occ, f, rc, shrink=0.02):
 
 
 def on_model_ids(mapsrc):
-    """props / NPC points that are furniture the institute model already has (trailing on_model): no new mesh"""
-    return set(re.findall(r'^i(?:prop|slot)\s+-?\d+\s+\S+\s+(\S+)\s.*\son_model\s*$', mapsrc, re.M))
+    """props / NPC points that are a piece of the model's furniture (trailing on_model <furniture id>): {id: furniture id}"""
+    return dict(re.findall(r'^i(?:prop|slot)\s+-?\d+\s+\S+\s+(\S+)\s.*\son_model\s+(\S+)\s*$', mapsrc, re.M))
 
 
 def placement_check(rooms, iprops, islots, kinds, only=None, occ=None, onm=frozenset()):
@@ -252,13 +260,15 @@ def placement_check(rooms, iprops, islots, kinds, only=None, occ=None, onm=froze
                 if 0 <= a < nz and 0 <= b < nx and stand[a][b] and not seen[a][b]:
                     seen[a][b] = True
                     q.append((a, b))
+        FRECT = {x[0]: footprint(x[2], x[3], x[4], x[5], x[6]) for x in room.get('furn', [])}
+        news = [(n, FRECT.get(onm[n], rc) if n in onm else rc, m, i) for n, rc, m, i in news]   # an anchor is its furniture piece
         for name, rc, mount, _ in news:
-            if not (rc[0] >= ix0 - 0.001 and rc[2] <= ix1 + 0.001 and rc[1] >= iz0 - 0.001 and rc[3] <= iz1 + 0.001):
+            if name not in onm and not (rc[0] >= ix0 - 0.001 and rc[2] <= ix1 + 0.001 and rc[1] >= iz0 - 0.001 and rc[3] <= iz1 + 0.001):
                 fails.append((rid, name, 'outside the room'))
                 continue
-            if name in onm:                        # the model's own podium / shelf / poster / chair: it must be there
-                if occ and not occ_hits(occ, room['floor'], rc):
-                    fails.append((rid, name, 'marked on_model but the model has no furniture there'))
+            if name in onm:                        # the model's own podium / shelf / poster / chair: a furniture record of this room
+                if onm[name] not in {x[0] for x in room.get('furn', [])}:
+                    fails.append((rid, name, f'on_model {onm[name]} is not a furniture record of this room'))
                 for other, orc, _, isnew in objs:
                     if other != name and isnew and other not in onm and overlap(rc, orc):
                         fails.append((rid, name, f'overlaps {other}'))
@@ -846,20 +856,38 @@ def main():
                 E['map'].append(f'{len(new)} new prop kinds (max 12)')
             per = collections.defaultdict(set)
             for line in mapsrc.splitlines():
-                m = re.match(r'(slot|prop)\s+(-?\d+)\s+(\S+)', line)
+                m = re.match(r'prop\s+(-1)\s+(\S+)\s+-?[\d.]', line)     # yard props (the rooms' furniture is counted below)
                 if m:
-                    per[int(m.group(2))].add(m.group(3))
+                    per[-1].add(m.group(2))
             for p in ips:
-                per[p[0]].add(p[3])
+                if p[2] not in on_model_ids(mapsrc):
+                    per[p[0]].add(p[3])
+            for m in re.finditer(r'^prop\s+(-?\d+)\s+\S+\s+\S+\.\d+\s+(\S+)\s.*\s(wall|free|floor)\s*$', mapsrc, re.M):
+                per[int(m.group(1))].add('furn:' + m.group(2))   # rooms and corridors
+            gof = {k: g for g, ks in PK.get('mesh_groups', {}).items() for k in ks}
+            mesh = {f: {gof.get(k.replace('furn:', '') if k.startswith('furn:') else 'book:' + k, k) for k in per[f]} for f in per}
             stats['visible kinds per storey'] = ', '.join(f'{f}: {len(per[f])}' for f in sorted(per))
-            for f in sorted(per):
-                if len(per[f]) > 30:
-                    E['map'].append(f'storey {f}: {len(per[f])} visible prop kinds (max 30)')
-            OCC = load_occupancy(pack)
-            stats['model furniture'] = 'model_occupancy.json loaded' if OCC else 'model_occupancy.json missing (furniture not checked)'
+            stats['meshes per storey (shared)'] = ', '.join(f'{f}: {len(mesh[f])}' for f in sorted(mesh)) + ' (mesh_groups in prop_kinds.json)'
+            FR = [(m.group(2), (m.group(3), m.group(4), float(m.group(5)), float(m.group(6)), int(m.group(1)), 0, 0, m.group(11)))
+                  for m in re.finditer(r'^prop\s+(-?\d+)\s+(\S+)\s+(\S+\.\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(wall|free|floor|door)', mapsrc, re.M)]
+            stats['furniture (institute.map)'] = (f"{sum(1 for _, x in FR if x[7] != 'door')} pieces + {sum(1 for _, x in FR if x[7] == 'door')} door leaves, "
+                                                  f"{len({x[1] for _, x in FR if x[7] != 'door'})} kinds")
+            mf = os.path.join(pack, 'model_furniture.json')
+            if not os.path.exists(mf):
+                E['furniture'].append('model_furniture.json missing: run tools/book/model_furniture.js on the 3D page')
+            else:                                  # the 3D page and the file must place the same furniture
+                PG = {p['id']: p for p in json.load(open(mf, encoding='utf-8'))['pieces']}
+                FM = {x[0]: (r, x) for r, x in FR}
+                for i in sorted(set(PG) ^ set(FM)):
+                    E['furniture'].append(f'{i}: ' + ('on the 3D page, not in institute.map' if i in PG else 'in institute.map, not on the 3D page'))
+                for i in sorted(set(PG) & set(FM)):
+                    a, (r, x) = PG[i], FM[i]
+                    if a['kind'] != x[1] or a['room'] != r or abs(a['x'] - x[2]) > 0.01 or abs(a['z'] - x[3]) > 0.01:
+                        E['furniture'].append(f"{i}: page {a['kind']} {a['x']},{a['z']} / map {x[1]} {x[2]},{x[3]}")
+                stats['furniture page = file'] = 'yes (same ids, kinds, positions within 1 cm)' if not E.get('furniture') else 'NO'
             ONM = on_model_ids(mapsrc)
-            stats['on the model furniture'] = f'{len(ONM)} props / NPC points use furniture the model already has'
-            for rid, name, why in placement_check(mrooms, ips, isl, PK, occ=OCC, onm=ONM):
+            stats['on the model furniture'] = f'{len(ONM)} props / NPC points are furniture records of the map'
+            for rid, name, why in placement_check(mrooms, ips, isl, PK, onm=ONM):
                 E['placement'].append(f'{rid} {name}: {why}')
             stats['placement (props + slots)'] = f'{len(ips) + len(isl)} checked, {len(E.get("placement", []))} failures'
             used_anchor = {sc.get('prop') for sc in scripts} | {sc.get('slot') for sc in scripts}
@@ -918,7 +946,9 @@ def main():
                         E['pack'].append('reference reader rejects the pack: ' + r.stderr.strip()[:300])
                     want = {'facts': len(facts), 'items': len(items), 'scripts': sum(1 for x in scripts if x.get('topic')),
                             'figlabels': sum(len(fg.get('labels', [])) for fg in json.load(open(os.path.join(pack, 'fig', 'figures.json'), encoding='utf-8'))),
-                            'props': len(re.findall(r'^iprop\s', mapsrc, re.M)), 'slots': len(re.findall(r'^islot\s', mapsrc, re.M))}
+                            'props': len(re.findall(r'^iprop\s', mapsrc, re.M)), 'slots': len(re.findall(r'^islot\s', mapsrc, re.M)),
+                            'furniture': len(re.findall(r'^prop\s+-?\d+\s+\S+\s+\S+\.\d+\s.*\s(?:wall|free|floor)\s*$', mapsrc, re.M)),
+                            'door_leaves': len(re.findall(r'^prop\s+-?\d+\s+\S+\s+\S+\.\d+\s.*\sdoor\s+opens\s', mapsrc, re.M))}
                     for k, v in want.items():
                         if str(v) != kv.get(k):
                             E['pack'].append(f'pack {k} = {kv.get(k)}, sources {v} (stale pack: rerun packbin.py)')

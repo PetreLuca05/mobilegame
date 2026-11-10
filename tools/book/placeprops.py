@@ -25,7 +25,7 @@ def main(pack, dry=False):
     for p in iprops:
         p[3] = K['model_to_kind'].get(p[3], p[3])
     moved = {}
-    occ = c.load_occupancy(pack)
+    occ = None                                   # placement runs against the map's furniture records
     onm = c.on_model_ids(open(os.path.join(pack, 'institute.map'), encoding='utf-8').read())
 
     def tup():

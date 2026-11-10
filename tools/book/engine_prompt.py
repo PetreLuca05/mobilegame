@@ -5,15 +5,16 @@ Sizes come from the pack itself: the header is read here, and the reference read
 for the string / script measurements, so the prompt and check.py report the same numbers."""
 import collections, json, os, re, shutil, struct, subprocess, sys, tempfile
 
-TABLES = ['strings', 'rooms', 'topics', 'atoms', 'facts', 'items', 'opts', 'refs', 'scripts', 'steps', 'props', 'slots', 'figlabels']
+TABLES = ['strings', 'rooms', 'topics', 'atoms', 'facts', 'items', 'opts', 'refs', 'scripts', 'steps', 'props', 'slots', 'figlabels', 'furniture']
 HOLDS = {'strings': 'NUL-terminated UTF-8, addressed by u32 offsets', 'rooms': 'map room id, name, storey, rectangle',
          'topics': 'id, title, room, chapter, step; fact / item / script ranges', 'atoms': 'printed text unit: page, topic, kind, layer',
          'facts': 'claim, atom, topic, page, type, flags (needs_review, unverified_ocr)',
          'items': 'stem, explanation, review note, type, flags, option / fact-ref ranges, correct mask',
          'opts': 'options, gaps, card answers, sort / match / order / label entries', 'refs': 'u32: item → facts, teach step → atoms',
          'scripts': 'id, title, topic, room, kind, required, part / parts, prop / slot / npc, step range',
-         'steps': 'stage (predict / teach / check), flags, item or atom-ref range', 'props': 'iprop: id, kind, label, room, storey, yaw, x, z',
-         'slots': 'islot: id, kind, room, storey, yaw, x, z', 'figlabels': 'figure label text + box on the 200-dpi crop'}
+         'steps': 'stage (predict / teach / check), flags, item or atom-ref range', 'props': 'iprop: id, kind, label, room, furniture row (on_model) or none, storey, yaw, x, z',
+         'slots': 'islot: id, kind, room, storey, yaw, x, z', 'figlabels': 'figure label text + box on the 200-dpi crop',
+         'furniture': 'every furniture piece and door leaf of institute.map: id, kind, room, storey, mount, yaw, x, z, w, d, h'}
 
 
 def measure(pack, mgpack):
@@ -72,6 +73,17 @@ def main(pack, mgpack):
     pools_table = '\n'.join(f'| `{s["id"]}` | {s["kind"]} | {s["room"]} | {s.get("slot") or s.get("prop") or "-"} | '
                             f'{s.get("opens_when", "always")} | chapters {fmt(s["pool"].get("chapters"))}; types {fmt(s["pool"].get("types"))}'
                             + ''.join(f'; {k} {fmt(v)}' for k, v in s['pool'].items() if k not in ('chapters', 'types')) + ' |' for s in pools)
+    furn = [m.groups() for m in re.finditer(r'^prop\s+(-?\d+)\s+(\S+)\s+(\S+\.\d+)\s+(\S+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(wall|free|floor|door)', mp, re.M)]
+    onm_ids = set(re.findall(r'^iprop\s+-?\d+\s+\S+\s+(\S+)\s.*\son_model\s+\S+\s*$', mp, re.M))
+    gof = {k: g for g, ks in K.get('mesh_groups', {}).items() for k in ks}
+    vk, vm_ = collections.defaultdict(set), collections.defaultdict(set)
+    for fl, room, fid, kind, mount in furn:
+        if mount != 'door':
+            vk[int(fl)].add('f:' + kind); vm_[int(fl)].add(gof.get(kind, 'f:' + kind))
+    for p in props:
+        if p[2] not in onm_ids:
+            vk[int(p[0])].add('b:' + p[3]); vm_[int(p[0])].add(gof.get('book:' + p[3], 'b:' + p[3]))
+    allm = {gof.get(k, 'f:' + k) for _, _, _, k, mnt in furn if mnt != 'door'} | {gof.get('book:' + p[3], 'b:' + p[3]) for p in props if p[2] not in onm_ids}
     tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'engine_prompt_template.md'), encoding='utf-8').read()
     kinds_table = '\n'.join(f'| {k} | {v["status"]} | {v["mount"]} | {v["w"]:.2f} × {v["d"]:.2f} | {used.get(k, 0)} | {v["desc"]} |'
                             for k, v in K['kinds'].items())
@@ -98,6 +110,15 @@ def main(pack, mgpack):
         'MAX_OPT': f'{max([len(o["t"]) for i in items for o in i.get("options", [])] + [len(a) for i in items for a in i.get("answers", [])] + [len(i.get("answer", "")) for i in items] + [len(e["t"]) for i in items for e in i.get("entries", [])] + [len(x) for i in items for p in i.get("pairs", []) for x in (p["left"], p["right"])] + [len(x) for i in items for x in i.get("sequence", [])]):,}',
         'MAX_EXPL': f'{max(len(i["explanation"]) for i in items):,}',
         'MAX_ATOM': f'{max(len(a["text"]) for a in J("atoms.jsonl")):,}',
+        'FURN_PIECES': f'{sum(1 for x in furn if x[4] != "door"):,}', 'FURN_DOORS': str(sum(1 for x in furn if x[4] == 'door')),
+        'FURN_KINDS': str(len({x[3] for x in furn if x[4] != 'door'})),
+        'KIND_ROWS': '\n'.join(f'| {f} | {len(vk[f])} | {len(vm_[f])} |' for f in sorted(vk)),
+        'MAX_MESH': str(max(len(v) for v in vm_.values())), 'MAX_KINDS': str(max(len(v) for v in vk.values())),
+        'SUM_MESH': str(sum(len(v) for v in vm_.values())), 'SUM_KINDS': str(sum(len(v) for v in vk.values())),
+        'MESH_GROUPS': '; '.join(f'**{g}** ({", ".join(k.replace("book:", "book ") for k in ks)})' for g, ks in K.get('mesh_groups', {}).items()),
+        'MESH_TOTAL': str(len(allm)), 'MESH_MB': f'{len(allm) * 300 * 3 * 28 / 1048576:.1f}',
+        'INST_KB': f'{(len(furn) + len(props) + len(slots)) * 64 / 1024:.0f}', 'FT_KB': f'{len(furn) * 36 / 1024:.0f}',
+        'FURN_COLLIDERS': f'{sum(1 for x in furn if x[4] in ("free", "wall")):,}',
         'BITSET': f'{(len(facts) + 7) // 8}', 'FIGS': str(len(figs)),
         'FIG_MB': f'{len(figs) * 1024 * 1024 * 4 / 1048576 / 2:.0f}',
     }

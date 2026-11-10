@@ -3,9 +3,9 @@
 #define MG_PACK_FORMAT_H
 #include <stdint.h>
 #define MGPK_MAGIC 0x4B50474Du /* "MGPK" */
-#define MGPK_VERSION 2u
+#define MGPK_VERSION 3u
 enum { MGPK_STRINGS, MGPK_ROOMS, MGPK_TOPICS, MGPK_ATOMS, MGPK_FACTS, MGPK_ITEMS, MGPK_OPTS, MGPK_REFS, MGPK_SCRIPTS,
-       MGPK_STEPS, MGPK_PROPS, MGPK_SLOTS, MGPK_FIGLABELS, MGPK_TABLE_COUNT };
+       MGPK_STEPS, MGPK_PROPS, MGPK_SLOTS, MGPK_FIGLABELS, MGPK_FURNITURE, MGPK_TABLE_COUNT };
 typedef struct mgpk_table_t { uint32_t offset, count, size; } mgpk_table_t;
 typedef struct mgpk_header_t { uint32_t magic, version, fact_count, item_count; mgpk_table_t table[16]; } mgpk_header_t;
 typedef struct mgpk_room_t { uint32_t id, name; int8_t floor; uint8_t pad[3]; float x0, z0, x1, z1; } mgpk_room_t;            /* 28 */
@@ -24,7 +24,12 @@ typedef struct mgpk_script_t { uint32_t id, title; uint16_t topic, room; uint8_t
                                uint32_t prop, slot, npc, first_step, step_count; } mgpk_script_t;                         /* 36 */
 /* step flags: 1 = a teach step shown again at the start of a later part (a new sitting) */
 typedef struct mgpk_step_t { uint8_t stage, flags; uint16_t n_atoms; uint32_t item, first_atom_ref; } mgpk_step_t;             /* 12 */
-typedef struct mgpk_prop_t { uint32_t id, kind, label; uint16_t room, topic; int8_t floor; uint8_t pad; uint16_t yaw; float x, z; } mgpk_prop_t; /* 28 */
+/* furniture = row of the furniture table this prop / NPC point is (on_model: the model's own podium, shelf, chair ...), or 0xFFFF */
+typedef struct mgpk_prop_t { uint32_t id, kind, label; uint16_t room, furniture; int8_t floor; uint8_t pad; uint16_t yaw; float x, z; } mgpk_prop_t; /* 28 */
+/* every piece of furniture of institute.map (prop records): x z = footprint centre (door leaf: the hinge), w across the facing
+   direction, d along it, h height; mount 0 free, 1 wall, 2 floor (walked on), 3 door leaf (opens towards open_x, open_z) */
+typedef struct mgpk_furniture_t { uint32_t id, kind; uint16_t room; int8_t floor; uint8_t mount; uint16_t yaw; int8_t open_x, open_z; float x, z, w, d, h; } mgpk_furniture_t; /* 36 */
+enum { MGPK_MOUNT_FREE, MGPK_MOUNT_WALL, MGPK_MOUNT_FLOOR, MGPK_MOUNT_DOOR };
 typedef mgpk_prop_t mgpk_slot_t;                                                                              /* 28; label = MGPK_NONE */
 /* figure labels for `label` items: box in pixels of the 200-dpi crop fig/<fig>.png (crop size w x h) */
 typedef struct mgpk_figlabel_t { uint32_t fig, text; uint16_t x0, y0, x1, y1, w, h; } mgpk_figlabel_t;                      /* 20 */

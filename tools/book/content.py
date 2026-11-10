@@ -340,7 +340,7 @@ class Topic:
 
     # ------------------------------------------------------------------ world
     def prop(self, floor, room, pid, model, x, z, yaw, label, on_model=False):
-        """on_model: the prop is a piece of furniture the institute model already has at (x, z) (no new mesh)"""
+        """on_model: the id of a piece of furniture in institute.map (prop record) that this prop is: no new mesh; position from it"""
         assert pid.startswith(self.topic + '_') or pid.startswith(self.topic.split('_')[0]), f'prop id {pid} should start with the topic'
         self.props.append({'floor': floor, 'room': room, 'id': pid, 'model': model, 'x': x, 'z': z, 'yaw': yaw, 'label': label, 'topic': self.topic,
                            'on_model': on_model})

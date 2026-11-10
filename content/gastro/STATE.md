@@ -63,6 +63,20 @@ with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
 - §4 `ENGINE_PROMPT.md`: measured text lengths (stem 287, option / answer 621, explanation 1,681 characters); text
   scrolls, never cut; the Linux `M_PI` error in `engine/audio/audio_sdl.c` noted for the engine step (file untouched).
 
+## Furniture as data (author's message 5)
+
+- `content/src/institute.map` holds every piece of furniture the institute model places: 1,020 `prop` records (82 kinds:
+  id, kind, room, position, rotation, footprint w × d, height, wall / free / floor) and 105 door leaves (hinge, swing). The
+  9 `on_model` anchors name furniture ids; their position comes from the record. `tools/book/model_furniture.js` exports
+  the page's furniture (`model_furniture.json`); `check.py` fails unless page and file place the same pieces (ids, kinds,
+  positions within 1 cm), and the placement check runs against the file's records (234 objects, 0 failures).
+- The 3D page still builds its furniture in code (it does not read the file); the equality check in `make.sh` guards it. To
+  change furniture: change the page, then `node tools/book/model_furniture.js PAGE OUT --map content/src/institute.map`.
+- Model page findings: 9 of its pieces reach past their room outline into a wall (6 cabinets, a lab bench, the two outer
+  library shelves); they are the page's geometry, recorded as they are.
+- Visible kinds per storey (book + furniture): G 69, 1: 64, 2: 61, 3: 60; meshes with shared families (`mesh_groups`): 43,
+  40, 40, 34. Pack v3 adds the furniture table (36-byte rows); prop / slot rows point to their furniture row.
+
 ## Topics done (all 50; per-topic counts in report.md)
 
 ## Next

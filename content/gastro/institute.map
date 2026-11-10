@@ -501,6 +501,1136 @@ lift B -11.1 6.5 G,1,2,3,R public
 lift C 12.5 6.5 G,1,2,3,R bed
 stairs -12.5 0
 
+# ---- furniture (institute model) ----
+# prop <floor> <room> <id> <kind> <x> <z> <yaw> <w> <d> <h> <wall|free|floor|door> [opens <nx> <nz>]
+#   every piece of furniture, one record each: x z = footprint centre (door_leaf: the hinge), yaw 0 faces +z (south),
+#   w across the facing direction, d along it, h height (m); the 3D page must place exactly these (check.py compares)
+prop 0 g_reflux1 g_reflux1.desk.1 desk -18.6 -16.58 0 1.8 0.8 1.15 free
+prop 0 g_reflux1 g_reflux1.chair.1 chair -18.6 -17.18 0 0.5 0.5 0.96 free
+prop 0 g_reflux1 g_reflux1.chair.2 chair -18.6 -15.3 0 0.5 0.5 0.96 free
+prop 0 g_reflux1 g_reflux1.exam_couch.1 exam_couch -24.9 -16.26 0 0.8 1.95 0.86 free
+prop 0 g_reflux1 g_reflux1.cabinet.1 cabinet -24.7 -17.62 0 1.84 0.64 0.96 wall
+prop 0 g_reflux1 g_reflux1.plant.1 plant -17.6 -11.78 0 0.9 0.78 1.31 wall
+prop 0 g_reflux1 g_reflux1.scale.1 scale -24.1 -11.94 0 0.4 0.5 2.11 free
+prop 0 g_reflux1 g_reflux1.anatomy_model.1 anatomy_model -17.9 -13.7 0 0.5 0.5 1.71 free
+prop 0 g_reflux1 g_reflux1.bin.1 bin -25.49 -11.62 0 0.3 0.31 0.51 free
+prop 0 g_reflux1 g_reflux1.wall_poster.1 wall_poster -17.15 -13.54 0 0.07 1.1 2.11 wall
+prop 0 g_reflux1 g_reflux1.clock.1 clock -25.86 -13.3 0 0.05 0.4 2.31 wall
+prop 0 g_reflux1 g_reflux1.sink.1 sink -25.6 -12.42 0 0.55 0.5 1.16 wall
+prop 0 g_reflux2 g_reflux2.desk.1 desk -12.6 -16.97 0 1.8 0.8 1.15 free
+prop 0 g_reflux2 g_reflux2.chair.1 chair -12.6 -17.39 0 0.5 0.5 0.96 free
+prop 0 g_reflux2 g_reflux2.chair.2 chair -12.6 -16.06 0 0.5 0.5 0.96 free
+prop 0 g_reflux2 g_reflux2.exam_couch.1 exam_couch -15.9 -16.74 0 0.8 1.95 0.86 free
+prop 0 g_reflux2 g_reflux2.cabinet.1 cabinet -15.7 -17.7 0 1.84 0.64 0.96 wall
+prop 0 g_reflux2 g_reflux2.plant.1 plant -11.6 -13.58 0 0.9 0.78 1.31 wall
+prop 0 g_reflux2 g_reflux2.lightbox_stand.1 lightbox_stand -11.9 -13.69 0 0.9 0.4 1.86 free
+prop 0 g_reflux2 g_reflux2.bin.1 bin -16.49 -13.47 0 0.3 0.31 0.51 free
+prop 0 g_reflux2 g_reflux2.wall_poster.1 wall_poster -11.15 -14.82 0 0.07 1.1 2.11 wall
+prop 0 g_reflux2 g_reflux2.clock.1 clock -16.86 -14.65 0 0.05 0.4 2.31 wall
+prop 0 g_reflux2 g_reflux2.sink.1 sink -16.6 -14.03 0 0.55 0.5 1.16 wall
+prop 0 g_dispepsie g_dispepsie.desk.1 desk -6.6 -16.58 0 1.8 0.8 1.15 free
+prop 0 g_dispepsie g_dispepsie.chair.1 chair -6.6 -17.18 0 0.5 0.5 0.96 free
+prop 0 g_dispepsie g_dispepsie.chair.2 chair -6.6 -15.3 0 0.5 0.5 0.96 free
+prop 0 g_dispepsie g_dispepsie.exam_couch.1 exam_couch -9.9 -16.26 0 0.8 1.95 0.86 free
+prop 0 g_dispepsie g_dispepsie.cabinet.1 cabinet -9.7 -17.62 0 1.84 0.64 0.96 wall
+prop 0 g_dispepsie g_dispepsie.plant.1 plant -5.6 -11.78 0 0.9 0.78 1.31 wall
+prop 0 g_dispepsie g_dispepsie.ultrasound.1 ultrasound -10.05 -13.7 0 0.69 0.6 1.73 free
+prop 0 g_dispepsie g_dispepsie.scale.1 scale -5.9 -11.94 0 0.4 0.5 2.11 free
+prop 0 g_dispepsie g_dispepsie.bin.1 bin -10.49 -11.62 0 0.3 0.31 0.51 free
+prop 0 g_dispepsie g_dispepsie.wall_poster.1 wall_poster -5.15 -13.54 0 0.06 1.1 2.11 wall
+prop 0 g_dispepsie g_dispepsie.clock.1 clock -10.86 -13.3 0 0.05 0.4 2.31 wall
+prop 0 g_dispepsie g_dispepsie.sink.1 sink -10.6 -12.42 0 0.55 0.5 1.16 wall
+prop 0 g_gastrite g_gastrite.desk.1 desk -0.6 -16.97 0 1.8 0.8 1.15 free
+prop 0 g_gastrite g_gastrite.chair.1 chair -0.6 -17.39 0 0.5 0.5 0.96 free
+prop 0 g_gastrite g_gastrite.chair.2 chair -0.6 -16.06 0 0.5 0.5 0.96 free
+prop 0 g_gastrite g_gastrite.exam_couch.1 exam_couch -3.9 -16.74 0 0.8 1.95 0.86 free
+prop 0 g_gastrite g_gastrite.cabinet.1 cabinet -3.7 -17.7 0 1.84 0.64 0.96 wall
+prop 0 g_gastrite g_gastrite.plant.1 plant 0.4 -13.58 0 0.9 0.78 1.31 wall
+prop 0 g_gastrite g_gastrite.anatomy_model.1 anatomy_model 0.1 -13.69 0 0.5 0.5 1.71 free
+prop 0 g_gastrite g_gastrite.bin.1 bin -4.49 -13.47 0 0.3 0.31 0.51 free
+prop 0 g_gastrite g_gastrite.wall_poster.1 wall_poster 0.85 -14.82 0 0.07 1.1 2.11 wall
+prop 0 g_gastrite g_gastrite.clock.1 clock -4.86 -14.65 0 0.04 0.4 2.31 wall
+prop 0 g_gastrite g_gastrite.sink.1 sink -4.6 -14.03 0 0.55 0.5 1.16 wall
+prop 0 g_fiziologie g_fiziologie.desk.1 desk 9.2 -16.74 0 2 0.8 1.15 free
+prop 0 g_fiziologie g_fiziologie.chair.1 chair 9.2 -17.34 0 0.5 0.5 0.96 free
+prop 0 g_fiziologie g_fiziologie.wall_screen.1 wall_screen 9.2 -17.77 0 1.6 0.08 2.21 wall
+prop 0 g_fiziologie g_fiziologie.exam_couch.1 exam_couch 6.5 -15.3 0 0.75 2.05 0.83 free
+prop 0 g_fiziologie g_fiziologie.trolley_tower.1 trolley_tower 6.5 -16.9 0 0.7 0.5 2.01 free
+prop 0 g_fiziologie g_fiziologie.recliner.1 recliner 8.23 -13.2 0 1.4 1.35 1.81 free
+prop 0 g_fiziologie g_fiziologie.supply_cart.1 supply_cart 1.9 -13.7 0 0.62 0.47 1.12 free
+prop 0 g_fiziologie g_fiziologie.printer.1 printer 14.1 -11.94 0 0.7 0.5 0.88 free
+prop 0 g_fiziologie g_fiziologie.oxygen.1 oxygen 2.9 -11.94 0 0.5 0.3 1.32 free
+prop 0 g_fiziologie g_fiziologie.privacy_screen.1 privacy_screen 6 -13.35 0 1.87 0.13 1.81 free
+prop 0 g_fiziologie g_fiziologie.bin.1 bin 1.51 -11.62 0 0.3 0.31 0.51 free
+prop 0 g_fiziologie g_fiziologie.wall_poster.1 wall_poster 14.85 -13.54 0 0.07 1.1 2.11 wall
+prop 0 g_fiziologie g_fiziologie.clock.1 clock 1.14 -13.3 0 0.05 0.4 2.31 wall
+prop 0 g_fiziologie g_fiziologie.sink.1 sink 1.4 -12.42 0 0.55 0.5 1.16 wall
+prop 0 g_triaj g_triaj.desk.1 desk 24.4 -16.58 0 1.8 0.8 1.15 free
+prop 0 g_triaj g_triaj.chair.1 chair 24.4 -17.18 0 0.5 0.5 0.96 free
+prop 0 g_triaj g_triaj.chair.2 chair 24.4 -15.3 0 0.5 0.5 0.96 free
+prop 0 g_triaj g_triaj.cabinet.1 cabinet 16.3 -17.62 0 1.84 0.64 0.96 wall
+prop 0 g_triaj g_triaj.plant.1 plant 25.4 -11.78 0 0.9 0.78 1.31 wall
+prop 0 g_triaj g_triaj.crash.1 crash 15.9 -13.7 0 0.72 0.52 1.22 free
+prop 0 g_triaj g_triaj.oxygen.1 oxygen 24.1 -11.94 0 0.5 0.3 1.32 free
+prop 0 g_triaj g_triaj.scale.1 scale 25.1 -11.94 0 0.4 0.5 2.11 free
+prop 0 g_triaj g_triaj.privacy_screen.1 privacy_screen 20.5 -13.35 0 1.87 0.13 1.81 free
+prop 0 g_triaj g_triaj.supply_cart.1 supply_cart 25.1 -13.7 0 0.62 0.47 1.12 free
+prop 0 g_triaj g_triaj.bin.1 bin 15.51 -11.62 0 0.3 0.31 0.51 free
+prop 0 g_triaj g_triaj.wall_poster.1 wall_poster 25.85 -13.54 0 0.07 1.1 2.11 wall
+prop 0 g_triaj g_triaj.clock.1 clock 15.14 -13.3 0 0.05 0.4 2.31 wall
+prop 0 g_amfiteatru g_amfiteatru.wall_screen.1 wall_screen -19.5 17.77 180 4.5 0.08 2.61 wall
+prop 0 g_amfiteatru g_amfiteatru.lectern.1 lectern -16.9 16.9 180 0.7 0.5 1.11 free
+prop 0 g_amfiteatru g_amfiteatru.riser.1 riser -19.5 15.46 180 11.4 1.1 0.26 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.1 auditorium_seat -22 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.2 auditorium_seat -21 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.3 auditorium_seat -20 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.4 auditorium_seat -19 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.5 auditorium_seat -18 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.6 auditorium_seat -17 15.38 180 0.45 0.45 1.16 free
+prop 0 g_amfiteatru g_amfiteatru.riser.2 riser -19.5 14.5 180 11.4 1.1 0.44 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.7 auditorium_seat -22 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.8 auditorium_seat -21 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.9 auditorium_seat -20 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.10 auditorium_seat -19 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.11 auditorium_seat -18 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.12 auditorium_seat -17 14.42 180 0.45 0.45 1.34 free
+prop 0 g_amfiteatru g_amfiteatru.riser.3 riser -19.5 13.54 180 11.4 1.1 0.62 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.13 auditorium_seat -22 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.14 auditorium_seat -21 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.15 auditorium_seat -20 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.16 auditorium_seat -19 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.17 auditorium_seat -18 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.18 auditorium_seat -17 13.46 180 0.45 0.45 1.52 free
+prop 0 g_amfiteatru g_amfiteatru.riser.4 riser -19.5 12.58 180 11.4 1.1 0.8 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.19 auditorium_seat -22 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.20 auditorium_seat -21 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.21 auditorium_seat -20 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.22 auditorium_seat -19 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.23 auditorium_seat -18 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.auditorium_seat.24 auditorium_seat -17 12.5 180 0.45 0.45 1.7 free
+prop 0 g_amfiteatru g_amfiteatru.podium.1 podium -13.9 11.94 180 0.8 0.6 1.37 free
+prop 0 g_amfiteatru g_amfiteatru.whiteboard_stand.1 whiteboard_stand -24.1 11.94 180 1.8 0.4 1.86 free
+prop 0 g_amfiteatru g_amfiteatru.bin.1 bin -25.49 11.62 180 0.3 0.31 0.51 free
+prop 0 g_amfiteatru g_amfiteatru.wall_poster.1 wall_poster -13.15 13.54 180 0.07 1.1 2.11 wall
+prop 0 g_amfiteatru g_amfiteatru.clock.1 clock -25.86 13.3 180 0.05 0.4 2.31 wall
+prop 0 g_amfiteatru g_amfiteatru.rug.1 rug -19.5 14.26 180 4 2.6 0.03 floor
+prop 0 g_farmacie g_farmacie.dispensing_counter.1 dispensing_counter -9 14.1 180 6.2 0.8 1.12 free
+prop 0 g_farmacie g_farmacie.shelf.1 shelf -9 17.62 180 7 0.41 2.01 wall
+prop 0 g_farmacie g_farmacie.shelf.2 shelf -12.65 15.7 180 0.5 0.41 2.01 wall
+prop 0 g_farmacie g_farmacie.counter_screen.1 counter_screen -8.2 14.1 180 0.4 0.3 1.42 free
+prop 0 g_farmacie g_farmacie.pharmacy_sign.1 pharmacy_sign -9 17.34 180 0.9 0.06 3.16 free
+prop 0 g_farmacie g_farmacie.fridge.1 fridge -5.9 11.94 180 0.7 0.65 1.81 free
+prop 0 g_farmacie g_farmacie.supply_cart.1 supply_cart -12.1 13.7 180 0.62 0.47 1.12 free
+prop 0 g_farmacie g_farmacie.bin.1 bin -12.49 11.62 180 0.3 0.31 0.51 free
+prop 0 g_farmacie g_farmacie.wall_poster.1 wall_poster -5.15 13.54 180 0.06 1.1 2.11 wall
+prop 0 g_farmacie g_farmacie.clock.1 clock -12.86 13.3 180 0.05 0.4 2.31 wall
+prop 0 g_intrare g_intrare.plant.1 plant -4.2 16.74 180 0.9 0.78 1.31 free
+prop 0 g_intrare g_intrare.plant.2 plant 4.2 16.74 180 0.9 0.78 1.31 free
+prop 0 g_intrare g_intrare.bench_seat.1 bench_seat -3.4 13.7 180 0.5 1.8 0.49 free
+prop 0 g_intrare g_intrare.bench_seat.2 bench_seat 3.4 13.7 180 0.5 1.8 0.49 free
+prop 0 g_intrare g_intrare.bin.1 bin -4.49 11.62 180 0.3 0.31 0.51 free
+prop 0 g_intrare g_intrare.wall_poster.1 wall_poster 4.85 13.54 180 0.06 1.1 2.11 wall
+prop 0 g_intrare g_intrare.clock.1 clock -4.86 13.3 180 0.04 0.4 2.31 wall
+prop 0 g_tranzit g_tranzit.desk.1 desk 10.4 16.97 180 1.8 0.8 1.15 free
+prop 0 g_tranzit g_tranzit.chair.1 chair 10.4 17.39 180 0.5 0.5 0.96 free
+prop 0 g_tranzit g_tranzit.chair.2 chair 10.4 16.06 180 0.5 0.5 0.96 free
+prop 0 g_tranzit g_tranzit.exam_couch.1 exam_couch 6.1 16.74 180 0.8 1.95 0.86 free
+prop 0 g_tranzit g_tranzit.cabinet.1 cabinet 6.3 17.7 180 1.84 0.64 0.96 wall
+prop 0 g_tranzit g_tranzit.plant.1 plant 11.4 13.58 180 0.9 0.78 1.31 wall
+prop 0 g_tranzit g_tranzit.privacy_screen.1 privacy_screen 8.5 14.69 180 1.87 0.1 1.81 free
+prop 0 g_tranzit g_tranzit.scale.1 scale 11.1 13.69 180 0.4 0.5 2.11 free
+prop 0 g_tranzit g_tranzit.bin.1 bin 5.51 13.47 180 0.3 0.31 0.51 free
+prop 0 g_tranzit g_tranzit.wall_poster.1 wall_poster 11.85 14.82 180 0.07 1.1 2.11 wall
+prop 0 g_tranzit g_tranzit.clock.1 clock 5.14 14.65 180 0.04 0.4 2.31 wall
+prop 0 g_tranzit g_tranzit.sink.1 sink 5.4 14.03 180 0.55 0.5 1.16 wall
+prop 0 g_garda g_garda.station_counter.1 station_counter 19 15.21 180 11.8 2.31 1.12 free
+prop 0 g_garda g_garda.chair.1 chair 18 15.3 180 0.5 0.5 0.96 free
+prop 0 g_garda g_garda.chair.2 chair 20 15.3 180 0.5 0.5 0.96 free
+prop 0 g_garda g_garda.desk_screen.1 desk_screen 18.2 14.5 180 0.5 0.05 1.48 free
+prop 0 g_garda g_garda.desk_screen.2 desk_screen 19.9 14.5 180 0.5 0.05 1.48 free
+prop 0 g_garda g_garda.shelf.1 shelf 19 17.62 180 12 0.41 2.01 wall
+prop 0 g_garda g_garda.crash.1 crash 13.9 11.94 180 0.72 0.52 1.22 free
+prop 0 g_garda g_garda.oxygen.1 oxygen 25.1 11.94 180 0.5 0.3 1.32 free
+prop 0 g_garda g_garda.printer.1 printer 25.1 13.7 180 0.7 0.5 0.88 free
+prop 0 g_garda g_garda.palm.1 palm 12.94 13.7 180 1.52 1.56 2.71 wall
+prop 0 g_garda g_garda.bin.1 bin 12.51 11.62 180 0.3 0.31 0.51 free
+prop 0 g_garda g_garda.wall_poster.1 wall_poster 25.85 13.54 180 0.07 1.1 2.11 wall
+prop 0 g_garda g_garda.clock.1 clock 12.14 13.3 180 0.05 0.4 2.31 wall
+prop 0 g_stoma g_stoma.desk.1 desk -24.58 -6.6 90 1.8 0.8 1.15 free
+prop 0 g_stoma g_stoma.chair.1 chair -25.18 -6.6 90 0.5 0.5 0.96 free
+prop 0 g_stoma g_stoma.chair.2 chair -23.3 -6.6 90 0.5 0.5 0.96 free
+prop 0 g_stoma g_stoma.exam_couch.1 exam_couch -24.26 -9.9 90 0.8 1.95 0.86 free
+prop 0 g_stoma g_stoma.cabinet.1 cabinet -25.62 -9.7 90 1.84 0.64 0.96 wall
+prop 0 g_stoma g_stoma.plant.1 plant -19.78 -5.6 90 0.78 0.9 1.31 wall
+prop 0 g_stoma g_stoma.dental.1 dental -21.26 -7.96 90 1.57 1.85 1.92 free
+prop 0 g_stoma g_stoma.supply_cart.1 supply_cart -21.7 -10.1 90 0.62 0.47 1.12 free
+prop 0 g_stoma g_stoma.lightbox_stand.1 lightbox_stand -19.94 -5.9 90 0.9 0.4 1.86 free
+prop 0 g_stoma g_stoma.bin.1 bin -19.61 -10.5 90 0.31 0.3 0.51 free
+prop 0 g_stoma g_stoma.wall_poster.1 wall_poster -21.54 -5.15 90 0.06 1.1 2.11 wall
+prop 0 g_stoma g_stoma.clock.1 clock -21.3 -10.86 90 0.05 0.4 2.31 wall
+prop 0 g_stoma g_stoma.sink.1 sink -20.42 -10.6 90 0.55 0.5 1.16 wall
+prop 0 g_salivare g_salivare.desk.1 desk -24.58 -0.6 90 1.8 0.8 1.15 free
+prop 0 g_salivare g_salivare.chair.1 chair -25.18 -0.6 90 0.5 0.5 0.96 free
+prop 0 g_salivare g_salivare.chair.2 chair -23.3 -0.6 90 0.5 0.5 0.96 free
+prop 0 g_salivare g_salivare.exam_couch.1 exam_couch -24.26 -3.9 90 0.8 1.95 0.86 free
+prop 0 g_salivare g_salivare.cabinet.1 cabinet -25.62 -3.7 90 1.84 0.64 0.96 wall
+prop 0 g_salivare g_salivare.plant.1 plant -19.78 0.4 90 0.78 0.9 1.31 wall
+prop 0 g_salivare g_salivare.ultrasound.1 ultrasound -21.7 -4.05 90 0.69 0.6 1.73 free
+prop 0 g_salivare g_salivare.lightbox_stand.1 lightbox_stand -19.94 0.1 90 0.9 0.4 1.86 free
+prop 0 g_salivare g_salivare.bin.1 bin -19.61 -4.5 90 0.31 0.3 0.51 free
+prop 0 g_salivare g_salivare.wall_poster.1 wall_poster -21.54 0.85 90 0.07 1.1 2.11 wall
+prop 0 g_salivare g_salivare.clock.1 clock -21.3 -4.86 90 0.04 0.4 2.31 wall
+prop 0 g_salivare g_salivare.sink.1 sink -20.42 -4.6 90 0.55 0.5 1.16 wall
+prop 0 g_asteptare g_asteptare.chair.1 chair -25.38 2 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.2 chair -22.98 2 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.3 chair -25.38 3 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.4 chair -22.98 3 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.5 chair -25.38 4 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.6 chair -22.98 4 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.7 chair -25.38 5 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.8 chair -22.98 5 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.9 chair -25.38 6 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.10 chair -22.98 6 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.11 chair -25.38 7 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.chair.12 chair -22.98 7 90 0.5 0.5 0.96 free
+prop 0 g_asteptare g_asteptare.cabinet.1 cabinet -19.86 8 90 2.04 0.64 0.96 free
+prop 0 g_asteptare g_asteptare.plant.1 plant -19.78 1.6 90 0.78 0.9 1.31 wall
+prop 0 g_asteptare g_asteptare.sofa.1 sofa -21.3 6 90 1.92 0.8 0.88 free
+prop 0 g_asteptare g_asteptare.side_table.1 side_table -21.3 8 90 1 0.6 0.46 free
+prop 0 g_asteptare g_asteptare.aquarium.1 aquarium -21.7 10.1 90 1.4 0.5 1.41 wall
+prop 0 g_asteptare g_asteptare.vending.1 vending -19.94 10.1 90 0.95 0.7 1.91 free
+prop 0 g_asteptare g_asteptare.cooler.1 cooler -19.94 2.9 90 0.36 0.36 1.41 free
+prop 0 g_asteptare g_asteptare.palm.1 palm -21.66 1.9 90 1.56 1.52 2.71 wall
+prop 0 g_asteptare g_asteptare.bin.1 bin -19.61 1.5 90 0.31 0.3 0.51 free
+prop 0 g_asteptare g_asteptare.wall_poster.1 wall_poster -21.54 10.85 90 0.07 1.1 2.11 wall
+prop 0 g_asteptare g_asteptare.clock.1 clock -21.3 1.14 90 0.05 0.4 2.31 wall
+prop 0 g_bay1 g_bay1.bed.1 bed 24.58 -9.16 270 1.05 2.1 1.01 free
+prop 0 g_bay1 g_bay1.monitor.1 monitor 25.54 -8.21 270 0.5 0.4 1.61 free
+prop 0 g_bay1 g_bay1.bed_curtain.1 bed_curtain 22.5 -10.75 270 0.05 6 2.21 wall
+prop 0 g_bay1 g_bay1.bin.1 bin 19.63 -10.5 270 0.31 0.3 0.51 free
+prop 0 g_bay1 g_bay1.wall_poster.1 wall_poster 21.54 -7.48 270 0.06 1.1 2.11 wall
+prop 0 g_bay1 g_bay1.clock.1 clock 21.3 -10.86 270 0.04 0.4 2.31 wall
+prop 0 g_bay2 g_bay2.bed.1 bed 24.58 -5.5 270 1.05 2.1 1.01 free
+prop 0 g_bay2 g_bay2.monitor.1 monitor 25.54 -4.55 270 0.5 0.4 1.61 free
+prop 0 g_bay2 g_bay2.bed_curtain.1 bed_curtain 22.5 -7.08 270 0.05 6 2.21 wall
+prop 0 g_bay2 g_bay2.bin.1 bin 19.63 -6.83 270 0.31 0.3 0.51 free
+prop 0 g_bay2 g_bay2.wall_poster.1 wall_poster 21.54 -3.82 270 0.06 1.1 2.11 wall
+prop 0 g_bay2 g_bay2.clock.1 clock 21.3 -7.19 270 0.04 0.4 2.31 wall
+prop 0 g_bay3 g_bay3.bed.1 bed 24.58 -1.83 270 1.05 2.1 1.01 free
+prop 0 g_bay3 g_bay3.monitor.1 monitor 25.54 -0.88 270 0.5 0.4 1.61 free
+prop 0 g_bay3 g_bay3.bed_curtain.1 bed_curtain 22.5 -3.42 270 0.05 6 2.21 wall
+prop 0 g_bay3 g_bay3.bin.1 bin 19.63 -3.17 270 0.31 0.3 0.51 free
+prop 0 g_bay3 g_bay3.wall_poster.1 wall_poster 21.54 -0.15 270 0.07 1.1 2.11 wall
+prop 0 g_bay3 g_bay3.clock.1 clock 21.3 -3.53 270 0.04 0.4 2.31 wall
+prop 0 g_bay4 g_bay4.bed.1 bed 24.58 1.84 270 1.05 2.1 1.01 free
+prop 0 g_bay4 g_bay4.monitor.1 monitor 25.54 2.79 270 0.5 0.4 1.61 free
+prop 0 g_bay4 g_bay4.bed_curtain.1 bed_curtain 22.5 0.25 270 0.05 6 2.21 wall
+prop 0 g_bay4 g_bay4.bin.1 bin 19.63 0.5 270 0.31 0.3 0.51 free
+prop 0 g_bay4 g_bay4.wall_poster.1 wall_poster 21.54 3.52 270 0.06 1.1 2.11 wall
+prop 0 g_bay4 g_bay4.clock.1 clock 21.3 0.14 270 0.05 0.4 2.31 wall
+prop 0 g_bay5 g_bay5.bed.1 bed 24.58 5.5 270 1.05 2.1 1.01 free
+prop 0 g_bay5 g_bay5.monitor.1 monitor 25.54 6.45 270 0.5 0.4 1.61 free
+prop 0 g_bay5 g_bay5.bed_curtain.1 bed_curtain 22.5 3.92 270 0.05 6 2.21 wall
+prop 0 g_bay5 g_bay5.bin.1 bin 19.63 4.17 270 0.31 0.3 0.51 free
+prop 0 g_bay5 g_bay5.wall_poster.1 wall_poster 21.54 7.18 270 0.06 1.1 2.11 wall
+prop 0 g_bay5 g_bay5.clock.1 clock 21.3 3.81 270 0.04 0.4 2.31 wall
+prop 0 g_bay6 g_bay6.bed.1 bed 24.58 9.16 270 1.05 2.1 1.01 free
+prop 0 g_bay6 g_bay6.monitor.1 monitor 25.54 10.11 270 0.5 0.4 1.61 free
+prop 0 g_bay6 g_bay6.bed_curtain.1 bed_curtain 22.5 7.58 270 0.05 6 2.21 wall
+prop 0 g_bay6 g_bay6.bin.1 bin 19.63 7.83 270 0.31 0.3 0.51 free
+prop 0 g_bay6 g_bay6.wall_poster.1 wall_poster 21.54 10.85 270 0.07 1.1 2.11 wall
+prop 0 g_bay6 g_bay6.clock.1 clock 21.3 7.47 270 0.04 0.4 2.31 wall
+prop 0 g_lobby g_lobby.reception_desk.1 reception_desk -3.5 2.79 0 4.2 0.9 1.12 free
+prop 0 g_lobby g_lobby.chair.1 chair -3.5 4.18 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.2 chair 2 6.59 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.3 chair 2 2.87 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.4 chair 2.9 6.59 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.5 chair 2.9 2.87 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.6 chair 3.8 6.59 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.7 chair 3.8 2.87 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.8 chair 4.7 6.59 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.9 chair 4.7 2.87 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.10 chair 5.6 6.59 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.chair.11 chair 5.6 2.87 0 0.5 0.7 0.96 free
+prop 0 g_lobby g_lobby.info_screen.1 info_screen -5 -6.31 0 3 0.14 2.21 free
+prop 0 g_lobby g_lobby.info_screen.2 info_screen 5 -6.31 0 3 0.14 2.21 free
+prop 0 g_lobby g_lobby.planter_tree.1 planter_tree -7.55 -1.86 0 2.09 2.14 3.81 free
+prop 0 g_lobby g_lobby.planter_tree.2 planter_tree 7.65 -1.86 0 2.09 2.14 3.81 free
+prop 0 g_lobby g_lobby.planter_tree.3 planter_tree -7.55 4.46 0 2.09 2.14 3.81 free
+prop 0 g_lobby g_lobby.planter_tree.4 planter_tree 7.65 4.46 0 2.09 2.14 3.81 free
+prop 0 g_lobby g_lobby.bin.1 bin -8.49 6.69 0 0.3 0.31 0.51 free
+prop 0 g_lobby g_lobby.wall_poster.1 wall_poster 8.85 2.23 0 0.06 1.1 2.11 wall
+prop 0 g_lobby g_lobby.clock.1 clock -8.86 2.79 0 0.04 0.4 2.31 wall
+prop 0 c0_wc c0_wc.wc_cubicle.1 wc_cubicle -15 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc c0_wc.wc_cubicle.2 wc_cubicle -13.4 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc c0_wc.wc_cubicle.3 wc_cubicle -11.8 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc c0_wc.wc_basin.1 wc_basin -9.5 -6.06 180 0.5 2 0.86 free
+prop 0 c0_scari c0_scari.stairs.1 stairs -12.66 0 270 2.4 5.28 1.61 free
+prop 0 c0_wc2 c0_wc2.wc_cubicle.1 wc_cubicle 10 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc2 c0_wc2.wc_cubicle.2 wc_cubicle 11.6 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc2 c0_wc2.wc_cubicle.3 wc_cubicle 13.2 -3.44 180 1.3 0.56 2.01 wall
+prop 0 c0_wc2 c0_wc2.wc_basin.1 wc_basin 15.5 -6.06 180 0.5 2 0.86 free
+prop 0 c0_depozit c0_depozit.shelf.1 shelf 9.38 0 90 5 0.41 2.01 wall
+prop 0 c0_depozit c0_depozit.shelf.2 shelf 13.3 0 90 4 0.41 2.01 free
+prop 0 corridor0 corridor0.alcove_seat.1 alcove_seat -16.45 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.2 alcove_seat -11.55 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.3 alcove_seat -15.7 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.4 alcove_seat -12.3 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.plant.1 plant -16.55 -11.5 0 0.7 0.7 1.3 free
+prop 0 corridor0 corridor0.cooler.1 cooler -11.5 -11.55 0 0.4 0.4 1.34 free
+prop 0 corridor0 corridor0.alcove_seat.5 alcove_seat -4.45 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.6 alcove_seat 0.45 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.7 alcove_seat -3.7 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.8 alcove_seat -0.3 -12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.plant.2 plant -4.55 -11.5 0 0.7 0.7 1.3 free
+prop 0 corridor0 corridor0.cooler.2 cooler 0.5 -11.55 0 0.4 0.4 1.34 free
+prop 0 corridor0 corridor0.alcove_seat.9 alcove_seat 5.55 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.10 alcove_seat 11.45 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.11 alcove_seat 6.3 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.12 alcove_seat 10.7 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.13 alcove_seat 7.05 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.alcove_seat.14 alcove_seat 9.95 12.61 0 0.6 0.57 0.9 free
+prop 0 corridor0 corridor0.plant.3 plant 5.45 11.5 0 0.7 0.7 1.3 free
+prop 0 corridor0 corridor0.cooler.3 cooler 11.5 11.55 0 0.4 0.4 1.34 free
+prop 0 corridor0 corridor0.corridor_bench.1 corridor_bench -11 -10.7 0 1.6 0.45 0.88 free
+prop 0 corridor0 corridor0.corridor_plant.1 corridor_plant 1.02 -10.7 0 0.95 0.97 1.7 free
+prop 0 corridor0 corridor0.extinguisher.1 extinguisher 15.27 -10.75 0 1.48 0.44 1.35 free
+prop 0 corridor0 corridor0.corridor_chair.1 corridor_chair -13 10.72 0 0.64 0.56 0.81 free
+prop 0 corridor0 corridor0.notice_poster.1 notice_poster 12 10.93 0 1 0.05 1.9 free
+prop 0 corridor0 corridor0.lift_sign.1 lift_sign -12.5 9.51 0 2.6 0.1 3.7 free
+prop 1 e_microbio e_microbio.lab_bench.1 lab_bench -21 -17.54 0 9.1 0.75 1.46 wall
+prop 1 e_microbio e_microbio.lab_island.1 lab_island -21 -14.74 0 2.7 1.2 1.46 free
+prop 1 e_microbio e_microbio.chair.1 chair -21 -13.86 0 0.5 0.5 0.96 free
+prop 1 e_microbio e_microbio.tall_cabinet.1 tall_cabinet -16.5 -13.7 0 0.7 0.9 1.91 wall
+prop 1 e_microbio e_microbio.fridge.1 fridge -25.1 -11.94 0 0.7 0.65 1.81 free
+prop 1 e_microbio e_microbio.centrifuge.1 centrifuge -25.1 -13.7 0 0.8 0.6 1.11 free
+prop 1 e_microbio e_microbio.bin.1 bin -25.49 -11.62 0 0.3 0.31 0.51 free
+prop 1 e_microbio e_microbio.wall_poster.1 wall_poster -16.15 -13.54 0 0.07 1.1 2.11 wall
+prop 1 e_microbio e_microbio.clock.1 clock -25.86 -13.3 0 0.05 0.4 2.31 wall
+prop 1 e_microbio e_microbio.sink.1 sink -25.6 -12.42 0 0.55 0.5 1.16 wall
+prop 1 e_anapat e_anapat.lab_bench.1 lab_bench -12.5 -17.54 0 6.1 0.75 1.46 wall
+prop 1 e_anapat e_anapat.lab_island.1 lab_island -12.5 -14.74 0 2.7 1.2 1.46 free
+prop 1 e_anapat e_anapat.chair.1 chair -12.5 -13.86 0 0.5 0.5 0.96 free
+prop 1 e_anapat e_anapat.tall_cabinet.1 tall_cabinet -9.5 -13.7 0 0.7 0.9 1.91 wall
+prop 1 e_anapat e_anapat.centrifuge.1 centrifuge -9.9 -11.94 0 0.8 0.6 1.11 free
+prop 1 e_anapat e_anapat.fridge.1 fridge -15.1 -13.7 0 0.7 0.65 1.81 free
+prop 1 e_anapat e_anapat.bin.1 bin -15.49 -11.62 0 0.3 0.31 0.51 free
+prop 1 e_anapat e_anapat.wall_poster.1 wall_poster -9.15 -13.54 0 0.07 1.1 2.11 wall
+prop 1 e_anapat e_anapat.clock.1 clock -15.86 -13.3 0 0.05 0.4 2.31 wall
+prop 1 e_anapat e_anapat.sink.1 sink -15.6 -12.42 0 0.55 0.5 1.16 wall
+prop 1 e_respirator e_respirator.lab_bench.1 lab_bench -5.5 -17.65 0 6.1 0.75 1.46 wall
+prop 1 e_respirator e_respirator.lab_island.1 lab_island -5.5 -15.67 0 2.7 1.2 1.46 free
+prop 1 e_respirator e_respirator.chair.1 chair -5.5 -15.05 0 0.5 0.5 0.96 free
+prop 1 e_respirator e_respirator.tall_cabinet.1 tall_cabinet -2.5 -14.94 0 0.7 0.9 1.91 wall
+prop 1 e_respirator e_respirator.recliner.1 recliner -5.27 -14.57 0 1.39 1.07 1.81 free
+prop 1 e_respirator e_respirator.printer.1 printer -2.9 -13.69 0 0.7 0.5 0.88 free
+prop 1 e_respirator e_respirator.bin.1 bin -8.49 -13.47 0 0.3 0.31 0.51 free
+prop 1 e_respirator e_respirator.wall_poster.1 wall_poster -2.15 -14.82 0 0.06 1.1 2.11 wall
+prop 1 e_respirator e_respirator.clock.1 clock -8.86 -14.65 0 0.05 0.4 2.31 wall
+prop 1 e_respirator e_respirator.sink.1 sink -8.6 -14.03 0 0.55 0.5 1.16 wall
+prop 1 e_histo e_histo.lab_bench.1 lab_bench 4 -17.54 0 11.1 0.75 1.46 wall
+prop 1 e_histo e_histo.lab_island.1 lab_island 4 -14.74 0 2.7 1.2 1.46 free
+prop 1 e_histo e_histo.chair.1 chair 4 -13.86 0 0.5 0.5 0.96 free
+prop 1 e_histo e_histo.tall_cabinet.1 tall_cabinet 9.5 -13.7 0 0.7 0.9 1.91 wall
+prop 1 e_histo e_histo.fridge.1 fridge 9.1 -11.94 0 0.7 0.65 1.81 free
+prop 1 e_histo e_histo.centrifuge.1 centrifuge -1.1 -13.7 0 0.8 0.6 1.11 free
+prop 1 e_histo e_histo.whiteboard_stand.1 whiteboard_stand -0.1 -11.94 0 1.8 0.4 1.86 free
+prop 1 e_histo e_histo.bin.1 bin -1.49 -11.62 0 0.3 0.31 0.51 free
+prop 1 e_histo e_histo.wall_poster.1 wall_poster 9.85 -13.54 0 0.07 1.1 2.11 wall
+prop 1 e_histo e_histo.clock.1 clock -1.86 -13.3 0 0.05 0.4 2.31 wall
+prop 1 e_histo e_histo.sink.1 sink -1.6 -12.42 0 0.55 0.5 1.16 wall
+prop 1 e_analize e_analize.lab_bench.1 lab_bench 13.5 -17.54 0 6.1 0.75 1.46 wall
+prop 1 e_analize e_analize.lab_island.1 lab_island 13.5 -14.74 0 2.7 1.2 1.46 free
+prop 1 e_analize e_analize.chair.1 chair 13.5 -13.86 0 0.5 0.5 0.96 free
+prop 1 e_analize e_analize.tall_cabinet.1 tall_cabinet 16.5 -13.7 0 0.7 0.9 1.91 wall
+prop 1 e_analize e_analize.centrifuge.1 centrifuge 10.9 -13.7 0 0.8 0.6 1.11 free
+prop 1 e_analize e_analize.printer.1 printer 16.1 -11.94 0 0.7 0.5 0.88 free
+prop 1 e_analize e_analize.bin.1 bin 10.51 -11.62 0 0.3 0.31 0.51 free
+prop 1 e_analize e_analize.wall_poster.1 wall_poster 16.85 -13.54 0 0.07 1.1 2.11 wall
+prop 1 e_analize e_analize.clock.1 clock 10.14 -13.3 0 0.05 0.4 2.31 wall
+prop 1 e_analize e_analize.sink.1 sink 10.4 -12.42 0 0.55 0.5 1.16 wall
+prop 1 e_vestiar e_vestiar.locker.1 locker 18 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.2 locker 19 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.3 locker 20 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.4 locker 21 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.5 locker 22 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.6 locker 23 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.7 locker 24 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.locker.8 locker 25 -17.54 0 0.9 0.5 1.91 wall
+prop 1 e_vestiar e_vestiar.bench_seat.1 bench_seat 21.5 -14.9 0 5 0.5 0.49 free
+prop 1 e_vestiar e_vestiar.coats.1 coats 25.1 -11.94 0 1.3 0.5 1.76 free
+prop 1 e_vestiar e_vestiar.coats.2 coats 24.1 -11.94 0 1.3 0.5 1.76 free
+prop 1 e_primire e_primire.chair.1 chair -25 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.2 chair -25 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.3 chair -24 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.4 chair -24 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.5 chair -23 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.6 chair -23 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.7 chair -22 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.8 chair -22 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.9 chair -21 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.10 chair -21 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.11 chair -20 17.38 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.chair.12 chair -20 14.98 180 0.5 0.5 0.96 free
+prop 1 e_primire e_primire.cabinet.1 cabinet -18 11.86 180 2.04 0.64 0.96 free
+prop 1 e_primire e_primire.plant.1 plant -25.4 11.78 180 0.9 0.78 1.31 wall
+prop 1 e_primire e_primire.sofa.1 sofa -20 13.3 180 1.92 0.8 0.88 free
+prop 1 e_primire e_primire.cooler.1 cooler -14.9 11.94 180 0.36 0.36 1.41 free
+prop 1 e_primire e_primire.privacy_screen.1 privacy_screen -22 13.35 180 1.87 0.13 1.81 free
+prop 1 e_primire e_primire.palm.1 palm -25.06 13.7 180 1.52 1.56 2.71 wall
+prop 1 e_primire e_primire.side_table.1 side_table -18 13.3 180 1 0.6 0.46 free
+prop 1 e_primire e_primire.bin.1 bin -25.49 11.62 180 0.3 0.31 0.51 free
+prop 1 e_primire e_primire.wall_poster.1 wall_poster -14.15 13.54 180 0.07 1.1 2.11 wall
+prop 1 e_primire e_primire.clock.1 clock -25.86 13.3 180 0.05 0.4 2.31 wall
+prop 1 e_endo1 e_endo1.exam_couch.1 exam_couch -10.75 14.98 180 0.75 2.05 0.93 free
+prop 1 e_endo1 e_endo1.trolley_tower.1 trolley_tower -9.25 15.78 180 0.7 0.5 2.01 free
+prop 1 e_endo1 e_endo1.trolley_tower.2 trolley_tower -12.35 16.26 180 0.7 0.5 2.01 free
+prop 1 e_endo1 e_endo1.cabinet.1 cabinet -10.75 17.62 180 5.04 0.64 0.96 wall
+prop 1 e_endo1 e_endo1.chair.1 chair -11.95 14.18 180 0.5 0.5 0.96 free
+prop 1 e_endo1 e_endo1.scope_cabinet.1 scope_cabinet -8.4 11.94 180 1 0.4 2.01 free
+prop 1 e_endo1 e_endo1.bin.1 bin -13.49 11.62 180 0.3 0.31 0.51 free
+prop 1 e_endo1 e_endo1.wall_poster.1 wall_poster -7.65 13.54 180 0.06 1.1 2.11 wall
+prop 1 e_endo1 e_endo1.clock.1 clock -13.86 13.3 180 0.05 0.4 2.31 wall
+prop 1 e_endo1 e_endo1.sink.1 sink -13.6 12.42 180 0.55 0.5 1.16 wall
+prop 1 e_endo2 e_endo2.exam_couch.1 exam_couch -4.25 14.98 180 0.75 2.05 0.93 free
+prop 1 e_endo2 e_endo2.trolley_tower.1 trolley_tower -2.75 15.78 180 0.7 0.5 2.01 free
+prop 1 e_endo2 e_endo2.trolley_tower.2 trolley_tower -5.85 16.26 180 0.7 0.5 2.01 free
+prop 1 e_endo2 e_endo2.cabinet.1 cabinet -4.25 17.62 180 5.04 0.64 0.96 wall
+prop 1 e_endo2 e_endo2.chair.1 chair -5.45 14.18 180 0.5 0.5 0.96 free
+prop 1 e_endo2 e_endo2.scope_cabinet.1 scope_cabinet -1.9 11.94 180 1 0.4 2.01 free
+prop 1 e_endo2 e_endo2.bin.1 bin -6.99 11.62 180 0.3 0.31 0.51 free
+prop 1 e_endo2 e_endo2.wall_poster.1 wall_poster -1.15 13.54 180 0.06 1.1 2.11 wall
+prop 1 e_endo2 e_endo2.clock.1 clock -7.36 13.3 180 0.04 0.4 2.31 wall
+prop 1 e_endo2 e_endo2.sink.1 sink -7.1 12.42 180 0.55 0.5 1.16 wall
+prop 1 e_decontam e_decontam.scrub_sink.1 scrub_sink -0.5 12.5 180 0.6 1.6 0.97 wall
+prop 1 e_decontam e_decontam.scrub_sink.2 scrub_sink -0.5 14.42 180 0.6 1.6 0.97 wall
+prop 1 e_decontam e_decontam.scrub_sink.3 scrub_sink -0.5 16.34 180 0.6 1.6 0.97 wall
+prop 1 e_decontam e_decontam.cabinet.1 cabinet 2.5 14.5 180 0.64 0.64 0.96 wall
+prop 1 e_decontam e_decontam.cupboard.1 cupboard 2.5 16.5 180 0.6 1.6 1.81 wall
+prop 1 e_decontam e_decontam.scope_cabinet.1 scope_cabinet 2.1 13.7 180 1 0.4 2.01 free
+prop 1 e_decontam e_decontam.scope_cabinet.2 scope_cabinet -0.1 13.7 180 1 0.4 2.01 free
+prop 1 e_decontam e_decontam.bin.1 bin -0.49 11.62 180 0.3 0.31 0.51 free
+prop 1 e_decontam e_decontam.wall_poster.1 wall_poster 2.85 13.54 180 0.06 1.1 2.11 wall
+prop 1 e_decontam e_decontam.clock.1 clock -0.86 13.3 180 0.05 0.4 2.31 wall
+prop 1 e_endoter e_endoter.exam_couch.1 exam_couch 7 14.98 180 0.75 2.05 0.93 free
+prop 1 e_endoter e_endoter.trolley_tower.1 trolley_tower 8.5 15.78 180 0.7 0.5 2.01 free
+prop 1 e_endoter e_endoter.trolley_tower.2 trolley_tower 5.4 16.26 180 0.7 0.5 2.01 free
+prop 1 e_endoter e_endoter.cabinet.1 cabinet 7 17.62 180 6.54 0.64 0.96 wall
+prop 1 e_endoter e_endoter.chair.1 chair 5.8 14.18 180 0.5 0.5 0.96 free
+prop 1 e_endoter e_endoter.scope_cabinet.1 scope_cabinet 10.1 11.94 180 1 0.4 2.01 free
+prop 1 e_endoter e_endoter.crash.1 crash 4.9 11.94 180 0.72 0.52 1.22 free
+prop 1 e_endoter e_endoter.oxygen.1 oxygen 3.9 13.7 180 0.5 0.3 1.32 free
+prop 1 e_endoter e_endoter.bin.1 bin 3.51 11.62 180 0.3 0.31 0.51 free
+prop 1 e_endoter e_endoter.wall_poster.1 wall_poster 10.85 13.54 180 0.07 1.1 2.11 wall
+prop 1 e_endoter e_endoter.clock.1 clock 3.14 13.3 180 0.04 0.4 2.31 wall
+prop 1 e_endoter e_endoter.sink.1 sink 3.4 12.42 180 0.55 0.5 1.16 wall
+prop 1 e_endo3 e_endo3.exam_couch.1 exam_couch 14 14.98 180 0.75 2.05 0.93 free
+prop 1 e_endo3 e_endo3.trolley_tower.1 trolley_tower 15.5 15.78 180 0.7 0.5 2.01 free
+prop 1 e_endo3 e_endo3.trolley_tower.2 trolley_tower 12.4 16.26 180 0.7 0.5 2.01 free
+prop 1 e_endo3 e_endo3.cabinet.1 cabinet 14 17.62 180 4.54 0.64 0.96 wall
+prop 1 e_endo3 e_endo3.chair.1 chair 12.8 14.18 180 0.5 0.5 0.96 free
+prop 1 e_endo3 e_endo3.scope_cabinet.1 scope_cabinet 16.1 11.94 180 1 0.4 2.01 free
+prop 1 e_endo3 e_endo3.bin.1 bin 11.51 11.62 180 0.3 0.31 0.51 free
+prop 1 e_endo3 e_endo3.wall_poster.1 wall_poster 16.85 13.54 180 0.07 1.1 2.11 wall
+prop 1 e_endo3 e_endo3.clock.1 clock 11.14 13.3 180 0.05 0.4 2.31 wall
+prop 1 e_endo3 e_endo3.sink.1 sink 11.4 12.42 180 0.55 0.5 1.16 wall
+prop 1 e_recuperare e_recuperare.bed.1 bed 18.3 16.58 180 1.05 2.1 1.01 free
+prop 1 e_recuperare e_recuperare.bed.2 bed 21.5 16.58 180 1.05 2.1 1.01 free
+prop 1 e_recuperare e_recuperare.bed.3 bed 24.7 16.58 180 1.05 2.1 1.01 free
+prop 1 e_recuperare e_recuperare.cabinet.1 cabinet 21.5 11.62 180 2.04 0.64 0.96 free
+prop 1 e_recuperare e_recuperare.oxygen.1 oxygen 25.1 11.94 180 0.5 0.3 1.32 free
+prop 1 e_recuperare e_recuperare.supply_cart.1 supply_cart 21.5 13.3 180 0.62 0.47 1.12 free
+prop 1 e_recuperare e_recuperare.privacy_screen.1 privacy_screen 19.5 13.35 180 1.87 0.13 1.81 free
+prop 1 e_recuperare e_recuperare.bin.1 bin 17.51 11.62 180 0.3 0.31 0.51 free
+prop 1 e_recuperare e_recuperare.wall_poster.1 wall_poster 25.85 13.54 180 0.07 1.1 2.11 wall
+prop 1 e_recuperare e_recuperare.clock.1 clock 17.14 13.3 180 0.05 0.4 2.31 wall
+prop 1 e_farmclin e_farmclin.dispensing_counter.1 dispensing_counter -22.1 -4.5 90 11.2 0.8 1.12 free
+prop 1 e_farmclin e_farmclin.shelf.1 shelf -25.62 -4.5 90 12 0.41 2.01 wall
+prop 1 e_farmclin e_farmclin.shelf.2 shelf -23.7 -10.65 90 0.5 0.41 2.01 wall
+prop 1 e_farmclin e_farmclin.counter_screen.1 counter_screen -22.1 -3.7 90 0.4 0.3 1.42 free
+prop 1 e_farmclin e_farmclin.pharmacy_sign.1 pharmacy_sign -25.34 -4.5 90 0.9 0.06 3.16 free
+prop 1 e_farmclin e_farmclin.fridge.1 fridge -19.94 1.1 90 0.7 0.65 1.81 free
+prop 1 e_farmclin e_farmclin.supply_cart.1 supply_cart -21.7 -10.1 90 0.62 0.47 1.12 free
+prop 1 e_farmclin e_farmclin.printer.1 printer -19.94 -9.1 90 0.7 0.5 0.88 free
+prop 1 e_farmclin e_farmclin.bin.1 bin -19.61 -10.5 90 0.31 0.3 0.51 free
+prop 1 e_farmclin e_farmclin.wall_poster.1 wall_poster -21.54 1.85 90 0.06 1.1 2.11 wall
+prop 1 e_farmclin e_farmclin.clock.1 clock -21.3 -10.86 90 0.05 0.4 2.31 wall
+prop 1 e_functional e_functional.desk.1 desk -24.97 9.4 90 1.8 0.8 1.15 free
+prop 1 e_functional e_functional.chair.1 chair -25.39 9.4 90 0.5 0.5 0.96 free
+prop 1 e_functional e_functional.chair.2 chair -24.06 9.4 90 0.5 0.5 0.96 free
+prop 1 e_functional e_functional.exam_couch.1 exam_couch -24.74 3.1 90 0.8 1.95 0.86 free
+prop 1 e_functional e_functional.cabinet.1 cabinet -25.7 3.3 90 1.84 0.64 0.96 wall
+prop 1 e_functional e_functional.plant.1 plant -21.58 10.4 90 0.78 0.9 1.31 wall
+prop 1 e_functional e_functional.recliner.1 recliner -22.57 6.73 90 1.39 1.07 1.81 free
+prop 1 e_functional e_functional.ultrasound.1 ultrasound -22.94 10.15 90 0.69 0.6 1.73 free
+prop 1 e_functional e_functional.bin.1 bin -21.46 2.5 90 0.31 0.3 0.51 free
+prop 1 e_functional e_functional.wall_poster.1 wall_poster -22.82 10.85 90 0.07 1.1 2.11 wall
+prop 1 e_functional e_functional.clock.1 clock -22.65 2.14 90 0.05 0.4 2.31 wall
+prop 1 e_functional e_functional.sink.1 sink -22.03 2.4 90 0.55 0.5 1.16 wall
+prop 1 e_colono e_colono.exam_couch.1 exam_couch 22.98 -6.5 270 0.75 2.05 0.93 free
+prop 1 e_colono e_colono.trolley_tower.1 trolley_tower 23.78 -5 270 0.7 0.5 2.01 free
+prop 1 e_colono e_colono.trolley_tower.2 trolley_tower 24.26 -8.1 270 0.7 0.5 2.01 free
+prop 1 e_colono e_colono.cabinet.1 cabinet 25.62 -6.5 270 7.54 0.64 0.96 wall
+prop 1 e_colono e_colono.chair.1 chair 22.18 -7.7 270 0.5 0.5 0.96 free
+prop 1 e_colono e_colono.scope_cabinet.1 scope_cabinet 19.94 -2.9 270 1 0.4 2.01 free
+prop 1 e_colono e_colono.oxygen.1 oxygen 19.94 -9.1 270 0.5 0.3 1.32 free
+prop 1 e_colono e_colono.bin.1 bin 19.63 -10.5 270 0.31 0.3 0.51 free
+prop 1 e_colono e_colono.wall_poster.1 wall_poster 21.54 -2.15 270 0.06 1.1 2.11 wall
+prop 1 e_colono e_colono.clock.1 clock 21.3 -10.86 270 0.05 0.4 2.31 wall
+prop 1 e_colono e_colono.sink.1 sink 20.42 -10.6 270 0.55 0.5 1.16 wall
+prop 1 e_radiologie e_radiologie.ct_scanner.1 ct_scanner 23.22 3.5 270 2.53 4.36 1.13 free
+prop 1 e_radiologie e_radiologie.desk.1 desk 24.9 6.5 270 2 0.8 1.15 free
+prop 1 e_radiologie e_radiologie.chair.1 chair 25.5 6.5 270 0.5 0.5 0.96 free
+prop 1 e_radiologie e_radiologie.wall_screen.1 wall_screen 25.77 6.5 270 1.6 0.08 2.21 wall
+prop 1 e_radiologie e_radiologie.lightbox_stand.1 lightbox_stand 19.94 10.1 270 0.9 0.4 1.86 free
+prop 1 e_radiologie e_radiologie.lightbox_stand.2 lightbox_stand 19.94 -0.1 270 0.9 0.4 1.86 free
+prop 1 e_radiologie e_radiologie.printer.1 printer 21.7 10.1 270 0.7 0.5 0.88 free
+prop 1 e_radiologie e_radiologie.bin.1 bin 19.63 -1.5 270 0.31 0.3 0.51 free
+prop 1 e_radiologie e_radiologie.wall_poster.1 wall_poster 21.54 10.85 270 0.07 1.1 2.11 wall
+prop 1 e_radiologie e_radiologie.clock.1 clock 21.3 -1.86 270 0.05 0.4 2.31 wall
+prop 1 c1_wc c1_wc.wc_cubicle.1 wc_cubicle -15 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc c1_wc.wc_cubicle.2 wc_cubicle -13.4 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc c1_wc.wc_cubicle.3 wc_cubicle -11.8 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc c1_wc.wc_basin.1 wc_basin -9.5 -6.06 180 0.5 2 0.86 free
+prop 1 c1_scari c1_scari.stairs.1 stairs -12.66 0 270 2.4 5.28 1.61 free
+prop 1 c1_wc2 c1_wc2.wc_cubicle.1 wc_cubicle 10 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc2 c1_wc2.wc_cubicle.2 wc_cubicle 11.6 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc2 c1_wc2.wc_cubicle.3 wc_cubicle 13.2 -3.44 180 1.3 0.56 2.01 wall
+prop 1 c1_wc2 c1_wc2.wc_basin.1 wc_basin 15.5 -6.06 180 0.5 2 0.86 free
+prop 1 c1_depozit c1_depozit.shelf.1 shelf 9.38 0 90 5 0.41 2.01 wall
+prop 1 c1_depozit c1_depozit.shelf.2 shelf 13.3 0 90 4 0.41 2.01 free
+prop 1 corridor1 corridor1.alcove_seat.1 alcove_seat -8.45 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.2 alcove_seat -2.55 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.3 alcove_seat -7.7 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.4 alcove_seat -3.3 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.5 alcove_seat -6.95 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.6 alcove_seat -4.05 -12.61 0 0.6 0.57 0.9 free
+prop 1 corridor1 corridor1.plant.1 plant -8.55 -11.5 0 0.7 0.7 1.3 free
+prop 1 corridor1 corridor1.cooler.1 cooler -2.5 -11.55 0 0.4 0.4 1.34 free
+prop 1 corridor1 corridor1.alcove_seat.7 alcove_seat -20.61 2.55 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.8 alcove_seat -20.61 10.45 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.9 alcove_seat -20.61 3.3 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.10 alcove_seat -20.61 9.7 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.11 alcove_seat -20.61 4.05 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.12 alcove_seat -20.61 8.95 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.13 alcove_seat -20.61 4.8 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.alcove_seat.14 alcove_seat -20.61 8.2 0 0.57 0.6 0.9 free
+prop 1 corridor1 corridor1.plant.2 plant -19.5 2.45 0 0.7 0.7 1.3 free
+prop 1 corridor1 corridor1.cooler.2 cooler -19.55 10.5 0 0.4 0.4 1.34 free
+prop 1 corridor1 corridor1.corridor_plant.1 corridor_plant -15.98 -10.7 0 0.95 0.97 1.7 free
+prop 1 corridor1 corridor1.extinguisher.1 extinguisher -1.73 -10.75 0 1.48 0.44 1.35 free
+prop 1 corridor1 corridor1.corridor_chair.1 corridor_chair 10 -10.68 0 0.64 0.56 0.81 free
+prop 1 corridor1 corridor1.notice_poster.1 notice_poster 17 -10.93 0 1 0.05 1.9 free
+prop 1 corridor1 corridor1.notice_poster.2 notice_poster -14 10.93 0 1 0.05 1.9 free
+prop 1 corridor1 corridor1.gurney.1 gurney -7.5 10.7 0 1.9 0.6 1.5 free
+prop 1 corridor1 corridor1.corridor_bench.1 corridor_bench -1 10.7 0 1.6 0.45 0.88 free
+prop 1 corridor1 corridor1.corridor_plant.2 corridor_plant 3.02 10.7 0 0.95 0.97 1.7 free
+prop 1 corridor1 corridor1.extinguisher.2 extinguisher 11.27 10.75 0 1.48 0.44 1.35 free
+prop 1 corridor1 corridor1.corridor_chair.2 corridor_chair 17 10.72 0 0.64 0.56 0.81 free
+prop 1 corridor1 corridor1.lift_sign.1 lift_sign -12.5 9.51 0 2.6 0.1 3.7 free
+prop 2 w_epi w_epi.desk.1 desk -18.6 -16.58 0 1.8 0.8 1.15 free
+prop 2 w_epi w_epi.chair.1 chair -18.6 -17.18 0 0.5 0.5 0.96 free
+prop 2 w_epi w_epi.chair.2 chair -18.6 -15.3 0 0.5 0.5 0.96 free
+prop 2 w_epi w_epi.cabinet.1 cabinet -24.7 -17.62 0 1.84 0.64 0.96 wall
+prop 2 w_epi w_epi.plant.1 plant -17.6 -11.78 0 0.9 0.78 1.31 wall
+prop 2 w_epi w_epi.whiteboard_stand.1 whiteboard_stand -24.1 -11.94 0 1.8 0.4 1.86 free
+prop 2 w_epi w_epi.printer.1 printer -25.1 -11.94 0 0.7 0.5 0.88 free
+prop 2 w_epi w_epi.bin.1 bin -25.49 -11.62 0 0.3 0.31 0.51 free
+prop 2 w_epi w_epi.wall_poster.1 wall_poster -17.15 -13.54 0 0.07 1.1 2.11 wall
+prop 2 w_epi w_epi.clock.1 clock -25.86 -13.3 0 0.05 0.4 2.31 wall
+prop 2 w_epi w_epi.rug.1 rug -21.5 -14.26 0 4 2.6 0.03 floor
+prop 2 w_genetica w_genetica.lab_bench.1 lab_bench -11 -17.54 0 11.1 0.75 1.46 wall
+prop 2 w_genetica w_genetica.lab_island.1 lab_island -11 -14.74 0 2.7 1.2 1.46 free
+prop 2 w_genetica w_genetica.chair.1 chair -11 -13.86 0 0.5 0.5 0.96 free
+prop 2 w_genetica w_genetica.tall_cabinet.1 tall_cabinet -5.5 -13.7 0 0.7 0.9 1.91 wall
+prop 2 w_genetica w_genetica.fridge.1 fridge -5.9 -11.94 0 0.7 0.65 1.81 free
+prop 2 w_genetica w_genetica.centrifuge.1 centrifuge -16.1 -13.7 0 0.8 0.6 1.11 free
+prop 2 w_genetica w_genetica.whiteboard_stand.1 whiteboard_stand -15.1 -11.94 0 1.8 0.4 1.86 free
+prop 2 w_genetica w_genetica.bin.1 bin -16.49 -11.62 0 0.3 0.31 0.51 free
+prop 2 w_genetica w_genetica.wall_poster.1 wall_poster -5.15 -13.54 0 0.06 1.1 2.11 wall
+prop 2 w_genetica w_genetica.clock.1 clock -16.86 -13.3 0 0.05 0.4 2.31 wall
+prop 2 w_genetica w_genetica.sink.1 sink -16.6 -12.42 0 0.55 0.5 1.16 wall
+prop 2 w_imuno w_imuno.lab_bench.1 lab_bench 0 -17.54 0 9.1 0.75 1.46 wall
+prop 2 w_imuno w_imuno.lab_island.1 lab_island 0 -14.74 0 2.7 1.2 1.46 free
+prop 2 w_imuno w_imuno.chair.1 chair 0 -13.86 0 0.5 0.5 0.96 free
+prop 2 w_imuno w_imuno.tall_cabinet.1 tall_cabinet 4.5 -13.7 0 0.7 0.9 1.91 wall
+prop 2 w_imuno w_imuno.centrifuge.1 centrifuge 4.1 -11.94 0 0.8 0.6 1.11 free
+prop 2 w_imuno w_imuno.fridge.1 fridge -4.1 -13.7 0 0.7 0.65 1.81 free
+prop 2 w_imuno w_imuno.bin.1 bin -4.49 -11.62 0 0.3 0.31 0.51 free
+prop 2 w_imuno w_imuno.wall_poster.1 wall_poster 4.85 -13.54 0 0.06 1.1 2.11 wall
+prop 2 w_imuno w_imuno.clock.1 clock -4.86 -13.3 0 0.04 0.4 2.31 wall
+prop 2 w_imuno w_imuno.sink.1 sink -4.6 -12.42 0 0.55 0.5 1.16 wall
+prop 2 w_interdis w_interdis.desk.1 desk 11.4 -16.97 0 1.8 0.8 1.15 free
+prop 2 w_interdis w_interdis.chair.1 chair 11.4 -17.39 0 0.5 0.5 0.96 free
+prop 2 w_interdis w_interdis.chair.2 chair 11.4 -16.06 0 0.5 0.5 0.96 free
+prop 2 w_interdis w_interdis.exam_couch.1 exam_couch 6.1 -16.74 0 0.8 1.95 0.86 free
+prop 2 w_interdis w_interdis.cabinet.1 cabinet 6.3 -17.7 0 1.84 0.64 0.96 wall
+prop 2 w_interdis w_interdis.plant.1 plant 12.4 -13.58 0 0.9 0.78 1.31 wall
+prop 2 w_interdis w_interdis.anatomy_model.1 anatomy_model 12.1 -13.69 0 0.5 0.5 1.71 free
+prop 2 w_interdis w_interdis.sofa.1 sofa 9 -14.65 0 1.92 0.8 0.88 free
+prop 2 w_interdis w_interdis.bin.1 bin 5.51 -13.47 0 0.3 0.31 0.51 free
+prop 2 w_interdis w_interdis.wall_poster.1 wall_poster 12.85 -14.82 0 0.07 1.1 2.11 wall
+prop 2 w_interdis w_interdis.clock.1 clock 5.14 -14.65 0 0.04 0.4 2.31 wall
+prop 2 w_interdis w_interdis.sink.1 sink 5.4 -14.03 0 0.55 0.5 1.16 wall
+prop 2 w_monitor w_monitor.desk.1 desk 24.4 -16.58 0 1.8 0.8 1.15 free
+prop 2 w_monitor w_monitor.chair.1 chair 24.4 -17.18 0 0.5 0.5 0.96 free
+prop 2 w_monitor w_monitor.chair.2 chair 24.4 -15.3 0 0.5 0.5 0.96 free
+prop 2 w_monitor w_monitor.exam_couch.1 exam_couch 14.1 -16.26 0 0.8 1.95 0.86 free
+prop 2 w_monitor w_monitor.cabinet.1 cabinet 14.3 -17.62 0 1.84 0.64 0.96 wall
+prop 2 w_monitor w_monitor.plant.1 plant 25.4 -11.78 0 0.9 0.78 1.31 wall
+prop 2 w_monitor w_monitor.scale.1 scale 24.1 -11.94 0 0.4 0.5 2.11 free
+prop 2 w_monitor w_monitor.ultrasound.1 ultrasound 13.95 -13.7 0 0.69 0.6 1.73 free
+prop 2 w_monitor w_monitor.palm.1 palm 25.14 -11.94 0 1.52 1.56 2.71 wall
+prop 2 w_monitor w_monitor.bin.1 bin 13.51 -11.62 0 0.3 0.31 0.51 free
+prop 2 w_monitor w_monitor.wall_poster.1 wall_poster 25.85 -13.54 0 0.07 1.1 2.11 wall
+prop 2 w_monitor w_monitor.clock.1 clock 13.14 -13.3 0 0.05 0.4 2.31 wall
+prop 2 w_monitor w_monitor.sink.1 sink 13.4 -12.42 0 0.55 0.5 1.16 wall
+prop 2 w_g1 w_g1.bed.1 bed -24.7 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g1 w_g1.bed.2 bed -16.3 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g1 w_g1.bed.3 bed -22 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g1 w_g1.bed.4 bed -19 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g1 w_g1.monitor.1 monitor -21 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g1 w_g1.monitor.2 monitor -20 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g1 w_g1.monitor.3 monitor -23.7 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g1 w_g1.monitor.4 monitor -17.3 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g1 w_g1.cabinet.1 cabinet -20.5 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_g1 w_g1.chair.1 chair -20.5 14.9 180 0.5 0.5 0.96 free
+prop 2 w_g1 w_g1.privacy_screen.1 privacy_screen -20.5 13.35 180 1.87 0.13 1.81 free
+prop 2 w_g1 w_g1.supply_cart.1 supply_cart -25.1 11.94 180 0.62 0.47 1.12 free
+prop 2 w_g1 w_g1.bin.1 bin -25.49 11.62 180 0.3 0.31 0.51 free
+prop 2 w_g1 w_g1.wall_poster.1 wall_poster -15.15 13.54 180 0.07 1.1 2.11 wall
+prop 2 w_g1 w_g1.clock.1 clock -25.86 13.3 180 0.05 0.4 2.31 wall
+prop 2 w_g1 w_g1.sink.1 sink -25.6 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_g1 w_g1.iv_pole.1 iv_pole -23.95 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g1 w_g1.bed_curtain.1 bed_curtain -24.08 15.46 180 0.03 2.6 2.01 free
+prop 2 w_g1 w_g1.iv_pole.2 iv_pole -17.05 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g1 w_g1.bed_curtain.2 bed_curtain -16.92 15.46 180 0.03 2.6 2.01 free
+prop 2 w_g2 w_g2.bed.1 bed -13.7 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g2 w_g2.bed.2 bed -10.8 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g2 w_g2.monitor.1 monitor -12.7 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g2 w_g2.monitor.2 monitor -11.8 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g2 w_g2.cabinet.1 cabinet -12.25 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_g2 w_g2.chair.1 chair -12.25 14.9 180 0.5 0.5 0.96 free
+prop 2 w_g2 w_g2.supply_cart.1 supply_cart -10.4 11.94 180 0.62 0.47 1.12 free
+prop 2 w_g2 w_g2.bin.1 bin -14.49 11.62 180 0.3 0.31 0.51 free
+prop 2 w_g2 w_g2.wall_poster.1 wall_poster -9.65 13.54 180 0.07 1.1 2.11 wall
+prop 2 w_g2 w_g2.clock.1 clock -14.86 13.3 180 0.05 0.4 2.31 wall
+prop 2 w_g2 w_g2.sink.1 sink -14.6 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_g2 w_g2.iv_pole.1 iv_pole -12.95 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g2 w_g2.bed_curtain.1 bed_curtain -13.08 15.46 180 0.03 2.6 2.01 free
+prop 2 w_g2 w_g2.iv_pole.2 iv_pole -11.55 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g2 w_g2.bed_curtain.2 bed_curtain -11.42 15.46 180 0.03 2.6 2.01 free
+prop 2 w_g3 w_g3.bed.1 bed -8.2 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g3 w_g3.bed.2 bed -5.3 16.58 180 1.05 2.1 1.01 free
+prop 2 w_g3 w_g3.monitor.1 monitor -7.2 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g3 w_g3.monitor.2 monitor -6.3 17.54 180 0.5 0.4 1.61 free
+prop 2 w_g3 w_g3.cabinet.1 cabinet -6.75 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_g3 w_g3.chair.1 chair -6.75 14.9 180 0.5 0.5 0.96 free
+prop 2 w_g3 w_g3.oxygen.1 oxygen -4.9 11.94 180 0.5 0.3 1.32 free
+prop 2 w_g3 w_g3.bin.1 bin -8.99 11.62 180 0.3 0.31 0.51 free
+prop 2 w_g3 w_g3.wall_poster.1 wall_poster -4.15 13.54 180 0.06 1.1 2.11 wall
+prop 2 w_g3 w_g3.clock.1 clock -9.36 13.3 180 0.05 0.4 2.31 wall
+prop 2 w_g3 w_g3.sink.1 sink -9.1 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_g3 w_g3.iv_pole.1 iv_pole -7.45 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g3 w_g3.bed_curtain.1 bed_curtain -7.58 15.46 180 0.03 2.6 2.01 free
+prop 2 w_g3 w_g3.iv_pole.2 iv_pole -6.05 17.14 180 0.35 0.35 1.81 free
+prop 2 w_g3 w_g3.bed_curtain.2 bed_curtain -5.92 15.46 180 0.03 2.6 2.01 free
+prop 2 w_statie w_statie.station_counter.1 station_counter 0 15.21 180 5.8 2.31 1.12 free
+prop 2 w_statie w_statie.chair.1 chair -1 15.3 180 0.5 0.5 0.96 free
+prop 2 w_statie w_statie.chair.2 chair 1 15.3 180 0.5 0.5 0.96 free
+prop 2 w_statie w_statie.desk_screen.1 desk_screen -0.8 14.5 180 0.5 0.05 1.48 free
+prop 2 w_statie w_statie.desk_screen.2 desk_screen 0.9 14.5 180 0.5 0.05 1.48 free
+prop 2 w_statie w_statie.shelf.1 shelf 0 17.62 180 6 0.41 2.01 wall
+prop 2 w_statie w_statie.supply_cart.1 supply_cart 3.1 11.94 180 0.62 0.47 1.12 free
+prop 2 w_statie w_statie.crash.1 crash -2.1 11.94 180 0.72 0.52 1.22 free
+prop 2 w_statie w_statie.bin.1 bin -3.49 11.62 180 0.3 0.31 0.51 free
+prop 2 w_statie w_statie.wall_poster.1 wall_poster 3.85 13.54 180 0.06 1.1 2.11 wall
+prop 2 w_statie w_statie.clock.1 clock -3.86 13.3 180 0.04 0.4 2.31 wall
+prop 2 w_b1 w_b1.bed.1 bed 5.3 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b1 w_b1.bed.2 bed 8.2 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b1 w_b1.monitor.1 monitor 6.3 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b1 w_b1.monitor.2 monitor 7.2 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b1 w_b1.cabinet.1 cabinet 6.75 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_b1 w_b1.chair.1 chair 6.75 14.9 180 0.5 0.5 0.96 free
+prop 2 w_b1 w_b1.supply_cart.1 supply_cart 8.6 11.94 180 0.62 0.47 1.12 free
+prop 2 w_b1 w_b1.bin.1 bin 4.51 11.62 180 0.3 0.31 0.51 free
+prop 2 w_b1 w_b1.wall_poster.1 wall_poster 9.35 13.54 180 0.07 1.1 2.11 wall
+prop 2 w_b1 w_b1.clock.1 clock 4.14 13.3 180 0.04 0.4 2.31 wall
+prop 2 w_b1 w_b1.sink.1 sink 4.4 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_b1 w_b1.iv_pole.1 iv_pole 6.05 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b1 w_b1.bed_curtain.1 bed_curtain 5.92 15.46 180 0.03 2.6 2.01 free
+prop 2 w_b1 w_b1.iv_pole.2 iv_pole 7.45 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b1 w_b1.bed_curtain.2 bed_curtain 7.58 15.46 180 0.03 2.6 2.01 free
+prop 2 w_b2 w_b2.bed.1 bed 10.8 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b2 w_b2.bed.2 bed 13.7 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b2 w_b2.monitor.1 monitor 11.8 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b2 w_b2.monitor.2 monitor 12.7 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b2 w_b2.cabinet.1 cabinet 12.25 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_b2 w_b2.chair.1 chair 12.25 14.9 180 0.5 0.5 0.96 free
+prop 2 w_b2 w_b2.oxygen.1 oxygen 14.1 11.94 180 0.5 0.3 1.32 free
+prop 2 w_b2 w_b2.bin.1 bin 10.01 11.62 180 0.3 0.31 0.51 free
+prop 2 w_b2 w_b2.wall_poster.1 wall_poster 14.85 13.54 180 0.07 1.1 2.11 wall
+prop 2 w_b2 w_b2.clock.1 clock 9.64 13.3 180 0.05 0.4 2.31 wall
+prop 2 w_b2 w_b2.sink.1 sink 9.9 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_b2 w_b2.iv_pole.1 iv_pole 11.55 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b2 w_b2.bed_curtain.1 bed_curtain 11.42 15.46 180 0.03 2.6 2.01 free
+prop 2 w_b2 w_b2.iv_pole.2 iv_pole 12.95 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b2 w_b2.bed_curtain.2 bed_curtain 13.08 15.46 180 0.03 2.6 2.01 free
+prop 2 w_b3 w_b3.bed.1 bed 16.3 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b3 w_b3.bed.2 bed 24.7 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b3 w_b3.bed.3 bed 19 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b3 w_b3.bed.4 bed 22 16.58 180 1.05 2.1 1.01 free
+prop 2 w_b3 w_b3.monitor.1 monitor 20 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b3 w_b3.monitor.2 monitor 21 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b3 w_b3.monitor.3 monitor 17.3 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b3 w_b3.monitor.4 monitor 23.7 17.54 180 0.5 0.4 1.61 free
+prop 2 w_b3 w_b3.cabinet.1 cabinet 20.5 17.54 180 1.04 0.64 0.96 wall
+prop 2 w_b3 w_b3.chair.1 chair 20.5 14.9 180 0.5 0.5 0.96 free
+prop 2 w_b3 w_b3.privacy_screen.1 privacy_screen 20.5 13.35 180 1.87 0.13 1.81 free
+prop 2 w_b3 w_b3.supply_cart.1 supply_cart 25.1 11.94 180 0.62 0.47 1.12 free
+prop 2 w_b3 w_b3.bin.1 bin 15.51 11.62 180 0.3 0.31 0.51 free
+prop 2 w_b3 w_b3.wall_poster.1 wall_poster 25.85 13.54 180 0.07 1.1 2.11 wall
+prop 2 w_b3 w_b3.clock.1 clock 15.14 13.3 180 0.05 0.4 2.31 wall
+prop 2 w_b3 w_b3.sink.1 sink 15.4 12.42 180 0.55 0.5 1.16 wall
+prop 2 w_b3 w_b3.iv_pole.1 iv_pole 17.05 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b3 w_b3.bed_curtain.1 bed_curtain 16.92 15.46 180 0.03 2.6 2.01 free
+prop 2 w_b3 w_b3.iv_pole.2 iv_pole 23.95 17.14 180 0.35 0.35 1.81 free
+prop 2 w_b3 w_b3.bed_curtain.2 bed_curtain 24.08 15.46 180 0.03 2.6 2.01 free
+prop 2 w_complicatii w_complicatii.bed.1 bed -24.58 -9.7 90 1.05 2.1 1.01 free
+prop 2 w_complicatii w_complicatii.bed.2 bed -24.58 -4.3 90 1.05 2.1 1.01 free
+prop 2 w_complicatii w_complicatii.monitor.1 monitor -25.54 -8.7 90 0.5 0.4 1.61 free
+prop 2 w_complicatii w_complicatii.monitor.2 monitor -25.54 -5.3 90 0.5 0.4 1.61 free
+prop 2 w_complicatii w_complicatii.cabinet.1 cabinet -25.54 -7 90 1.04 0.64 0.96 wall
+prop 2 w_complicatii w_complicatii.chair.1 chair -22.9 -7 90 0.5 0.5 0.96 free
+prop 2 w_complicatii w_complicatii.crash.1 crash -19.94 -3.9 90 0.72 0.52 1.22 free
+prop 2 w_complicatii w_complicatii.oxygen.1 oxygen -19.94 -9.1 90 0.5 0.3 1.32 free
+prop 2 w_complicatii w_complicatii.ultrasound.1 ultrasound -21.7 -3.86 90 0.69 0.6 1.73 free
+prop 2 w_complicatii w_complicatii.bin.1 bin -19.61 -10.5 90 0.31 0.3 0.51 free
+prop 2 w_complicatii w_complicatii.wall_poster.1 wall_poster -21.54 -3.15 90 0.06 1.1 2.11 wall
+prop 2 w_complicatii w_complicatii.clock.1 clock -21.3 -10.86 90 0.05 0.4 2.31 wall
+prop 2 w_complicatii w_complicatii.sink.1 sink -20.42 -10.6 90 0.55 0.5 1.16 wall
+prop 2 w_complicatii w_complicatii.iv_pole.1 iv_pole -25.14 -8.95 90 0.35 0.35 1.81 free
+prop 2 w_complicatii w_complicatii.bed_curtain.1 bed_curtain -23.46 -9.08 90 0.03 2.6 2.01 free
+prop 2 w_complicatii w_complicatii.iv_pole.2 iv_pole -25.14 -5.05 90 0.35 0.35 1.81 free
+prop 2 w_complicatii w_complicatii.bed_curtain.2 bed_curtain -23.46 -4.92 90 0.03 2.6 2.01 free
+prop 2 w_perfuzii w_perfuzii.infusion_chair.1 infusion_chair -24.9 -1.26 90 1.37 1.5 1.96 free
+prop 2 w_perfuzii w_perfuzii.infusion_chair.2 infusion_chair -24.9 1.24 90 1.37 1.5 1.96 free
+prop 2 w_perfuzii w_perfuzii.infusion_chair.3 infusion_chair -24.9 3.74 90 1.38 1.5 1.96 free
+prop 2 w_perfuzii w_perfuzii.desk.1 desk -20.9 4 90 1.8 0.8 1.15 free
+prop 2 w_perfuzii w_perfuzii.chair.1 chair -21.5 4 90 0.5 0.5 0.96 free
+prop 2 w_perfuzii w_perfuzii.recliner.1 recliner -21.2 4.23 90 1.39 1.35 1.81 free
+prop 2 w_perfuzii w_perfuzii.recliner.2 recliner -21.2 6.23 90 1.39 1.35 1.81 free
+prop 2 w_perfuzii w_perfuzii.recliner.3 recliner -21.2 2.23 90 1.39 1.35 1.81 free
+prop 2 w_perfuzii w_perfuzii.supply_cart.1 supply_cart -19.94 10.1 90 0.62 0.47 1.12 free
+prop 2 w_perfuzii w_perfuzii.cooler.1 cooler -19.94 -1.1 90 0.36 0.36 1.41 free
+prop 2 w_perfuzii w_perfuzii.bin.1 bin -19.61 -2.5 90 0.31 0.3 0.51 free
+prop 2 w_perfuzii w_perfuzii.wall_poster.1 wall_poster -21.54 10.85 90 0.07 1.1 2.11 wall
+prop 2 w_perfuzii w_perfuzii.clock.1 clock -21.3 -2.86 90 0.05 0.4 2.31 wall
+prop 2 w_b4 w_b4.bed.1 bed 24.58 -9.7 270 1.05 2.1 1.01 free
+prop 2 w_b4 w_b4.bed.2 bed 24.58 -5.3 270 1.05 2.1 1.01 free
+prop 2 w_b4 w_b4.monitor.1 monitor 25.54 -8.7 270 0.5 0.4 1.61 free
+prop 2 w_b4 w_b4.monitor.2 monitor 25.54 -6.3 270 0.5 0.4 1.61 free
+prop 2 w_b4 w_b4.cabinet.1 cabinet 25.54 -7.5 270 1.04 0.64 0.96 wall
+prop 2 w_b4 w_b4.chair.1 chair 22.9 -7.5 270 0.5 0.5 0.96 free
+prop 2 w_b4 w_b4.oxygen.1 oxygen 19.94 -4.9 270 0.5 0.3 1.32 free
+prop 2 w_b4 w_b4.bin.1 bin 19.63 -10.5 270 0.31 0.3 0.51 free
+prop 2 w_b4 w_b4.wall_poster.1 wall_poster 21.54 -4.15 270 0.06 1.1 2.11 wall
+prop 2 w_b4 w_b4.clock.1 clock 21.3 -10.86 270 0.05 0.4 2.31 wall
+prop 2 w_b4 w_b4.sink.1 sink 20.42 -10.6 270 0.55 0.5 1.16 wall
+prop 2 w_b4 w_b4.iv_pole.1 iv_pole 25.14 -8.95 270 0.35 0.35 1.81 free
+prop 2 w_b4 w_b4.bed_curtain.1 bed_curtain 23.46 -9.08 270 0.03 2.6 2.01 free
+prop 2 w_b4 w_b4.iv_pole.2 iv_pole 25.14 -6.05 270 0.35 0.35 1.81 free
+prop 2 w_b4 w_b4.bed_curtain.2 bed_curtain 23.46 -5.92 270 0.03 2.6 2.01 free
+prop 2 w_intermediar w_intermediar.bed.1 bed 24.58 1.5 270 1.05 2.1 1.01 free
+prop 2 w_intermediar w_intermediar.monitor.1 monitor 25.54 2.4 270 0.5 0.4 1.61 free
+prop 2 w_intermediar w_intermediar.monitor.2 monitor 25.54 0.6 270 0.5 0.4 1.61 free
+prop 2 w_intermediar w_intermediar.bed.2 bed 24.58 5.5 270 1.05 2.1 1.01 free
+prop 2 w_intermediar w_intermediar.monitor.3 monitor 25.54 6.4 270 0.5 0.4 1.61 free
+prop 2 w_intermediar w_intermediar.monitor.4 monitor 25.54 4.6 270 0.5 0.4 1.61 free
+prop 2 w_intermediar w_intermediar.nurse_counter.1 nurse_counter 20.5 3.5 270 2.4 0.7 1.01 free
+prop 2 w_intermediar w_intermediar.oxygen.1 oxygen 19.94 10.1 270 0.5 0.3 1.32 free
+prop 2 w_intermediar w_intermediar.crash.1 crash 19.94 -2.1 270 0.72 0.52 1.22 free
+prop 2 w_intermediar w_intermediar.ultrasound.1 ultrasound 21.3 3.55 270 0.69 0.6 1.73 free
+prop 2 w_intermediar w_intermediar.supply_cart.1 supply_cart 21.7 10.1 270 0.62 0.47 1.12 free
+prop 2 w_intermediar w_intermediar.bin.1 bin 19.63 -3.5 270 0.31 0.3 0.51 free
+prop 2 w_intermediar w_intermediar.wall_poster.1 wall_poster 21.54 10.85 270 0.07 1.1 2.11 wall
+prop 2 w_intermediar w_intermediar.clock.1 clock 21.3 -3.86 270 0.05 0.4 2.31 wall
+prop 2 w_intermediar w_intermediar.sink.1 sink 20.42 -3.6 270 0.55 0.5 1.16 wall
+prop 2 c2_wc c2_wc.wc_cubicle.1 wc_cubicle -15 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc c2_wc.wc_cubicle.2 wc_cubicle -13.4 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc c2_wc.wc_cubicle.3 wc_cubicle -11.8 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc c2_wc.wc_basin.1 wc_basin -9.5 -6.06 180 0.5 2 0.86 free
+prop 2 c2_scari c2_scari.stairs.1 stairs -12.66 0 270 2.4 5.28 1.61 free
+prop 2 c2_wc2 c2_wc2.wc_cubicle.1 wc_cubicle 10 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc2 c2_wc2.wc_cubicle.2 wc_cubicle 11.6 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc2 c2_wc2.wc_cubicle.3 wc_cubicle 13.2 -3.44 180 1.3 0.56 2.01 wall
+prop 2 c2_wc2 c2_wc2.wc_basin.1 wc_basin 15.5 -6.06 180 0.5 2 0.86 free
+prop 2 c2_depozit c2_depozit.shelf.1 shelf 9.38 0 90 5 0.41 2.01 wall
+prop 2 c2_depozit c2_depozit.shelf.2 shelf 13.3 0 90 4 0.41 2.01 free
+prop 2 corridor2 corridor2.alcove_seat.1 alcove_seat 5.55 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.alcove_seat.2 alcove_seat 12.45 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.alcove_seat.3 alcove_seat 6.3 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.alcove_seat.4 alcove_seat 11.7 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.alcove_seat.5 alcove_seat 7.05 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.alcove_seat.6 alcove_seat 10.95 -12.61 0 0.6 0.57 0.9 free
+prop 2 corridor2 corridor2.plant.1 plant 5.45 -11.5 0 0.7 0.7 1.3 free
+prop 2 corridor2 corridor2.cooler.1 cooler 12.5 -11.55 0 0.4 0.4 1.34 free
+prop 2 corridor2 corridor2.extinguisher.1 extinguisher -16.73 -10.75 0 1.48 0.44 1.35 free
+prop 2 corridor2 corridor2.corridor_chair.1 corridor_chair -5 -10.68 0 0.64 0.56 0.81 free
+prop 2 corridor2 corridor2.notice_poster.1 notice_poster 13 -10.93 0 1 0.05 1.9 free
+prop 2 corridor2 corridor2.gurney.1 gurney -15 10.7 0 1.9 0.6 1.5 free
+prop 2 corridor2 corridor2.corridor_bench.1 corridor_bench -9.5 10.7 0 1.6 0.45 0.88 free
+prop 2 corridor2 corridor2.corridor_plant.1 corridor_plant -3.98 10.7 0 0.95 0.97 1.7 free
+prop 2 corridor2 corridor2.extinguisher.2 extinguisher 4.27 10.75 0 1.48 0.44 1.35 free
+prop 2 corridor2 corridor2.corridor_chair.2 corridor_chair 9.5 10.72 0 0.64 0.56 0.81 free
+prop 2 corridor2 corridor2.notice_poster.2 notice_poster 15 10.93 0 1 0.05 1.9 free
+prop 2 corridor2 corridor2.lift_sign.1 lift_sign -12.5 9.51 0 2.6 0.1 3.7 free
+prop 3 o_genetica o_genetica.desk.1 desk -18.6 -16.58 0 1.8 0.8 1.15 free
+prop 3 o_genetica o_genetica.chair.1 chair -18.6 -17.18 0 0.5 0.5 0.96 free
+prop 3 o_genetica o_genetica.chair.2 chair -18.6 -15.3 0 0.5 0.5 0.96 free
+prop 3 o_genetica o_genetica.exam_couch.1 exam_couch -24.9 -16.26 0 0.8 1.95 0.86 free
+prop 3 o_genetica o_genetica.cabinet.1 cabinet -24.7 -17.62 0 1.84 0.64 0.96 wall
+prop 3 o_genetica o_genetica.plant.1 plant -17.6 -11.78 0 0.9 0.78 1.31 wall
+prop 3 o_genetica o_genetica.whiteboard_stand.1 whiteboard_stand -24.1 -11.94 0 1.8 0.4 1.86 free
+prop 3 o_genetica o_genetica.sofa.1 sofa -21.5 -13.3 0 1.92 0.8 0.88 free
+prop 3 o_genetica o_genetica.anatomy_model.1 anatomy_model -25.1 -11.94 0 0.5 0.5 1.71 free
+prop 3 o_genetica o_genetica.bin.1 bin -25.49 -11.62 0 0.3 0.31 0.51 free
+prop 3 o_genetica o_genetica.wall_poster.1 wall_poster -17.15 -13.54 0 0.07 1.1 2.11 wall
+prop 3 o_genetica o_genetica.clock.1 clock -25.86 -13.3 0 0.05 0.4 2.31 wall
+prop 3 o_genetica o_genetica.sink.1 sink -25.6 -12.42 0 0.55 0.5 1.16 wall
+prop 3 o_onco o_onco.desk.1 desk -12.6 -16.97 0 1.8 0.8 1.15 free
+prop 3 o_onco o_onco.chair.1 chair -12.6 -17.39 0 0.5 0.5 0.96 free
+prop 3 o_onco o_onco.chair.2 chair -12.6 -16.06 0 0.5 0.5 0.96 free
+prop 3 o_onco o_onco.exam_couch.1 exam_couch -15.9 -16.74 0 0.8 1.95 0.86 free
+prop 3 o_onco o_onco.cabinet.1 cabinet -15.7 -17.7 0 1.84 0.64 0.96 wall
+prop 3 o_onco o_onco.plant.1 plant -11.6 -13.58 0 0.9 0.78 1.31 wall
+prop 3 o_onco o_onco.anatomy_model.1 anatomy_model -11.9 -13.69 0 0.5 0.5 1.71 free
+prop 3 o_onco o_onco.bin.1 bin -16.49 -13.47 0 0.3 0.31 0.51 free
+prop 3 o_onco o_onco.wall_poster.1 wall_poster -11.15 -14.82 0 0.07 1.1 2.11 wall
+prop 3 o_onco o_onco.clock.1 clock -16.86 -14.65 0 0.05 0.4 2.31 wall
+prop 3 o_onco o_onco.sink.1 sink -16.6 -14.03 0 0.55 0.5 1.16 wall
+prop 3 o_sef o_sef.desk.1 desk -5.6 -16.58 0 1.8 0.8 1.15 free
+prop 3 o_sef o_sef.chair.1 chair -5.6 -17.18 0 0.5 0.5 0.96 free
+prop 3 o_sef o_sef.chair.2 chair -5.6 -15.3 0 0.5 0.5 0.96 free
+prop 3 o_sef o_sef.cabinet.1 cabinet -9.7 -17.62 0 1.84 0.64 0.96 wall
+prop 3 o_sef o_sef.plant.1 plant -4.6 -11.78 0 0.9 0.78 1.31 wall
+prop 3 o_sef o_sef.sofa.1 sofa -7.5 -13.3 0 1.92 0.8 0.88 free
+prop 3 o_sef o_sef.trophy.1 trophy -4.9 -11.95 0 1.3 0.36 1.51 free
+prop 3 o_sef o_sef.palm.1 palm -9.06 -11.94 0 1.52 1.56 2.71 wall
+prop 3 o_sef o_sef.bin.1 bin -10.49 -11.62 0 0.3 0.31 0.51 free
+prop 3 o_sef o_sef.wall_poster.1 wall_poster -4.15 -13.54 0 0.06 1.1 2.11 wall
+prop 3 o_sef o_sef.clock.1 clock -10.86 -13.3 0 0.05 0.4 2.31 wall
+prop 3 o_sef o_sef.rug.1 rug -7.5 -14.26 0 4 2.6 0.03 floor
+prop 3 o_comisie o_comisie.conference_table.1 conference_table 2 -14.9 0 9 1.5 0.8 free
+prop 3 o_comisie o_comisie.chair.1 chair -2 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.2 chair -2 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.3 chair -1 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.4 chair -1 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.5 chair 0 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.6 chair 0 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.7 chair 1 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.8 chair 1 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.9 chair 2 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.10 chair 2 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.11 chair 3 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.12 chair 3 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.13 chair 4 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.14 chair 4 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.15 chair 5 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.16 chair 5 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.17 chair 6 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.chair.18 chair 6 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_comisie o_comisie.wall_screen.1 wall_screen 2 -17.77 0 3 0.08 2.41 wall
+prop 3 o_comisie o_comisie.podium.1 podium 7.1 -11.94 0 0.8 0.6 1.37 free
+prop 3 o_comisie o_comisie.whiteboard_stand.1 whiteboard_stand -2.1 -11.94 0 1.8 0.4 1.86 free
+prop 3 o_comisie o_comisie.cooler.1 cooler 7.1 -13.7 0 0.36 0.36 1.41 free
+prop 3 o_comisie o_comisie.bin.1 bin -3.49 -11.62 0 0.3 0.31 0.51 free
+prop 3 o_comisie o_comisie.wall_poster.1 wall_poster 7.85 -13.54 0 0.06 1.1 2.11 wall
+prop 3 o_comisie o_comisie.clock.1 clock -3.86 -13.3 0 0.05 0.4 2.31 wall
+prop 3 o_comisie o_comisie.rug.1 rug 2 -14.26 0 4 2.6 0.03 floor
+prop 3 o_liga o_liga.conference_table.1 conference_table 12.5 -14.9 0 6 1.5 0.8 free
+prop 3 o_liga o_liga.chair.1 chair 10 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.2 chair 10 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.3 chair 11 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.4 chair 11 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.5 chair 12 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.6 chair 12 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.7 chair 13 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.8 chair 13 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.9 chair 14 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.10 chair 14 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.11 chair 15 -15.86 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.chair.12 chair 15 -13.94 0 0.5 0.5 0.96 free
+prop 3 o_liga o_liga.wall_screen.1 wall_screen 12.5 -17.77 0 3 0.08 2.41 wall
+prop 3 o_liga o_liga.trophy.1 trophy 16.1 -11.95 0 1.3 0.36 1.51 free
+prop 3 o_liga o_liga.trophy.2 trophy 9.9 -11.95 0 1.3 0.36 1.51 free
+prop 3 o_liga o_liga.palm.1 palm 16.14 -13.7 0 1.52 1.56 2.71 wall
+prop 3 o_liga o_liga.bin.1 bin 8.51 -11.62 0 0.3 0.31 0.51 free
+prop 3 o_liga o_liga.wall_poster.1 wall_poster 16.85 -13.54 0 0.07 1.1 2.11 wall
+prop 3 o_liga o_liga.clock.1 clock 8.14 -13.3 0 0.05 0.4 2.31 wall
+prop 3 o_liga o_liga.rug.1 rug 12.5 -14.26 0 4 2.6 0.03 floor
+prop 3 o_birou o_birou.desk.1 desk 24.4 -16.58 0 1.8 0.8 1.15 free
+prop 3 o_birou o_birou.chair.1 chair 24.4 -17.18 0 0.5 0.5 0.96 free
+prop 3 o_birou o_birou.chair.2 chair 24.4 -15.3 0 0.5 0.5 0.96 free
+prop 3 o_birou o_birou.cabinet.1 cabinet 18.3 -17.62 0 1.84 0.64 0.96 wall
+prop 3 o_birou o_birou.plant.1 plant 25.4 -11.78 0 0.9 0.78 1.31 wall
+prop 3 o_birou o_birou.sofa.1 sofa 21.5 -13.3 0 1.92 0.8 0.88 free
+prop 3 o_birou o_birou.palm.1 palm 25.14 -11.94 0 1.52 1.56 2.71 wall
+prop 3 o_birou o_birou.trophy.1 trophy 24.1 -11.95 0 1.3 0.36 1.51 free
+prop 3 o_birou o_birou.bin.1 bin 17.51 -11.62 0 0.3 0.31 0.51 free
+prop 3 o_birou o_birou.wall_poster.1 wall_poster 25.85 -13.54 0 0.07 1.1 2.11 wall
+prop 3 o_birou o_birou.clock.1 clock 17.14 -13.3 0 0.05 0.4 2.31 wall
+prop 3 o_birou o_birou.rug.1 rug 21.5 -14.26 0 4 2.6 0.03 floor
+prop 3 o_so1 o_so1.or_table.1 or_table -20 14.9 180 0.8 2.1 0.98 free
+prop 3 o_so1 o_so1.or_lamp.1 or_lamp -19.7 14.9 180 1.4 1.33 3.69 free
+prop 3 o_so1 o_so1.anaesthesia_cart.1 anaesthesia_cart -22.2 15.78 180 0.7 0.6 1.51 free
+prop 3 o_so1 o_so1.instrument_table.1 instrument_table -17.7 14.1 180 1.2 0.6 0.95 free
+prop 3 o_so1 o_so1.cabinet.1 cabinet -20 17.62 180 10.04 0.64 0.96 wall
+prop 3 o_so1 o_so1.crash.1 crash -14.9 11.94 180 0.72 0.52 1.22 free
+prop 3 o_so1 o_so1.oxygen.1 oxygen -24.1 11.94 180 0.5 0.3 1.32 free
+prop 3 o_so1 o_so1.lightbox_stand.1 lightbox_stand -14.9 13.7 180 0.9 0.4 1.86 free
+prop 3 o_so1 o_so1.bin.1 bin -25.49 11.62 180 0.3 0.31 0.51 free
+prop 3 o_so1 o_so1.wall_poster.1 wall_poster -14.15 13.54 180 0.07 1.1 2.11 wall
+prop 3 o_so1 o_so1.clock.1 clock -25.86 13.3 180 0.05 0.4 2.31 wall
+prop 3 o_so2 o_so2.or_table.1 or_table -10 14.9 180 0.8 2.1 0.98 free
+prop 3 o_so2 o_so2.or_lamp.1 or_lamp -9.7 14.9 180 1.4 1.33 3.69 free
+prop 3 o_so2 o_so2.anaesthesia_cart.1 anaesthesia_cart -12.2 15.78 180 0.7 0.6 1.51 free
+prop 3 o_so2 o_so2.instrument_table.1 instrument_table -7.7 14.1 180 1.2 0.6 0.95 free
+prop 3 o_so2 o_so2.cabinet.1 cabinet -10 17.62 180 6.04 0.64 0.96 wall
+prop 3 o_so2 o_so2.oxygen.1 oxygen -6.9 11.94 180 0.5 0.3 1.32 free
+prop 3 o_so2 o_so2.supply_cart.1 supply_cart -12.1 11.94 180 0.62 0.47 1.12 free
+prop 3 o_so2 o_so2.bin.1 bin -13.49 11.62 180 0.3 0.31 0.51 free
+prop 3 o_so2 o_so2.wall_poster.1 wall_poster -6.15 13.54 180 0.06 1.1 2.11 wall
+prop 3 o_so2 o_so2.clock.1 clock -13.86 13.3 180 0.05 0.4 2.31 wall
+prop 3 o_so3 o_so3.or_table.1 or_table -2 14.9 180 0.8 2.1 0.98 free
+prop 3 o_so3 o_so3.or_lamp.1 or_lamp -1.7 14.9 180 1.4 1.33 3.69 free
+prop 3 o_so3 o_so3.anaesthesia_cart.1 anaesthesia_cart -4.2 15.78 180 0.7 0.6 1.51 free
+prop 3 o_so3 o_so3.instrument_table.1 instrument_table 0.3 14.1 180 1.2 0.6 0.95 free
+prop 3 o_so3 o_so3.cabinet.1 cabinet -2 17.62 180 6.04 0.64 0.96 wall
+prop 3 o_so3 o_so3.supply_cart.1 supply_cart 1.1 11.94 180 0.62 0.47 1.12 free
+prop 3 o_so3 o_so3.lightbox_stand.1 lightbox_stand -4.1 11.94 180 0.9 0.4 1.86 free
+prop 3 o_so3 o_so3.bin.1 bin -5.49 11.62 180 0.3 0.31 0.51 free
+prop 3 o_so3 o_so3.wall_poster.1 wall_poster 1.85 13.54 180 0.06 1.1 2.11 wall
+prop 3 o_so3 o_so3.clock.1 clock -5.86 13.3 180 0.04 0.4 2.31 wall
+prop 3 o_so4 o_so4.or_table.1 or_table 6 14.9 180 0.8 2.1 0.98 free
+prop 3 o_so4 o_so4.or_lamp.1 or_lamp 6.3 14.9 180 1.4 1.33 3.69 free
+prop 3 o_so4 o_so4.anaesthesia_cart.1 anaesthesia_cart 3.8 15.78 180 0.7 0.6 1.51 free
+prop 3 o_so4 o_so4.instrument_table.1 instrument_table 8.3 14.1 180 1.2 0.6 0.95 free
+prop 3 o_so4 o_so4.cabinet.1 cabinet 6 17.62 180 6.04 0.64 0.96 wall
+prop 3 o_so4 o_so4.oxygen.1 oxygen 9.1 11.94 180 0.5 0.3 1.32 free
+prop 3 o_so4 o_so4.crash.1 crash 3.9 11.94 180 0.72 0.52 1.22 free
+prop 3 o_so4 o_so4.bin.1 bin 2.51 11.62 180 0.3 0.31 0.51 free
+prop 3 o_so4 o_so4.wall_poster.1 wall_poster 9.85 13.54 180 0.07 1.1 2.11 wall
+prop 3 o_so4 o_so4.clock.1 clock 2.14 13.3 180 0.04 0.4 2.31 wall
+prop 3 o_biblioteca o_biblioteca.shelf.1 shelf 10.9 17.62 180 2.2 0.41 2.01 wall
+prop 3 o_biblioteca o_biblioteca.shelf.2 shelf 13.5 17.62 180 2.2 0.41 2.01 wall
+prop 3 o_biblioteca o_biblioteca.shelf.3 shelf 16.1 17.62 180 2.2 0.41 2.01 wall
+prop 3 o_biblioteca o_biblioteca.shelf.4 shelf 10.35 14.5 180 0.5 0.41 2.01 wall
+prop 3 o_biblioteca o_biblioteca.reading_desk.1 reading_desk 11.7 14.5 180 1.6 1 0.79 free
+prop 3 o_biblioteca o_biblioteca.chair.1 chair 11.7 13.78 180 0.5 0.5 0.96 free
+prop 3 o_biblioteca o_biblioteca.desk_papers.1 desk_papers 11.7 14.58 180 0.5 0.35 0.83 free
+prop 3 o_biblioteca o_biblioteca.reading_desk.2 reading_desk 15.3 14.5 180 1.6 1 0.79 free
+prop 3 o_biblioteca o_biblioteca.chair.2 chair 15.3 13.78 180 0.5 0.5 0.96 free
+prop 3 o_biblioteca o_biblioteca.desk_papers.2 desk_papers 15.3 14.58 180 0.5 0.35 0.83 free
+prop 3 o_biblioteca o_biblioteca.sofa.1 sofa 11.5 13.3 180 1.92 0.8 0.88 free
+prop 3 o_biblioteca o_biblioteca.palm.1 palm 16.14 11.94 180 1.52 1.56 2.71 wall
+prop 3 o_biblioteca o_biblioteca.bin.1 bin 10.51 11.62 180 0.3 0.31 0.51 free
+prop 3 o_biblioteca o_biblioteca.wall_poster.1 wall_poster 16.85 13.54 180 0.07 1.1 2.11 wall
+prop 3 o_biblioteca o_biblioteca.clock.1 clock 10.14 13.3 180 0.05 0.4 2.31 wall
+prop 3 o_biblioteca o_biblioteca.rug.1 rug 13.5 14.26 180 4 2.6 0.03 floor
+prop 3 o_terasa o_terasa.planter.1 planter 19 16.1 180 2 1.75 1.71 free
+prop 3 o_terasa o_terasa.planter.2 planter 24 16.1 180 2 1.75 1.71 free
+prop 3 o_terasa o_terasa.bench_seat.1 bench_seat 21.5 13.7 180 2.4 0.5 0.54 free
+prop 3 o_terasa o_terasa.sofa.1 sofa 21.5 13.3 180 1.92 0.8 0.88 free
+prop 3 o_terasa o_terasa.side_table.1 side_table 23.5 13.3 180 1 0.6 0.46 free
+prop 3 o_terasa o_terasa.palm.1 palm 25.14 11.94 180 1.52 1.56 2.71 wall
+prop 3 o_terasa o_terasa.palm.2 palm 24.14 11.94 180 1.52 1.56 2.71 wall
+prop 3 o_filtru o_filtru.scrub_sink.1 scrub_sink -20.5 -10.5 90 0.6 1.6 0.97 wall
+prop 3 o_filtru o_filtru.scrub_sink.2 scrub_sink -22.42 -10.5 90 0.6 1.6 0.97 wall
+prop 3 o_filtru o_filtru.scrub_sink.3 scrub_sink -24.34 -10.5 90 0.6 1.6 0.97 wall
+prop 3 o_filtru o_filtru.cabinet.1 cabinet -22.5 -5.5 90 0.64 0.64 0.96 wall
+prop 3 o_filtru o_filtru.cupboard.1 cupboard -24.5 -5.5 90 0.6 1.6 1.81 wall
+prop 3 o_filtru o_filtru.coats.1 coats -19.94 -5.9 90 1.3 0.5 1.76 free
+prop 3 o_filtru o_filtru.coats.2 coats -21.7 -5.9 90 1.3 0.5 1.76 free
+prop 3 o_filtru o_filtru.bin.1 bin -19.61 -10.5 90 0.31 0.3 0.51 free
+prop 3 o_filtru o_filtru.wall_poster.1 wall_poster -21.54 -5.15 90 0.06 1.1 2.11 wall
+prop 3 o_filtru o_filtru.clock.1 clock -21.3 -10.86 90 0.05 0.4 2.31 wall
+prop 3 o_recuperare o_recuperare.bed.1 bed -24.58 -3.7 90 1.05 2.1 1.01 free
+prop 3 o_recuperare o_recuperare.bed.2 bed -24.58 3 90 1.05 2.1 1.01 free
+prop 3 o_recuperare o_recuperare.bed.3 bed -24.58 9.7 90 1.05 2.1 1.01 free
+prop 3 o_recuperare o_recuperare.cabinet.1 cabinet -19.62 3 90 2.04 0.64 0.96 free
+prop 3 o_recuperare o_recuperare.oxygen.1 oxygen -19.94 10.1 90 0.5 0.3 1.32 free
+prop 3 o_recuperare o_recuperare.supply_cart.1 supply_cart -21.3 3 90 0.62 0.47 1.12 free
+prop 3 o_recuperare o_recuperare.privacy_screen.1 privacy_screen -21.35 1 90 1.87 0.13 1.81 free
+prop 3 o_recuperare o_recuperare.crash.1 crash -19.94 -3.1 90 0.72 0.52 1.22 free
+prop 3 o_recuperare o_recuperare.bin.1 bin -19.61 -4.5 90 0.31 0.3 0.51 free
+prop 3 o_recuperare o_recuperare.wall_poster.1 wall_poster -21.54 10.85 90 0.07 1.1 2.11 wall
+prop 3 o_recuperare o_recuperare.clock.1 clock -21.3 -4.86 90 0.04 0.4 2.31 wall
+prop 3 o_examen o_examen.exam_desk.1 exam_desk 24.5 -3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.1 chair 24.02 -3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.2 exam_desk 23.06 -3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.2 chair 22.58 -3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.3 exam_desk 21.62 -3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.3 chair 21.14 -3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.4 exam_desk 24.5 -1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.4 chair 24.02 -1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.5 exam_desk 23.06 -1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.5 chair 22.58 -1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.6 exam_desk 21.62 -1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.6 chair 21.14 -1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.7 exam_desk 24.5 1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.7 chair 24.02 1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.8 exam_desk 23.06 1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.8 chair 22.58 1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.9 exam_desk 21.62 1 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.9 chair 21.14 1 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.10 exam_desk 24.5 3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.10 chair 24.02 3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.11 exam_desk 23.06 3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.11 chair 22.58 3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.exam_desk.12 exam_desk 21.62 3 270 1 0.6 0.78 free
+prop 3 o_examen o_examen.chair.12 chair 21.14 3 270 0.5 0.5 0.96 free
+prop 3 o_examen o_examen.wall_screen.1 wall_screen 25.78 0 270 4 0.06 2.41 wall
+prop 3 o_examen o_examen.podium.1 podium 19.94 10.1 270 0.8 0.6 1.37 free
+prop 3 o_examen o_examen.whiteboard_stand.1 whiteboard_stand 19.94 -9.1 270 1.8 0.4 1.86 free
+prop 3 o_examen o_examen.cooler.1 cooler 21.7 10.1 270 0.36 0.36 1.41 free
+prop 3 o_examen o_examen.bin.1 bin 19.63 -10.5 270 0.31 0.3 0.51 free
+prop 3 o_examen o_examen.wall_poster.1 wall_poster 21.54 10.85 270 0.06 1.1 2.11 wall
+prop 3 o_examen o_examen.clock.1 clock 21.3 -10.86 270 0.04 0.4 2.31 wall
+prop 3 o_examen o_examen.rug.1 rug 22.26 0 270 4 2.6 0.03 floor
+prop 3 c3_wc c3_wc.wc_cubicle.1 wc_cubicle -15 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc c3_wc.wc_cubicle.2 wc_cubicle -13.4 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc c3_wc.wc_cubicle.3 wc_cubicle -11.8 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc c3_wc.wc_basin.1 wc_basin -9.5 -6.06 180 0.5 2 0.86 free
+prop 3 c3_scari c3_scari.stairs.1 stairs -12.66 0 270 2.4 5.28 1.61 free
+prop 3 c3_wc2 c3_wc2.wc_cubicle.1 wc_cubicle 10 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc2 c3_wc2.wc_cubicle.2 wc_cubicle 11.6 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc2 c3_wc2.wc_cubicle.3 wc_cubicle 13.2 -3.44 180 1.3 0.56 2.01 wall
+prop 3 c3_wc2 c3_wc2.wc_basin.1 wc_basin 15.5 -6.06 180 0.5 2 0.86 free
+prop 3 c3_depozit c3_depozit.shelf.1 shelf 9.38 0 90 5 0.41 2.01 wall
+prop 3 c3_depozit c3_depozit.shelf.2 shelf 13.3 0 90 4 0.41 2.01 free
+prop 3 corridor3 corridor3.alcove_seat.1 alcove_seat -16.45 -12.61 0 0.6 0.57 0.9 free
+prop 3 corridor3 corridor3.alcove_seat.2 alcove_seat -11.55 -12.61 0 0.6 0.57 0.9 free
+prop 3 corridor3 corridor3.alcove_seat.3 alcove_seat -15.7 -12.61 0 0.6 0.57 0.9 free
+prop 3 corridor3 corridor3.alcove_seat.4 alcove_seat -12.3 -12.61 0 0.6 0.57 0.9 free
+prop 3 corridor3 corridor3.plant.1 plant -16.55 -11.5 0 0.7 0.7 1.3 free
+prop 3 corridor3 corridor3.cooler.1 cooler -11.5 -11.55 0 0.4 0.4 1.34 free
+prop 3 corridor3 corridor3.corridor_chair.1 corridor_chair -11 -10.68 0 0.64 0.56 0.81 free
+prop 3 corridor3 corridor3.notice_poster.1 notice_poster -4 -10.93 0 1 0.05 1.9 free
+prop 3 corridor3 corridor3.gurney.1 gurney 8 -10.7 0 1.9 0.6 1.5 free
+prop 3 corridor3 corridor3.corridor_bench.1 corridor_bench 17 -10.7 0 1.6 0.45 0.88 free
+prop 3 corridor3 corridor3.corridor_bench.2 corridor_bench -14 10.7 0 1.6 0.45 0.88 free
+prop 3 corridor3 corridor3.corridor_plant.1 corridor_plant -5.98 10.7 0 0.95 0.97 1.7 free
+prop 3 corridor3 corridor3.extinguisher.1 extinguisher 2.27 10.75 0 1.48 0.44 1.35 free
+prop 3 corridor3 corridor3.corridor_chair.2 corridor_chair 10 10.72 0 0.64 0.56 0.81 free
+prop 3 corridor3 corridor3.notice_poster.2 notice_poster 17 10.93 0 1 0.05 1.9 free
+prop 3 corridor3 corridor3.lift_sign.1 lift_sign -12.5 9.51 0 2.6 0.1 3.7 free
+prop 0 g_reflux1 g_reflux1.door_leaf.1 door_leaf -18.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_reflux2 g_reflux2.door_leaf.1 door_leaf -14.55 -13.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_dispepsie g_dispepsie.door_leaf.1 door_leaf -8.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_gastrite g_gastrite.door_leaf.1 door_leaf -2.55 -13.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_fiziologie g_fiziologie.door_leaf.1 door_leaf 7.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_triaj g_triaj.door_leaf.1 door_leaf 16.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 0 g_amfiteatru g_amfiteatru.door_leaf.1 door_leaf -16.55 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 0 g_farmacie g_farmacie.door_leaf.1 door_leaf -9.55 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 0 g_tranzit g_tranzit.door_leaf.1 door_leaf 7.95 13.05 90 1.1 0.05 2.15 door opens 0 1
+prop 0 g_garda g_garda.door_leaf.1 door_leaf 14.95 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 0 g_stoma g_stoma.door_leaf.1 door_leaf -19.05 -8.55 0 1.1 0.05 2.15 door opens -1 0
+prop 0 g_salivare g_salivare.door_leaf.1 door_leaf -19.05 -2.55 0 1.1 0.05 2.15 door opens -1 0
+prop 0 g_asteptare g_asteptare.door_leaf.1 door_leaf -19.05 5.45 0 1.1 0.05 2.15 door opens -1 0
+prop 0 g_bay1 g_bay1.door_leaf.1 door_leaf 19.05 -9.91 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay1 g_bay1.door_leaf.2 door_leaf 19.05 -8.41 180 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay2 g_bay2.door_leaf.1 door_leaf 19.05 -6.25 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay2 g_bay2.door_leaf.2 door_leaf 19.05 -4.75 180 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay3 g_bay3.door_leaf.1 door_leaf 19.05 -2.58 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay3 g_bay3.door_leaf.2 door_leaf 19.05 -1.08 180 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay4 g_bay4.door_leaf.1 door_leaf 19.05 1.08 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay4 g_bay4.door_leaf.2 door_leaf 19.05 2.58 180 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay5 g_bay5.door_leaf.1 door_leaf 19.05 4.75 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay5 g_bay5.door_leaf.2 door_leaf 19.05 6.25 180 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay6 g_bay6.door_leaf.1 door_leaf 19.05 8.41 0 0.76 0.05 2.15 door opens 1 0
+prop 0 g_bay6 g_bay6.door_leaf.2 door_leaf 19.05 9.91 180 0.76 0.05 2.15 door opens 1 0
+prop 0 c0_wc c0_wc.door_leaf.1 door_leaf -12.95 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 0 c0_scari c0_scari.door_leaf.1 door_leaf -15.95 -0.55 0 1.1 0.05 2.15 door opens 1 0
+prop 0 c0_wc2 c0_wc2.door_leaf.1 door_leaf 12.05 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 0 c0_depozit c0_depozit.door_leaf.1 door_leaf 15.95 -0.55 0 1.1 0.05 2.15 door opens -1 0
+prop 1 e_microbio e_microbio.door_leaf.1 door_leaf -18.05 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_anapat e_anapat.door_leaf.1 door_leaf -13.05 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_respirator e_respirator.door_leaf.1 door_leaf -6.05 -13.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_histo e_histo.door_leaf.1 door_leaf 3.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_analize e_analize.door_leaf.1 door_leaf 12.95 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_vestiar e_vestiar.door_leaf.1 door_leaf 17.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 1 e_primire e_primire.door_leaf.1 door_leaf -17.05 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_endo1 e_endo1.door_leaf.1 door_leaf -11.3 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_endo2 e_endo2.door_leaf.1 door_leaf -4.8 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_decontam e_decontam.door_leaf.1 door_leaf 0.45 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_endoter e_endoter.door_leaf.1 door_leaf 6.45 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_endo3 e_endo3.door_leaf.1 door_leaf 13.45 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 1 e_recuperare e_recuperare.door_leaf.1 door_leaf 17.25 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 1 e_recuperare e_recuperare.door_leaf.2 door_leaf 18.75 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 1 e_farmclin e_farmclin.door_leaf.1 door_leaf -19.05 -5.05 0 1.1 0.05 2.15 door opens -1 0
+prop 1 e_functional e_functional.door_leaf.1 door_leaf -21.05 5.95 0 1.1 0.05 2.15 door opens -1 0
+prop 1 e_colono e_colono.door_leaf.1 door_leaf 19.05 -7.05 0 1.1 0.05 2.15 door opens 1 0
+prop 1 e_radiologie e_radiologie.door_leaf.1 door_leaf 19.05 3.95 0 1.1 0.05 2.15 door opens 1 0
+prop 1 c1_wc c1_wc.door_leaf.1 door_leaf -12.95 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 1 c1_scari c1_scari.door_leaf.1 door_leaf -15.95 -0.55 0 1.1 0.05 2.15 door opens 1 0
+prop 1 c1_wc2 c1_wc2.door_leaf.1 door_leaf 12.05 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 1 c1_depozit c1_depozit.door_leaf.1 door_leaf 15.95 -0.55 0 1.1 0.05 2.15 door opens -1 0
+prop 2 w_epi w_epi.door_leaf.1 door_leaf -18.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 2 w_genetica w_genetica.door_leaf.1 door_leaf -11.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 2 w_imuno w_imuno.door_leaf.1 door_leaf -0.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 2 w_interdis w_interdis.door_leaf.1 door_leaf 8.45 -13.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 2 w_monitor w_monitor.door_leaf.1 door_leaf 15.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 2 w_g1 w_g1.door_leaf.1 door_leaf -17.75 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_g1 w_g1.door_leaf.2 door_leaf -16.25 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_g2 w_g2.door_leaf.1 door_leaf -13 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_g2 w_g2.door_leaf.2 door_leaf -11.5 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_g3 w_g3.door_leaf.1 door_leaf -7.5 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_g3 w_g3.door_leaf.2 door_leaf -6 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_statie w_statie.door_leaf.1 door_leaf -0.55 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 2 w_b1 w_b1.door_leaf.1 door_leaf 6 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_b1 w_b1.door_leaf.2 door_leaf 7.5 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_b2 w_b2.door_leaf.1 door_leaf 11.5 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_b2 w_b2.door_leaf.2 door_leaf 13 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_b3 w_b3.door_leaf.1 door_leaf 16.25 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 2 w_b3 w_b3.door_leaf.2 door_leaf 17.75 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 2 w_complicatii w_complicatii.door_leaf.1 door_leaf -19.05 -7.75 0 0.76 0.05 2.15 door opens -1 0
+prop 2 w_complicatii w_complicatii.door_leaf.2 door_leaf -19.05 -6.25 180 0.76 0.05 2.15 door opens -1 0
+prop 2 w_perfuzii w_perfuzii.door_leaf.1 door_leaf -19.05 3.25 0 0.76 0.05 2.15 door opens -1 0
+prop 2 w_perfuzii w_perfuzii.door_leaf.2 door_leaf -19.05 4.75 180 0.76 0.05 2.15 door opens -1 0
+prop 2 w_b4 w_b4.door_leaf.1 door_leaf 19.05 -8.25 0 0.76 0.05 2.15 door opens 1 0
+prop 2 w_b4 w_b4.door_leaf.2 door_leaf 19.05 -6.75 180 0.76 0.05 2.15 door opens 1 0
+prop 2 w_intermediar w_intermediar.door_leaf.1 door_leaf 19.05 2.75 0 0.76 0.05 2.15 door opens 1 0
+prop 2 w_intermediar w_intermediar.door_leaf.2 door_leaf 19.05 4.25 180 0.76 0.05 2.15 door opens 1 0
+prop 2 c2_wc c2_wc.door_leaf.1 door_leaf -12.95 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 2 c2_scari c2_scari.door_leaf.1 door_leaf -15.95 -0.55 0 1.1 0.05 2.15 door opens 1 0
+prop 2 c2_wc2 c2_wc2.door_leaf.1 door_leaf 12.05 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 2 c2_depozit c2_depozit.door_leaf.1 door_leaf 15.95 -0.55 0 1.1 0.05 2.15 door opens -1 0
+prop 3 o_genetica o_genetica.door_leaf.1 door_leaf -18.55 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_onco o_onco.door_leaf.1 door_leaf -14.55 -13.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_sef o_sef.door_leaf.1 door_leaf -8.05 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_comisie o_comisie.door_leaf.1 door_leaf 1.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_liga o_liga.door_leaf.1 door_leaf 11.95 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_birou o_birou.door_leaf.1 door_leaf 17.45 -11.05 90 1.1 0.05 2.15 door opens 0 -1
+prop 3 o_so1 o_so1.door_leaf.1 door_leaf -17.25 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so1 o_so1.door_leaf.2 door_leaf -15.75 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so2 o_so2.door_leaf.1 door_leaf -10.75 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so2 o_so2.door_leaf.2 door_leaf -9.25 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so3 o_so3.door_leaf.1 door_leaf -2.75 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so3 o_so3.door_leaf.2 door_leaf -1.25 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so4 o_so4.door_leaf.1 door_leaf 5.25 11.05 90 0.76 0.05 2.15 door opens 0 1
+prop 3 o_so4 o_so4.door_leaf.2 door_leaf 6.75 11.05 270 0.76 0.05 2.15 door opens 0 1
+prop 3 o_biblioteca o_biblioteca.door_leaf.1 door_leaf 12.95 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 3 o_terasa o_terasa.door_leaf.1 door_leaf 17.45 11.05 90 1.1 0.05 2.15 door opens 0 1
+prop 3 o_filtru o_filtru.door_leaf.1 door_leaf -19.05 -8.55 0 1.1 0.05 2.15 door opens -1 0
+prop 3 o_recuperare o_recuperare.door_leaf.1 door_leaf -19.05 2.25 0 0.76 0.05 2.15 door opens -1 0
+prop 3 o_recuperare o_recuperare.door_leaf.2 door_leaf -19.05 3.75 180 0.76 0.05 2.15 door opens -1 0
+prop 3 o_examen o_examen.door_leaf.1 door_leaf 19.05 -0.55 0 1.1 0.05 2.15 door opens 1 0
+prop 3 c3_wc c3_wc.door_leaf.1 door_leaf -12.95 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 3 c3_scari c3_scari.door_leaf.1 door_leaf -15.95 -0.55 0 1.1 0.05 2.15 door opens 1 0
+prop 3 c3_wc2 c3_wc2.door_leaf.1 door_leaf 12.05 -7.95 90 0.9 0.05 2.15 door opens 0 1
+prop 3 c3_depozit c3_depozit.door_leaf.1 door_leaf 15.95 -0.55 0 1.1 0.05 2.15 door opens -1 0
+
 # ---- BOOK-1 interaction props (generated by tools/book/compile.py; scripts.json refers to them by id) ----
 # iprop <floor> <room> <id> <kind> <x> <z> <yaw> "<label>"    an interactable prop (instanced per kind); yaw 0 faces +z / south
 # islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand / seat) used by scripts
@@ -533,7 +1663,7 @@ islot 0 g_fiziologie acalazia_manometrie npc_stand 12.5 -14.5 270
 # room w_g2 (ains): 3 props, 0 slots
 iprop 2 w_g2 ains_board board -14.85 14.3 90 "Tabla: COX-1, COX-2 și AINS"
 iprop 2 w_g2 ains_poster poster -9.625 12.55 270 "Afiș: AINS, H. pylori și ulcerul (cifre)"
-iprop 2 w_g2 ains_pharmacy shelf -9.8 16.4 270 "Raftul de farmacie: IPP și misoprostol"
+iprop 2 w_g2 ains_pharmacy shelf -9.8 16.3 270 "Raftul de farmacie: IPP și misoprostol"
 # room e_endo2 (barrett_dx): 6 props, 0 slots
 iprop 1 e_endo2 barrett_dx_plaque plaque -2.4 11.12 0 "Placă: Complicațiile bolii de reflux gastroesofagian"
 iprop 1 e_endo2 barrett_dx_lightbox lightbox -7.35 13.95 90 "Negatoscop: Fig. 32.14 Esofagul Barrett"
@@ -566,9 +1696,9 @@ iprop 2 w_b2 bc_inductie_iv iv_stand 13.6 15.25 180 "Stativ de perfuzie: terapia
 iprop 2 w_b2 bc_inductie_board board 9.65 14.3 90 "Tabla salonului: planul tratamentului medical"
 islot 2 w_b2 bc_inductie_dietitian npc_stand 11.4 12.6 180
 # room w_perfuzii (bc_mentinere): 6 props, 1 slots
-iprop 2 w_perfuzii bc_mentinere_farmacie shelf -25.7 -0.4 90 "Dulapul farmaciei: tiopurine și metotrexat"
+iprop 2 w_perfuzii bc_mentinere_farmacie shelf -25.3 -2.7 0 "Dulapul farmaciei: tiopurine și metotrexat"
 iprop 2 w_perfuzii bc_mentinere_laborator bench -22.5 -2.55 0 "Buletinul de laborator: TPMT și hemoleucograma"
-iprop 2 w_perfuzii bc_mentinere_perfuzor iv_stand -21.2 2.75 270 "Stativul de perfuzie: vedolizumab și ustekinumab"
+iprop 2 w_perfuzii bc_mentinere_perfuzor iv_stand -21.55 3.2 270 "Stativul de perfuzie: vedolizumab și ustekinumab"
 iprop 2 w_perfuzii bc_mentinere_fisa cart -23.5 6.3 0 "Fișa pacientului: terapia anti-TNF"
 iprop 2 w_perfuzii bc_mentinere_monitor monitor -19.65 8.5 270 "Monitorul: studii în curs pentru boala Crohn"
 iprop 2 w_perfuzii bc_mentinere_cadran board -22.9 10.85 180 "Tabla: Cadranul 32.40"
@@ -585,7 +1715,7 @@ iprop 2 w_epi bii_epi_plaque plaque -20 -11.12 180 "Placa biroului: Bolile infla
 iprop 2 w_epi bii_epi_tabla board -25.85 -12.2 90 "Tabla: colita nedeterminată și colita microscopică"
 iprop 2 w_epi bii_epi_registru cabinet -25.65 -16.9 90 "Registrul BII: incidență și prevalență"
 iprop 2 w_epi bii_epi_harta poster -17.125 -15.5 270 "Harta: regiuni, rasă, etnie și migrație"
-islot 2 w_epi bii_epi_epidemiolog npc_seat -18.6 -17.18 0 on_model
+islot 2 w_epi bii_epi_epidemiolog npc_seat -18.6 -17.18 0 on_model w_epi.chair.1
 # room w_interdis (bii_extra): 4 props, 1 slots
 iprop 2 w_interdis bii_extra_box_poster poster 5.125 -15.5 90 "Afiș: Cadranul 32.39, manifestările extraintestinale"
 iprop 2 w_interdis bii_extra_hla_board board 12.85 -16.8 270 "Tabla reumatologului: artropatii și HLA"
@@ -648,7 +1778,7 @@ islot 3 o_so1 brge_chir_surgeon npc_stand -23.6 16.95 90
 iprop 0 g_reflux2 brge_clinic_cadran poster -16.875 -15.5 90 "Afiș: Cadranul 32.13 — durerea din reflux și durerea din ischemia cardiacă"
 iprop 0 g_reflux2 brge_clinic_fisa cart -15.6 -14.0 180 "Fișa pacientului cu pirozis"
 iprop 0 g_reflux2 brge_clinic_tabla board -11.15 -17 270 "Tabla: regurgitare, tuse și astm"
-islot 0 g_reflux2 brge_clinic_orl npc_stand -12.45 -14.05 270
+islot 0 g_reflux2 brge_clinic_orl npc_stand -12.45 -14.15 270
 # room g_reflux1 (brge_epi): 5 props, 1 slots
 iprop 0 g_reflux1 brge_epi_board board -22.9 -17.85 0 "Tabla: epidemiologia și fiziopatologia BRGE"
 iprop 0 g_reflux1 brge_epi_lightbox lightbox -17.15 -15.5 270 "Negatoscopul: Fig. 32.10 Principalele mecanisme anti-reflux"
@@ -665,7 +1795,7 @@ iprop 0 g_farmacie brge_tx_raft_h2 shelf -5.3 16 270 "Raftul antagoniștilor H2 
 iprop 0 g_tranzit constipatia_poster poster 5.45 13.125 0 "Afiș: criteriile Roma IV"
 iprop 0 g_tranzit constipatia_board board 11.85 16.2 270 "Tabla: cele trei categorii de constipație"
 iprop 0 g_tranzit constipatia_scope scope_tower 11.2 16.15 270 "Colonoscopul: când e indicată investigația"
-iprop 0 g_tranzit constipatia_bookshelf shelf 5.3 16.7 90 "Raftul: capitolul COLONUL ȘI RECTUL"
+iprop 0 g_tranzit constipatia_bookshelf shelf 5.3 16.5 90 "Raftul: capitolul COLONUL ȘI RECTUL"
 # room o_so4 (cu_chir): 5 props, 1 slots
 iprop 3 o_so4 cu_chir_or_screen monitor 3.25 11.65 0 "Ecranul sălii: opțiunile chirurgicale ulterioare"
 iprop 3 o_so4 cu_chir_board board 2.15 14.3 90 "Tabla: Cadranul 32.42, indicații chirurgicale"
@@ -676,12 +1806,12 @@ islot 3 o_so4 cu_chir_surgeon npc_stand 8.0 12.2 270
 # room w_b3 (cu_clinic): 4 props, 1 slots
 iprop 2 w_b3 cu_clinic_lightbox lightbox 15.15 14 90 "Negatoscop: Fig. 32.42 — dilatare toxică"
 iprop 2 w_b3 cu_clinic_board board 21 11.15 0 "Tabla salonului: investigațiile în colita ulcerativă"
-iprop 2 w_b3 cu_clinic_lab bench 25.55 15 270 "Masa de probe: teste sangvine și fecale"
+iprop 2 w_b3 cu_clinic_lab bench 23.9 11.45 0 "Masa de probe: teste sangvine și fecale"
 iprop 2 w_b3 cu_clinic_scope scope_tower 17.3 16.55 90 "Turnul de endoscopie: colonoscopia"
 islot 2 w_b3 cu_clinic_attending npc_stand 18.2 12.9 180
 # room w_intermediar (cu_sever): 4 props, 1 slots
 iprop 2 w_intermediar cu_sever_box poster 22.5 -3.875 0 "Afiș: Cadranul 32.41 — episodul sever de colită ulcerativă"
-iprop 2 w_intermediar cu_sever_monitor monitor 25.05 0.75 270 "Monitorul pacientului: monitorizarea zilnică"
+iprop 2 w_intermediar cu_sever_monitor monitor 25.05 0.7 270 "Monitorul pacientului: monitorizarea zilnică"
 iprop 2 w_intermediar cu_sever_pharmacy counter 25.6 8.5 270 "Farmacia secției: terapia de salvare"
 iprop 2 w_intermediar cu_sever_board board 22.9 10.85 180 "Tabla: terapii noi"
 islot 2 w_intermediar cu_sever_consultant npc_stand 21.0 7.0 270
@@ -694,7 +1824,7 @@ iprop 2 w_b4 cu_tx_afis poster 20.55 -4.125 180 "Afiș: proctită, colită stân
 iprop 0 g_lobby cuprins_plaque plaque 0 -7.88 0 "Placa capitolului 32: titlu și autori"
 iprop 0 g_lobby cuprins_sections board 8.85 -3 270 "Panoul secțiunilor și subsecțiunilor"
 iprop 0 g_lobby cuprins_errata board -8.85 -3 90 "Cuprins față de pagina tipărită"
-iprop 0 g_lobby cuprins_headers shelf 8.7 6 270 "Raftul cu paginile capitolului: antetele"
+iprop 0 g_lobby cuprins_headers shelf 8.7 6.15 270 "Raftul cu paginile capitolului: antetele"
 islot 0 g_lobby cuprins_guide npc_stand -6.0 4.6 90
 # room e_functional (esofag_functional): 4 props, 1 slots
 iprop 1 e_functional esofag_functional_plaque plaque -21.12 3.4 270 "Placa cabinetului: tulburări esofagiene funcționale"
@@ -762,16 +1892,16 @@ islot 3 o_genetica intestin_tumori_counsellor npc_stand -22.8 -12.3 180
 # room g_amfiteatru (intro): 4 props, 0 slots
 iprop 0 g_amfiteatru intro_plaque plaque -17.4 11.15 0 "Placa de la intrarea în amfiteatru"
 iprop 0 g_amfiteatru intro_poster_oms poster -25.55 11.125 0 "Afiș: povara bolilor digestive"
-iprop 0 g_amfiteatru intro_lectern podium -13.9 11.94 0 "Pupitrul lectorului" on_model
-iprop 0 g_amfiteatru intro_mdt_board board -24.1 11.94 0 "Tabla întâlnirii multidisciplinare" on_model
+iprop 0 g_amfiteatru intro_lectern podium -13.9 11.94 180 "Pupitrul lectorului" on_model g_amfiteatru.podium.1
+iprop 0 g_amfiteatru intro_mdt_board board -24.1 11.94 180 "Tabla întâlnirii multidisciplinare" on_model g_amfiteatru.whiteboard_stand.1
 # room o_biblioteca (lecturi_bii, lecturi_esofag, lecturi_intestin): 6 props, 3 slots
-iprop 3 o_biblioteca lecturi_bii_bookshelf shelf 16.1 17.62 180 "Raftul „Bolile inflamatorii intestinale” (p. 1208)" on_model
-iprop 3 o_biblioteca lecturi_bii_cabinet shelf 10.35 14.5 90 "Fișierul: ghiduri și trialuri în BII" on_model
-iprop 3 o_biblioteca lecturi_esofag_bookshelf shelf 10.9 17.62 180 "Raftul „Faringele și esofagul” (p. 1172)" on_model
+iprop 3 o_biblioteca lecturi_bii_bookshelf shelf 16.1 17.62 180 "Raftul „Bolile inflamatorii intestinale” (p. 1208)" on_model o_biblioteca.shelf.3
+iprop 3 o_biblioteca lecturi_bii_cabinet shelf 10.35 14.5 180 "Fișierul: ghiduri și trialuri în BII" on_model o_biblioteca.shelf.4
+iprop 3 o_biblioteca lecturi_esofag_bookshelf shelf 10.9 17.62 180 "Raftul „Faringele și esofagul” (p. 1172)" on_model o_biblioteca.shelf.1
 iprop 3 o_biblioteca lecturi_esofag_plaque plaque 12.2 11.12 0 "Placa: Lecturi suplimentare — esofag"
-iprop 3 o_biblioteca lecturi_intestin_bookshelf shelf 13.5 17.62 180 "Raftul „Intestinul subțire” (p. 1198)" on_model
+iprop 3 o_biblioteca lecturi_intestin_bookshelf shelf 13.5 17.62 180 "Raftul „Intestinul subțire” (p. 1198)" on_model o_biblioteca.shelf.2
 iprop 3 o_biblioteca lecturi_intestin_plaque plaque 14.8 11.12 0 "Placa: Lecturi suplimentare — intestin subțire"
-islot 3 o_biblioteca lecturi_bii_reader npc_seat 15.3 13.78 0 on_model
+islot 3 o_biblioteca lecturi_bii_reader npc_seat 15.3 13.78 180 on_model o_biblioteca.chair.2
 islot 3 o_biblioteca lecturi_esofag_reader npc_stand 11.7 15.6 0
 islot 3 o_biblioteca lecturi_intestin_reader npc_stand 15.05 12.65 90
 # room g_stoma (oral_gingii): 4 props, 0 slots
@@ -780,7 +1910,7 @@ iprop 0 g_stoma oral_gingii_teeth shelf -22.1 -10.7 0 "Raft cu mulaje dentare: c
 iprop 0 g_stoma oral_gingii_meds shelf -22.7 -5.3 180 "Dulăpiorul de medicamente al cabinetului"
 iprop 0 g_stoma oral_gingii_note plaque -19.12 -6 270 "Fișa de la ușă: leziunile benigne și gingia"
 # room g_salivare (oral_salivare): 3 props, 0 slots
-iprop 0 g_salivare oral_salivare_box poster -21.54 0.87 180 "Afiș: Cadranul 32.10 Boli ale glandelor salivare" on_model
+iprop 0 g_salivare oral_salivare_box poster -21.54 0.85 90 "Afiș: Cadranul 32.10 Boli ale glandelor salivare" on_model g_salivare.wall_poster.1
 iprop 0 g_salivare oral_salivare_meds shelf -22.7 0.7 180 "Raftul cu medicamente din Cadranul 32.10"
 iprop 0 g_salivare oral_salivare_scope microscope -20.5 -4 0 "Microscopul: neoplasmele glandelor salivare"
 # room o_so2 (ulcer_chir): 4 props, 0 slots

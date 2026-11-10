@@ -31,9 +31,8 @@ if ls "$T"/topics/*.py >/dev/null 2>&1; then
 fi
 python3 -I "$T/inflections.py" "$PACK"      # §2: answers not verbatim (report appendix)
 python3 -I "$T/typofacts.py" "$PACK"        # §1: facts whose only testable token is a misprint
-if [[ -f src/institute_model_page.html ]]; then   # the "Gastro Institute 3D" page (MAP-2): its furniture, the plans, the book inside it
-  python3 -I -c "import sys;s=open(sys.argv[1],encoding='utf-8').read();i=s.index('<script>var ROOMS=');j=s.index('</script>',i);open(sys.argv[2],'w',encoding='utf-8').write(s[i+8:j]+'\nif(typeof module!==\"undefined\"){module.exports.ROOMS=ROOMS;module.exports.loc=loc;module.exports.FH=FH;}\n')" src/institute_model_page.html src/institute_model.js
-  node "$T/model_occupancy.js" src/institute_model.js "$PACK/model_occupancy.json"
+if [[ -f src/institute_model_page.html ]]; then   # the "Gastro Institute 3D" page: its furniture must equal institute.map's (check.py)
+  node "$T/model_furniture.js" src/institute_model_page.html "$PACK/model_furniture.json"
 fi
 python3 -I "$T/plans.py" "$PACK"
 cp "$T/wordrule.py" "$PACK/wordrule.py"
