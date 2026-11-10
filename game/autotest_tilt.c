@@ -81,7 +81,7 @@ static int check_ref(TiltTest *t, const AutotestProbe *p, int r, const char *nam
 typedef float (*AngleFn)(float t);
 typedef struct Run {
     float peak, peak_t, max_abs_after, mean, rest_t;
-    int overshoots;
+    int overshoots, ceilings, backstops;
     float trace[8];   /* offset (pt) at 0, 0.1, 0.25, 0.5, 0.75, 1.2, 1.5, 2.0 s */
 } Run;
 
@@ -147,6 +147,7 @@ static Run run_shape(AngleFn f, float seconds, float still_from, bool flipped, f
         }
     }
     r.mean = n ? sum / (float)n : 0.0f;
+    r.ceilings = a.ceilings, r.backstops = a.backstops;
     return r;
 }
 
@@ -175,8 +176,9 @@ static int check_math(TiltTest *t)
     /* during the tilt: a 2 s ramp to 20 deg (10 deg/s): under 35 %, rest within 500 ms of the end */
     g_amp = 20.0f, g_end = 2.0f;
     const Run rp = run_shape(ramp, 3.0f, 2.0f, false, 0.0f);
-    if (fabsf(rp.peak) >= 0.35f || rp.rest_t < 0.0f || rp.rest_t > 0.5f) {
-        return failf(t, "ramp: peak %.3f (max 0.35), rest %.0f ms after the end (max 500)", (double)rp.peak, (double)(rp.rest_t * 1000.0f));
+    if (fabsf(rp.peak) >= 0.35f || rp.rest_t < 0.0f || rp.rest_t > 0.5f || rp.ceilings || rp.backstops) {
+        return failf(t, "ramp: peak %.3f (max 0.35), rest %.0f ms after the end (max 500), ceiling %d, backstop %d (a real turn must trip neither)",
+                     (double)rp.peak, (double)(rp.rest_t * 1000.0f), rp.ceilings, rp.backstops);
     }
     /* quick flick: 20 deg in 0.3 s, then still */
     g_amp = 20.0f, g_end = 0.3f;
@@ -241,7 +243,27 @@ static int check_math(TiltTest *t)
         if (zero_at < 0.0f || zero_at > 1.5f || a.ceilings != 1 || !a.ceiling_logged) {
             return failf(t, "ceiling: back to 0 at %.2f s (max 1.5), fired %d times", (double)zero_at, a.ceilings);
         }
-        mg_log_info("autotest tilt: ceiling: a stuck target is back to 0 at %.2f s, logged once", (double)zero_at);
+        mg_log_info("autotest tilt: ceiling: a stuck target with the sensor still is back to 0 at %.2f s, logged once", (double)zero_at);
+    }
+    /* the backstop: a stuck target while the sensor says the device keeps turning: 0 after 4 s, logged once */
+    {
+        Tilt a;
+        tilt_init(&a);
+        tilt_snap(&a);
+        a.fault = true, a.fault_x = 1.0f;
+        float zero_at = -1.0f;
+        for (int i = 0; i < 6 * 60; i++) {
+            float sx, sy;
+            tilt_screen_gravity(0.0f, 0.0f, -1.0f, false, &sx, &sy);
+            tilt_tick(&a, 1.0f / 60.0f, true, sx, sy, 50.0f, i / 60.0); /* 50 deg/s: "moving" */
+            if (zero_at < 0.0f && a.tx == 0.0f && i > 10) {
+                zero_at = (float)i / 60.0f;
+            }
+        }
+        if (zero_at < 4.0f || zero_at > 4.6f || a.backstops != 1 || !a.backstop_logged || a.ceilings != 0) {
+            return failf(t, "backstop: back to 0 at %.2f s (want 4.0..4.6), backstop %d, ceiling %d", (double)zero_at, a.backstops, a.ceilings);
+        }
+        mg_log_info("autotest tilt: backstop: a stuck target while the sensor reports turning is back to 0 at %.2f s, logged once; the ceiling did not fire", (double)zero_at);
     }
     /* 11 */
     const float off = tilt_strength(0, false, false), red = tilt_strength(2, true, false), low = tilt_strength(2, false, true);

@@ -61,7 +61,7 @@ typedef struct UiStyleTable {
     float stick_rel_t[5], stick_rel_k[5], stick_rel_along[5], stick_rel_across[5];
     /* TILT-1 (signs: +1 / -1 per axis, flipped here if the hand check finds an axis inverted) */
     float tilt_sign_x, tilt_sign_y, tilt_dead_deg, tilt_range_deg, tilt_ref_s, tilt_spring_hz, tilt_spring_damping;
-    float tilt_still_dps, tilt_still_s, tilt_rest_pt, tilt_ceiling_s; /* A1: the rest rule and the ceiling */
+    float tilt_still_dps, tilt_still_s, tilt_rest_pt, tilt_ceiling_s, tilt_backstop_s; /* A1: the rest rule, the ceiling, the backstop */
     float tilt_shake_speed, tilt_shake_gap_s, tilt_jiggle_stagger_s;
     float tilt_depth[5];                 /* max shift (pt) per depth 0..4 */
     float tilt_lip_x, tilt_lip_y;        /* lip swing: (-0.7 L tx, -0.4 L ty) from rest */
@@ -122,8 +122,8 @@ static const UiStyleTable k_ui = {
     .stick_rel_k = {1.0f, -0.2f, 0.08f, -0.02f, 0.0f},
     .stick_rel_along = {1.0f, 0.94f, 1.03f, 1.0f, 1.0f},
     .stick_rel_across = {1.0f, 1.08f, 0.97f, 1.0f, 1.0f},
-    .tilt_sign_x = 1.0f, .tilt_sign_y = 1.0f, .tilt_dead_deg = 1.0f, .tilt_range_deg = 16.0f, /* A1 says 12; 16 gives its own "20 deg in 0.3 s peaks near 0.7" */ .tilt_ref_s = 0.35f, .tilt_spring_hz = 4.0f,
-    .tilt_spring_damping = 0.7f, .tilt_still_dps = 3.0f, .tilt_still_s = 0.15f, .tilt_rest_pt = 0.25f, .tilt_ceiling_s = 1.1f, .tilt_shake_speed = 6.0f, .tilt_shake_gap_s = 2.0f, .tilt_jiggle_stagger_s = 0.015f,
+    .tilt_sign_x = 1.0f, .tilt_sign_y = 1.0f, .tilt_dead_deg = 1.0f, .tilt_range_deg = 16.0f, /* A1 said 12; 16 (approved) gives its "20 deg in 0.3 s peaks near 0.7" */ .tilt_ref_s = 0.35f, .tilt_spring_hz = 4.0f,
+    .tilt_spring_damping = 0.7f, .tilt_still_dps = 3.0f, .tilt_still_s = 0.15f, .tilt_rest_pt = 0.25f, .tilt_ceiling_s = 1.1f, .tilt_backstop_s = 4.0f, .tilt_shake_speed = 6.0f, .tilt_shake_gap_s = 2.0f, .tilt_jiggle_stagger_s = 0.015f,
     .tilt_depth = {0.0f, 4.0f, 7.0f, 10.0f, 14.0f},
     .tilt_lip_x = 0.7f, .tilt_lip_y = 0.4f,
     .tilt_highlight_pt = 2.0f, .tilt_gloss_w = 0.4f, .tilt_gloss_alpha = 0.18f, .tilt_gloss_travel = 0.3f, .tilt_title_lip = 1.5f, .tilt_hud = 0.5f,

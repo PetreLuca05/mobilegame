@@ -54,7 +54,8 @@ void tilt_tick(Tilt *t, float dt, bool have_g, float sx, float sy, float rate_dp
         }
         const float rate = rate_dps >= 0.0f ? rate_dps : fmaxf(fabsf(t->ax - t->pax), fabsf(t->ay - t->pay)) / fmaxf(dt, 1e-4f);
         t->pax = t->ax, t->pay = t->ay;
-        t->still_s = rate < k_ui.tilt_still_dps ? t->still_s + dt : 0.0f;
+        t->moving = rate >= k_ui.tilt_still_dps;
+        t->still_s = !t->moving ? t->still_s + dt : 0.0f;
         still = t->still_s >= k_ui.tilt_still_s;
         if (still) { /* held still at any angle: back to rest, the reference on the angle */
             t->refx = t->ax, t->refy = t->ay;
@@ -68,17 +69,28 @@ void tilt_tick(Tilt *t, float dt, bool have_g, float sx, float sy, float rate_dp
     if (t->fault) { /* tests: a stuck sensor or a mapping bug */
         t->target_x = t->fault_x, t->target_y = t->fault_y;
     }
-    /* the hard ceiling: never off rest for long, whatever the sensor does */
+    /* the ceiling (gravity still yet displaced: a stuck sensor or a mapping bug) and the backstop (anything, 4 s) */
     const float off_pt = fmaxf(fabsf(t->tx), fabsf(t->ty)) * k_ui.tilt_depth[4];
-    t->off_s = !t->forced && off_pt > 1.0f ? t->off_s + dt : 0.0f;
-    if (t->off_s >= k_ui.tilt_ceiling_s) {
+    const bool displaced = !t->forced && off_pt > 1.0f;
+    t->off_s = displaced && !t->moving ? t->off_s + dt : 0.0f;
+    t->off_any_s = displaced ? t->off_any_s + dt : 0.0f;
+    const bool ceiling = t->off_s >= k_ui.tilt_ceiling_s, backstop = t->off_any_s >= k_ui.tilt_backstop_s;
+    if (ceiling || backstop) {
         t->target_x = t->target_y = 0.0f;
         t->fault = false;
-        t->ceilings++;
-        t->off_s = 0.0f;
-        if (!t->ceiling_logged) {
-            t->ceiling_logged = true;
-            mg_log_error("tilt: displaced over 1 pt for %.1f s: forced to rest (a sensor or mapping bug)", (double)k_ui.tilt_ceiling_s);
+        t->off_s = t->off_any_s = 0.0f;
+        if (ceiling) {
+            t->ceilings++;
+            if (!t->ceiling_logged) {
+                t->ceiling_logged = true;
+                mg_log_error("tilt: displaced over 1 pt for %.1f s with the device still: forced to rest (a stuck sensor or a mapping bug)", (double)k_ui.tilt_ceiling_s);
+            }
+        } else {
+            t->backstops++;
+            if (!t->backstop_logged) {
+                t->backstop_logged = true;
+                mg_log_error("tilt: displaced over 1 pt for %.1f s: forced to rest (backstop)", (double)k_ui.tilt_backstop_s);
+            }
         }
         still = true;
     }
