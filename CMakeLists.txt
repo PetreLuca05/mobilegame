@@ -105,8 +105,15 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/world/kumar.island.json
   ${CMAKE_SOURCE_DIR}/assets/world/lawrance.island.json
 )
-# WORLD-1: mgmesh text -> engine mesh binary at build time (tools/meshgen.py); a malformed line fails the build
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Pinned downloads (assets/ASSETS.lock): a missing file or a different hash fails configure and every build
+execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/assets_lock.py ${CMAKE_SOURCE_DIR} RESULT_VARIABLE MG_LOCK_RESULT)
+if(NOT MG_LOCK_RESULT EQUAL 0)
+  message(FATAL_ERROR "assets/ASSETS.lock: a pinned asset is missing or differs (tools/assets_lock.py --fetch)")
+endif()
+add_custom_target(mg_assets_lock ALL COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/assets_lock.py ${CMAKE_SOURCE_DIR}
+                  COMMENT "Checking assets/ASSETS.lock" VERBATIM)
+# WORLD-1: mgmesh text -> engine mesh binary at build time (tools/meshgen.py); a malformed line fails the build
 set(MG_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
 foreach(mesh kumar_island lawrance_island ambulance vehicles)
   set(out ${MG_GEN_DIR}/assets/world/${mesh}.mgmb)
