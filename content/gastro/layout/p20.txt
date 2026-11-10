@@ -1,0 +1,29 @@
+# PDF page 20 = printed 1206. Colita ulcerativă: end of Investigații (Colonoscopia, Imagistica), medical treatment
+# (proctitis, left-sided colitis, pancolitis), severe/refractory colitis. Cadranul 32.41 (bottom left) and
+# Fig. 32.42 (bottom right) are both first cited on p. 1205 (Tablou clinic), so they go at the top of this page's
+# flow, right after the paragraph that continues from p. 1205 (the closest point to their first citation; the
+# continuation must stay first, and the last text atom of the page must stay the paragraph that p. 1207 continues).
+hdr b000 name=hdr1206
+p b001 cont            # continues the Colonoscopia paragraph from p. 1205
+decor b008 why="box icon (italic i in a green square) next to the box title"
+bt b015 b016 name=bt_32_41
+bh b017:0
+li b017:1-
+bh b018:0
+li b018:1- split=6     # "Anticoagulare profilactică": bullet printed, missing from the text layer (fix adds it)
+be
+fig id=fig_32_42 bbox=314,510,554,723
+cap b019 b020 fig=fig_32_42 name=cap_32_42
+lab fig=fig_32_42 name=lab_32_42      # radiograph: no OCR words inside; the printed label "6 cm" is added by a fix
+h5 b002                # blue regular, sub-heading of h4 Investigații (like "Colonoscopia")
+p b003
+h4 b004                # orange bold
+p b005
+h5 b006                # blue regular
+p b007
+h5 b009
+p b010
+h5 b011 name=h5pan
+p b012
+h4 b013                # magenta bold (bigger than the blue h5s); h4 keeps the hierarchy logical, see notes
+p b014                 # continues on p. 1207

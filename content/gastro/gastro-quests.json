@@ -1,0 +1,922 @@
+{
+ "pack": "gastro",
+ "map": "institute",
+ "chapters": [
+  {
+   "id": 0,
+   "name": "Prima zi",
+   "sub": "Introducere",
+   "boss": null,
+   "steps": [
+    {
+     "topic": "intro",
+     "room": "g_amfiteatru",
+     "title": "Cunoștințe de bază și abilități clinice",
+     "pages": "1147",
+     "headings_v1": [
+      "CUNOȘTINȚE DE BAZĂ ȘI ABILITĂȚI CLINICE ÎN GASTROENTEROLOGIE"
+     ],
+     "atoms": 8,
+     "heading_atoms": [
+      "a1147-036"
+     ]
+    },
+    {
+     "topic": "cuprins",
+     "room": "g_lobby",
+     "title": "Titlul capitolului, autorii și cuprinsul",
+     "pages": "1147, 1162–1166, 1172–1176, 1198–1208",
+     "headings_v1": [
+      "32 Gastroenterologie",
+      "Noor Jawad și Charlotte Skinner",
+      "Cuprins"
+     ],
+     "atoms": 57,
+     "heading_atoms": [
+      "a1147-001"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 1,
+   "name": "Arsura",
+   "sub": "Gură, reflux și esofag",
+   "boss": "Comisia: cazul de reflux",
+   "steps": [
+    {
+     "topic": "oral_gingii",
+     "room": "g_stoma",
+     "title": "Cavitatea bucală — gingiile și dinții",
+     "pages": "1162",
+     "headings_v1": [
+      "(fragment leziuni benigne)",
+      "Gingiile",
+      "Dinții",
+      "Cadranul 32.9"
+     ],
+     "atoms": 12,
+     "heading_atoms": [
+      "a1162-003",
+      "a1162-005",
+      "a1162-011"
+     ]
+    },
+    {
+     "topic": "oral_salivare",
+     "room": "g_salivare",
+     "title": "Glandele salivare",
+     "pages": "1162",
+     "headings_v1": [
+      "GLANDELE SALIVARE",
+      "Cadranul 32.10"
+     ],
+     "atoms": 17,
+     "heading_atoms": [
+      "a1162-014",
+      "a1162-016"
+     ]
+    },
+    {
+     "topic": "brge_epi",
+     "room": "g_reflux1",
+     "title": "BRGE — epidemiologie și fiziopatologie",
+     "pages": "1162–1163",
+     "headings_v1": [
+      "Boala de reflux gastro-esofagian/Epidemiologie și fiziopatologie",
+      "Cadranul 32.11",
+      "Cadranul 32.12",
+      "Fig. 32.10"
+     ],
+     "atoms": 28,
+     "heading_atoms": [
+      "a1162-031",
+      "a1162-032",
+      "a1162-033",
+      "a1163-002",
+      "a1163-012",
+      "a1163-013",
+      "a1163-014",
+      "a1163-018"
+     ]
+    },
+    {
+     "topic": "brge_clinic",
+     "room": "g_reflux2",
+     "title": "BRGE — tablou clinic",
+     "pages": "1162–1163",
+     "headings_v1": [
+      "Boala de reflux gastro-esofagian/Tablou clinic",
+      "Cadranul 32.13"
+     ],
+     "atoms": 16,
+     "heading_atoms": [
+      "a1162-039",
+      "a1163-022",
+      "a1163-023",
+      "a1163-027"
+     ]
+    },
+    {
+     "topic": "brge_dx",
+     "room": "g_fiziologie",
+     "title": "BRGE — diagnostic și investigații",
+     "pages": "1163–1164",
+     "headings_v1": [
+      "Boala de reflux gastro-esofagian/Diagnostic și investigații paraclinice",
+      "Fig. 32.12"
+     ],
+     "atoms": 6,
+     "heading_atoms": [
+      "a1163-034",
+      "a1164-005"
+     ]
+    },
+    {
+     "topic": "brge_tx",
+     "room": "g_farmacie",
+     "title": "BRGE — tratament medical",
+     "pages": "1163–1164",
+     "headings_v1": [
+      "Boala de reflux gastro-esofagian/Tratament",
+      "Medicamente utilizate",
+      "Preparatele pe bază de alginat",
+      "Inhibitorii pompei de protoni",
+      "Antagoniștii receptorilor H2",
+      "Agenții prokinetici antagoniști dopaminergici"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1163-038",
+      "a1163-040",
+      "a1163-041",
+      "a1163-043",
+      "a1164-007",
+      "a1164-009"
+     ]
+    },
+    {
+     "topic": "esofagita",
+     "room": "e_endo1",
+     "title": "Esofagita și boala de reflux non-erozivă",
+     "pages": "1164–1165",
+     "headings_v1": [
+      "Fig. 32.11",
+      "Fig. 32.13",
+      "boală de reflux gastroesofagian non-erozivă (NERD)"
+     ],
+     "atoms": 5,
+     "heading_atoms": [
+      "a1164-003",
+      "a1165-003"
+     ]
+    },
+    {
+     "topic": "barrett_dx",
+     "room": "e_endo2",
+     "title": "Esofagul Barrett — diagnostic și clasificare",
+     "pages": "1165–1166",
+     "headings_v1": [
+      "Complicațiile bolii de reflux gastroesofagian/Esofagul Barrett",
+      "Diagnostic și clasificare",
+      "Fig. 32.14",
+      "Fig. 32.15"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1165-005",
+      "a1165-008",
+      "a1165-011",
+      "a1165-012",
+      "a1166-003"
+     ]
+    },
+    {
+     "topic": "barrett_tx",
+     "room": "e_endoter",
+     "title": "Strictura peptică și tratamentul endoscopic",
+     "pages": "1164–1166",
+     "headings_v1": [
+      "Strictura peptică",
+      "Gastroplicatura endoluminală",
+      "displazie de grad scăzut",
+      "displazie de grad înalt",
+      "Ablația prin radiofrecvență"
+     ],
+     "atoms": 7,
+     "heading_atoms": [
+      "a1164-011",
+      "a1165-006"
+     ]
+    },
+    {
+     "topic": "brge_chir",
+     "room": "o_so1",
+     "title": "BRGE — tratament chirurgical",
+     "pages": "1164–1165",
+     "headings_v1": [
+      "Tratamentul chirurgical",
+      "Sistemul de gestionare a refluxului Linx",
+      "Indicațiile pentru intervenția chirurgicală"
+     ],
+     "atoms": 6,
+     "heading_atoms": [
+      "a1164-013"
+     ]
+    },
+    {
+     "topic": "acalazia",
+     "room": "g_fiziologie",
+     "title": "Tulburările de motilitate — acalazia",
+     "pages": "1166",
+     "headings_v1": [
+      "Tulburările de motilitate",
+      "Acalazia",
+      "Tablou clinic"
+     ],
+     "atoms": 5,
+     "heading_atoms": [
+      "a1166-007",
+      "a1166-008",
+      "a1166-010"
+     ]
+    },
+    {
+     "topic": "esofag_tumori",
+     "room": "o_onco",
+     "title": "Tumorile esofagiene — tratament și alte tumori",
+     "pages": "1172",
+     "headings_v1": [
+      "(fragment tratament tumori esofagiene)",
+      "Alte tumori esofagiene"
+     ],
+     "atoms": 7,
+     "heading_atoms": [
+      "a1172-006"
+     ]
+    },
+    {
+     "topic": "esofag_functional",
+     "room": "e_functional",
+     "title": "Tulburări esofagiene funcționale",
+     "pages": "1172",
+     "headings_v1": [
+      "Tulburări esofagiene funcționale",
+      "Globusul",
+      "Durerea toracică funcțională de cauză presupusă esofagiană"
+     ],
+     "atoms": 12,
+     "heading_atoms": [
+      "a1172-009",
+      "a1172-011",
+      "a1172-017"
+     ]
+    },
+    {
+     "topic": "lecturi_esofag",
+     "room": "o_biblioteca",
+     "title": "Lecturi suplimentare — esofag",
+     "pages": "1172",
+     "headings_v1": [
+      "Lecturi suplimentare (p. 1172)"
+     ],
+     "atoms": 9,
+     "heading_atoms": [
+      "a1172-021"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "name": "Bacteria",
+   "sub": "Stomac și duoden",
+   "boss": "Comisia: cazul de ulcer",
+   "steps": [
+    {
+     "topic": "gastrita",
+     "room": "g_gastrite",
+     "title": "Gastrita și gastropatia",
+     "pages": "1172",
+     "headings_v1": [
+      "STOMACUL ȘI DUODENUL/Gastrita și gastropatia",
+      "Gastrita",
+      "Gastrita autoimună",
+      "Gastropatia"
+     ],
+     "atoms": 9,
+     "heading_atoms": [
+      "a1172-030",
+      "a1172-031",
+      "a1172-033",
+      "a1172-035",
+      "a1172-037"
+     ]
+    },
+    {
+     "topic": "hp_bact",
+     "room": "e_microbio",
+     "title": "Helicobacter pylori — bacteria, epidemiologie, patogeneză",
+     "pages": "1172–1173",
+     "headings_v1": [
+      "Infecția cu Helicobacter pylori",
+      "Epidemiologie",
+      "Patogeneză",
+      "Fig. 32.23"
+     ],
+     "atoms": 8,
+     "heading_atoms": [
+      "a1172-039",
+      "a1172-041",
+      "a1173-003",
+      "a1173-004"
+     ]
+    },
+    {
+     "topic": "hp_consec",
+     "room": "e_anapat",
+     "title": "Consecințele infecției cu H. pylori",
+     "pages": "1173",
+     "headings_v1": [
+      "Consecințele infecției cu H. pylori",
+      "Gastrita antrală",
+      "Ulcerul duodenal",
+      "Ulcerul gastric"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1173-006",
+      "a1173-010",
+      "a1173-012",
+      "a1173-015"
+     ]
+    },
+    {
+     "topic": "ulcer_clinic",
+     "room": "g_dispepsie",
+     "title": "Boala ulceroasă peptică — definiție, epidemiologie, clinică",
+     "pages": "1173",
+     "headings_v1": [
+      "Boala ulceroasă peptică",
+      "Epidemiologia bolii ulceroase peptice",
+      "Tabloul clinic al bolii ulceroase peptice"
+     ],
+     "atoms": 10,
+     "heading_atoms": [
+      "a1173-017",
+      "a1173-019",
+      "a1173-022"
+     ]
+    },
+    {
+     "topic": "hp_dx_noninv",
+     "room": "e_respirator",
+     "title": "Diagnosticul H. pylori — metode non-invazive",
+     "pages": "1173–1174",
+     "headings_v1": [
+      "Diagnosticul infecției cu Helicobacter pylori",
+      "Metode non-invazive",
+      "Fig. 32.25"
+     ],
+     "atoms": 8,
+     "heading_atoms": [
+      "a1173-027",
+      "a1174-004",
+      "a1174-008"
+     ]
+    },
+    {
+     "topic": "hp_dx_inv",
+     "room": "e_endo3",
+     "title": "Diagnosticul invaziv și investigarea pacientului",
+     "pages": "1174",
+     "headings_v1": [
+      "Metode invazive (necesită examen endoscopic pentru prelevare)",
+      "Investigarea pacientului suspect de boală ulceroasă peptică",
+      "Fig. 32.24"
+     ],
+     "atoms": 16,
+     "heading_atoms": [
+      "a1174-003",
+      "a1174-010",
+      "a1174-014"
+     ]
+    },
+    {
+     "topic": "hp_tx",
+     "room": "e_farmclin",
+     "title": "Terapia de eradicare",
+     "pages": "1174–1175",
+     "headings_v1": [
+      "Tratament/Terapia de eradicare",
+      "Exemple de regimuri terapeutice",
+      "Măsuri generale"
+     ],
+     "atoms": 21,
+     "heading_atoms": [
+      "a1174-024",
+      "a1174-025",
+      "a1175-010",
+      "a1175-017"
+     ]
+    },
+    {
+     "topic": "ulcer_compl",
+     "room": "w_g1",
+     "title": "Complicațiile bolii ulceroase",
+     "pages": "1175",
+     "headings_v1": [
+      "Complicațiile bolii ulceroase peptice",
+      "Hemoragia",
+      "Perforația",
+      "Insuficiența evacuatorie gastrică"
+     ],
+     "atoms": 10,
+     "heading_atoms": [
+      "a1175-020",
+      "a1175-021",
+      "a1175-023",
+      "a1175-025"
+     ]
+    },
+    {
+     "topic": "ulcer_chir",
+     "room": "o_so2",
+     "title": "Tratamentul chirurgical al ulcerului",
+     "pages": "1175–1176",
+     "headings_v1": [
+      "Tratamentul chirurgical și consecințele sale pe termen lung"
+     ],
+     "atoms": 15,
+     "heading_atoms": [
+      "a1175-030"
+     ]
+    },
+    {
+     "topic": "hp_alte",
+     "room": "w_g3",
+     "title": "Alte afecțiuni asociate H. pylori",
+     "pages": "1176",
+     "headings_v1": [
+      "Alte afecțiuni asociate infecției cu H. pylori"
+     ],
+     "atoms": 3,
+     "heading_atoms": [
+      "a1176-011"
+     ]
+    },
+    {
+     "topic": "ains",
+     "room": "w_g2",
+     "title": "AINS, H. pylori și boala ulceroasă",
+     "pages": "1176",
+     "headings_v1": [
+      "Antiinflamatoarele nesteroidiene, Helicobater pylori și boala ulceroasă",
+      "Tratament"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1176-014",
+      "a1176-018"
+     ]
+    },
+    {
+     "topic": "gastropareza",
+     "room": "e_radiologie",
+     "title": "Gastropareza",
+     "pages": "1176",
+     "headings_v1": [
+      "Gastropareza"
+     ],
+     "atoms": 14,
+     "heading_atoms": [
+      "a1176-025"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "name": "Inflamația",
+   "sub": "Intestin subțire, BII, Crohn",
+   "boss": "Comisia: cazul de boală Crohn",
+   "steps": [
+    {
+     "topic": "intestin_tumori",
+     "room": "o_genetica",
+     "title": "Tumorile intestinului subțire — final și alte tumori",
+     "pages": "1198",
+     "headings_v1": [
+      "(fragment cancere ereditare)",
+      "Alte tumori",
+      "Lecturi suplimentare (p. 1198)"
+     ],
+     "atoms": 3,
+     "heading_atoms": [
+      "a1198-003"
+     ]
+    },
+    {
+     "topic": "lecturi_intestin",
+     "room": "o_biblioteca",
+     "title": "Lecturi suplimentare — intestin subțire",
+     "pages": "1198",
+     "headings_v1": [
+      "Lecturi suplimentare (p. 1198)"
+     ],
+     "atoms": 7,
+     "heading_atoms": [
+      "a1198-005"
+     ]
+    },
+    {
+     "topic": "bii_epi",
+     "room": "w_epi",
+     "title": "BII — definiții și epidemiologie",
+     "pages": "1198",
+     "headings_v1": [
+      "BOLILE INFLAMATORII INTESTINALE",
+      "Epidemiologie"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1198-012",
+      "a1198-018"
+     ]
+    },
+    {
+     "topic": "bii_genetica",
+     "room": "w_genetica",
+     "title": "Etiologie — factori genetici și de mediu",
+     "pages": "1198",
+     "headings_v1": [
+      "Etiologie și patogeneză",
+      "Factorii genetici",
+      "Factori de mediu și alți factori de risc"
+     ],
+     "atoms": 13,
+     "heading_atoms": [
+      "a1198-023",
+      "a1198-025",
+      "a1198-029"
+     ]
+    },
+    {
+     "topic": "bii_microbiota",
+     "room": "w_imuno",
+     "title": "Microbiota și sistemul imun intestinal",
+     "pages": "1199–1200",
+     "headings_v1": [
+      "Microbiota intestinală",
+      "Sistemul imun intestinal",
+      "Fig. 32.36",
+      "Fig. 32.37"
+     ],
+     "atoms": 15,
+     "heading_atoms": [
+      "a1199-002",
+      "a1199-004",
+      "a1199-012",
+      "a1200-002"
+     ]
+    },
+    {
+     "topic": "bii_endo",
+     "room": "e_colono",
+     "title": "Anatomie patologică macroscopică și endoscopia în BC",
+     "pages": "1200–1202",
+     "headings_v1": [
+      "Anatomie patologică",
+      "Modificări macroscopice",
+      "Endoscopia și imagistica radiologică",
+      "Fig. 32.38",
+      "Fig. 32.39",
+      "Fig. 32.40"
+     ],
+     "atoms": 17,
+     "heading_atoms": [
+      "a1200-005",
+      "a1200-008",
+      "a1201-002",
+      "a1201-012",
+      "a1201-014",
+      "a1202-042"
+     ]
+    },
+    {
+     "topic": "bii_histo",
+     "room": "e_histo",
+     "title": "Modificări microscopice",
+     "pages": "1200–1201",
+     "headings_v1": [
+      "Modificări microscopice",
+      "Cadranul 32.38"
+     ],
+     "atoms": 11,
+     "heading_atoms": [
+      "a1200-012",
+      "a1201-018"
+     ]
+    },
+    {
+     "topic": "bii_extra",
+     "room": "w_interdis",
+     "title": "Manifestări extraintestinale și diagnostic diferențial",
+     "pages": "1201–1202",
+     "headings_v1": [
+      "Manifestări extraintestinale",
+      "Diagnostic diferențial",
+      "Cadranul 32.39"
+     ],
+     "atoms": 28,
+     "heading_atoms": [
+      "a1201-025",
+      "a1201-030",
+      "a1202-002"
+     ]
+    },
+    {
+     "topic": "bc_clinic",
+     "room": "w_b1",
+     "title": "Boala Crohn — tablou clinic și examen obiectiv",
+     "pages": "1201–1202",
+     "headings_v1": [
+      "Boala Crohn/Tablou clinic",
+      "Examen obiectiv",
+      "Cadranul 32.37"
+     ],
+     "atoms": 17,
+     "heading_atoms": [
+      "a1201-004",
+      "a1202-023",
+      "a1202-024",
+      "a1202-029"
+     ]
+    },
+    {
+     "topic": "bii_lab",
+     "room": "e_analize",
+     "title": "BC — teste de laborator și activitatea bolii",
+     "pages": "1202–1203",
+     "headings_v1": [
+      "Investigații/Teste sanguine",
+      "Teste de scaun",
+      "Activitatea bolii"
+     ],
+     "atoms": 12,
+     "heading_atoms": [
+      "a1202-032",
+      "a1202-033",
+      "a1202-040",
+      "a1203-002"
+     ]
+    },
+    {
+     "topic": "bii_imag",
+     "room": "e_radiologie",
+     "title": "BC — imagistica intestinului subțire",
+     "pages": "1202, 1204",
+     "headings_v1": [
+      "Investigații imagistice a intestinului subțire",
+      "Ecografia",
+      "RMN perianală sau ecografia endoanală",
+      "Examinările cu radionuclizi",
+      "Fig. 32.41"
+     ],
+     "atoms": 6,
+     "heading_atoms": [
+      "a1204-002"
+     ]
+    },
+    {
+     "topic": "bc_inductie",
+     "room": "w_b2",
+     "title": "BC — considerații generale și inducția remisiei",
+     "pages": "1203",
+     "headings_v1": [
+      "Tratamentul medical al bolii Crohn",
+      "Considerații generale",
+      "Inducția remisiei",
+      "Glucocorticosteroizi",
+      "Aminosalicilați",
+      "Antibiotice",
+      "Nutriție enterală exclusivă",
+      "Boală refractară sau fulminantă"
+     ],
+     "atoms": 16,
+     "heading_atoms": [
+      "a1203-004",
+      "a1203-006",
+      "a1203-008",
+      "a1203-009",
+      "a1203-012",
+      "a1203-014",
+      "a1203-016",
+      "a1203-018"
+     ]
+    },
+    {
+     "topic": "bc_mentinere",
+     "room": "w_perfuzii",
+     "title": "BC — menținerea remisiei, anti-TNF și terapii noi",
+     "pages": "1203–1205",
+     "headings_v1": [
+      "Menținerea remisiei",
+      "Terapii de menținere convenționale",
+      "Agenți anti-TNF",
+      "Terapii biologice noi",
+      "Cadranul 32.40"
+     ],
+     "atoms": 22,
+     "heading_atoms": [
+      "a1203-020",
+      "a1203-022",
+      "a1203-024",
+      "a1204-004",
+      "a1204-005",
+      "a1204-009",
+      "a1204-012",
+      "a1204-017"
+     ]
+    },
+    {
+     "topic": "bc_chir",
+     "room": "o_so3",
+     "title": "Abordarea chirurgicală și prognosticul în BC",
+     "pages": "1205",
+     "headings_v1": [
+      "Abordarea chirurgicală a bolii Crohn",
+      "Prognostic"
+     ],
+     "atoms": 16,
+     "heading_atoms": [
+      "a1205-003",
+      "a1205-017"
+     ]
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "name": "Colita",
+   "sub": "Colita ulcerativă, colon și rect",
+   "boss": "Comisia: cazul de colită, apoi Sala de examen",
+   "steps": [
+    {
+     "topic": "cu_clinic",
+     "room": "w_b3",
+     "title": "Colita ulcerativă — clinică și investigații",
+     "pages": "1205–1206",
+     "headings_v1": [
+      "Colita ulcerativă/Tablou clinic",
+      "Megacolonul toxic",
+      "Examen obiectiv",
+      "Investigații",
+      "Teste sangvine",
+      "Teste fecale și toxina C. difficile",
+      "Colonoscopia",
+      "Imagistica",
+      "Fig. 32.42"
+     ],
+     "atoms": 21,
+     "heading_atoms": [
+      "a1205-019",
+      "a1205-020",
+      "a1205-025",
+      "a1205-027",
+      "a1205-028",
+      "a1205-032",
+      "a1205-034",
+      "a1206-021",
+      "a1206-023"
+     ]
+    },
+    {
+     "topic": "cu_tx",
+     "room": "w_b4",
+     "title": "CU — tratament medical",
+     "pages": "1206",
+     "headings_v1": [
+      "Tratamentul medical al colitei ulcerative",
+      "Proctita",
+      "Colita stângă",
+      "Pancolita"
+     ],
+     "atoms": 9,
+     "heading_atoms": [
+      "a1206-025",
+      "a1206-028",
+      "a1206-030",
+      "a1206-032"
+     ]
+    },
+    {
+     "topic": "cu_sever",
+     "room": "w_intermediar",
+     "title": "Colita severă, terapia de salvare, terapii noi",
+     "pages": "1206–1207",
+     "headings_v1": [
+      "Colită refractară/severă, de orice extindere",
+      "Terapia de salvare",
+      "Terapii noi",
+      "Cadranul 32.41"
+     ],
+     "atoms": 26,
+     "heading_atoms": [
+      "a1206-002",
+      "a1206-003",
+      "a1206-010",
+      "a1206-034",
+      "a1207-002",
+      "a1207-004"
+     ]
+    },
+    {
+     "topic": "cu_chir",
+     "room": "o_so4",
+     "title": "Tratamentul chirurgical al CU",
+     "pages": "1207–1208",
+     "headings_v1": [
+      "Tratamentul chirurgical al colitei ulcerative",
+      "Cadranul 32.42",
+      "Fig. 32.43",
+      "Fig. 32.44"
+     ],
+     "atoms": 16,
+     "heading_atoms": [
+      "a1207-006",
+      "a1207-008",
+      "a1207-009",
+      "a1207-014",
+      "a1208-002",
+      "a1208-004"
+     ]
+    },
+    {
+     "topic": "bii_prognostic",
+     "room": "w_monitor",
+     "title": "Evoluție, cancer și mortalitate în BII",
+     "pages": "1207",
+     "headings_v1": [
+      "Evoluție și prognostic",
+      "Cancerul în bolile inflamatorii intestinale",
+      "Mortalitatea în bolile inflamatorii intestinale"
+     ],
+     "atoms": 6,
+     "heading_atoms": [
+      "a1207-018",
+      "a1207-020",
+      "a1207-022"
+     ]
+    },
+    {
+     "topic": "colita_micro",
+     "room": "e_histo",
+     "title": "Colita microscopică",
+     "pages": "1207–1208",
+     "headings_v1": [
+      "Colita microscopică"
+     ],
+     "atoms": 6,
+     "heading_atoms": [
+      "a1207-024"
+     ]
+    },
+    {
+     "topic": "lecturi_bii",
+     "room": "o_biblioteca",
+     "title": "Lecturi suplimentare — BII",
+     "pages": "1208",
+     "headings_v1": [
+      "Lecturi suplimentare (p. 1208)"
+     ],
+     "atoms": 8,
+     "heading_atoms": [
+      "a1208-008"
+     ]
+    },
+    {
+     "topic": "constipatia",
+     "room": "g_tranzit",
+     "title": "Colonul și rectul — constipația",
+     "pages": "1208",
+     "headings_v1": [
+      "COLONUL ȘI RECTUL",
+      "Constipația",
+      "Diagnostic",
+      "Constipația cu tranzit normal"
+     ],
+     "atoms": 18,
+     "heading_atoms": [
+      "a1208-016",
+      "a1208-017",
+      "a1208-025",
+      "a1208-032"
+     ]
+    }
+   ]
+  }
+ ],
+ "version": 2,
+ "note": "public copy: heading titles are listed as atom ids (heading_atoms); the titles travel in the content-pack zip"
+}

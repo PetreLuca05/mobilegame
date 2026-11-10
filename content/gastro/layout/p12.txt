@@ -1,0 +1,25 @@
+# PDF page 12 = printed 1198 (after the gap 1177-1197). Hidden (under a white rectangle): the top of the left
+# column = end of the small-bowel tumours (b002, starts mid-sentence), "Alte tumori" (b004, b006) and the
+# reading list "Lecturi suplimentare" (b007, b008). Visible: BOLILE INFLAMATORII INTESTINALE onwards.
+hdr b000 b001 name=hdr1198
+ctx lvl=2 text="Intestinul subțire"               # Cuprins: Intestinul subțire 1185 (h2-level entry)
+ctx lvl=3 text="Tumorile intestinului subțire"    # Cuprins sub-entry: Tumorile intestinului subțire 1196
+p b002 frag=start
+h4 b004
+p b006
+h3 b007               # reading list closing the "Intestinul subțire" section (h3 under the h2)
+ref b008 split=2,4,6,8,10
+h2 b009
+p b010:0
+li b010:1-3
+p b010:4-
+h4 b011
+li r(50,530,300,575)  # bullet b012 + b013 lines 0-3 (second bullet is in the text layer)
+p b013:4-
+h4 b014
+p b015
+p b003 cont           # right column continues "... interacțiunea dintre mai mulți cofactori:"
+h5 b016
+p b005
+h5 b017
+li b018 split=6,8,13,19,21 keep   # 6 bullets printed, missing from the text layer (fixes add them)

@@ -1,0 +1,29 @@
+# PDF page 17 = printed 1203. No hidden text. Left column: "Activitatea bolii" (h5, last part of "Investigații"),
+# "Tratamentul medical al bolii Crohn" (h4), "Considerații generale" / "Inducția remisiei" (h5) with the black bold
+# drug headings (h6); right column: end of "Boală refractară sau fulminantă" (column break), "Menținerea remisiei" (h5)
+# with "Terapii de menținere convenționale" and "Agenți anti-TNF" (h6). Cadranul 32.40 (cited here) is on p. 1204.
+hdr b000 b018 name=hdr1203
+h5 b001
+p b002
+h4 b003
+p b004
+h5 b005
+p b006
+h5 b007
+h6 b008
+p b009
+h6 b010
+p b011
+h6 b012
+p b013
+h6 b014
+p b015
+h6 b016
+p b017
+p b019 cont            # column break: "... cu un agent anti-TNF, ca / monoterapie sau, de preferat, ..."
+h5 b020
+p b021
+h6 b022
+p b023
+h6 b024
+p b025

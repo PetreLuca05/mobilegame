@@ -1,0 +1,12 @@
+# PDF page 13 = printed 1199. No hidden text.
+# Fig. 32.36 is first cited on p. 1198 (PDF 12, "... răspunsul imun al gazdei (Fig. 32.36)"), so it opens this page.
+hdr b000 name=hdr1199
+fig id=fig_32_36 bbox=111,60,443,311
+cap b009 fig=fig_32_36
+lab b001 b002 b003 b004 b005 b006 b007 b008 fig=fig_32_36 name=lab_32_36   # b002 "00\" and b004 "/" are the arrows
+h5 b010
+p b011:0-11
+li b011:12- split=13 keep     # 2 bullets (Disbioza / Organisme patogene), bullets missing from the text layer
+li b012 split=5,9 keep        # 3 bullets (Antigene / Barieră chimică / Afectarea funcției), bullets missing
+h5 b013
+p b014

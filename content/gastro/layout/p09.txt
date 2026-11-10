@@ -1,0 +1,27 @@
+# PDF page 9 = printed 1174. All visible. Fig. 32.24 (photos, top left), Fig. 32.25 (diagram, top right).
+hdr b000 b001 name=hdr1174
+p b008 cont                               # continues the last paragraph of p. 1173 ("... în antecedente, | pacienților diagnosticați ...")
+# Fig. 32.24 is cited on p. 1173 (Ulcerul duodenal / Ulcerul gastric): placed right after the continued paragraph
+fig id=fig_32_24 bbox=57,66,298,164
+lab fig=fig_32_24 name=lab_32_24          # photos: only the panel letters (no OCR words)
+cap b006 b007 fig=fig_32_24 name=cap_32_24
+h5 b009
+li b010 b017 b018:0-6
+li b011 b018:7-15
+# Fig. 32.25 is first cited in the item above (Testul respirator ... (Fig. 32.25))
+fig id=fig_32_25 bbox=318,69,554,278
+lab r(315,65,556,277.5) fig=fig_32_25 name=lab_32_25
+cap b015 b016 fig=fig_32_25 name=cap_32_25
+li b012 b018:16-28
+h5 b019
+li b020 b024
+li b027:0-2 cont                          # the CLO-test item continues at the top of the right column
+li b025 b027:3-10
+li b026 b027:11-16
+h4 b028
+li b029 b032:0-3 b030 b032:4-7 b031 b032:8-9       # bullets b029-b031 at the left margin, level with the first line of each item
+# the six nested "•" items under the 3rd bullet (indented x326): parent bullet in their path, as for "-" sub-items
+li b032:10-15 sub   # nested items under the previous top-level bullet
+h4 b033
+h5 b034
+p b035

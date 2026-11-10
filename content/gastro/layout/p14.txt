@@ -1,0 +1,14 @@
+# PDF page 14 = printed 1200. No hidden text.
+# Fig. 32.37 is first cited on p. 1199 (PDF 13, Sistemul imun intestinal), so it opens this page.
+# Fig. 32.38, Cadranul 32.37, Fig. 32.39 and "Fig. 34.40" (= Fig. 32.40) are cited here but printed on p. 1201.
+hdr b000 name=hdr1200
+fig id=fig_32_37 bbox=54,352,549,665
+cap b030 fig=fig_32_37
+lab r(50,335,560,661) fig=fig_32_37 name=lab_32_37   # all OCR words inside the drawing (b004-b029)
+p b001                  # new paragraph (indented) of "Sistemul imun intestinal" from p. 1199
+h4 b002
+p b003
+h5 b006
+p b007
+h5 b008
+p b009

@@ -1,0 +1,512 @@
+# institute.map — MAP-2 "Institutul de Gastroenterologie" v3 (atrium plan, pack: gastro)
+# metres; x grows east; z grows SOUTH (bottom of the screen). Building 52 x 36 m around a full-height glazed atrium (18 x 16 m), 4 storeys + roof, plot 110 x 86 m.
+# Each storey: a ring corridor (3 m) around the atrium, rooms on all four sides, two service cores with the lift towers facing south.
+# Every character of the source file is taught somewhere: 50 topics on 45 rooms, same room ids, topics, roles and slots as v2.
+# If the engine uses the opposite z sign, negate z on import (main entrance must face the bottom of the screen).
+
+plot -55 -40 55 46
+gate -1 0 46 8 S
+gate -1 55 14.5 6 E
+gate -1 -55 28 4 W
+road -1 -36 35 36 40
+road -1 -6 20.2 -2 35
+road -1 2 20.2 6 35
+road -1 28 13 55 16
+carpark -1 -52 23 -14 33 11
+path -1 -44 -27 -30 -25
+pond -1 -40 -31 5
+prop -1 tree -50 -37 0 8 8 0
+prop -1 tree 40 26 0 3 5 0
+prop -1 bench -38 -24 0 4 3 0
+prop -1 lamp -32 33.5 0 11 6.4 0
+prop -1 ambulance 36 14.5 90
+spawn -1 0 24
+spawn -1 -3 24
+spawn -1 3 24
+spawn -1 0 28
+
+floor 0 "G · Ambulatoriu & Urgențe"
+corr 0 -19 -11 19 -8
+corr 0 -19 8 19 11
+corr 0 -19 -8 -16 8
+corr 0 16 -8 19 8
+corr 0 -17 -13 -11 -11    # waiting alcove
+corr 0 -5 -13 1 -11    # waiting alcove
+corr 0 5 11 12 13    # waiting alcove
+room 0 g_reflux1 exam -26 -18 -17 -11 "Cabinet reflux 1"
+door 0 -18 -11 1.2 S
+window 0 -21.5 -18 3 N
+window 0 -26 -14.5 3 W
+slot 0 desk -21.5 -16.1 0
+slot 0 chair -20 -14.5 90
+learn 0 g_reflux1 gastro topic brge_epi
+room 0 g_reflux2 exam -17 -18 -11 -13 "Cabinet reflux 2"
+door 0 -14 -13 1.2 S
+window 0 -14 -18 3 N
+slot 0 desk -14 -17.1 0
+slot 0 chair -12.5 -15.5 90
+learn 0 g_reflux2 gastro topic brge_clinic
+room 0 g_dispepsie exam -11 -18 -5 -11 "Cabinet dispepsie"
+door 0 -8 -11 1.2 S
+window 0 -8 -18 3 N
+slot 0 desk -8 -16.1 0
+slot 0 chair -6.5 -14.5 90
+learn 0 g_dispepsie gastro topic ulcer_clinic
+room 0 g_gastrite exam -5 -18 1 -13 "Cabinet gastrite"
+door 0 -2 -13 1.2 S
+window 0 -2 -18 3 N
+slot 0 desk -2 -17.1 0
+slot 0 chair -0.5 -15.5 90
+learn 0 g_gastrite gastro topic gastrita
+room 0 g_fiziologie lab 1 -18 15 -11 "Laborator fiziologie digestivă · pH-metrie & manometrie"
+door 0 8 -11 1.2 S
+window 0 8 -18 3 N
+slot 0 screen 8 -16.1 0
+slot 0 chair 9.5 -14.5 90
+slot 0 bench 6 -14.5 0
+learn 0 g_fiziologie gastro topic brge_dx
+learn 0 g_fiziologie gastro topic acalazia
+room 0 g_triaj triage 15 -18 26 -11 "Triaj"
+door 0 17 -11 1.2 S
+window 0 20.5 -18 3 N
+window 0 26 -14.5 3 E
+room 0 g_amfiteatru meeting -26 11 -13 18 "Amfiteatru"
+door 0 -16 11 1.2 N
+window 0 -19.5 18 3 S
+window 0 -26 14.5 3 W
+slot 0 board -19.5 16.1 180
+slot 0 chair -21 14.5 270
+learn 0 g_amfiteatru gastro topic intro
+room 0 g_farmacie pharmacy -13 11 -5 18 "Farmacie ambulatoriu"
+door 0 -9 11 1.2 N
+window 0 -9 18 3 S
+slot 0 counter -9 16.1 180
+slot 0 chair -10.5 14.5 270
+learn 0 g_farmacie gastro topic brge_tx
+room 0 g_intrare waiting -5 11 5 18 "Hol de intrare"
+door 0 0 11 10 N   # open to the ring corridor
+door 0 0 18 4.4 S   # main entrance
+room 0 g_tranzit exam 5 13 12 18 "Cabinet tulburări de tranzit"
+door 0 8.5 13 1.2 N
+window 0 8.5 18 3 S
+slot 0 desk 8.5 17.1 180
+slot 0 chair 7 15.5 270
+learn 0 g_tranzit gastro topic constipatia
+room 0 g_garda nurse_station 12 11 26 18 "Stație Gardă"
+door 0 15.5 11 1.2 N
+door 0 26 14.5 2.4 E   # ambulance entrance
+window 0 19 18 3 S
+slot 0 desk 19 16.1 180
+learn 0 g_garda * garda
+room 0 g_stoma exam -26 -11 -19 -5 "Cabinet stomatologie"
+door 0 -19 -8 1.2 E
+window 0 -26 -8 3 W
+slot 0 desk -24.1 -8 90
+slot 0 chair -22.5 -9.5 180
+learn 0 g_stoma gastro topic oral_gingii
+room 0 g_salivare exam -26 -5 -19 1 "Cabinet glande salivare"
+door 0 -19 -2 1.2 E
+window 0 -26 -2 3 W
+slot 0 desk -24.1 -2 90
+slot 0 chair -22.5 -3.5 180
+learn 0 g_salivare gastro topic oral_salivare
+room 0 g_asteptare waiting -26 1 -19 11 "Sală de așteptare"
+door 0 -19 6 1.2 E
+window 0 -26 6 3 W
+room 0 g_bay1 treatment_bay 19 -11 26 -7.33 "Box gardă 1"
+door 0 19 -9.16 1.6 W
+window 0 26 -9.165 3 E
+slot 0 bed 24.1 -9.165 270
+learn 0 g_bay1 * garda_case
+room 0 g_bay2 treatment_bay 19 -7.33 26 -3.67 "Box gardă 2"
+door 0 19 -5.5 1.6 W
+window 0 26 -5.5 3 E
+slot 0 bed 24.1 -5.5 270
+learn 0 g_bay2 * garda_case
+room 0 g_bay3 treatment_bay 19 -3.67 26 -0 "Box gardă 3"
+door 0 19 -1.83 1.6 W
+window 0 26 -1.835 3 E
+slot 0 bed 24.1 -1.835 270
+learn 0 g_bay3 * garda_case
+room 0 g_bay4 treatment_bay 19 -0 26 3.67 "Box gardă 4"
+door 0 19 1.83 1.6 W
+window 0 26 1.835 3 E
+slot 0 bed 24.1 1.835 270
+learn 0 g_bay4 * garda_case
+room 0 g_bay5 treatment_bay 19 3.67 26 7.33 "Box gardă 5"
+door 0 19 5.5 1.6 W
+window 0 26 5.5 3 E
+slot 0 bed 24.1 5.5 270
+learn 0 g_bay5 * garda_case
+room 0 g_bay6 treatment_bay 19 7.33 26 11 "Box gardă 6"
+door 0 19 9.16 1.6 W
+window 0 26 9.165 3 E
+slot 0 bed 24.1 9.165 270
+learn 0 g_bay6 * garda_case
+room 0 g_lobby reception -9 -8 9 8 "Atrium · Recepție & Panou de orientare"  open
+slot 0 board 0 -1.6 0
+learn 0 g_lobby gastro topic cuprins
+learn 0 g_lobby * board
+room 0 c0_wc toilet -16 -8 -9 -3 "Toalete"
+door 0 -12.5 -8 1 N
+room 0 c0_scari store -16 -3 -9 3 "Scări"
+door 0 -16 0 1.2 W
+room 0 c0_wc2 toilet 9 -8 16 -3 "Toalete"
+door 0 12.5 -8 1 N
+room 0 c0_depozit store 9 -3 16 3 "Depozit"
+door 0 16 0 1.2 E
+slot 0 desk -3.5 2 0
+spawn 0 0 12
+
+floor 1 "1 · Endoscopie & Laboratoare"
+corr 1 -19 -11 19 -8
+corr 1 -19 8 19 11
+corr 1 -19 -8 -16 8
+corr 1 16 -8 19 8
+corr 1 -9 -13 -2 -11    # waiting alcove
+corr 1 -21 2 -19 11    # waiting alcove
+void 1 -9 -8 9 8    # atrium void, 1.1 m glass balustrade on its north and south edges
+room 1 e_microbio lab -26 -18 -16 -11 "Laborator microbiologie"
+door 1 -17.5 -11 1.2 S
+window 1 -21 -18 3 N
+window 1 -26 -14.5 3 W
+slot 1 bench -21 -16.1 0
+slot 1 chair -19.5 -14.5 90
+learn 1 e_microbio gastro topic hp_bact
+room 1 e_anapat lab -16 -18 -9 -11 "Anatomie patologică gastrică"
+door 1 -12.5 -11 1.2 S
+window 1 -12.5 -18 3 N
+slot 1 bench -12.5 -16.1 0
+slot 1 chair -11 -14.5 90
+learn 1 e_anapat gastro topic hp_consec
+room 1 e_respirator lab -9 -18 -2 -13 "Laborator teste respiratorii & serologie"
+door 1 -5.5 -13 1.2 S
+window 1 -5.5 -18 3 N
+slot 1 bench -5.5 -17.1 0
+slot 1 chair -4 -15.5 90
+learn 1 e_respirator gastro topic hp_dx_noninv
+room 1 e_histo lab -2 -18 10 -11 "Laborator histopatologie"
+door 1 4 -11 1.2 S
+window 1 4 -18 3 N
+slot 1 bench 4 -16.1 0
+slot 1 chair 5.5 -14.5 90
+slot 1 bench 2 -14.5 0
+learn 1 e_histo gastro topic bii_histo
+learn 1 e_histo gastro topic colita_micro
+room 1 e_analize lab 10 -18 17 -11 "Laborator analize medicale"
+door 1 13.5 -11 1.2 S
+window 1 13.5 -18 3 N
+slot 1 bench 13.5 -16.1 0
+slot 1 chair 15 -14.5 90
+learn 1 e_analize gastro topic bii_lab
+room 1 e_vestiar store 17 -18 26 -11 "Vestiare personal"
+door 1 18 -11 1.2 S
+room 1 e_primire waiting -26 11 -14 18 "Primire & pregătire pacienți"
+door 1 -16.5 11 1.2 N
+window 1 -20 18 3 S
+window 1 -26 14.5 3 W
+room 1 e_endo1 exam -14 11 -7.5 18 "Sală endoscopie 1"
+door 1 -10.75 11 1.2 N
+window 1 -10.75 18 3 S
+slot 1 scope -10.75 16.1 180
+slot 1 chair -12.25 14.5 270
+learn 1 e_endo1 gastro topic esofagita
+room 1 e_endo2 exam -7.5 11 -1 18 "Sală endoscopie 2 · înaltă definiție"
+door 1 -4.25 11 1.2 N
+window 1 -4.25 18 3 S
+slot 1 scope -4.25 16.1 180
+slot 1 chair -5.75 14.5 270
+learn 1 e_endo2 gastro topic barrett_dx
+room 1 e_decontam sterile -1 11 3 18 "Decontaminare endoscoape"
+door 1 1 11 1.2 N
+window 1 1 18 3 S
+room 1 e_endoter exam 3 11 11 18 "Sală endoscopie terapeutică"
+door 1 7 11 1.2 N
+window 1 7 18 3 S
+slot 1 scope 7 16.1 180
+slot 1 chair 5.5 14.5 270
+learn 1 e_endoter gastro topic barrett_tx
+room 1 e_endo3 exam 11 11 17 18 "Sală gastroscopie"
+door 1 14 11 1.2 N
+window 1 14 18 3 S
+slot 1 scope 14 16.1 180
+slot 1 chair 12.5 14.5 270
+learn 1 e_endo3 gastro topic hp_dx_inv
+room 1 e_recuperare recovery 17 11 26 18 "Recuperare post-procedură"
+door 1 18 11 1.6 N
+window 1 21.5 18 3 S
+window 1 26 14.5 3 E
+room 1 e_farmclin pharmacy -26 -11 -19 2 "Farmacie clinică"
+door 1 -19 -4.5 1.2 E
+window 1 -26 -4.5 3 W
+slot 1 counter -24.1 -4.5 90
+slot 1 chair -22.5 -6 180
+learn 1 e_farmclin gastro topic hp_tx
+room 1 e_functional exam -26 2 -21 11 "Cabinet tulburări funcționale"
+door 1 -21 6.5 1.2 E
+window 1 -26 6.5 3 W
+slot 1 desk -25.1 6.5 90
+slot 1 chair -23.5 5 180
+learn 1 e_functional gastro topic esofag_functional
+room 1 e_colono exam 19 -11 26 -2 "Sală colonoscopie & capsulă"
+door 1 19 -6.5 1.2 W
+window 1 26 -6.5 3 E
+slot 1 scope 24.1 -6.5 270
+slot 1 chair 22.5 -5 0
+learn 1 e_colono gastro topic bii_endo
+room 1 e_radiologie imaging 19 -2 26 11 "Radiologie, imagistică & medicină nucleară"
+door 1 19 4.5 1.2 W
+window 1 26 4.5 3 E
+slot 1 screen 24.1 4.5 270
+slot 1 chair 22.5 6 0
+slot 1 bench 22.5 2.5 270
+learn 1 e_radiologie gastro topic bii_imag
+learn 1 e_radiologie gastro topic gastropareza
+room 1 c1_wc toilet -16 -8 -9 -3 "Toalete"
+door 1 -12.5 -8 1 N
+room 1 c1_scari store -16 -3 -9 3 "Scări"
+door 1 -16 0 1.2 W
+room 1 c1_wc2 toilet 9 -8 16 -3 "Toalete"
+door 1 12.5 -8 1 N
+room 1 c1_depozit store 9 -3 16 3 "Depozit"
+door 1 16 0 1.2 E
+
+floor 2 "2 · Secții & Cercetare"
+corr 2 -19 -11 19 -8
+corr 2 -19 8 19 11
+corr 2 -19 -8 -16 8
+corr 2 16 -8 19 8
+corr 2 5 -13 13 -11    # waiting alcove
+void 2 -9 -8 9 8    # atrium void, 1.1 m glass balustrade on its north and south edges
+room 2 w_epi office -26 -18 -17 -11 "Birou epidemiologie & registru BII"
+door 2 -18 -11 1.2 S
+window 2 -21.5 -18 3 N
+window 2 -26 -14.5 3 W
+slot 2 desk -21.5 -16.1 0
+slot 2 chair -20 -14.5 90
+learn 2 w_epi gastro topic bii_epi
+room 2 w_genetica lab -17 -18 -5 -11 "Laborator cercetare genetică"
+door 2 -11 -11 1.2 S
+window 2 -11 -18 3 N
+slot 2 bench -11 -16.1 0
+slot 2 chair -9.5 -14.5 90
+learn 2 w_genetica gastro topic bii_genetica
+room 2 w_imuno lab -5 -18 5 -11 "Laborator microbiotă & imunologie"
+door 2 0 -11 1.2 S
+window 2 0 -18 3 N
+slot 2 bench 0 -16.1 0
+slot 2 chair 1.5 -14.5 90
+learn 2 w_imuno gastro topic bii_microbiota
+room 2 w_interdis exam 5 -18 13 -13 "Cabinet consult interdisciplinar"
+door 2 9 -13 1.2 S
+window 2 9 -18 3 N
+slot 2 desk 9 -17.1 0
+slot 2 chair 10.5 -15.5 90
+learn 2 w_interdis gastro topic bii_extra
+room 2 w_monitor exam 13 -18 26 -11 "Cabinet monitorizare & screening"
+door 2 16 -11 1.2 S
+window 2 19.5 -18 3 N
+window 2 26 -14.5 3 E
+slot 2 desk 19.5 -16.1 0
+slot 2 chair 21 -14.5 90
+learn 2 w_monitor gastro topic bii_prognostic
+room 2 w_g1 ward_room -26 11 -15 18 "Salon G1"
+door 2 -17 11 1.6 N
+window 2 -20.5 18 3 S
+window 2 -26 14.5 3 W
+slot 2 bed -20.5 16.1 180
+slot 2 chair -22 14.5 270
+learn 2 w_g1 gastro topic ulcer_compl
+room 2 w_g2 ward_room -15 11 -9.5 18 "Salon G2"
+door 2 -12.25 11 1.6 N
+window 2 -12.25 18 3 S
+slot 2 bed -12.25 16.1 180
+slot 2 chair -13.75 14.5 270
+learn 2 w_g2 gastro topic ains
+room 2 w_g3 ward_room -9.5 11 -4 18 "Salon G3"
+door 2 -6.75 11 1.6 N
+window 2 -6.75 18 3 S
+slot 2 bed -6.75 16.1 180
+slot 2 chair -8.25 14.5 270
+learn 2 w_g3 gastro topic hp_alte
+room 2 w_statie nurse_station -4 11 4 18 "Stație Gastroenterologie"
+door 2 0 11 1.2 N
+window 2 0 18 3 S
+slot 2 post 0 16.1 180
+learn 2 w_statie * round
+room 2 w_b1 ward_room 4 11 9.5 18 "Salon B1"
+door 2 6.75 11 1.6 N
+window 2 6.75 18 3 S
+slot 2 bed 6.75 16.1 180
+slot 2 chair 5.25 14.5 270
+learn 2 w_b1 gastro topic bc_clinic
+room 2 w_b2 ward_room 9.5 11 15 18 "Salon B2"
+door 2 12.25 11 1.6 N
+window 2 12.25 18 3 S
+slot 2 bed 12.25 16.1 180
+slot 2 chair 10.75 14.5 270
+learn 2 w_b2 gastro topic bc_inductie
+room 2 w_b3 ward_room 15 11 26 18 "Salon B3"
+door 2 17 11 1.6 N
+window 2 20.5 18 3 S
+window 2 26 14.5 3 E
+slot 2 bed 20.5 16.1 180
+slot 2 chair 19 14.5 270
+learn 2 w_b3 gastro topic cu_clinic
+room 2 w_complicatii ward_room -26 -11 -19 -3 "Sala de complicații"
+door 2 -19 -7 1.6 E
+window 2 -26 -7 3 W
+slot 2 bed -24.1 -7 90
+learn 2 w_complicatii * complication
+room 2 w_perfuzii treatment_bay -26 -3 -19 11 "Centru de perfuzii · terapii biologice"
+door 2 -19 4 1.6 E
+window 2 -26 4 3 W
+slot 2 bed -24.1 4 90
+slot 2 chair -22.5 2.5 180
+learn 2 w_perfuzii gastro topic bc_mentinere
+room 2 w_b4 ward_room 19 -11 26 -4 "Salon B4"
+door 2 19 -7.5 1.6 W
+window 2 26 -7.5 3 E
+slot 2 bed 24.1 -7.5 270
+slot 2 chair 22.5 -6 0
+learn 2 w_b4 gastro topic cu_tx
+room 2 w_intermediar icu_bay 19 -4 26 11 "Terapie intermediară"
+door 2 19 3.5 1.6 W
+window 2 26 3.5 3 E
+slot 2 bed 24.1 3.5 270
+slot 2 chair 22.5 5 0
+learn 2 w_intermediar gastro topic cu_sever
+room 2 c2_wc toilet -16 -8 -9 -3 "Toalete"
+door 2 -12.5 -8 1 N
+room 2 c2_scari store -16 -3 -9 3 "Scări"
+door 2 -16 0 1.2 W
+room 2 c2_wc2 toilet 9 -8 16 -3 "Toalete"
+door 2 12.5 -8 1 N
+room 2 c2_depozit store 9 -3 16 3 "Depozit"
+door 2 16 0 1.2 E
+
+floor 3 "3 · Bloc operator & Academic"
+corr 3 -19 -11 19 -8
+corr 3 -19 8 19 11
+corr 3 -19 -8 -16 8
+corr 3 16 -8 19 8
+corr 3 -17 -13 -11 -11    # waiting alcove
+void 3 -9 -8 9 8    # atrium void, 1.1 m glass balustrade on its north and south edges
+room 3 o_genetica exam -26 -18 -17 -11 "Cabinet consiliere genetică & tumori"
+door 3 -18 -11 1.2 S
+window 3 -21.5 -18 3 N
+window 3 -26 -14.5 3 W
+slot 3 desk -21.5 -16.1 0
+slot 3 chair -20 -14.5 90
+learn 3 o_genetica gastro topic intestin_tumori
+room 3 o_onco exam -17 -18 -11 -13 "Cabinet oncologie digestivă"
+door 3 -14 -13 1.2 S
+window 3 -14 -18 3 N
+slot 3 desk -14 -17.1 0
+slot 3 chair -12.5 -15.5 90
+learn 3 o_onco gastro topic esofag_tumori
+room 3 o_sef office -11 -18 -4 -11 "Birou medic șef"
+door 3 -7.5 -11 1.2 S
+window 3 -7.5 -18 3 N
+slot 3 desk -7.5 -16.1 0
+learn 3 o_sef * chief
+room 3 o_comisie meeting -4 -18 8 -11 "Sala Comisiei multidisciplinare"
+door 3 2 -11 1.2 S
+window 3 2 -18 3 N
+slot 3 table 2 -16.1 0
+learn 3 o_comisie * boss
+room 3 o_liga meeting 8 -18 17 -11 "Sala Ligii"
+door 3 12.5 -11 1.2 S
+window 3 12.5 -18 3 N
+slot 3 board 12.5 -16.1 0
+learn 3 o_liga * league
+room 3 o_birou office 17 -18 26 -11 "Birou personal"
+door 3 18 -11 1.2 S
+window 3 21.5 -18 3 N
+window 3 26 -14.5 3 E
+slot 3 desk 21.5 -16.1 0
+learn 3 o_birou * office
+room 3 o_so1 or -26 11 -14 18 "Sală operație 1 · laparoscopie"
+door 3 -16.5 11 1.6 N
+window 3 -20 18 3 S
+window 3 -26 14.5 3 W
+slot 3 or_table -20 16.1 180
+slot 3 chair -21.5 14.5 270
+learn 3 o_so1 gastro topic brge_chir
+room 3 o_so2 or -14 11 -6 18 "Sală operație 2 · chirurgie gastrică"
+door 3 -10 11 1.6 N
+window 3 -10 18 3 S
+slot 3 or_table -10 16.1 180
+slot 3 chair -11.5 14.5 270
+learn 3 o_so2 gastro topic ulcer_chir
+room 3 o_so3 or -6 11 2 18 "Sală operație 3 · chirurgie colorectală"
+door 3 -2 11 1.6 N
+window 3 -2 18 3 S
+slot 3 or_table -2 16.1 180
+slot 3 chair -3.5 14.5 270
+learn 3 o_so3 gastro topic bc_chir
+room 3 o_so4 or 2 11 10 18 "Sală operație 4 · colectomie & rezervor"
+door 3 6 11 1.6 N
+window 3 6 18 3 S
+slot 3 or_table 6 16.1 180
+slot 3 chair 4.5 14.5 270
+learn 3 o_so4 gastro topic cu_chir
+room 3 o_biblioteca meeting 10 11 17 18 "Bibliotecă"
+door 3 13.5 11 1.2 N
+window 3 13.5 18 3 S
+slot 3 reading_desk 13.5 16.1 180
+slot 3 chair 12 14.5 270
+slot 3 bench 15.5 14.5 180
+slot 3 reading_desk 11.5 14.5 180
+learn 3 o_biblioteca gastro topic lecturi_esofag
+learn 3 o_biblioteca gastro topic lecturi_intestin
+learn 3 o_biblioteca gastro topic lecturi_bii
+learn 3 o_biblioteca * library
+room 3 o_terasa terrace 17 11 26 18 "Terasă"
+door 3 18 11 1.2 N
+window 3 21.5 18 3 S
+window 3 26 14.5 3 E
+room 3 o_filtru scrub -26 -11 -19 -5 "Filtru & spălător"
+door 3 -19 -8 1.2 E
+window 3 -26 -8 3 W
+room 3 o_recuperare recovery -26 -5 -19 11 "Recuperare postoperatorie & stomaterapie"
+door 3 -19 3 1.6 E
+window 3 -26 3 3 W
+room 3 o_examen meeting 19 -11 26 11 "Sala de examen"
+door 3 19 0 1.2 W
+window 3 26 0 3 E
+slot 3 desk 24.1 0 270
+learn 3 o_examen * exam
+room 3 c3_wc toilet -16 -8 -9 -3 "Toalete"
+door 3 -12.5 -8 1 N
+room 3 c3_scari store -16 -3 -9 3 "Scări"
+door 3 -16 0 1.2 W
+room 3 c3_wc2 toilet 9 -8 16 -3 "Toalete"
+door 3 12.5 -8 1 N
+room 3 c3_depozit store 9 -3 16 3 "Depozit"
+door 3 16 0 1.2 E
+
+floor 4 "R · Acoperiș & heliport"
+# roof level (y = 16): walkable deck inside the parapet around the atrium skylight, reached only by the lifts; no rooms, no learn records
+corr 4 -25.6 -17.6 25.6 -9
+corr 4 -25.6 9 25.6 17.6
+corr 4 -25.6 -9 -16.5 9
+corr 4 16.5 -9 25.6 9
+prop 4 helipad 20 -13 0
+spawn 4 0 12
+
+# lift cars 2.5 x 3 m inside two towers (x -16..-9 and 9..16, z 3..8); doors face south onto the ring corridor
+lift A -14.1 6.5 G,1,2,3,R public
+lift B -11.1 6.5 G,1,2,3,R public
+lift C 12.5 6.5 G,1,2,3,R bed
+stairs -12.5 0
+
+# ---- BOOK-1 interaction props (generated by tools/book/compile.py; scripts.json refers to them by id) ----
+# iprop <floor> <room> <id> <model> <x> <z> <yaw> "<label>"   an interactable prop (instanced per model); yaw 0 faces +z / south
+# islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand, bed, chair) used by scripts
+# room g_amfiteatru (intro): 4 props, 1 slots
+iprop 0 g_amfiteatru intro_plaque wall_plaque -17.4 11.15 0 "Placa de la intrarea în amfiteatru"
+iprop 0 g_amfiteatru intro_poster_oms poster -25.85 12.0 90 "Afiș: povara bolilor digestive"
+iprop 0 g_amfiteatru intro_lectern lectern -17.0 16.4 180 "Pupitrul lectorului"
+iprop 0 g_amfiteatru intro_mdt_board whiteboard -13.15 15.0 270 "Tabla întâlnirii multidisciplinare"
+islot 0 g_amfiteatru intro_resident npc_seat -22.5 13.4 90

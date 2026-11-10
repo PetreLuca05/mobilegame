@@ -1,0 +1,16 @@
+# generated, or the book's own text: delivered in the content-pack zip, never committed (public repository)
+cleaned.txt
+atoms.jsonl
+facts.jsonl
+items.jsonl
+scripts.json
+coverage.json
+numbers.csv
+errata.json
+report.md
+fixes.json
+wordledger.json
+fig/
+topics/
+notes/
+fixes/

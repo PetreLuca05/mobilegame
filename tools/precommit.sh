@@ -4,6 +4,13 @@
 set -u
 cd "$(git rev-parse --show-toplevel)"
 ROOT=$PWD
+# BOOK-1: the repository is public; no run of 12 or more consecutive words of the book may be committed
+if [[ -f content/gastro/leakguard.txt && -f tools/book/leakguard.py ]]; then
+    if ! python3 -I tools/book/leakguard.py staged content/gastro/leakguard.txt . >&2; then
+        echo "pre-commit: the commit contains text of the book (see LEAK lines), nothing committed" >&2
+        exit 1
+    fi
+fi
 SRC=build/precommit_src
 BLD=build/precommit
 TMP=$(mktemp -d)

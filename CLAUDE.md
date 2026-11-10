@@ -556,3 +556,15 @@ Android counterpart **Samsung Galaxy S20 (Snapdragon 865 / Adreno 650,
 Android 10+)**. Budget: 60 fps with < 4 ms GPU per frame. SDL GPU has no GPU
 timestamp queries, so measure GPU time with Xcode's Metal frame capture /
 Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
+
+## Book content (BOOK-1)
+
+- `content/gastro/` = the Gastro chapter (Gastro.pdf) as a content pack for the institute map: atoms → facts → items →
+  scripts, proved by `content/gastro/check.py` (ledgers words / characters / sentences / facts→items / facts→scripts must
+  be 100 %). Pipeline in `tools/book/` (`make.sh content/gastro`); state and next steps in `content/gastro/STATE.md`.
+- The repo is public: the book's text never goes into git, in any commit or in the branch history (`.gitignore`s in
+  `content/`, `content/gastro/`, `tools/book/`). The PDF lives in `content/src/`; text, fixes, facts, items, figures and
+  topic sources travel in the content-pack zip. `tools/precommit.sh` refuses a commit holding a run of 12 or more
+  consecutive words of the book (`tools/book/leakguard.py` + the hashed shingles in `content/gastro/leakguard.txt`);
+  `check.py --leak .` scans every tracked file.
+- Every printed character is exam material; teach the book as printed (OCR fixes only, the book's own errors go to errata).

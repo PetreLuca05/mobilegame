@@ -1,0 +1,4 @@
+# the source PDF and everything extracted from it (book text) stay out of git
+src/
+render/
+build/

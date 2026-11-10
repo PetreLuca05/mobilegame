@@ -1,0 +1,30 @@
+# PDF page 2 = printed 1162. Hidden (under white rectangles): top of the left column (end of the oral-cavity
+# section, Gingiile, Dinții, GLANDELE SALIVARE) and the top of the right column (Cadranul 32.9, 32.10).
+hdr b000 b001 name=hdr1162
+ctx lvl=2 text="Cavitatea bucală"     # section starts on p. 1161 (Cuprins); its heading is not on these pages
+p b002 frag=start
+h3 b003
+p b004
+decor b013 why="box icon (black square) next to the box title"
+bt b014
+row | b015 | b016
+row b017 | b018 | b019
+row b020 | b021 | b022
+row b023 | b024 | b025
+row b026 | b027 |
+be
+h3 b005
+p b006
+h2 b007
+p b008
+decor b028 why="box icon (black square) next to the box title"
+bt b029
+li b030 b032 b033 b031
+be
+h2 b009
+h3 b010
+h4 b011
+p b012
+p b034 cont
+h4 b035
+p b036

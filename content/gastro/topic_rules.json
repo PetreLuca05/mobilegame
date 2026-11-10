@@ -1,0 +1,572 @@
+[
+ {
+  "on": "kind",
+  "match": "running_header",
+  "topic": "cuprins"
+ },
+ {
+  "on": "kind",
+  "match": "contents_line",
+  "topic": "cuprins"
+ },
+ {
+  "on": "kind",
+  "match": "byline",
+  "topic": "cuprins"
+ },
+ {
+  "on": "path",
+  "match": "32 Gastroenterologie",
+  "topic": "cuprins"
+ },
+ {
+  "on": "path",
+  "match": "CUNOȘTINȚE DE BAZĂ ȘI ABILITĂȚI CLINICE ÎN GASTROENTEROLOGIE",
+  "topic": "intro"
+ },
+ {
+  "on": "path",
+  "match": "Cavitatea bucală",
+  "topic": "oral_gingii"
+ },
+ {
+  "on": "path",
+  "match": "GLANDELE SALIVARE",
+  "topic": "oral_salivare"
+ },
+ {
+  "on": "path",
+  "match": "FARINGELE ȘI ESOFAGUL",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Epidemiologie și fiziopatologie",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.11*",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.12*",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_10",
+  "topic": "brge_epi"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Tablou clinic",
+  "topic": "brge_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.13*",
+  "topic": "brge_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Diagnostic și investigații paraclinice",
+  "topic": "brge_dx"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_12",
+  "topic": "brge_dx"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Tratament",
+  "topic": "brge_tx"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_11",
+  "topic": "esofagita"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_13",
+  "topic": "esofagita"
+ },
+ {
+  "on": "id",
+  "match": "a1164-006",
+  "topic": "esofagita"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Tratament > Gastroplicatura endoluminală",
+  "topic": "barrett_tx"
+ },
+ {
+  "on": "path",
+  "match": "Boala de reflux gastro-esofagian > Tratament > Tratamentul chirurgical",
+  "topic": "brge_chir"
+ },
+ {
+  "on": "path",
+  "match": "Complicațiile bolii de reflux gastroesofagian",
+  "topic": "barrett_dx"
+ },
+ {
+  "on": "path",
+  "match": "Complicațiile bolii de reflux gastroesofagian > Strictura peptică",
+  "topic": "barrett_tx"
+ },
+ {
+  "on": "path",
+  "match": "Complicațiile bolii de reflux gastroesofagian > Esofagul Barrett",
+  "topic": "barrett_dx"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_14",
+  "topic": "barrett_dx"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_15",
+  "topic": "barrett_dx"
+ },
+ {
+  "on": "id",
+  "match": "a1166-004",
+  "topic": "barrett_tx"
+ },
+ {
+  "on": "id",
+  "match": "a1166-005",
+  "topic": "barrett_tx"
+ },
+ {
+  "on": "id",
+  "match": "a1166-006",
+  "topic": "barrett_tx"
+ },
+ {
+  "on": "path",
+  "match": "Tulburările de motilitate",
+  "topic": "acalazia"
+ },
+ {
+  "on": "path",
+  "match": "Tumorile esofagiene",
+  "topic": "esofag_tumori"
+ },
+ {
+  "on": "path",
+  "match": "Tumorile esofagiene > Alte tumori esofagiene",
+  "topic": "esofag_tumori"
+ },
+ {
+  "on": "path",
+  "match": "Alte tumori esofagiene",
+  "topic": "esofag_tumori"
+ },
+ {
+  "on": "path",
+  "match": "Tulburări esofagiene funcționale",
+  "topic": "esofag_functional"
+ },
+ {
+  "on": "path",
+  "match": "FARINGELE ȘI ESOFAGUL > Lecturi suplimentare",
+  "topic": "lecturi_esofag"
+ },
+ {
+  "on": "path",
+  "match": "STOMACUL ȘI DUODENUL",
+  "topic": "gastrita"
+ },
+ {
+  "on": "path",
+  "match": "Gastrita și gastropatia",
+  "topic": "gastrita"
+ },
+ {
+  "on": "path",
+  "match": "Infecția cu Helicobacter pylori",
+  "topic": "hp_bact"
+ },
+ {
+  "on": "path",
+  "match": "Infecția cu Helicobacter pylori > Epidemiologie",
+  "topic": "hp_bact"
+ },
+ {
+  "on": "path",
+  "match": "Infecția cu Helicobacter pylori > Patogeneză",
+  "topic": "hp_bact"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_23",
+  "topic": "hp_bact"
+ },
+ {
+  "on": "path",
+  "match": "Consecințele infecției cu H. pylori",
+  "topic": "hp_consec"
+ },
+ {
+  "on": "path",
+  "match": "Boala ulceroasă peptică",
+  "topic": "ulcer_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Epidemiologia bolii ulceroase peptice",
+  "topic": "ulcer_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Tabloul clinic al bolii ulceroase peptice",
+  "topic": "ulcer_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Diagnosticul infecției cu Helicobacter pylori",
+  "topic": "hp_dx_noninv"
+ },
+ {
+  "on": "path",
+  "match": "Diagnosticul infecției cu Helicobacter pylori > Metode non-invazive",
+  "topic": "hp_dx_noninv"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_25",
+  "topic": "hp_dx_noninv"
+ },
+ {
+  "on": "path",
+  "match": "Diagnosticul infecției cu Helicobacter pylori > Metode invazive*",
+  "topic": "hp_dx_inv"
+ },
+ {
+  "on": "path",
+  "match": "Investigarea pacientului suspect de boală ulceroasă peptică",
+  "topic": "hp_dx_inv"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_24",
+  "topic": "hp_dx_inv"
+ },
+ {
+  "on": "path",
+  "match": "Infecția cu Helicobacter pylori > Tratament",
+  "topic": "hp_tx"
+ },
+ {
+  "on": "path",
+  "match": "Complicațiile bolii ulceroase peptice",
+  "topic": "ulcer_compl"
+ },
+ {
+  "on": "path",
+  "match": "Complicațiile bolii ulceroase peptice > Tratamentul chirurgical și consecințele sale pe termen lung",
+  "topic": "ulcer_chir"
+ },
+ {
+  "on": "path",
+  "match": "Tratamentul chirurgical și consecințele sale pe termen lung",
+  "topic": "ulcer_chir"
+ },
+ {
+  "on": "path",
+  "match": "Alte afecțiuni asociate infecției cu H. pylori",
+  "topic": "hp_alte"
+ },
+ {
+  "on": "path",
+  "match": "Antiinflamatoarele nesteroidiene*",
+  "topic": "ains"
+ },
+ {
+  "on": "path",
+  "match": "Antiinflamatoarele nesteroidiene* > Tratament",
+  "topic": "ains"
+ },
+ {
+  "on": "path",
+  "match": "Gastropareza",
+  "topic": "gastropareza"
+ },
+ {
+  "on": "path",
+  "match": "Intestinul subțire",
+  "topic": "intestin_tumori"
+ },
+ {
+  "on": "path",
+  "match": "Intestinul subțire > Lecturi suplimentare",
+  "topic": "lecturi_intestin"
+ },
+ {
+  "on": "path",
+  "match": "BOLILE INFLAMATORII INTESTINALE",
+  "topic": "bii_epi"
+ },
+ {
+  "on": "path",
+  "match": "BOLILE INFLAMATORII INTESTINALE > Epidemiologie",
+  "topic": "bii_epi"
+ },
+ {
+  "on": "path",
+  "match": "Etiologie și patogeneză",
+  "topic": "bii_genetica"
+ },
+ {
+  "on": "path",
+  "match": "Etiologie și patogeneză > Microbiota intestinală",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "path",
+  "match": "Etiologie și patogeneză > Sistemul imun intestinal",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "path",
+  "match": "Microbiota intestinală",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "path",
+  "match": "Sistemul imun intestinal",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_36",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_37",
+  "topic": "bii_microbiota"
+ },
+ {
+  "on": "path",
+  "match": "Anatomie patologică",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "path",
+  "match": "Modificări macroscopice",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "path",
+  "match": "Modificări microscopice",
+  "topic": "bii_histo"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.38*",
+  "topic": "bii_histo"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_38",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_39",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_40",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "path",
+  "match": "Manifestări extraintestinale",
+  "topic": "bii_extra"
+ },
+ {
+  "on": "path",
+  "match": "BOLILE INFLAMATORII INTESTINALE > Diagnostic diferențial",
+  "topic": "bii_extra"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.39*",
+  "topic": "bii_extra"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn",
+  "topic": "bc_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Tablou clinic",
+  "topic": "bc_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Examen obiectiv",
+  "topic": "bc_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.37*",
+  "topic": "bc_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Investigații",
+  "topic": "bii_lab"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Investigații > Teste sanguine",
+  "topic": "bii_lab"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Investigații > Teste de scaun",
+  "topic": "bii_lab"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Investigații > Activitatea bolii",
+  "topic": "bii_lab"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Investigații > Endoscopia și imagistica radiologică",
+  "topic": "bii_endo"
+ },
+ {
+  "on": "id",
+  "match": "a1202-045",
+  "topic": "bii_imag"
+ },
+ {
+  "on": "id",
+  "match": "a1202-046",
+  "topic": "bii_imag"
+ },
+ {
+  "on": "id",
+  "match": "a1202-047",
+  "topic": "bii_imag"
+ },
+ {
+  "on": "id",
+  "match": "a1202-049",
+  "topic": "bii_imag"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_41",
+  "topic": "bii_imag"
+ },
+ {
+  "on": "path",
+  "match": "Tratamentul medical al bolii Crohn",
+  "topic": "bc_inductie"
+ },
+ {
+  "on": "path",
+  "match": "Tratamentul medical al bolii Crohn > Menținerea remisiei",
+  "topic": "bc_mentinere"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.40*",
+  "topic": "bc_mentinere"
+ },
+ {
+  "on": "path",
+  "match": "Abordarea chirurgicală a bolii Crohn",
+  "topic": "bc_chir"
+ },
+ {
+  "on": "path",
+  "match": "Boala Crohn > Prognostic",
+  "topic": "bc_chir"
+ },
+ {
+  "on": "path",
+  "match": "Colita ulcerativă",
+  "topic": "cu_clinic"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_42",
+  "topic": "cu_clinic"
+ },
+ {
+  "on": "path",
+  "match": "Tratamentul medical al colitei ulcerative",
+  "topic": "cu_tx"
+ },
+ {
+  "on": "path",
+  "match": "Colită refractară/severă*",
+  "topic": "cu_sever"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.41*",
+  "topic": "cu_sever"
+ },
+ {
+  "on": "path",
+  "match": "Tratamentul chirurgical al colitei ulcerative",
+  "topic": "cu_chir"
+ },
+ {
+  "on": "path",
+  "match": "Cadranul 32.42*",
+  "topic": "cu_chir"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_43",
+  "topic": "cu_chir"
+ },
+ {
+  "on": "fig",
+  "match": "fig_32_44",
+  "topic": "cu_chir"
+ },
+ {
+  "on": "path",
+  "match": "Evoluție și prognostic",
+  "topic": "bii_prognostic"
+ },
+ {
+  "on": "path",
+  "match": "Colita microscopică",
+  "topic": "colita_micro"
+ },
+ {
+  "on": "path",
+  "match": "BOLILE INFLAMATORII INTESTINALE > Lecturi suplimentare",
+  "topic": "lecturi_bii"
+ },
+ {
+  "on": "path",
+  "match": "COLONUL ȘI RECTUL",
+  "topic": "constipatia"
+ }
+]
