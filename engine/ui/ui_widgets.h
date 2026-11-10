@@ -29,6 +29,9 @@ void ui_label_caps(Ui *ui, float x, float y, const char *s);
  * a safe edge; held while `key` is pressed); ui_depth_end goes back to the surrounding depth (the card layer, or a modal). */
 void ui_depth(Ui *ui, int level, uint32_t key, int flags);
 void ui_depth_end(Ui *ui);
+/* TILT-1 shake: one release wobble on every visible pressable, 15 ms apart from the side that moved first (dir +1: right). */
+void ui_jiggle(Ui *ui, float dir, double now);
+void ui_jiggle_update(Ui *ui); /* starts the ones whose time has come (once per frame, after ui_anim_begin) */
 /* A surface with its lip (cards 26 / 7, rows 16 / 4, pills: radius -1, 5). */
 void ui_surface(Ui *ui, float x, float y, float w, float h, float radius, float lip, UiColor face, UiColor lip_c, float highlight, UiColor hl);
 void ui_card(Ui *ui, float x, float y, float w, float h);

@@ -186,6 +186,7 @@
   "haptics_off": "Off",
   "haptics_fine": "Fine",
   "haptics_full": "Full",
+  "ui_tilt": "3D tilt effect",
   "ui_motion_full": "Full",
   "ui_motion_reduced": "Reduced"
 }

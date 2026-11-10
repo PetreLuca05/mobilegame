@@ -44,6 +44,8 @@ typedef enum HapticId {
     HAPTIC_INTERACT, HAPTIC_LIFT_KEY, HAPTIC_LIFT_ARRIVE,
     /* world map */
     HAPTIC_HOSPITAL, HAPTIC_VOYAGE_START, HAPTIC_VOYAGE_END, HAPTIC_VOYAGE_SKIP,
+    /* TILT-1 */
+    HAPTIC_TILT_JIGGLE,
     /* the lab's rank demos */
     HAPTIC_DEMO_R1, HAPTIC_DEMO_R2, HAPTIC_DEMO_R3, HAPTIC_DEMO_R4, HAPTIC_DEMO_R5,
     HAPTIC_COUNT
@@ -128,6 +130,7 @@ static const HapticEntry k_haptics[HAPTIC_COUNT] = {
     {"voyage starts", 4, 2, {TAP(HR4, HS_SOFT), ECHO}},
     {"voyage ends", 3, 1, {TAP(HR3, HS_SOFT)}},
     {"voyage skipped", 1, 1, {TAP(HR1, HS_SOFT)}},
+    {"tilt jiggle", 2, 1, {TAP(HR2, HS_SOFT)}},
     {"rank R1 whisper", 1, 1, {TAP(HR1, HS_SOFT)}},
     {"rank R2 light", 2, 1, {TAP(HR2, HS_SOFT)}},
     {"rank R3 medium", 3, 1, {TAP(HR3, HS_SOFT)}},

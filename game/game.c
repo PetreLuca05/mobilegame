@@ -147,7 +147,8 @@ typedef struct Game {
     UiTest uitest; /* --autotest ui */
     Tilt tilt;      /* TILT-1: device tilt for the UI (visual only) */
     float tilt_s;   /* this tick's strength S */
-    bool motion_on, tilt_debug, test_low_power;
+    bool motion_on, tilt_debug, test_low_power, tilt_shake_pending;
+    float tilt_shake_dir;
     float tilt_debug_x, tilt_debug_y;
     bool sys_reduce_motion, sys_reduce_logged;
     bool pause_was_open;
@@ -705,6 +706,10 @@ static void tilt_step(Game *g, MgApp *app)
         g->tilt.target_x = g->tilt_debug_x, g->tilt.target_y = g->tilt_debug_y;
     }
     tilt_tick(&g->tilt, MG_TICK_DT, have, sx, sy, app->time);
+    if (g->tilt.shaken && g->tilt_s > 0.0f) { /* the frame plays the jiggle */
+        g->tilt_shake_dir = g->tilt.shake_dir;
+        g->tilt_shake_pending = true;
+    }
 }
 
 void game_tick(MgApp *app)
@@ -1672,6 +1677,13 @@ static bool menu_world(Game *g, MgApp *app)
     const float aspect = app->width_pt / app->height_pt;
     GfxSceneParams sp = {0};
     sp.eye = HMM_V3(MENU_EYE_X, MENU_EYE_Y, g->menu_eye_z);
+    { /* TILT-1: the backdrop sways around its framing point, opposite to the UI's shift (the gameplay camera never does) */
+        const HMM_Vec3 look = HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), d = HMM_SubV3(sp.eye, look);
+        const float yaw = HMM_AngleDeg(k_ui.tilt_cam_yaw_deg * g->tilt.tx * g->tilt_s), pitch = HMM_AngleDeg(k_ui.tilt_cam_pitch_deg * g->tilt.ty * g->tilt_s);
+        const HMM_Vec3 right = HMM_NormV3(HMM_Cross(d, HMM_V3(0, 1, 0)));
+        const HMM_Mat4 r = HMM_MulM4(HMM_Rotate_RH(yaw, HMM_V3(0, 1, 0)), HMM_Rotate_RH(pitch, right));
+        sp.eye = HMM_AddV3(look, HMM_MulM4V4(r, HMM_V4V(d, 0.0f)).XYZ);
+    }
     sp.view = HMM_LookAt_RH(sp.eye, HMM_V3(MENU_LOOK_X, MENU_LOOK_Y, MENU_LOOK_Z), HMM_V3(0, 1, 0));
     sp.proj = camera_projection(HMM_AngleDeg(MENU_FOV_DEG), aspect, 0.1f, 300.0f, 0.0f);
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
@@ -3074,6 +3086,11 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->ui.tilt_x = g->tilt.tx * k, g->ui.tilt_y = g->tilt.ty * k;
         memcpy(g->ui.safe, safe, sizeof(safe));
         gfx_ui_set_tilt(app->gfx, g->ui.tilt_x, g->ui.tilt_y, k, safe);
+        if (g->tilt_shake_pending) { /* a sharp movement: every visible control wobbles once, staggered */
+            g->tilt_shake_pending = false;
+            ui_jiggle(&g->ui, g->tilt_shake_dir, app->time);
+        }
+        ui_jiggle_update(&g->ui);
     }
     {
         PROF_SCOPE("ui.anim");

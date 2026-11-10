@@ -32,6 +32,11 @@ typedef struct Ui {
     float safe[4];         /* l, t, r, b: shifts near an edge clamp to the room left */
     float depth_base;      /* inside a modal: everything moves with it */
     float freeze_x, freeze_y; /* the tilt when the current press began (a pressed control does not slide) */
+    struct {
+        uint32_t key;
+        double at;
+    } jiggle[64];             /* TILT-1 shake: release wobbles waiting for their stagger */
+    int jiggle_count, jiggles_started;
     float scr_dx, scr_alpha; /* the screen layer this frame (enter + UI shake): ui_screen_enter */
     float scr_age;           /* seconds since the current screen entered */
     /* tappable widgets of the last frame (self-tests tap them by id) */

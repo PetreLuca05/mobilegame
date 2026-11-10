@@ -105,6 +105,7 @@
   "haptics_off": "Oprit",
   "haptics_fine": "Fin",
   "haptics_full": "Complet",
+  "ui_tilt": "Efect 3D la înclinare",
   "ui_motion_full": "Complete",
   "ui_motion_reduced": "Reduse"
 }

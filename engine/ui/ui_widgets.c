@@ -147,6 +147,44 @@ void ui_depth(Ui *ui, int level, uint32_t key, int flags)
     }
 }
 
+void ui_jiggle(Ui *ui, float dir, double now)
+{
+    ui->jiggle_count = 0;
+    for (int i = 0; i < ui->seen_count && ui->jiggle_count < 64; i++) {
+        if (ui->seen[i].rect_only) {
+            continue;
+        }
+        float w, h;
+        gfx_ui_size(ui->gfx, &w, &h);
+        const float cx = ui->seen[i].x + ui->seen[i].w * 0.5f;
+        if (cx < 0.0f || cx > w || ui->seen[i].y + ui->seen[i].h < 0.0f || ui->seen[i].y > h) {
+            continue;
+        }
+        const float from = dir > 0.0f ? (w - cx) / w : cx / w; /* 0 at the side that moved first */
+        ui->jiggle[ui->jiggle_count].key = ui->seen[i].key;
+        ui->jiggle[ui->jiggle_count].at = now + (double)(from * w / 60.0f) * k_ui.tilt_jiggle_stagger_s; /* 15 ms per 60 pt across */
+        ui->jiggle_count++;
+    }
+    ui_haptic(HAPTIC_TILT_JIGGLE);
+}
+
+void ui_jiggle_update(Ui *ui)
+{
+    if (!ui->anim) {
+        return;
+    }
+    for (int i = 0; i < ui->jiggle_count;) {
+        if (ui->anim->now >= ui->jiggle[i].at) {
+            ui_anim_keys(ui->anim, ui->jiggle[i].key, UI_SX, 1.0f, k_ui.release_t, k_ui.release_sx, 5, k_ui.release_s, UI_EASE_OUT);
+            ui_anim_keys(ui->anim, ui->jiggle[i].key, UI_SY, 1.0f, k_ui.release_t, k_ui.release_sy, 5, k_ui.release_s, UI_EASE_OUT);
+            ui->jiggles_started++;
+            ui->jiggle[i] = ui->jiggle[--ui->jiggle_count];
+        } else {
+            i++;
+        }
+    }
+}
+
 void ui_depth_end(Ui *ui)
 {
     gfx_ui_depth(ui->gfx, ui->depth_base, 0);
