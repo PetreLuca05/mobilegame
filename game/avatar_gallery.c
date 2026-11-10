@@ -20,12 +20,14 @@ typedef struct Item {
     bool use_look;
     float sit, seat_y, lying, crouch, browse, push, look_w, stretch, head_lift, sway;
     float walk; /* m/s along the facing (animated in place) */
+    float weight, head_yaw;
+    bool airborne, still; /* still: sway held at its value, no time-driven motion */
     bool indoors;
 } Item;
 
 GalleryMode avatar_gallery_parse(const char *name, int *row)
 {
-    static const char *const names[] = {"", "options", "ages", "seats", "bed", "poses"};
+    static const char *const names[] = {"", "options", "ages", "seats", "bed", "poses", "subs"};
     *row = 0;
     if (name && SDL_strncmp(name, "options", 7) == 0 && name[7] >= '1' && name[7] <= '6' && name[8] == 0) {
         *row = name[7] - '0';
@@ -171,6 +173,32 @@ static int build(GalleryMode mode, Item *out)
         }
         break;
     }
+    case GALLERY_SUBS: {
+        for (int i = 0; i < 8; i++) {
+            Item it = lawn(i, 0, (NetSkin){.skin = 1, .hair = HAIR_SHORT, .hair_color = 1, .suit = 0});
+            it.still = true;
+            switch (i) {
+            case 0: it.crouch = 1.0f; break;
+            case 1: it.sway = 0.12f; break;
+            case 2: it.weight = HMM_AngleDeg(2.0f) * 4.0f; break; /* x4 so the picture shows the direction */
+            case 3: it.head_lift = 0.12f, it.head_yaw = 0.6f; break;
+            case 4: it.sit = 1.0f, it.seat_y = HOSP_CHAIR_TOP, it.stretch = 1.0f; break;
+            case 5: it.airborne = true; break;
+            case 6:
+            case 7:
+                it.look = avatar_look_from_skin(it.skin);
+                it.look.age = i == 6 ? AVATAR_ELDER : AVATAR_CHILD;
+                if (i == 6) {
+                    it.look.hair = 0xD9D9D9;
+                }
+                it.use_look = true;
+                break;
+            default: break;
+            }
+            out[n++] = it;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -199,7 +227,10 @@ void avatar_gallery_draw(AvatarGallery *gal, GfxContext *g, const AvatarMeshes *
         p.sit = it->sit, p.seat_y = it->seat_y, p.lying = it->lying, p.crouch = it->crouch;
         p.browse = it->browse, p.push = it->push, p.look = it->look_w, p.stretch = it->stretch;
         p.head_lift = it->head_lift;
-        p.sway = it->sway != 0.0f ? it->sway * HMM_SinF(gal->anim[i].t * 3.0f) : 0.0f;
+        p.sway = it->sway != 0.0f ? (it->still ? it->sway : it->sway * HMM_SinF(gal->anim[i].t * 3.0f)) : 0.0f;
+        p.weight_tilt = it->weight;
+        p.head_yaw = it->head_yaw;
+        p.grounded = !it->airborne;
         avatar_animate(m, &gal->anim[i], &p, dt);
         avatar_draw(g, m, &look, &p, &gal->anim[i], NULL);
     }

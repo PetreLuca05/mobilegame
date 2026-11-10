@@ -21,6 +21,12 @@
 #define ELDER_HAND_DROP 0.08f
 #define CHILD_SCALE 0.72f
 #define CHILD_HEAD 1.18f
+/* walking with a cane (AVATAR_EXTRA_CANE): steps, not a glide. Each CANE_STEP_S the body and the cane move
+ * together in the first CANE_STEP_MOVE of the step, then stand planted. Drawn only: the sim's position moves
+ * evenly and the drawn one swings round it (offset averages 0, at most (0.5 - CANE_STEP_MOVE / 2) x speed x step). */
+#define CANE_STEP_S 0.9f
+#define CANE_STEP_MOVE 0.45f
+#define CANE_STEP_LEAN 0.08f
 /* seated hands rest on the lap: x, y above the body base, z (avatar frame) */
 #define LAP_X 0.19f
 #define LAP_Y 0.2f
@@ -513,6 +519,9 @@ void avatar_animate(const AvatarMeshes *m, AvatarAnim *a, const AvatarPose *p, f
     a->push = approach(a->push, p->push, r->push_ease, dt);
     a->look = approach(a->look, p->look, r->look_ease, dt);
     a->raise = approach(a->raise, p->grounded ? 0.0f : 1.0f, p->grounded ? 12.0f : 9.0f, dt);
+    if (a->move > 0.05f) {
+        a->cane_t = fmodf(a->cane_t + dt, CANE_STEP_S * 1024.0f);
+    }
     /* side lean into a turn of the velocity (avatar frame, +x its left) */
     const float s = HMM_SinF(a->yaw), c = HMM_CosF(a->yaw);
     const float side = -(c * p->vel.X - s * p->vel.Z);
@@ -534,8 +543,21 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     const float k = child ? CHILD_SCALE : 1.0f;
     const float t = a->t, sit = smooth01(p->sit), lying = mg_saturate(p->lying);
     const float yaw = p->head_only ? p->yaw : a->yaw;
+    /* a cane gait: the walk phase advances half a cycle per step, the drawn feet lead / trail the sim's */
+    float phase = a->phase, step_lean = 0.0f;
+    HMM_Vec3 feet = p->feet;
+    if ((look->extras & AVATAR_EXTRA_CANE) && p->sit <= 0.0f && p->lying <= 0.0f && a->move > 0.01f) {
+        const float steps = a->cane_t / CANE_STEP_S, n = floorf(steps), u = steps - n;
+        const float e = smooth01(u / CANE_STEP_MOVE);
+        phase = HMM_PI32 * (n + e);
+        const float w = smooth01(a->move / 0.5f); /* full at any walking speed: planted means still */
+        const float off = (e - u - (0.5f - 0.5f * CANE_STEP_MOVE)) * CANE_STEP_S * w; /* 0.5 - f/2: the mean of e - u */
+        feet = HMM_AddV3(feet, HMM_V3(p->vel.X * off, 0.0f, p->vel.Z * off));
+        step_lean = CANE_STEP_LEAN * HMM_SinF(HMM_PI32 * e) * w;
+    }
+    s->feet = feet;
     /* the avatar frame faces +z; yaw 0 looks along -Z, so turn it half a circle */
-    HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(yaw + HMM_PI32, HMM_V3(0, 1, 0)));
+    HMM_Mat4 root = HMM_MulM4(HMM_Translate(feet), HMM_Rotate_RH(yaw + HMM_PI32, HMM_V3(0, 1, 0)));
     if (lying > 0.0f) { /* in bed: on the back, head on the pillow (behind the facing) */
         root = HMM_MulM4(root, HMM_Translate(HMM_V3(0.0f, BED_BASE_Y * lying, BED_BASE_Z * lying)));
         root = HMM_MulM4(root, HMM_Rotate_RH(BED_PITCH * lying, HMM_V3(1, 0, 0)));
@@ -551,11 +573,11 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     const float seat = (p->seat_y > 0.0f ? p->seat_y : r->seat_y) / k;
     /* idle bob (fades out as the walk's bob comes in: a full stride peaks at exactly walk_bob_m) */
     const float bob = r->idle_bob_m * HMM_SinF(r->idle_bob_rad_s * t + a->seed) * (elder ? 0.5f : 1.0f) * (1.0f - 0.7f * sit) * (1.0f - a->move) +
-                      r->walk_bob_m * fabsf(HMM_SinF(a->phase)) * a->move;
+                      r->walk_bob_m * fabsf(HMM_SinF(phase)) * a->move;
     float base = mg_lerpf(r->stand_y, seat, sit) - 0.3f * p->crouch;
     base = mg_lerpf(base, 0.0f, lying) + bob;
     s->base_y = base * k;
-    const float lean = r->walk_lean_rad * a->move + (elder ? ELDER_LEAN : 0.0f) + 0.3f * p->crouch + p->lean;
+    const float lean = r->walk_lean_rad * a->move + (elder ? ELDER_LEAN : 0.0f) + 0.3f * p->crouch + p->lean + step_lean;
     const float roll = a->lean_side + p->weight_tilt;
     HMM_Mat4 body = HMM_MulM4(root, HMM_Translate(HMM_V3(0, base, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(lean, HMM_V3(1, 0, 0)));
@@ -582,7 +604,7 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
      * or the activity's targets), blended by sit */
     const HMM_Vec3 rest = r->hands_rest;
     const float sb = r->stand_y + bob - (elder ? ELDER_HAND_DROP : 0.0f);
-    const float swing = r->walk_swing_m * HMM_SinF(a->phase) * a->move;
+    const float swing = r->walk_swing_m * HMM_SinF(phase) * a->move;
     const float up = mg_maxf(a->raise, p->stretch) * 0.5f;
     HMM_Vec3 stand[2] = {HMM_V3(rest.X + a->raise * 0.08f, sb + rest.Y + up, rest.Z + swing),
                          HMM_V3(-rest.X - a->raise * 0.08f, sb + rest.Y + up, rest.Z - swing)};
@@ -721,6 +743,8 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     const HMM_Vec4 extra = suit_extra(look);
     const HMM_Vec4 none = HMM_V4(0, 0, 0, 0);
     const float shadow_k = look->age == AVATAR_CHILD ? CHILD_SCALE : 1.0f;
+    AvatarPose shadow_pose = *p; /* the disc under where it is drawn (a cane gait leads / trails the feet) */
+    shadow_pose.feet = s.feet;
     /* hands: spheres, the root's rotation and scale */
     HMM_Mat4 hm[2];
     for (int i = 0; i < 2; i++) {
@@ -731,7 +755,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     if (lod == 2) {
         part(&dc, m->far_body, s.body_s, look->outfit, SURF_MATTE);
         part(&dc, m->far_head, s.head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
-        draw_contact_shadow(g, m, p, world, shadow_k);
+        draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
         return;
     }
     if (lod == 1) {
@@ -742,7 +766,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         }
         part(&dc, m->lod_hand, hm[0], look->skin, SURF_MATTE);
         part(&dc, m->lod_hand, hm[1], look->skin, SURF_MATTE);
-        draw_contact_shadow(g, m, p, world, shadow_k);
+        draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
         return;
     }
     if (!p->head_only) {
@@ -785,7 +809,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         part(&dc, m->bucket, bm, 0x9AA0A6, SURF_MATTE);
     }
     if (!override && p->lying <= 0.0f) {
-        draw_contact_shadow(g, m, p, world, shadow_k);
+        draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
     }
 }
 

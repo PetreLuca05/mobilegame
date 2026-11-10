@@ -6,7 +6,9 @@
  *   ages     child, adult, elder side by side, plus the NPC looks
  *   seats    the reception chair and a waiting-area chair (G), the yard bench
  *   bed      a ward bed (storey 1)
- *   poses    idle, walk, browse, push, creator look, crouch, mop, talk pop, stretch */
+ *   poses    idle, walk, browse, push, creator look, crouch, mop, talk pop, stretch
+ *   subs     the states A1 maps by substitution (docs/AVATAR.md): crouch, mop sway, weight shift, talk pop, seated
+ *            stretch, airborne hands, elder, child, held still for side-by-side pictures with the old avatar */
 #ifndef MG_AVATAR_GALLERY_H
 #define MG_AVATAR_GALLERY_H
 
@@ -14,7 +16,7 @@
 
 #define GALLERY_MAX 48
 
-typedef enum { GALLERY_OFF, GALLERY_OPTIONS, GALLERY_AGES, GALLERY_SEATS, GALLERY_BED, GALLERY_POSES } GalleryMode;
+typedef enum { GALLERY_OFF, GALLERY_OPTIONS, GALLERY_AGES, GALLERY_SEATS, GALLERY_BED, GALLERY_POSES, GALLERY_SUBS } GalleryMode;
 
 typedef struct AvatarGallery {
     GalleryMode mode;

@@ -130,6 +130,47 @@ static int walk(AvatarTest *t, const AvatarMeshes *m)
     return 0;
 }
 
+/* A cane gait: planted (drawn feet nearly still) between steps, faster than the sim during a step, never more
+ * than (0.5 - 0.45 / 2) x speed x step (+ 2 cm) from the sim's position. */
+static int cane(AvatarTest *t, const AvatarMeshes *m)
+{
+    AvatarLook look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
+    look.age = AVATAR_ELDER;
+    look.extras |= AVATAR_EXTRA_CANE;
+    AvatarPose p = standing();
+    const float v = 0.9f;
+    p.vel = HMM_V3(0.0f, 0.0f, -v);
+    AvatarAnim a;
+    SDL_zero(a);
+    HMM_Vec3 prev = p.feet;
+    float planted_max = 0.0f, step_max = 0.0f, dev_max = 0.0f;
+    for (int f = 0; f < 300; f++) {
+        p.feet = HMM_AddV3(p.feet, HMM_MulV3F(p.vel, DT));
+        avatar_animate(m, &a, &p, DT);
+        AvatarSolved s;
+        avatar_solve(m, &look, &p, &a, &s);
+        const float speed = HMM_LenV3(HMM_SubV3(s.feet, prev)) / DT;
+        prev = s.feet;
+        if (f < 60) {
+            continue;
+        }
+        const float u = a.cane_t / 0.9f - floorf(a.cane_t / 0.9f);
+        if (u > 0.55f && u < 0.95f) {
+            planted_max = mg_maxf(planted_max, speed);
+        } else if (u > 0.15f && u < 0.3f) {
+            step_max = mg_maxf(step_max, speed);
+        }
+        dev_max = mg_maxf(dev_max, HMM_LenV3(HMM_SubV3(s.feet, p.feet)));
+    }
+    mg_log_info("autotest avatar: cane gait at %.1f m/s: planted %.3f m/s, stepping up to %.2f m/s, %.3f m from the sim at most", (double)v,
+                (double)planted_max, (double)step_max, (double)dev_max);
+    if (planted_max > 0.1f * v || step_max < 1.5f * v || dev_max > 0.275f * v * 0.9f + 0.02f) {
+        return failf(t, "cane: planted %.3f m/s, stepping %.2f m/s, %.3f m from the sim (want < %.2f, > %.2f, <= %.3f)", (double)planted_max,
+                     (double)step_max, (double)dev_max, (double)(0.1f * v), (double)(1.5f * v), (double)(0.275f * v * 0.9f + 0.02f));
+    }
+    return 0;
+}
+
 static int options(AvatarTest *t, const AvatarMeshes *m)
 {
     uint32_t rng = 0x5EED1A1u;
@@ -206,7 +247,7 @@ int at_run(AvatarTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         return failf(t, "no avatar meshes");
     }
     int r;
-    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = options(t, m)) || (r = skins(t))) {
+    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = cane(t, m)) || (r = options(t, m)) || (r = skins(t))) {
         return r;
     }
     return 1;

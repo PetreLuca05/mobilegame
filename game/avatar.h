@@ -90,6 +90,7 @@ typedef struct AvatarAnim {
     float browse, push, look; /* eased weights */
     float raise;      /* 0..1 hands up (airborne) */
     float lean_side;  /* radians, smoothed */
+    float cane_t;     /* seconds walked: the cane gait's steps */
 } AvatarAnim;
 
 typedef struct AvatarPose {
@@ -125,6 +126,7 @@ typedef struct AvatarPose {
 
 /* The solved pose: what the draw uses, what tests measure. */
 typedef struct AvatarSolved {
+    HMM_Vec3 feet;    /* where it is drawn: the pose's feet, or ahead / behind them in a cane gait */
     HMM_Mat4 root;    /* feet, heading; avatar frame (forward +z) */
     HMM_Mat4 body;    /* body base frame, leaned */
     HMM_Mat4 body_s;  /* + proportions and breathing: draws the body */
