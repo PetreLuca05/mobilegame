@@ -214,7 +214,7 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
     if (tw > w - 20.0f && tw > 0.0f) {
         size *= (w - 20.0f) / tw;
     }
-    ui_text_c(ui, TEXT_FACE_DISPLAY, x + dx + w * 0.5f, y + face_h * 0.5f + 1.0f, size, tc, vis);
+    ui_text_c(ui, TEXT_FACE_DISPLAY, x + dx + w * 0.5f, y + face_h * 0.5f, size, tc, vis); /* centred on the face, not the lip */
     gfx_ui_group_off(ui->gfx);
     if (clicked && ui->fx) {
         ui_fx_tier(ui->fx, UI_T1, x + w * 0.5f, y + face_h * 0.5f, true);
@@ -337,7 +337,7 @@ void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *p
     }
     gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, x + w * 0.5f, y + face_h * 0.5f);
     ui_surface(ui, x, y, w, face_h, -1.0f, lip, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
-    ui_text_c(ui, TEXT_FACE_DISPLAY, x + w * 0.5f, y + face_h * 0.5f + 1.0f, face_h * 0.55f, C(k_ui.ink), text);
+    ui_text_c(ui, TEXT_FACE_DISPLAY, x + w * 0.5f, y + face_h * 0.5f, face_h * 0.55f, C(k_ui.ink), text);
     gfx_ui_group_off(ui->gfx);
     ui_remember(ui, id, x, y, w, face_h); /* the reward flight's target, not a button */
 }

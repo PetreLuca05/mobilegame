@@ -64,6 +64,10 @@ static const uint8_t *read_face(TextFont *f, const uint8_t *p, const uint8_t *en
     for (size_t i = 0; i < MG_ARRAY_COUNT(same); i++) {
         f->glyphs[same[i][0]] = f->glyphs[same[i][1]];
     }
+    /* the capital height: 'H' sits on the baseline with the same padding P all round, so h = cap + 2P and
+     * yoff = -(cap + P), cap = -h - 2 yoff */
+    const TextGlyph *H = &f->glyphs['H'];
+    f->cap_px = H->present && -H->h - 2.0f * H->yoff > 0.0f ? -H->h - 2.0f * H->yoff : f->em_px * 0.7f;
     return p;
 }
 
@@ -175,7 +179,7 @@ void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_
 {
     float scale = height_m / f->em_px;
     float pen = -text_width(f, s, height_m) * 0.5f;
-    float top = f->ascent_px * scale * 0.55f; /* same vertical centring as text_draw_centered */
+    float top = (f->ascent_px - f->cap_px * 0.5f) * scale; /* the capitals' middle on y = 0, like text_draw_centered */
     while (*s) {
         const TextGlyph *gl = glyph_for(f, next_cp(&s));
         if (gl->w > 0.0f) {
@@ -206,9 +210,9 @@ float text_draw_shadow(GfxContext *g, const TextFont *f, float x, float y, float
 
 void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, float size_pt, UiColor c, const char *s)
 {
-    float w = text_width(f, s, size_pt);
-    float h = f->ascent_px * size_pt / f->em_px;
-    text_draw(g, f, cx - w * 0.5f, cy - h * 0.55f, size_pt, c, s);
+    /* the capitals' middle on cy (the line box's ascent sits higher than the letters you see) */
+    const float w = text_width(f, s, size_pt), scale = size_pt / f->em_px;
+    text_draw(g, f, cx - w * 0.5f, cy + (f->cap_px * 0.5f - f->ascent_px) * scale, size_pt, c, s);
 }
 
 void ui_textured_quad(GfxContext *g, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, UiColor c)

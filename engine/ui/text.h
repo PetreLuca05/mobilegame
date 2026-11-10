@@ -21,6 +21,7 @@ typedef struct TextFont {
     TextGlyph glyphs[TEXT_GLYPH_SLOTS]; /* icon extras live in control-char slots */
     float em_px;
     float ascent_px;
+    float cap_px;      /* capital height (from 'H'): what centred text centres on */
     float line_px;
     float solid_u, solid_v;
     float circle_u0, circle_v0, circle_u1, circle_v1;
