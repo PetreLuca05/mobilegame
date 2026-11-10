@@ -21,6 +21,7 @@ WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_ti
                 "island": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
                 "worldmap_voyage": {"gpu_effective_ms": 2.5, "render_ms": 0.25, "cpu_tick_ms": 0.05}}
 WORLD_MAX_DRAWS = 18
+WORLD_MAX_DRAWS_VOYAGE = 38  # WORLD-2: both islands for part of a voyage (32) + vehicle 4 + effects 1 + HUD 1
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
@@ -70,8 +71,9 @@ def main():
             if sc in WORLD_LIMITS: # the estimates are the map's own tick and the submit (encode + sort), not the whole frame
                 scope = {x["name"]: x["avg"] for x in d["scopes"]}
                 m = dict(m, cpu_tick_ms=scope.get("tick", 0.0), render_ms=scope.get("render.encode", 0.0) + scope.get("render.sort", 0.0))
-                if d["counters"]["draws"]["max"] > WORLD_MAX_DRAWS:
-                    problems.append(f"{dev} {sc}: {d['counters']['draws']['max']:.0f} draws, the design allows {WORLD_MAX_DRAWS} (16 world + x-ray + HUD)")
+                cap = WORLD_MAX_DRAWS_VOYAGE if sc == "worldmap_voyage" else WORLD_MAX_DRAWS
+                if d["counters"]["draws"]["max"] > cap:
+                    problems.append(f"{dev} {sc}: {d['counters']['draws']['max']:.0f} draws, the design allows {cap}")
                 for name, est in WORLD_LIMITS[sc].items():
                     print(f"{'PASS' if m[name] <= 2 * est else 'FAIL'} {dev:6} {sc:12} {name:18} {m[name]:9.2f} estimate {est} (fails over 2x)")
                     if m[name] > 2 * est:
