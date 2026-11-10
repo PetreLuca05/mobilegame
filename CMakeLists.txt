@@ -313,10 +313,11 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_compile_options(mobilegame PRIVATE ${MG_WARNINGS})
 
   enable_testing()
-  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c tests/test_replication.c tests/test_interact.c
+  add_executable(mg_tests tests/test_main.c tests/test_kinematic.c tests/test_replication.c tests/test_interact.c tests/test_stick.c engine/ui/touch_controls.c
     game/devroom_layout.c engine/net/replication.c game/interact.c engine/world/spatial.c engine/core/arena.c)
   target_include_directories(mg_tests PRIVATE game)
-  target_link_libraries(mg_tests PRIVATE mg_physics)
+  target_compile_definitions(mg_tests PRIVATE MG_STICK_GOLDEN="${CMAKE_SOURCE_DIR}/tests/stick_golden.txt")
+  target_link_libraries(mg_tests PRIVATE mg_physics SDL3::Headers) # headers only: the stick test drives touch_controls without SDL
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
 
