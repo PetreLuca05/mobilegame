@@ -44,7 +44,9 @@ typedef struct GfxUiInst {
     float shape[4];
     uint8_t color[4], color2[4]; /* rgba */
     float kind, fade; /* fade: set by gfx from gfx_ui_clip_fade */
-} GfxUiInst; /* 96 bytes */
+    float tilt[4];    /* TILT-1: depth shift (pt, set by gfx_ui_depth), lip height L (a lip shape), flags (GFX_TILT_*), 0 */
+} GfxUiInst; /* 112 bytes */
+enum { GFX_TILT_GLOSS = 1, GFX_TILT_TITLE = 2 }; /* a gloss spot on the face; the title's 1.5x lip swing */
 
 typedef enum GfxMaterialKind {
     GFX_MAT_UNLIT,  /* vertex colour x tint */
@@ -214,6 +216,12 @@ void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);
 /* With a clip on: dissolve the instances over the last `pt` inside its edges (0 = hard edge); cleared by clip_off. */
 void gfx_ui_clip_fade(GfxContext *g, float pt);
+/* TILT-1: the tilt for this frame's UI (tx, ty already x strength; s = the strength) and the safe rect;
+ * the depth shift and flags for the instances that follow; an extra offset (a pressed control's frozen shift). */
+void gfx_ui_set_tilt(GfxContext *g, float tx, float ty, float s, const float safe[4]);
+void gfx_ui_depth(GfxContext *g, float shift_pt, int flags);
+void gfx_ui_offset(GfxContext *g, float dx, float dy);
+void gfx_ui_lip(GfxContext *g, float lip); /* instances that follow are a lip of this height (0: none) */
 /* This frame's UI instances so far (autotests read back what a widget emitted). */
 const GfxUiInst *gfx_ui_instances(const GfxContext *g, uint32_t *count);
 /* Render this frame's GFX_DRAW_PREVIEW draws with a second camera into an

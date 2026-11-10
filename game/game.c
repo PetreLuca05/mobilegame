@@ -1502,6 +1502,7 @@ static void draw_notices(Game *g, MgApp *app)
     const ui_frame_t f = frame_of(app);
     NoticeKind kind = NOTICE_JOIN;
     char id[NET_ID_LEN];
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[3], 0); /* TILT-1: a notice is a near layer */
     const NoticeResult res = notice_panel_draw(&g->notice, &g->ui, &g->heads, &f, app->time, mg_minf(app->frame_dt, 0.1f), str("friend_accept"),
                                                str("friend_decline"), &kind, id);
     if (g->notice.just_shown) {
@@ -1846,6 +1847,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     if (g->demo_lobby && !g->perf.active && f->state == FE_MAIN_MENU && app->time - g->start_time > 3.0 && g->start_time > 0.0) {
         lobby_layout_check(g, app, &ctx);
     }
+    gfx_ui_depth(app->gfx, 0.0f, 0); /* TILT-1: the lobby players' tags are world-anchored */
     if (f->state == FE_MAIN_MENU && world_behind && g->lobby_visible) { /* the players' name tags, the same style as in play */
         const float head = 2.2f;
         for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
@@ -1862,6 +1864,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             name_tag(g, app, top, av->name);
         }
     }
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     if (f->state == FE_FRIENDS && friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
         frontend_back(f);
     }
@@ -2730,7 +2733,9 @@ void game_frame(MgApp *app, float alpha)
     gfx_ui_screen(app->gfx, 0.0f, 0.0f, 1.0f);
     {
         PROF_SCOPE("ui.fx"); /* tweens' effects: particles, rings, tokens, banner */
+        gfx_ui_depth(app->gfx, k_ui.tilt_depth[4], 0); /* TILT-1: particles, tokens in flight, the banner */
         ui_fx_update_draw(&g->ui_fx, app->gfx, app->width_pt, app->height_pt); /* over every screen */
+        gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     }
     head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
     ui_haptics_flush(); /* this frame's strongest haptic, on the frame of its input */
@@ -3063,6 +3068,13 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* UI claims touches first (pause button + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
+    { /* TILT-1: this frame's tilt for the UI shaders (HUD at half strength in play); the safe rect bounds every shift */
+        const float k = g->tilt_s * (g->playing ? k_ui.tilt_hud : 1.0f);
+        const float safe[4] = {app->safe_left, app->safe_top, app->width_pt - app->safe_right, app->height_pt - app->safe_bottom};
+        g->ui.tilt_x = g->tilt.tx * k, g->ui.tilt_y = g->tilt.ty * k;
+        memcpy(g->ui.safe, safe, sizeof(safe));
+        gfx_ui_set_tilt(app->gfx, g->ui.tilt_x, g->ui.tilt_y, k, safe);
+    }
     {
         PROF_SCOPE("ui.anim");
         const bool sys_reduce = app_reduce_motion();
@@ -3437,7 +3449,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         float cpx, cpy, cps;
         ui_pause_rect(&cf, &cpx, &cpy, &cps);
         const float chip_l = ui_safe_left(&cf) + UI_MARGIN + cf.corner; /* head_chip_draw takes the right edge */
+        gfx_ui_depth(app->gfx, k_ui.tilt_depth[2], 0); /* TILT-1: the account pill */
         head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, chip_l + head_chip_width(&app->font, g->profile.display_name), cpy);
+        gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
     {
@@ -3449,7 +3463,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, 0.0f, app->height_pt, 0.0f); /* the jump button (off) */
     frontend_toast_draw(&g->fe, &g->ui, app);
+    gfx_ui_depth(app->gfx, 0.0f, 0); /* TILT-1: world-anchored: name tags and chat clouds never shift */
     draw_name_tags(g, app, floor, player_floor, feet);
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     HudInfo hud = {0};
     hud.fps = app->fps;
     hud.frame_ms = app->frame_ms;
@@ -3482,7 +3498,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
     }
     layout_autotest(g, app);
+    gfx_ui_depth(app->gfx, 0.0f, 0);
     draw_chat_bubbles(g, app, floor);
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     if (g->text_test) { /* --autotest text */
         const float tw = mg_minf(app->width_pt - 40.0f, 760.0f), tx = (app->width_pt - tw) * 0.5f, ty = app->height_pt * 0.5f - 70.0f;
         ui_round_rect(app->gfx, &app->font, tx, ty, tw, 140.0f, 14.0f, ui_rgba(0x101218F0));
@@ -3832,7 +3850,9 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
     g->hud_res_count = rc;
     MarkerHudView v = {g->view_proj, w, h, 0.0f, 0.0f, 0.0f, 0.0f, view_floor, res, rc};
     g->hud_count = marker_hud_layout(g->hud_in, n, &v, g->hud_out);
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[3], 0); /* TILT-1: marker edge icons */
     marker_hud_draw(app->gfx, &app->font, g->hud_out, g->hud_count, view_floor);
+    gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     /* tap targets for the next frame's touch pass */
     int nt = 0;
     for (int i = 0; i < g->hud_count && nt < TOUCH_MAX_TARGETS; i++) {

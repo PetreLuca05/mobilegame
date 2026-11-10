@@ -217,8 +217,14 @@ static void title_block(Ui *ui, const char *title, float x, float y, float w, bo
 {
     const float size = 44.0f, lip = 3.0f;
     const float tx = centred ? x + (w - ui_text_w(ui, TEXT_FACE_DISPLAY, title, size)) * 0.5f : x;
+    /* TILT-1: the ink copy is the slab's lip (1.5x swing); the letters sit one depth above it */
+    ui_depth(ui, 1, 0, GFX_TILT_TITLE);
+    gfx_ui_lip(ui->gfx, lip);
     ui_text(ui, TEXT_FACE_DISPLAY, tx, y + lip - 4.0f, size, ui_rgba(k_ui.ink), title);
+    gfx_ui_lip(ui->gfx, 0.0f);
+    ui_depth(ui, 2, 0, 0);
     ui_text(ui, TEXT_FACE_DISPLAY, tx, y - 4.0f, size, ui_rgba(k_ui.white), title);
+    ui_depth_end(ui);
 }
 
 /* greedy word wrap; returns the height used */
@@ -265,6 +271,7 @@ void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app)
     }
     /* a card from the top centre: enters on its first frame, exits in its last 0.18 s */
     const uint32_t key = ui_key("toast");
+    ui_depth(ui, 3, 0, 0); /* TILT-1: toasts are a near layer */
     if (ui->anim && ui_anim_fresh(ui->anim, key)) {
         ui_haptic(HAPTIC_NOTICE); /* a toast arrives */
         ui_anim_to(ui->anim, key, UI_Y, -80.0f, 0.0f, ui->anim->reduced ? k_ui.reduced_s : k_ui.enter_s, ui->anim->reduced ? UI_EASE_LINEAR : UI_EASE_BEZIER, &k_ui.enter,
@@ -277,6 +284,7 @@ void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app)
     const float x = (app->width_pt - tw) * 0.5f, y = mg_maxf(app->safe_top, 8.0f) + 8.0f + dy;
     ui_surface(ui, x, y, tw, 44.0f, k_ui.r_card * 0.6f, k_ui.lip_card, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
     ui_text_c(ui, TEXT_FACE_BOLD, x + tw * 0.5f, y + 22.0f, 16.0f, ui_rgba(k_ui.ink), f->toast);
+    ui_depth_end(ui);
 }
 
 /* a wide sign-in button: the provider's mark at the left */
@@ -540,7 +548,9 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         a = FE_OPEN_FRIENDS;
     }
     const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
+    ui_depth(ui, 2, 0, 0); /* TILT-1: the account pill */
     head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, chip_name, chip_r, chip_y);
+    ui_depth_end(ui);
     if (chip_held) {
         ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(k_ui.glass));
     }

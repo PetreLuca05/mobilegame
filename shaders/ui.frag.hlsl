@@ -15,6 +15,7 @@ struct UiOut
     [[vk::location(5)]] float4 col2 : TEXCOORD5;
     [[vk::location(6)]] float4 clip : TEXCOORD6;
     [[vk::location(7)]] float4 ptk : TEXCOORD7; // screen pt, kind, clip fade (pt)
+    [[vk::location(8)]] float4 tiltv : TEXCOORD8; // tx, ty (x strength), S, flags (1 gloss, 2 title)
 };
 
 // signed distance to a rounded box centred on the origin (negative inside)
@@ -92,9 +93,18 @@ float4 shade(UiOut i)
     if (i.shape.z > 0.0) // highlight: a band under the top edge, inside the shape, in colour 2
     {
         float inner = rounded_box(i.local, i.half_size, i.shape.x);
-        float band = saturate((-i.half_size.y + i.shape.z - i.local.y) / max(fwidth(i.local.y), 1e-3)) * saturate(-inner / aa);
+        float2 hl = i.local - 2.0 * i.tiltv.xy; // TILT-1: up to 2 pt against the lip (k_ui.tilt_highlight_pt)
+        float band = saturate((-i.half_size.y + i.shape.z - hl.y) / max(fwidth(i.local.y), 1e-3)) * saturate(-inner / aa);
         float k = band * i.col2.a;
         rgb = lerp(rgb, i.col2.rgb, k);
+        if (fmod(i.tiltv.w, 2.0) >= 1.0 && i.tiltv.z > 0.0) // TILT-1 gloss: a soft white spot sliding across the face
+        {
+            float w = i.half_size.x * 2.0;
+            float2 c = float2(0.3 * w * i.tiltv.x, 0.1 * w * i.tiltv.y);
+            float e = length((i.local - c) / float2(0.2 * w, 0.6 * i.half_size.y));
+            float spot = (1.0 - smoothstep(0.55, 1.0, e)) * 0.18 * saturate(length(i.tiltv.xy) * 4.0) * saturate(-inner / aa);
+            rgb = lerp(rgb, float3(1.0, 1.0, 1.0), spot);
+        }
     }
     if (border > 0.0) // premultiplied mix of the fill and the border
     {

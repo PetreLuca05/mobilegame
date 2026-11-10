@@ -73,6 +73,7 @@ typedef struct UiShape {
     bool origin_bottom;
     UiColor color, color2;
     bool use_m;     /* m replaces sx / sy / rot: a 2 x 2 about the centre (x' = m0 x + m2 y, y' = m1 x + m3 y) */
+    float lip;      /* TILT-1: this shape is a lip of this height (it swings with the tilt) */
     float m[4];
 } UiShape;
 /* stroke > 0: a ring of that width; stroke < 0: filled in color with a border of -stroke in color2 */

@@ -179,6 +179,12 @@ struct GfxContext {
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
     float ui_clip[4];     /* x0, y0, x1, y1 for the instances that follow; x1 < x0 = none */
     float ui_clip_fade;   /* pt dissolved inside the clip's edges */
+    float ui_tilt[3];     /* TILT-1 this frame: tx, ty (x strength), strength */
+    float ui_depth;       /* depth shift (pt) of the instances that follow */
+    int ui_tilt_flags;
+    float ui_offset[2];
+    float ui_lip;
+    float ui_safe[4];
     float ui_group[6];    /* a, b, c, d, ox, oy */
     bool ui_group_on;
     float ui_screen[3];   /* dx, dy, alpha */
@@ -350,7 +356,7 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     SDL_GPUVertexBufferDescription vbds[2];
     SDL_zeroa(vbds);
     SDL_GPUVertexBufferDescription vbd = vbds[0];
-    SDL_GPUVertexAttribute attrs[8];
+    SDL_GPUVertexAttribute attrs[9];
     SDL_zeroa(attrs);
     uint32_t nattr = 0;
     if (d->layout == LAYOUT_MESH) {
@@ -373,7 +379,8 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
         attrs[5] = (SDL_GPUVertexAttribute){5, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiInst, color)};
         attrs[6] = (SDL_GPUVertexAttribute){6, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiInst, color2)};
         attrs[7] = (SDL_GPUVertexAttribute){7, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiInst, kind)};
-        nattr = 8;
+        attrs[8] = (SDL_GPUVertexAttribute){8, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, tilt)};
+        nattr = 9;
     }
 
     SDL_GPUColorTargetDescription ctd;
@@ -1151,6 +1158,7 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_clip[0] = g->ui_clip[1] = 0.0f;
     g->ui_clip[2] = g->ui_clip[3] = -1.0f;
     g->ui_clip_fade = 0.0f;
+    g->ui_depth = 0.0f, g->ui_tilt_flags = 0, g->ui_offset[0] = g->ui_offset[1] = 0.0f, g->ui_lip = 0.0f;
     g->ui_group_on = false;
     g->ui_screen[0] = g->ui_screen[1] = 0.0f;
     g->ui_screen[2] = 1.0f;
@@ -1223,6 +1231,11 @@ bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst)
     *o = *inst;
     memcpy(o->clip, g->ui_clip, sizeof(o->clip));
     o->fade = g->ui_clip_fade;
+    o->tilt[0] = g->ui_depth, o->tilt[2] = (float)g->ui_tilt_flags, o->tilt[3] = 0.0f;
+    if (o->tilt[1] <= 0.0f) { /* the lip: from the shape, or a lip drawn as text (the title's shadow) */
+        o->tilt[1] = g->ui_lip;
+    }
+    o->rect[0] += g->ui_offset[0], o->rect[1] += g->ui_offset[1];
     if (g->ui_group_on) { /* move the centre about the origin, compose the 2 x 2 */
         const float *m = g->ui_group;
         const float cx = o->rect[0] + o->rect[2] * 0.5f - m[4], cy = o->rect[1] + o->rect[3] * 0.5f - m[5];
@@ -1247,6 +1260,15 @@ void gfx_ui_group(GfxContext *g, float a, float b, float c, float d, float ox, f
 }
 
 void gfx_ui_group_off(GfxContext *g) { g->ui_group_on = false; }
+
+void gfx_ui_set_tilt(GfxContext *g, float tx, float ty, float s, const float safe[4])
+{
+    g->ui_tilt[0] = tx, g->ui_tilt[1] = ty, g->ui_tilt[2] = s;
+    memcpy(g->ui_safe, safe, sizeof(g->ui_safe));
+}
+void gfx_ui_depth(GfxContext *g, float shift_pt, int flags) { g->ui_depth = shift_pt, g->ui_tilt_flags = flags; }
+void gfx_ui_offset(GfxContext *g, float dx, float dy) { g->ui_offset[0] = dx, g->ui_offset[1] = dy; }
+void gfx_ui_lip(GfxContext *g, float lip) { g->ui_lip = lip; }
 
 void gfx_ui_size(const GfxContext *g, float *w_pt, float *h_pt)
 {
@@ -2444,16 +2466,17 @@ static void frame_end(GfxContext *g)
     g->ui_px_w = shot ? rw : g->swap_w;
     g->ui_px_h = shot ? rh : g->swap_h;
     if (g->ui_count > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) { /* the whole UI: one instanced draw, clipping in the shader */
-        HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
+        struct { HMM_Vec4 screen, tilt, safe; } u = {HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f), HMM_V4(g->ui_tilt[0], g->ui_tilt[1], g->ui_tilt[2], 0.0f),
+                                                    HMM_V4(g->ui_safe[0], g->ui_safe[1], g->ui_safe[2], g->ui_safe[3])};
         SDL_BindGPUGraphicsPipeline(pass, scaled ? g->ui_pipe_direct : g->ui_pipe);
-        SDL_PushGPUVertexUniformData(g->cmd, 0, &screen, sizeof(screen));
+        SDL_PushGPUVertexUniformData(g->cmd, 0, &u, sizeof(u));
         SDL_GPUBufferBinding vbb = {g->ui_vb_ring[g->ring % GFX_BUFFER_RING], 0};
         SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
         SDL_GPUTextureSamplerBinding tsb[2] = {{g->ui_atlas, g->ui_sampler}, {g->head_atlas ? g->head_atlas : g->dummy_tex, g->linear_clamp}};
         SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
         g->stats.pipe_binds++;
         g->stats.tex_binds++;
-        g->stats.uniform_bytes += (uint32_t)sizeof(screen);
+        g->stats.uniform_bytes += (uint32_t)sizeof(u);
         SDL_Rect full = {0, 0, (int)g->ui_px_w, (int)g->ui_px_h};
         SDL_SetGPUScissor(pass, &full);
         SDL_DrawGPUPrimitives(pass, 6, g->ui_count, 0, 0);

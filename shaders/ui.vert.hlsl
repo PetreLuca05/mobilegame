@@ -2,6 +2,8 @@
 cbuffer UiVS : register(b0, space1)
 {
     float4 u_screen; // x = 2 / width_pt, y = 2 / height_pt
+    float4 u_tilt;   // TILT-1: tx, ty (x strength), strength S
+    float4 u_safe;   // TILT-1: the safe rect l, t, r, b (pt): a shift never crosses it
 };
 
 struct UiIn
@@ -14,6 +16,7 @@ struct UiIn
     [[vk::location(5)]] float4 col : TEXCOORD5;
     [[vk::location(6)]] float4 col2 : TEXCOORD6;
     [[vk::location(7)]] float2 kind : TEXCOORD7;   // x: 0 glyph, 1 shape, 2 head; y: clip fade width (pt, 0 = hard edge)
+    [[vk::location(8)]] float4 tilt : TEXCOORD8;   // depth shift (pt), lip height L (a lip shape), flags (1 gloss, 2 title)
     uint vid : SV_VertexID;
 };
 
@@ -28,6 +31,7 @@ struct UiOut
     [[vk::location(5)]] float4 col2 : TEXCOORD5;
     [[vk::location(6)]] float4 clip : TEXCOORD6;
     [[vk::location(7)]] float4 ptk : TEXCOORD7;    // screen pt (for the clip), kind, clip fade
+    [[vk::location(8)]] float4 tiltv : TEXCOORD8;  // tx, ty, S, flags
 };
 
 UiOut VSMain(UiIn i)
@@ -39,6 +43,18 @@ UiOut VSMain(UiIn i)
     float2 local = (c - 0.5) * (i.rect.zw + 2.0 * margin);
     float2 centre = i.rect.xy + half_size;
     float2 p = centre + float2(i.xf.x * local.x + i.xf.z * local.y, i.xf.y * local.x + i.xf.w * local.y);
+    // TILT-1: nearer layers shift more, against the tilt; a lip swings to the side you would see
+    // (-0.7 L tx, -0.4 L ty) from rest (k_ui.tilt_lip_x / _y), 1.5x for the title. All zero at tilt 0.
+    // within 14 pt of a safe edge the shift is limited to the room left (k_ui.tilt_edge_pt); full-screen rects stay put
+    float room = min(min(i.rect.x - u_safe.x, i.rect.y - u_safe.y), min(u_safe.z - (i.rect.x + i.rect.z), u_safe.w - (i.rect.y + i.rect.w)));
+    float depth = room < 14.0 ? min(i.tilt.x, max(room, 0.0)) : i.tilt.x;
+    float2 shift = -u_tilt.xy * depth;
+    if (i.tilt.y > 0.0)
+    {
+        float k = i.tilt.z >= 2.0 ? 1.5 : 1.0;
+        shift += float2(-0.7 * i.tilt.y * u_tilt.x, -0.4 * i.tilt.y * u_tilt.y) * k;
+    }
+    p += shift;
     UiOut o;
     o.pos = float4(p.x * u_screen.x - 1.0, 1.0 - p.y * u_screen.y, 0.0, 1.0);
     o.uv = lerp(i.uv.xy, i.uv.zw, c);
@@ -49,5 +65,6 @@ UiOut VSMain(UiIn i)
     o.col2 = i.col2;
     o.clip = i.clip;
     o.ptk = float4(p, i.kind.x, i.kind.y);
+    o.tiltv = float4(u_tilt.xyz, i.tilt.z);
     return o;
 }

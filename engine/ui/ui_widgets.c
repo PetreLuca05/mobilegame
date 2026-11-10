@@ -135,11 +135,29 @@ void ui_label_caps(Ui *ui, float x, float y, const char *s)
     }
 }
 
+void ui_depth(Ui *ui, int level, uint32_t key, int flags)
+{
+    const float d = mg_maxf(k_ui.tilt_depth[level < 0 ? 0 : level > 4 ? 4 : level], ui->depth_base); /* near an edge the shader clamps it */
+    if (key && ui->active_id == key && ui->active_touch >= 0) { /* pressed: the shift holds still under the finger */
+        gfx_ui_depth(ui->gfx, 0.0f, flags);
+        gfx_ui_offset(ui->gfx, -ui->freeze_x * d, -ui->freeze_y * d);
+    } else {
+        gfx_ui_depth(ui->gfx, d, flags);
+        gfx_ui_offset(ui->gfx, 0.0f, 0.0f);
+    }
+}
+
+void ui_depth_end(Ui *ui)
+{
+    gfx_ui_depth(ui->gfx, ui->depth_base, 0);
+    gfx_ui_offset(ui->gfx, 0.0f, 0.0f);
+}
+
 void ui_surface(Ui *ui, float x, float y, float w, float h, float radius, float lip, UiColor face, UiColor lip_c, float highlight, UiColor hl)
 {
     const float r = radius < 0.0f ? -1.0f : radius;
-    if (lip > 0.0f) {
-        ui_shape(ui->gfx, &(UiShape){.x = x, .y = y + lip, .w = w, .h = h, .radius = r, .color = lip_c});
+    if (lip > 0.0f) { /* the lip swings with the tilt (TILT-1) */
+        ui_shape(ui->gfx, &(UiShape){.x = x, .y = y + lip, .w = w, .h = h, .radius = r, .lip = lip, .color = lip_c});
     }
     ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = w, .h = h, .radius = r, .highlight = highlight, .color = face, .color2 = hl});
 }
@@ -147,7 +165,9 @@ void ui_surface(Ui *ui, float x, float y, float w, float h, float radius, float 
 void ui_card(Ui *ui, float x, float y, float w, float h)
 {
     ui_block(ui, x, y, w, h + k_ui.lip_card);
+    ui_depth(ui, 1, 0, 0);
     ui_surface(ui, x, y, w, h, k_ui.r_card, k_ui.lip_card, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
+    ui_depth_end(ui);
 }
 
 static void begin_squash(Ui *ui, uint32_t key, float cx, float bottom, float extra)
@@ -196,6 +216,7 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
         clicked = ui_press(ui, label, x, y, w, h, &held, (flags & UI_F_QUIET) != 0);
     }
     const float lip_h = mg_minf(k_ui.lip_button, h * 0.13f), face_h = h - lip_h;
+    ui_depth(ui, 2, key, v == UI_V_PRIMARY || v == UI_V_OK ? GFX_TILT_GLOSS : 0); /* a control on a card; primary faces gloss */
     float breathe = 1.0f;
     if ((flags & UI_F_BREATHE) && ui->anim && !ui->anim->reduced && !ui->modal && v != UI_V_DISABLED) {
         ui_anim_loop(ui->anim, key, UI_VALUE, 1.0f, k_ui.breathe_scale, k_ui.breathe_s);
@@ -216,6 +237,7 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
     }
     ui_text_c(ui, TEXT_FACE_DISPLAY, x + dx + w * 0.5f, y + face_h * 0.5f, size, tc, vis); /* centred on the face, not the lip */
     gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
     if (clicked && ui->fx) {
         ui_fx_tier(ui->fx, UI_T1, x + w * 0.5f, y + face_h * 0.5f, true);
     }
@@ -233,11 +255,13 @@ bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float
         clicked = ui_press(ui, id, x, y, size, size, &held, false);
     }
     const float lip_h = mg_minf(k_ui.lip_button, size * 0.13f), face_h = size - lip_h;
+    ui_depth(ui, 2, key, 0);
     begin_squash(ui, key, x + size * 0.5f, y + size, 1.0f);
     ui_surface(ui, x, y, size, face_h, mg_minf(k_ui.r_button, face_h * 0.5f), lip_h, face, lip, k_ui.highlight_band,
                C(v == UI_V_ACCENT ? k_ui.highlight_accent : k_ui.highlight));
     ui_icon(ui, icon, x + size * 0.5f, y + face_h * 0.5f, mg_minf(k_ui.icon_box, face_h * 0.6f), tc);
     gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
     if (clicked && ui->fx) {
         ui_fx_tier(ui->fx, UI_T1, x + size * 0.5f, y + face_h * 0.5f, true);
     }
@@ -267,10 +291,12 @@ bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value)
     const float tint = ui->anim ? ui_anim_get(ui->anim, key, UI_ALPHA, *value ? 1.0f : 0.0f) : (*value ? 1.0f : 0.0f);
     const UiColor off = C(k_ui.off), on = C(k_ui.accent);
     const UiColor track = {(uint8_t)(off.r + (on.r - off.r) * tint), (uint8_t)(off.g + (on.g - off.g) * tint), (uint8_t)(off.b + (on.b - off.b) * tint), 255};
+    ui_depth(ui, 2, key, 0);
     ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = k_ui.toggle_w, .h = k_ui.toggle_h, .radius = -1.0f, .color = track});
     const float pad = (k_ui.toggle_h - k_ui.toggle_knob) * 0.5f, travel = k_ui.toggle_w - k_ui.toggle_h;
     const float kx = x + pad + travel * pos, ky = y + pad;
     ui_surface(ui, kx, ky - 1.0f, k_ui.toggle_knob, k_ui.toggle_knob - 2.0f, -1.0f, 2.0f, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
+    ui_depth_end(ui);
     return flipped;
 }
 
@@ -278,6 +304,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
 {
     const uint32_t key = ui_key(id);
     const float lip = k_ui.lip_pill, inner = 4.0f, face_h = h - lip, seg = (w - 2.0f * inner) / (float)n;
+    ui_depth(ui, 2, 0, 0);
     ui_surface(ui, x, y, w, face_h, k_ui.r_tab, lip, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
     bool changed = false;
     for (int i = 0; i < n; i++) {
@@ -311,6 +338,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
         }
         ui_text_c(ui, TEXT_FACE_BOLD, x + inner + seg * ((float)i + 0.5f), y + face_h * 0.5f, size, tc, labels[i]);
     }
+    ui_depth_end(ui);
     return changed;
 }
 
@@ -335,10 +363,12 @@ void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *p
     if (ui->anim) {
         sx = ui_anim_get(ui->anim, key, UI_SX, 1.0f), sy = ui_anim_get(ui->anim, key, UI_SY, 1.0f);
     }
+    ui_depth(ui, 3, 0, 0); /* a badge */
     gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, x + w * 0.5f, y + face_h * 0.5f);
     ui_surface(ui, x, y, w, face_h, -1.0f, lip, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
     ui_text_c(ui, TEXT_FACE_DISPLAY, x + w * 0.5f, y + face_h * 0.5f, face_h * 0.55f, C(k_ui.ink), text);
     gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
     ui_remember(ui, id, x, y, w, face_h); /* the reward flight's target, not a button */
 }
 
@@ -396,6 +426,7 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
     }
     const float alpha = state == UI_ANS_DIM ? 0.55f : 1.0f;
     const float dx = ui->anim ? ui_anim_get(ui->anim, key, UI_X, 0.0f) : 0.0f;
+    ui_depth(ui, 2, key, 0);
     begin_squash(ui, key, x + w * 0.5f, y + h, 1.0f);
     ui_surface(ui, x + dx, y, w, h - lip, k_ui.r_row, lip, with_alpha(face, alpha), with_alpha(lip_c, alpha), 0.0f, C(0));
     if (state == UI_ANS_REVEAL) { /* the right one, shown after a wrong pick: a 3 pt ring */
@@ -408,6 +439,7 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
         ui_icon(ui, UI_ICON_CLOSE, x + dx + w - 26.0f, y + (h - lip) * 0.5f, k_ui.icon_box, tc);
     }
     gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
     return clicked;
 }
 
@@ -422,7 +454,10 @@ static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, 
     gfx_ui_size(ui->gfx, &W, &H);
     ui->modal = true;
     ui_block(ui, 0.0f, 0.0f, W, H);
-    ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, W, H, C(k_ui.scrim)); /* flat scrim, no blur */
+    gfx_ui_depth(ui->gfx, 0.0f, 0);
+    ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, W, H, C(k_ui.scrim)); /* flat scrim, no blur; it does not move */
+    ui->depth_base = k_ui.tilt_depth[4];                         /* a modal and everything in it: the nearest layer */
+    ui_depth_end(ui);
     *x = (W - w) * 0.5f, *y = (H - h) * 0.5f;
     if (ui->anim && ui_anim_fresh(ui->anim, key)) { /* enter: from 0.8 (550 ms, overshoot), or a 150 ms move when reduced */
         const bool red = ui->anim->reduced;
@@ -436,7 +471,12 @@ static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, 
 void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y) { modal(ui, id, w, h, x, y, false); }
 void ui_modal_warning(Ui *ui, const char *id, float w, float h, float *x, float *y) { modal(ui, id, w, h, x, y, true); }
 
-void ui_modal_end(Ui *ui) { gfx_ui_group_off(ui->gfx); }
+void ui_modal_end(Ui *ui)
+{
+    gfx_ui_group_off(ui->gfx);
+    ui->depth_base = k_ui.tilt_depth[1];
+    ui_depth_end(ui);
+}
 
 #define UI_ENTER_DX 56.0f /* pt: where a screen's layer comes in from (the left edge side) */
 

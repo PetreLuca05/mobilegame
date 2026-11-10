@@ -28,6 +28,10 @@ typedef struct Ui {
     bool modal;           /* a modal is up: idle loops stop under it */
     int hclass;           /* HapticClass of the next ui_press (the widget sets it; back to HC_LINK after) */
     uint32_t modal_key, modal_prev; /* this frame's modal and last frame's: open / close haptics */
+    float tilt_x, tilt_y;  /* TILT-1 this frame (x strength): what the shaders shift by */
+    float safe[4];         /* l, t, r, b: shifts near an edge clamp to the room left */
+    float depth_base;      /* inside a modal: everything moves with it */
+    float freeze_x, freeze_y; /* the tilt when the current press began (a pressed control does not slide) */
     float scr_dx, scr_alpha; /* the screen layer this frame (enter + UI shake): ui_screen_enter */
     float scr_age;           /* seconds since the current screen entered */
     /* tappable widgets of the last frame (self-tests tap them by id) */

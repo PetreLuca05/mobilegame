@@ -47,6 +47,7 @@ struct spvUnsafeArray
 struct UiVS
 {
     float4 u_screen;
+    float4 u_tilt;
 };
 
 constant spvUnsafeArray<float2, 6> _27 = spvUnsafeArray<float2, 6>({ float2(0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0), float2(1.0), float2(0.0, 1.0) });
@@ -61,6 +62,7 @@ struct VSMain_out
     float4 _entryPointOutput_col2 [[user(locn5)]];
     float4 _entryPointOutput_clip [[user(locn6)]];
     float4 _entryPointOutput_ptk [[user(locn7)]];
+    float4 _entryPointOutput_tiltv [[user(locn8)]];
     float4 gl_Position [[position]];
 };
 
@@ -74,26 +76,40 @@ struct VSMain_in
     float4 i_col [[attribute(5)]];
     float4 i_col2 [[attribute(6)]];
     float2 i_kind [[attribute(7)]];
+    float4 i_tilt [[attribute(8)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _115 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _112 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
 {
     VSMain_out out = {};
-    uint _247 = gl_VertexIndex % 6u;
-    float2 _253 = in.i_rect.zw * 0.5;
-    float2 _272 = (_27[_247] - float2(0.5)) * (in.i_rect.zw + float2(((in.i_kind.x > 0.5) && (in.i_kind.x < 1.5)) ? 3.0 : 0.0));
-    float2 _239 = _272;
-    float2 _302 = (in.i_rect.xy + _253) + float2((in.i_xf.x * _239.x) + (in.i_xf.z * _239.y), (in.i_xf.y * _239.x) + (in.i_xf.w * _239.y));
-    float2 _241 = _302;
-    out.gl_Position = float4((_241.x * _115.u_screen.x) - 1.0, 1.0 - (_241.y * _115.u_screen.y), 0.0, 1.0);
-    out._entryPointOutput_uv = mix(in.i_uv.xy, in.i_uv.zw, _27[_247]);
-    out._entryPointOutput_local = _272;
-    out._entryPointOutput_half_size = _253;
+    uint _308 = gl_VertexIndex % 6u;
+    float2 _314 = in.i_rect.zw * 0.5;
+    float2 _333 = (_27[_308] - float2(0.5)) * (in.i_rect.zw + float2(((in.i_kind.x > 0.5) && (in.i_kind.x < 1.5)) ? 3.0 : 0.0));
+    float2 _298 = _333;
+    float2 _300 = (in.i_rect.xy + _314) + float2((in.i_xf.x * _298.x) + (in.i_xf.z * _298.y), (in.i_xf.y * _298.x) + (in.i_xf.w * _298.y));
+    float2 _370 = (-_112.u_tilt.xy) * in.i_tilt.x;
+    float2 _555;
+    if (in.i_tilt.y > 0.0)
+    {
+        _555 = _370 + (float2(((-0.699999988079071044921875) * in.i_tilt.y) * _112.u_tilt.x, ((-0.4000000059604644775390625) * in.i_tilt.y) * _112.u_tilt.y) * ((in.i_tilt.z >= 2.0) ? 1.5 : 1.0));
+    }
+    else
+    {
+        _555 = _370;
+    }
+    float2 _398 = _300;
+    float2 _399 = _398 + _555;
+    _300 = _399;
+    out.gl_Position = float4((_300.x * _112.u_screen.x) - 1.0, 1.0 - (_300.y * _112.u_screen.y), 0.0, 1.0);
+    out._entryPointOutput_uv = mix(in.i_uv.xy, in.i_uv.zw, _27[_308]);
+    out._entryPointOutput_local = _333;
+    out._entryPointOutput_half_size = _314;
     out._entryPointOutput_shape = in.i_shape;
     out._entryPointOutput_col = in.i_col;
     out._entryPointOutput_col2 = in.i_col2;
     out._entryPointOutput_clip = in.i_clip;
-    out._entryPointOutput_ptk = float4(_302, in.i_kind.x, in.i_kind.y);
+    out._entryPointOutput_ptk = float4(_399, in.i_kind.x, in.i_kind.y);
+    out._entryPointOutput_tiltv = float4(_112.u_tilt.xyz, in.i_tilt.z);
     return out;
 }
 

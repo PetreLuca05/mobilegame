@@ -68,6 +68,8 @@ void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
     ui->modal_key = 0;
     ui->hclass = HC_LINK;
     ui->modal = false;
+    ui->depth_base = k_ui.tilt_depth[1]; /* TILT-1: the card layer is the default; widgets go nearer */
+    gfx_ui_depth(gfx, ui->depth_base, 0);
     ui->gfx = gfx;
     ui->font = font;
     ui->in = in;
@@ -203,6 +205,7 @@ bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, boo
         ui->active_id = id;
         ui->active_touch = t;
         ui->press_inside = true;
+        ui->freeze_x = ui->tilt_x, ui->freeze_y = ui->tilt_y;
         press_motion(ui, id, true);
         if (ui->fx && !quiet) {
             ui_fx_tier(ui->fx, UI_T0, x + w * 0.5f, y + h * 0.5f, true);

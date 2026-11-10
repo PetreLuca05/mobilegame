@@ -114,7 +114,8 @@ static void draw_stick(GfxContext *g, float cx, float cy, float r, float scale, 
         return;
     }
     const float s = r / k_ui.stick_design_r, br = r * scale;
-    ui_shape(g, &(UiShape){.x = cx - br, .y = cy - br + k_ui.stick_lip_off * s * scale, .w = 2.0f * br, .h = 2.0f * br, .radius = -1.0f,
+    gfx_ui_depth(g, k_ui.tilt_depth[2], 0); /* TILT-1: the base is a control layer; the knob does not shift */
+    ui_shape(g, &(UiShape){.x = cx - br, .y = cy - br + k_ui.stick_lip_off * s * scale, .w = 2.0f * br, .h = 2.0f * br, .radius = -1.0f, .lip = k_ui.stick_lip_off * s * scale,
                            .color = with_a(k_ui.stick_lip, alpha)});
     ui_shape(g, &(UiShape){.x = cx - br, .y = cy - br, .w = 2.0f * br, .h = 2.0f * br, .radius = -1.0f, .stroke = -k_ui.stick_border_w * s,
                            .color = with_a(k_ui.stick_base, alpha), .color2 = with_a(k_ui.stick_border, alpha)});
@@ -134,10 +135,12 @@ static void draw_stick(GfxContext *g, float cx, float cy, float r, float scale, 
                            .color = with_a(nav_dot ? k_ui.accent : k_ui.stick_dot, alpha)}); /* autonav: the idle stick's dot turns accent */
     const float kr = k_ui.stick_knob_d * 0.5f * s, kl = k_ui.stick_knob_lip * s;
     const float x = cx + kx, y = cy + ky;
-    ui_shape(g, &(UiShape){.x = x - kr, .y = y - kr + kl, .w = 2.0f * kr, .h = 2.0f * kr, .radius = -1.0f, .use_m = true, .m = {m[0], m[1], m[2], m[3]},
+    gfx_ui_depth(g, 0.0f, 0); /* only the knob's lip swings */
+    ui_shape(g, &(UiShape){.x = x - kr, .y = y - kr + kl, .w = 2.0f * kr, .h = 2.0f * kr, .radius = -1.0f, .lip = kl, .use_m = true, .m = {m[0], m[1], m[2], m[3]},
                            .color = with_a(k_ui.primary_lip, alpha)});
     ui_shape(g, &(UiShape){.x = x - kr, .y = y - kr, .w = 2.0f * kr, .h = 2.0f * kr, .radius = -1.0f, .highlight = k_ui.stick_knob_hl * s,
                            .use_m = true, .m = {m[0], m[1], m[2], m[3]}, .color = with_a(k_ui.primary, alpha), .color2 = with_a(k_ui.highlight, alpha)});
+    gfx_ui_depth(g, k_ui.tilt_depth[1], 0);
 }
 
 void stick_view_draw(StickView *v, const TouchControls *tc, const TouchControlsConfig *cfg, GfxContext *g, float rest_x, float rest_y)

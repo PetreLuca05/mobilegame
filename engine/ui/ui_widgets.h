@@ -25,6 +25,10 @@ void ui_text_c(Ui *ui, int face, float cx, float cy, float size, UiColor c, cons
 float ui_text_w(const Ui *ui, int face, const char *s, float size);
 /* A label in caps, 12 pt teal, 0.14 em tracking. */
 void ui_label_caps(Ui *ui, float x, float y, const char *s);
+/* TILT-1 depth: the instances that follow shift by k_ui.tilt_depth[level] against the tilt (the shader clamps it near
+ * a safe edge; held while `key` is pressed); ui_depth_end goes back to the surrounding depth (the card layer, or a modal). */
+void ui_depth(Ui *ui, int level, uint32_t key, int flags);
+void ui_depth_end(Ui *ui);
 /* A surface with its lip (cards 26 / 7, rows 16 / 4, pills: radius -1, 5). */
 void ui_surface(Ui *ui, float x, float y, float w, float h, float radius, float lip, UiColor face, UiColor lip_c, float highlight, UiColor hl);
 void ui_card(Ui *ui, float x, float y, float w, float h);

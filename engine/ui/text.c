@@ -234,6 +234,7 @@ void ui_shape(GfxContext *g, const UiShape *sh)
     if (sh->use_m) {
         memcpy(in.xf, sh->m, sizeof(in.xf));
     }
+    in.tilt[1] = sh->lip;
     if (sh->origin_bottom && sy != 1.0f) { /* scale about the bottom edge, not the centre (press / release) */
         in.rect[1] += sh->h * 0.5f * (1.0f - sy);
     }
