@@ -74,6 +74,7 @@
 #include "stats.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
+#include "ui/ui_widgets.h"
 #include "world_data.h"
 #include "worldmap.h"
 
@@ -223,6 +224,8 @@ typedef struct Game {
     int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
+    UiAnim ui_anim;        /* UI-1: the tween pool */
+    UiFx ui_fx;            /* UI-1: particles, rings, reward tokens, banner, sounds, haptics */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -623,6 +626,8 @@ bool game_init(MgApp *app)
     g->thermal_force = force_thermal ? SDL_atoi(force_thermal) : -1;
     g->logged_fe = -1;
     g->audio = audio_create(&app->perm);
+    ui_fx_init(&g->ui_fx, &g->ui_anim, g->audio, &app->font_display);
+    ui_attach(&g->ui, &g->ui_anim, &g->ui_fx, &app->font_display, &app->font_bold);
 #ifdef MG_DAYCYCLE_CONTINUOUS
     daycycle_init(&g->day);
     g->settings.follow_clock = true;
@@ -1436,7 +1441,7 @@ static void draw_notices(Game *g, MgApp *app)
         } else if (g->notice.q[0].kind == NOTICE_INVITE) {
             lobby_invite_shown(&g->lobby, g->notice.q[0].id);
         }
-        if (g->settings.marker_sounds) {
+        if (g->settings.ui_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
         }
         if (g->settings.haptics) {
@@ -2164,7 +2169,7 @@ static void interact_tap(Game *g, MgApp *app)
     if (ia_use_active(&g->ia)) {
         g->panel.punch = 1.0f;
         g->panel.head_tap = 1.0f;
-        if (g->settings.marker_sounds) {
+        if (g->settings.ui_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK);
         }
         if (g->settings.haptics) {
@@ -2631,6 +2636,8 @@ void game_frame(MgApp *app, float alpha)
 {
     game_frame_inner(app, alpha);
     Game *g = (Game *)app->game;
+    gfx_ui_screen(app->gfx, 0.0f, 0.0f, 1.0f);
+    ui_fx_update_draw(&g->ui_fx, app->gfx, app->width_pt, app->height_pt); /* over every screen */
     head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
 }
 
@@ -2942,6 +2949,10 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* UI claims touches first (pause button + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
+    ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion());
+    g->ui_fx.haptics = s->haptics;
+    g->ui_fx.sounds = s->sound_on && s->ui_sounds;
+    gfx_ui_screen(app->gfx, ui_fx_shake_x(&g->ui_fx), 0.0f, 1.0f); /* the UI shake: UI only, never the camera */
     bool back = app->input.key_pressed[SDL_SCANCODE_AC_BACK] || app->input.key_pressed[SDL_SCANCODE_ESCAPE];
     if (!g->playing) {
         frontend_flow(g, app, back);
@@ -3406,7 +3417,7 @@ static int level_of(int storey) { return storey < 0 ? 0 : storey; }
 
 static void marker_cue(Game *g, AudioCue cue)
 {
-    if (g->settings.marker_sounds) {
+    if (g->settings.ui_sounds) {
         audio_cue(g->audio, cue);
     }
 }

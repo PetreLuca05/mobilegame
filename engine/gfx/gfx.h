@@ -192,6 +192,14 @@ bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg);
 #endif
 /* Queue one UI instance (its clip comes from gfx_ui_clip); false when the frame's UI is full. */
 bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst);
+/* A group transform for the instances that follow (a widget's squash: lip, face and label together):
+ * x' = o + M (x - o) with M = (a c; b d). gfx_ui_group_off() ends it. */
+void gfx_ui_group(GfxContext *g, float a, float b, float c, float d, float ox, float oy);
+void gfx_ui_group_off(GfxContext *g);
+/* The screen layer over everything (enter / exit slides and fades, the UI shake): offset and alpha. */
+void gfx_ui_screen(GfxContext *g, float dx, float dy, float alpha);
+/* The UI's size in points (gfx_set_ui_size). */
+void gfx_ui_size(const GfxContext *g, float *w_pt, float *h_pt);
 /* Head icons (ui/head_icons.c): draws between begin and end land in one cell of the
  * 8 x 8 atlas, through a small offscreen pass that only exists on frames that use it.
  * In UI quads, u + 2 samples this atlas. */

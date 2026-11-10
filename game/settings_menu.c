@@ -75,7 +75,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += 44.0f;
     ui_toggle(ui, str("haptics"), cx, cy, cw, &s->haptics);
     cy += 44.0f;
-    ui_toggle(ui, str("marker_sounds"), cx, cy, cw, &s->marker_sounds);
+    ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
     cy += 44.0f;
 #else
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");

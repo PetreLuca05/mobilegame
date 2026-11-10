@@ -20,11 +20,17 @@ typedef struct Ui {
     bool input_off;     /* a modal is up: what is drawn underneath takes no touches (cleared by ui_begin) */
     bool clip_on;       /* inside a scroll region: taps outside it are ignored */
     float clip[4];
+    /* UI-1: motion, effects and the faces (ui_attach); NULL = no motion, the body face */
+    struct UiAnim *anim;
+    struct UiFx *fx;
+    const TextFont *display, *bold;
+    bool press_inside;    /* the active widget is drawn pressed (finger still inside) */
+    bool modal;           /* a modal is up: idle loops stop under it */
     /* tappable widgets of the last frame (self-tests tap them by id) */
     struct {
         uint32_t key;
         float x, y, w, h;
-    } seen[128];
+    } seen[256];
     int seen_count;
 } Ui;
 
@@ -45,6 +51,15 @@ typedef struct UiTheme {
 extern const UiTheme k_ui_theme;
 
 void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in);
+/* UI-1: the tween pool, the effects and the display / bold faces the widgets use. */
+void ui_attach(Ui *ui, struct UiAnim *anim, struct UiFx *fx, const TextFont *display, const TextFont *bold);
+/* FNV-1a of a widget id ("Text##id" -> "id"): the key of its tweens. */
+uint32_t ui_key(const char *label);
+/* Pressed state with UI-1 motion: true on the touch-up inside; *held while the finger is down inside.
+ * Starts press / release on the widget's key and plays T0 on touch-down (unless `quiet`). */
+bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, bool *held, bool quiet);
+/* The last frame's rect of a widget by id (reward flights, tests). */
+bool ui_rect_of(const Ui *ui, const char *key, float *x, float *y, float *w, float *h);
 /* Claim touches that begin inside the rect (backgrounds, modal panels). */
 bool ui_block(Ui *ui, float x, float y, float w, float h);
 void ui_panel(Ui *ui, float x, float y, float w, float h);

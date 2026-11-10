@@ -3,13 +3,16 @@
 #include <math.h>
 #include <string.h>
 
+#include "ui_widgets.h"
+
+/* UI-1: the old theme names on the token table (surfaces are white now: text on them is ink) */
 const UiTheme k_ui_theme = {
-    .panel = {22, 26, 38, 232},
-    .button = {255, 255, 255, 34},
-    .button_down = {255, 255, 255, 90},
-    .accent = {74, 139, 255, 255},
-    .text = {255, 255, 255, 255},
-    .text_dim = {255, 255, 255, 160},
+    .panel = {255, 255, 255, 255},
+    .button = {255, 255, 255, 255},
+    .button_down = {234, 247, 243, 255},
+    .accent = {14, 143, 131, 255},
+    .text = {23, 58, 58, 255},
+    .text_dim = {42, 87, 83, 255},
 };
 
 static uint32_t hash_label(const char *s)
@@ -40,8 +43,23 @@ static bool inside(const MgTouch *t, float x, float y, float w, float h, bool st
     return px >= x && px <= x + w && py >= y && py <= y + h;
 }
 
+uint32_t ui_key(const char *label)
+{
+    const char *hash = strstr(label, "##");
+    return hash_label(hash ? hash + 2 : label);
+}
+
+void ui_attach(Ui *ui, struct UiAnim *anim, struct UiFx *fx, const TextFont *display, const TextFont *bold)
+{
+    ui->anim = anim;
+    ui->fx = fx;
+    ui->display = display;
+    ui->bold = bold;
+}
+
 void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
 {
+    ui->modal = false;
     ui->gfx = gfx;
     ui->font = font;
     ui->in = in;
@@ -81,11 +99,7 @@ static int claim(Ui *ui, float x, float y, float w, float h) { return claim_as(u
 
 bool ui_block(Ui *ui, float x, float y, float w, float h) { return claim_as(ui, x, y, w, h, UI_BLOCK_OWNER) >= 0; }
 
-void ui_panel(Ui *ui, float x, float y, float w, float h)
-{
-    ui_block(ui, x, y, w, h);
-    ui_round_rect(ui->gfx, ui->font, x, y, w, h, 16.0f, k_ui_theme.panel);
-}
+void ui_panel(Ui *ui, float x, float y, float w, float h) { ui_card(ui, x, y, w, h); }
 
 void ui_label(Ui *ui, float x, float y, float size, UiColor c, const char *text)
 {
@@ -104,10 +118,23 @@ static void remember(Ui *ui, const char *label, float x, float y, float w, float
     }
     int i = ui->seen_count++;
     ui->seen[i].key = hash_label(hash ? hash + 2 : label);
+    (void)hash;
     ui->seen[i].x = x;
     ui->seen[i].y = y;
     ui->seen[i].w = w;
     ui->seen[i].h = h;
+}
+
+bool ui_rect_of(const Ui *ui, const char *key, float *x, float *y, float *w, float *h)
+{
+    const uint32_t k = hash_label(key);
+    for (int i = ui->seen_count - 1; i >= 0; i--) {
+        if (ui->seen[i].key == k) {
+            *x = ui->seen[i].x, *y = ui->seen[i].y, *w = ui->seen[i].w, *h = ui->seen[i].h;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool ui_find(const Ui *ui, const char *key, float *x, float *y)
@@ -123,14 +150,38 @@ bool ui_find(const Ui *ui, const char *key, float *x, float *y)
     return false;
 }
 
-static bool track(Ui *ui, const char *label, float x, float y, float w, float h, bool *held)
+static void press_motion(Ui *ui, uint32_t key, bool down)
 {
-    uint32_t id = hash_label(label);
+    if (!ui->anim) {
+        return;
+    }
+    UiAnim *a = ui->anim;
+    if (a->reduced) { /* a 4 % uniform press, a 150 ms way back */
+        ui_anim_to(a, key, UI_SX, 1.0f, down ? k_ui.reduced_press : 1.0f, down ? k_ui.press_s : k_ui.reduced_s, UI_EASE_LINEAR, NULL, down);
+        ui_anim_to(a, key, UI_SY, 1.0f, down ? k_ui.reduced_press : 1.0f, down ? k_ui.press_s : k_ui.reduced_s, UI_EASE_LINEAR, NULL, down);
+    } else if (down) { /* press: (1.07, 0.86) in 90 ms, held */
+        ui_anim_to(a, key, UI_SX, 1.0f, k_ui.press_sx, k_ui.press_s, UI_EASE_OUT, NULL, true);
+        ui_anim_to(a, key, UI_SY, 1.0f, k_ui.press_sy, k_ui.press_s, UI_EASE_OUT, NULL, true);
+    } else { /* release: the jelly wobble back to (1, 1), from wherever it is */
+        ui_anim_keys(a, key, UI_SX, 1.0f, k_ui.release_t, k_ui.release_sx, 5, k_ui.release_s, UI_EASE_OUT);
+        ui_anim_keys(a, key, UI_SY, 1.0f, k_ui.release_t, k_ui.release_sy, 5, k_ui.release_s, UI_EASE_OUT);
+    }
+}
+
+/* Press / release tracking. The action fires on the touch-up inside, at once: motion never delays it. */
+bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, bool *held, bool quiet)
+{
+    uint32_t id = ui_key(label);
     remember(ui, label, x, y, w, h);
     int t = claim(ui, x, y, w, h);
     if (t >= 0) {
         ui->active_id = id;
         ui->active_touch = t;
+        ui->press_inside = true;
+        press_motion(ui, id, true);
+        if (ui->fx && !quiet) {
+            ui_fx_tier(ui->fx, UI_T0, x + w * 0.5f, y + h * 0.5f, true);
+        }
     }
     bool clicked = false;
     *held = false;
@@ -138,14 +189,24 @@ static bool track(Ui *ui, const char *label, float x, float y, float w, float h,
         MgTouch *tt = &ui->in->touches[ui->active_touch];
         if (tt->active) {
             *held = inside(tt, x, y, w, h, false);
+            if (*held != ui->press_inside) { /* off the control: it springs back; back on: pressed again */
+                ui->press_inside = *held;
+                press_motion(ui, id, *held);
+            }
         } else if (tt->ended) {
             clicked = inside(tt, x, y, w, h, false);
+            if (ui->press_inside) {
+                press_motion(ui, id, false);
+            }
             ui->active_id = 0;
             ui->active_touch = -1;
+            ui->press_inside = false;
         }
     }
     return clicked;
 }
+
+static bool track(Ui *ui, const char *label, float x, float y, float w, float h, bool *held) { return ui_press(ui, label, x, y, w, h, held, true); }
 
 bool ui_hit_area(Ui *ui, const char *id, float x, float y, float w, float h, bool *held)
 {
@@ -154,15 +215,7 @@ bool ui_hit_area(Ui *ui, const char *id, float x, float y, float w, float h, boo
 
 bool ui_button(Ui *ui, const char *label, float x, float y, float w, float h, bool highlighted)
 {
-    bool held;
-    bool clicked = track(ui, label, x, y, w, h, &held);
-    UiColor bg = held ? k_ui_theme.button_down : (highlighted ? k_ui_theme.accent : k_ui_theme.button);
-    ui_round_rect(ui->gfx, ui->font, x, y, w, h, mg_minf(12.0f, h * 0.5f), bg);
-    char vis[64];
-    visible(label, vis, sizeof(vis));
-    float size = mg_minf(18.0f, h * 0.45f);
-    text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + h * 0.5f, size, k_ui_theme.text, vis);
-    return clicked;
+    return ui_button_v(ui, label, x, y, w, h, highlighted ? UI_V_PRIMARY : UI_V_SECONDARY, 0);
 }
 
 bool ui_slider(Ui *ui, const char *label, float x, float y, float w, float *value, float min, float max,
@@ -192,30 +245,25 @@ bool ui_slider(Ui *ui, const char *label, float x, float y, float w, float *valu
     visible(label, vis, sizeof(vis));
     SDL_snprintf(num, sizeof(num), fmt, (double)*value);
     SDL_snprintf(buf, sizeof(buf), "%s  %s", vis, num);
-    text_draw(ui->gfx, ui->font, x, y, 15.0f, k_ui_theme.text_dim, buf);
+    ui_text(ui, TEXT_FACE_BOLD, x, y, k_ui.t_small, ui_rgba(k_ui.ink_soft), buf);
     float f = mg_saturate((*value - min) / (max - min));
-    ui_round_rect(ui->gfx, ui->font, x, ty + track_h * 0.5f - 4.0f, w, 8.0f, 4.0f, k_ui_theme.button);
-    ui_round_rect(ui->gfx, ui->font, x, ty + track_h * 0.5f - 4.0f, w * f, 8.0f, 4.0f, k_ui_theme.accent);
-    ui_circle(ui->gfx, ui->font, x + w * f, ty + track_h * 0.5f, 12.0f, k_ui_theme.text);
+    const float th = 10.0f, cy = ty + track_h * 0.5f;
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = cy - th * 0.5f, .w = w, .h = th, .radius = -1.0f, .color = ui_rgba(k_ui.lip_mint)});
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = cy - th * 0.5f, .w = mg_maxf(w * f, th), .h = th, .radius = -1.0f, .color = ui_rgba(k_ui.fill)});
+    const float kr = 13.0f;
+    ui_surface(ui, x + w * f - kr, cy - kr - 1.0f, 2.0f * kr, 2.0f * kr - 2.0f, -1.0f, 3.0f, ui_rgba(k_ui.primary), ui_rgba(k_ui.primary_lip), 3.0f,
+               ui_rgba(k_ui.highlight));
     return changed;
 }
 
 bool ui_toggle(Ui *ui, const char *label, float x, float y, float w, bool *value)
 {
-    const float h = 36.0f;
-    bool held;
-    bool clicked = track(ui, label, x, y, w, h, &held);
-    if (clicked) {
-        *value = !*value;
-    }
     char vis[64];
     visible(label, vis, sizeof(vis));
-    text_draw(ui->gfx, ui->font, x, y + 8.0f, 16.0f, k_ui_theme.text, vis);
-    float sw = 52.0f, sh = 30.0f, sx = x + w - sw, sy = y + (h - sh) * 0.5f;
-    ui_round_rect(ui->gfx, ui->font, sx, sy, sw, sh, sh * 0.5f, *value ? k_ui_theme.accent : k_ui_theme.button);
-    ui_circle(ui->gfx, ui->font, *value ? sx + sw - sh * 0.5f : sx + sh * 0.5f, sy + sh * 0.5f, sh * 0.5f - 3.0f,
-              k_ui_theme.text);
-    return clicked;
+    const float h = k_ui.toggle_h;
+    ui_text(ui, TEXT_FACE_BOLD, x, y + h * 0.5f - k_ui.t_body * 0.62f, k_ui.t_body, k_ui_theme.text, vis);
+    const char *hash = strstr(label, "##");
+    return ui_switch(ui, hash ? hash + 2 : label, x + w - k_ui.toggle_w, y, value);
 }
 
 float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float key_h, char *code, int max_len)
@@ -324,9 +372,10 @@ int ui_text_field(Ui *ui, const char *id, float x, float y, float w, float h, ch
             result = UI_EDIT_DONE;
         }
     }
-    ui_round_rect(ui->gfx, ui->font, x, y, w, h, 10.0f, *editing ? ui_rgba(0xFFFFFF33) : k_ui_theme.button);
-    if (*editing) {
-        ui_round_rect(ui->gfx, ui->font, x, y + h - 3.0f, w, 3.0f, 1.5f, k_ui_theme.accent);
+    ui_surface(ui, x, y, w, h - k_ui.lip_row, k_ui.r_row, k_ui.lip_row, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+    if (*editing) { /* the focus ring */
+        ui_shape(ui->gfx, &(UiShape){.x = x - 1.5f, .y = y - 1.5f, .w = w + 3.0f, .h = h - k_ui.lip_row + 3.0f, .radius = k_ui.r_row + 1.5f, .stroke = k_ui.ring_width,
+                                     .color = ui_rgba(k_ui.teal_text)});
     }
     float size = mg_minf(18.0f, h * 0.5f);
     float tw = text_draw(ui->gfx, ui->font, x + 12.0f, y + (h - size * 1.2f) * 0.5f, size, k_ui_theme.text, buf);

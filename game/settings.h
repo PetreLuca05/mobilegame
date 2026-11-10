@@ -30,7 +30,8 @@ typedef struct GameSettings {
     int chat_bubbles;       /* 0 off, 1 the active NPC, 2 nearby ones too */
     float stress_count;     /* debug: wandering dummy avatars, 0..400 */
     bool haptics;           /* marker taps, lift buttons (iOS) */
-    bool marker_sounds;
+    bool ui_sounds;         /* every UI sound: buttons, toggles, rewards, markers (was marker_sounds) */
+    int ui_motion;          /* UI-1: 0 full, 1 reduced (also when iOS Reduce Motion is on) */
     bool test_markers;      /* debug: scatter markers to tap */
     float test_marker_count; /* 1..16 */
     bool show_all_paths;    /* debug: a path preview for every marker */
@@ -69,7 +70,8 @@ static inline void settings_default(GameSettings *s)
     s->show_own_name = false;
     s->show_xray = true;
     s->haptics = true;
-    s->marker_sounds = true;
+    s->ui_sounds = true;
+    s->ui_motion = 0;
 #ifdef NDEBUG
     s->test_markers = false;
 #else

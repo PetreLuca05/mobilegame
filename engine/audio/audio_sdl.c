@@ -8,6 +8,13 @@
 
 #define AUDIO_RATE 48000
 #define DING_SECONDS 1.1f
+#define AUDIO_VOICES 16
+
+typedef struct Voice {
+    float f0, f1, dur, delay, gain, phase, t;
+    int wave;
+    bool on;
+} Voice;
 
 struct Audio {
     SDL_AudioStream *stream;
@@ -19,6 +26,7 @@ struct Audio {
     float *cue[AUDIO_CUE_COUNT];
     int cue_len[AUDIO_CUE_COUNT];
     SDL_AtomicInt cue_cursor[AUDIO_CUE_COUNT];
+    Voice voices[AUDIO_VOICES]; /* audio_tone; changed under SDL_LockAudioStream */
     bool muted;
 };
 
@@ -103,6 +111,24 @@ static void SDLCALL feed(void *user, SDL_AudioStream *stream, int additional, in
             }
             SDL_SetAtomicInt(&a->cue_cursor[c], p);
         }
+        for (int v = 0; v < AUDIO_VOICES; v++) { /* UI-1 notes */
+            Voice *vo = &a->voices[v];
+            for (int i = 0; i < n && vo->on; i++) {
+                if (vo->delay > 0.0f) {
+                    vo->delay -= 1.0f / (float)AUDIO_RATE;
+                    continue;
+                }
+                const float u = vo->t / vo->dur;
+                const float hz = vo->f0 + (vo->f1 - vo->f0) * u;
+                vo->phase += hz / (float)AUDIO_RATE;
+                vo->phase -= floorf(vo->phase);
+                const float w = vo->wave ? 4.0f * fabsf(vo->phase - 0.5f) - 1.0f : sinf(2.0f * (float)M_PI * vo->phase);
+                const float env = fminf(vo->t / 0.003f, 1.0f) * expf(-u * 4.6f); /* -40 dB by the end */
+                buf[i] += vo->gain * env * w;
+                vo->t += 1.0f / (float)AUDIO_RATE;
+                vo->on = vo->t < vo->dur;
+            }
+        }
         SDL_SetAtomicInt(&a->cursor, cur);
         SDL_SetAtomicInt(&a->click_cursor, cc);
         SDL_PutAudioStreamData(stream, buf, n * (int)sizeof(float));
@@ -180,4 +206,24 @@ void audio_click(Audio *a)
     if (a && !a->muted) {
         SDL_SetAtomicInt(&a->click_cursor, 0);
     }
+}
+
+void audio_tone(Audio *a, float f0, float f1, float dur_s, float delay_s, float gain, int wave)
+{
+    if (!a || a->muted || !a->stream || dur_s <= 0.0f) {
+        return;
+    }
+    SDL_LockAudioStream(a->stream);
+    int best = 0;
+    for (int v = 0; v < AUDIO_VOICES; v++) { /* a free voice, else the one nearest its end */
+        if (!a->voices[v].on) {
+            best = v;
+            break;
+        }
+        if (a->voices[v].t / a->voices[v].dur > a->voices[best].t / a->voices[best].dur) {
+            best = v;
+        }
+    }
+    a->voices[best] = (Voice){f0, f1, dur_s, delay_s, gain, 0.0f, 0.0f, wave, true};
+    SDL_UnlockAudioStream(a->stream);
 }

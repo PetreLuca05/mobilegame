@@ -26,6 +26,9 @@ typedef enum AudioCue {
     AUDIO_CUE_COUNT
 } AudioCue;
 void audio_cue(Audio *a, AudioCue cue);
+/* UI-1: one synthesised note on a free voice (16): f0 -> f1 Hz glide over dur_s, after delay_s, a fast
+ * exponential decay; wave 0 sine, 1 triangle. Safe from the frame; no allocation. */
+void audio_tone(Audio *a, float f0, float f1, float dur_s, float delay_s, float gain, int wave);
 /* Settings -> Sound off: every sound call is ignored. */
 void audio_set_muted(Audio *a, bool muted);
 

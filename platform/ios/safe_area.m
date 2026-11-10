@@ -29,3 +29,5 @@ bool ios_safe_insets(SDL_Window *window, float *left, float *top, float *right, 
     *bottom = (float)e.bottom;
     return true;
 }
+
+bool app_reduce_motion(void) { return UIAccessibilityIsReduceMotionEnabled(); }

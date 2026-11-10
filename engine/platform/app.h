@@ -71,4 +71,7 @@ void app_quit(void *appstate, SDL_AppResult result);
 /* Show / hide the on-screen keyboard; typed text arrives in input.text. */
 void app_text_input(MgApp *app, bool on);
 
+/* UI-1: the system's Reduce Motion (iOS accessibility); false elsewhere. */
+bool app_reduce_motion(void);
+
 #endif

@@ -98,5 +98,9 @@
   "link_summary": "%d sesiuni, %d minute jucate",
   "link_row": "Conectează contul",
   "link_ok": "Cont conectat",
-  "wm_provisional": "Hartă provizorie"
+  "wm_provisional": "Hartă provizorie",
+  "ui_sounds": "Sunete interfață",
+  "ui_motion": "Animații interfață",
+  "ui_motion_full": "Complete",
+  "ui_motion_reduced": "Reduse"
 }

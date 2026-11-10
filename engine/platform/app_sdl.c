@@ -12,6 +12,10 @@
 
 static MgApp g_app; /* the single global app context */
 
+#if !defined(SDL_PLATFORM_IOS)
+bool app_reduce_motion(void) { return false; } /* iOS: platform/ios/safe_area.m */
+#endif
+
 #if defined(SDL_PLATFORM_IOS)
 bool ios_safe_insets(SDL_Window *window, float *left, float *top, float *right, float *bottom);
 void ios_request_landscape(SDL_Window *window, bool right);

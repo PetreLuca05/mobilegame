@@ -187,6 +187,9 @@ struct GfxContext {
     uint32_t panel_count;
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
     float ui_clip[4];     /* x0, y0, x1, y1 for the instances that follow; x1 < x0 = none */
+    float ui_group[6];    /* a, b, c, d, ox, oy */
+    bool ui_group_on;
+    float ui_screen[3];   /* dx, dy, alpha */
     /* settings preview: second camera into an offscreen square */
     bool preview_on;
     bool preview_lit; /* false: preview pass gets no scene lights/shadows */
@@ -1177,6 +1180,9 @@ bool gfx_frame_begin(GfxContext *g)
     g->panel_count = 0;
     g->ui_clip[0] = g->ui_clip[1] = 0.0f;
     g->ui_clip[2] = g->ui_clip[3] = -1.0f;
+    g->ui_group_on = false;
+    g->ui_screen[0] = g->ui_screen[1] = 0.0f;
+    g->ui_screen[2] = 1.0f;
     g->preview_on = false;
     g->inset_count = g->current_inset = 0;
 #ifdef MG_RENDER_FULL
@@ -1245,7 +1251,40 @@ bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst)
     GfxUiInst *o = &g->ui_insts[g->ui_count++];
     *o = *inst;
     memcpy(o->clip, g->ui_clip, sizeof(o->clip));
+    if (g->ui_group_on) { /* move the centre about the origin, compose the 2 x 2 */
+        const float *m = g->ui_group;
+        const float cx = o->rect[0] + o->rect[2] * 0.5f - m[4], cy = o->rect[1] + o->rect[3] * 0.5f - m[5];
+        const float nx = m[4] + m[0] * cx + m[2] * cy, ny = m[5] + m[1] * cx + m[3] * cy;
+        o->rect[0] = nx - o->rect[2] * 0.5f, o->rect[1] = ny - o->rect[3] * 0.5f;
+        const float a = o->xf[0], b = o->xf[1], c = o->xf[2], d = o->xf[3];
+        o->xf[0] = m[0] * a + m[2] * b, o->xf[1] = m[1] * a + m[3] * b;
+        o->xf[2] = m[0] * c + m[2] * d, o->xf[3] = m[1] * c + m[3] * d;
+    }
+    if (g->ui_screen[0] != 0.0f || g->ui_screen[1] != 0.0f || g->ui_screen[2] < 1.0f) {
+        o->rect[0] += g->ui_screen[0], o->rect[1] += g->ui_screen[1];
+        o->color[3] = (uint8_t)((float)o->color[3] * g->ui_screen[2]);
+        o->color2[3] = (uint8_t)((float)o->color2[3] * g->ui_screen[2]);
+    }
     return true;
+}
+
+void gfx_ui_group(GfxContext *g, float a, float b, float c, float d, float ox, float oy)
+{
+    g->ui_group[0] = a, g->ui_group[1] = b, g->ui_group[2] = c, g->ui_group[3] = d, g->ui_group[4] = ox, g->ui_group[5] = oy;
+    g->ui_group_on = !(a == 1.0f && b == 0.0f && c == 0.0f && d == 1.0f);
+}
+
+void gfx_ui_group_off(GfxContext *g) { g->ui_group_on = false; }
+
+void gfx_ui_size(const GfxContext *g, float *w_pt, float *h_pt)
+{
+    *w_pt = g->ui_w_pt;
+    *h_pt = g->ui_h_pt;
+}
+
+void gfx_ui_screen(GfxContext *g, float dx, float dy, float alpha)
+{
+    g->ui_screen[0] = dx, g->ui_screen[1] = dy, g->ui_screen[2] = alpha < 0.0f ? 0.0f : alpha > 1.0f ? 1.0f : alpha;
 }
 
 void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h)

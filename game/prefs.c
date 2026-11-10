@@ -81,7 +81,8 @@ void prefs_load(Prefs *p, const char *profile)
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
         g->show_xray = flag(s, "show_xray", g->show_xray);
         g->haptics = flag(s, "haptics", g->haptics);
-        g->marker_sounds = flag(s, "marker_sounds", g->marker_sounds);
+        g->ui_sounds = flag(s, "ui_sounds", flag(s, "marker_sounds", g->ui_sounds)); /* the old key, migrated */
+        g->ui_motion = (int)mg_clampf(num(s, "ui_motion", (float)g->ui_motion), 0.0f, 1.0f);
         g->test_markers = flag(s, "test_markers", g->test_markers);
         g->test_marker_count = mg_clampf(num(s, "test_marker_count", g->test_marker_count), 1.0f, 16.0f);
         g->dead_zone_pt = mg_clampf(num(s, "stick_dead_zone", g->dead_zone_pt), 0.0f, 50.0f); /* "dead_zone" was for the 120 pt stick */
@@ -152,7 +153,8 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
     cJSON_AddBoolToObject(s, "show_xray", g->show_xray);
     cJSON_AddBoolToObject(s, "haptics", g->haptics);
-    cJSON_AddBoolToObject(s, "marker_sounds", g->marker_sounds);
+    cJSON_AddBoolToObject(s, "ui_sounds", g->ui_sounds);
+    cJSON_AddNumberToObject(s, "ui_motion", g->ui_motion);
     cJSON_AddBoolToObject(s, "test_markers", g->test_markers);
     cJSON_AddNumberToObject(s, "test_marker_count", g->test_marker_count);
     cJSON_AddNumberToObject(s, "stick_dead_zone", g->dead_zone_pt);
