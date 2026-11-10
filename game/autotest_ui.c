@@ -330,8 +330,8 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
             const float rest = tg ? (t->toggle ? 1.0f : 0.0f) : (float)t->tab; /* what the widget draws once the tween is over */
             const float v = get(p, id, UI_VALUE, rest), want = t->cx;
             t->max_v = want > 0.5f ? mg_maxf(t->max_v, v) : mg_minf(t->max_v, v);
-            if (now - t->at < 0.8) {
-                return 0;
+            if (now - t->at < 0.8 || (ui_anim_busy(ui->anim, ui_key(id), UI_VALUE) && now - t->at < 2.0)) {
+                return 0; /* a slow frame can leave the spring still moving: wait for it to rest */
             }
             if (fabsf(v - want) > 1e-5f) {
                 return failf(t, "%s ends at %.4f, target %.0f", id, (double)v, (double)want);
