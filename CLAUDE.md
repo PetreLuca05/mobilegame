@@ -581,7 +581,11 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   seated reader). The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
 - The hall is square (user decision): 2 x 2 bays of 16 x 16 m = 32 x 32 m (`hall.bx` / `bz`, front row 0 1, back row 2 3, home bay 1).
   A bay's back wall is at local z -5.5, the extra depth is open floor up to +10.5; the front row's back wall (doors) parts the rows, the
-  back row's doors lead outside. While my table is in the back row the front rooms are not drawn. Desktop `--lib-bay N` puts my table in bay N.
+  back row's doors lead outside. Draw rule: the menu camera backs off to 11.8 m, so with my table in the back row the eye stands 0.3-1.1 m
+  south of the middle wall; then the front rooms (and doors) dither out while the eye is below the wall tops, and dither back in over 2 m of
+  height above them (the Maps move). Nothing else is skipped (avatars, chairs, books, back rooms behind open doors). NPCs walk A* legs on
+  the hall's nav grid. Desktop `--lib-bay N` puts my table in bay N, `--lib-guest B` seats a stand-in player at bay B's table (pictures:
+  docs/autotest/library/bays/).
 - The library stands on the island played last (island JSON `library`, `library_pad`, `library_path`; `tools/place_library.py`: the spot
   nearest `start` with the 15 x 15 pad (the 32 x 32 m hall x 0.35 + 1.9 round it) >= 30 from every hospital plot and >= 8 from the road
   (measured from the pad's edge), on the plateau, facing the road, on bare grass with no scenery triangle under it; the path crosses no

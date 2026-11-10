@@ -561,6 +561,10 @@ bool game_init(MgApp *app)
         if (arg_value(app->argc, app->argv, "--lib-bay")) { /* desktop: my table in another bay of the hall (pictures) */
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
         }
+        if (arg_value(app->argc, app->argv, "--lib-guest")) { /* desktop: a second player seated at another bay's table (pictures) */
+            const AvatarLook guest = avatar_look_from_skin((NetSkin){.skin = 2, .hair = HAIR_SHORT, .hair_color = 3, .suit = 5});
+            menu_library_add_guest(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-guest")), &guest);
+        }
     }
     g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
     g->profile.skin = AVATAR_DEFAULT_SKIN;
@@ -1755,6 +1759,7 @@ static bool menu_world(Game *g, MgApp *app)
     }
     g->menu_hero = g->menu_slots[0];
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
+    g->lib.view_eye = g->last_eye;
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, mg_minf(app->frame_dt, 0.1f));
     return true;
 }
@@ -1923,6 +1928,7 @@ static void move_frame(Game *g, MgApp *app)
     g->view_proj = HMM_MulM4(proj, view);
     g->last_eye = eye;
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
+    g->lib.view_eye = g->last_eye;
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
     const double age = app->time - g->move_t0;
     if (age < k_ui.exit_s) { /* the screen we left plays its exit: slides back, fades */
@@ -1956,6 +1962,7 @@ static void move_frame(Game *g, MgApp *app)
 static void map_flow(Game *g, MgApp *app)
 {
     (void)menu_world(g, app); /* off: the hospital's crowd stops */
+    map_preload(g, app);       /* places the library when the map opened without the menu (--frontend books|map) */
     GfxSceneParams sp = {0};
     scene_defaults(&sp, (float)app->time, &g->day_state);
     g->wm.join_disabled = lobby_is_guest(&g->lobby); /* only the host starts the game */
@@ -1970,6 +1977,7 @@ static void map_flow(Game *g, MgApp *app)
     g->last_eye = g->wm.eye;
     if (g->lib_placed) { /* the library stands on the island played last: the closed building */
         g->lib.shell_k = 1.0f;
+        g->lib.view_eye = g->last_eye;
         menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
     }
     if (g->prefs.world.rides.unsynced) { /* a trip drew a vehicle: the account's copy follows */

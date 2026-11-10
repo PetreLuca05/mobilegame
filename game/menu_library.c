@@ -293,9 +293,43 @@ static HMM_Vec3 lib_point(const MenuLibrary *L, HMM_Vec3 p) { return HMM_MulM4V4
 /* bay b's door centre (hall frame) */
 static HMM_Vec2 door_c(const MenuLibrary *L, int b) { return HMM_V2(L->bay_x[b] + L->sc.door.centre.X, L->bay_z[b] + L->sc.door.centre.Y); }
 
-/* the back row stands behind the front row's back wall: while my table is there, the front rooms are not drawn (they stand between it and
- * the camera when the camera backs off) */
-static bool bay_hidden(const MenuLibrary *L, int b) { return L->bay_z[L->table_bay] < L->sc.mid_wall_z && L->bay_z[b] >= L->sc.mid_wall_z; }
+/* The draw rule for the 2 x 2 hall. The menu camera backs off until the table fits (11.8 m on the iPhone): with my table in the back
+ * row the eye then stands 0.3-1.1 m south of the middle wall, inside a front room, and that room's back wall and the bookcases on it
+ * would cover my table. So a front-row room (and its door) dithers out while the eye is south of the middle wall and below the wall
+ * tops looking into the back row; everything else of the front row is behind such an eye. Rising above the walls (the Maps move)
+ * it dithers back in over 2 m of height. Back-row rooms, avatars, chairs and books are never skipped by this rule. */
+static float bay_hide(const MenuLibrary *L, int b)
+{
+    const float mid = L->sc.mid_wall_z;
+    if (L->bay_z[b] < mid || L->bay_z[L->table_bay] >= mid) {
+        return 0.0f;
+    }
+    const HMM_Vec3 e = HMM_MulM4V4(HMM_InvGeneralM4(L->xf), HMM_V4V(L->view_eye, 1.0f)).XYZ;
+    if (e.Z < mid) {
+        return 0.0f;
+    }
+    const float k = mg_clampf((e.Y - L->sc.room.Y) / 2.0f, 0.0f, 1.0f);
+    return 1.0f - k * k * (3.0f - 2.0f * k);
+}
+
+void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look)
+{
+    if (L->sc.npc_n >= LIB_NPCS || bay < 0 || bay >= LIB_BAYS) {
+        return;
+    }
+    const int i = L->sc.npc_n++;
+    LibNpcDef *d = &L->sc.npcs[i];
+    SDL_zerop(d);
+    SDL_snprintf(d->id, sizeof(d->id), "guest");
+    d->seated = true;
+    d->seat_pos = HMM_AddV2(L->sc.seats[1].pos, HMM_V2(L->bay_x[bay], L->bay_z[bay]));
+    d->seat_yaw_deg = L->sc.seats[1].yaw_deg;
+    LibNpc *n = &L->npc[i];
+    SDL_zerop(n);
+    n->pos = d->seat_pos, n->yaw_deg = d->seat_yaw_deg;
+    n->look = *look;
+    lib_study_init(&n->study, &L->sc, 977u);
+}
 
 void menu_library_set_table(MenuLibrary *L, int bay)
 {
@@ -906,17 +940,18 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         L->gone.t_shut = L->clock;
     }
     const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    float hide[LIB_BAYS];
     for (int b = 0; b < LIB_BAYS; b++) {
-        if (!bay_hidden(L, b)) {
-            gfx_draw(g, L->room[b], &L->xf, &room, 0);
-        }
+        hide[b] = bay_hide(L, b);
+        GfxMaterial rm = room;
+        rm.hide = hide[b];
+        gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
     }
     for (int b = 0; b < LIB_BAYS; b++) { /* one door per bay */
-        if (bay_hidden(L, b)) {
-            continue;
-        }
+        GfxMaterial dm = room;
+        dm.hide = hide[b];
         const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, L->bay_z[b] + s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
-        gfx_draw(g, L->door, &door, &room, 0);
+        gfx_draw(g, L->door, &door, &dm, 0);
     }
     for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */
         const LibSeat *seat = &L->tseats[i];

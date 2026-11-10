@@ -150,6 +150,7 @@ typedef struct MenuLibrary {
     LibMember seat[LIB_SEATS];
     LibNpc npc[LIB_NPCS];
     LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
+    HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
     bool creator;      /* the Locker is open */
     float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
@@ -165,6 +166,8 @@ typedef struct MenuLibrary {
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
 /* My table is in this bay (LIB-1 §5: my seed's bay): seats, table, books and the menu camera move there. */
 void menu_library_set_table(MenuLibrary *L, int bay);
+/* desktop pictures (--lib-guest B): a player seated at bay B's table, seat 1 (drawn like a seated reader, a player's skin) */
+void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look);
 /* LIB-1 step 6: the room stands on the island at `pos` (world, the pad's surface), its front (+z) facing
  * yaw_deg, at lib_scale map units per metre. Everything in the room follows, the menu camera included. */
 void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg);
