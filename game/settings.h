@@ -41,6 +41,7 @@ typedef struct GameSettings {
     float fov_deg;          /* 55 (landscape) */
     float dead_zone_pt;     /* 30 */
     bool show_colliders;
+    bool show_tilt_debug;   /* TILT-1 Developer -> Tilt debug (debug builds) */
     bool show_triggers;     /* elevator trigger volume */
 #ifdef MG_DAYCYCLE_CONTINUOUS
     bool follow_clock;      /* day cycle follows the device's local time */

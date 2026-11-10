@@ -32,6 +32,7 @@ typedef struct UiStyleTable {
     float r_button, r_card, r_tab, r_row;
     float highlight_band, fill_highlight_band, ring_width, icon_stroke, icon_box;
     float target_min, button_h, icon_button, row_h;
+    float edge_secondary; /* a secondary (white) button's outline in secondary_lip: its top edge on white cards */
     float toggle_w, toggle_h, toggle_knob, progress_h;
     /* type (pt) */
     float t_title, t_button, t_body, t_small, t_label, label_tracking_em;
@@ -87,7 +88,7 @@ static const UiStyleTable k_ui = {
     .lip_button = 7.0f, .lip_card = 7.0f, .lip_pill = 5.0f, .lip_row = 4.0f,
     .r_button = 22.0f, .r_card = 26.0f, .r_tab = 18.0f, .r_row = 16.0f,
     .highlight_band = 4.0f, .fill_highlight_band = 5.0f, .ring_width = 3.0f, .icon_stroke = 2.4f, .icon_box = 24.0f,
-    .target_min = 44.0f, .button_h = 54.0f, .icon_button = 54.0f, .row_h = 50.0f,
+    .target_min = 44.0f, .button_h = 54.0f, .icon_button = 54.0f, .row_h = 50.0f, .edge_secondary = 1.5f,
     .toggle_w = 76.0f, .toggle_h = 44.0f, .toggle_knob = 36.0f, .progress_h = 22.0f,
     .t_title = 40.0f, .t_button = 22.0f, .t_body = 16.0f, .t_small = 14.0f, .t_label = 12.0f, .label_tracking_em = 0.14f,
     .press_s = 0.09f, .release_s = 0.48f, .spring_s = 0.45f, .fill_s = 0.70f, .enter_s = 0.55f, .exit_s = 0.18f, .exit_fade_s = 0.08f,

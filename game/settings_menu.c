@@ -169,6 +169,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         ui_toggle(ui, "Storey colours", x, y, cw, &s->show_storeys);
         ui_toggle(ui, "X-ray always", wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->xray_always);
         y += (wide ? 52.0f : 104.0f) + 52.0f;
+#ifndef NDEBUG
+        ui_toggle(ui, "Tilt debug", x, y, cw, &s->show_tilt_debug); /* TILT-1: gravity, mapping, arrows */
+        y += 52.0f;
+#endif
 #ifdef MG_RENDER_FULL
         ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
         y += 52.0f;

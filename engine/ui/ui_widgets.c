@@ -218,6 +218,20 @@ static void begin_squash(Ui *ui, uint32_t key, float cx, float bottom, float ext
     gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, cx, bottom);
 }
 
+/* A button's face on its lip. A secondary face is white like the cards it sits on, so it gets an outline in
+ * its lip colour (one shape: filled, with a border) instead of the white highlight band nobody would see. */
+static void button_face(Ui *ui, float x, float y, float w, float face_h, float lip_h, UiVariant v, UiColor face, UiColor lip)
+{
+    const float r = mg_minf(k_ui.r_button, face_h * 0.5f);
+    if (v != UI_V_SECONDARY) {
+        ui_surface(ui, x, y, w, face_h, r, lip_h, face, lip, k_ui.highlight_band,
+                   C(v == UI_V_ACCENT ? k_ui.highlight_accent : v == UI_V_DISABLED ? 0 : k_ui.highlight));
+        return;
+    }
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = y + lip_h, .w = w, .h = face_h, .radius = r, .lip = lip_h, .color = lip});
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = w, .h = face_h, .radius = r, .stroke = -k_ui.edge_secondary, .color = face, .color2 = C(k_ui.secondary_lip)});
+}
+
 /* the haptic row of a button: its variant, the screen's main action (the breathing one), a destructive modal's confirm */
 static int button_class(UiVariant v, int flags)
 {
@@ -262,8 +276,7 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
     }
     const float dx = ui->anim ? ui_anim_get(ui->anim, key, UI_X, 0.0f) : 0.0f; /* shake */
     begin_squash(ui, key, x + dx + w * 0.5f, y + h, breathe);
-    ui_surface(ui, x + dx, y, w, face_h, mg_minf(k_ui.r_button, face_h * 0.5f), lip_h, face, lip, k_ui.highlight_band,
-               C(v == UI_V_ACCENT ? k_ui.highlight_accent : v == UI_V_DISABLED ? 0 : k_ui.highlight));
+    button_face(ui, x + dx, y, w, face_h, lip_h, v, face, lip);
     char vis[96];
     const char *hash = strstr(label, "##");
     const size_t n = hash ? (size_t)(hash - label) : strlen(label);
@@ -295,8 +308,7 @@ bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float
     const float lip_h = mg_minf(k_ui.lip_button, size * 0.13f), face_h = size - lip_h;
     ui_depth(ui, 2, key, 0);
     begin_squash(ui, key, x + size * 0.5f, y + size, 1.0f);
-    ui_surface(ui, x, y, size, face_h, mg_minf(k_ui.r_button, face_h * 0.5f), lip_h, face, lip, k_ui.highlight_band,
-               C(v == UI_V_ACCENT ? k_ui.highlight_accent : k_ui.highlight));
+    button_face(ui, x, y, size, face_h, lip_h, v, face, lip);
     ui_icon(ui, icon, x + size * 0.5f, y + face_h * 0.5f, mg_minf(k_ui.icon_box, face_h * 0.6f), tc);
     gfx_ui_group_off(ui->gfx);
     ui_depth_end(ui);

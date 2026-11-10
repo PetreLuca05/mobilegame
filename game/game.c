@@ -148,6 +148,8 @@ typedef struct Game {
     Tilt tilt;      /* TILT-1: device tilt for the UI (visual only) */
     float tilt_s;   /* this tick's strength S */
     bool motion_on, tilt_debug, test_low_power, tilt_shake_pending, tilt_circle;
+    float tilt_raw[3], tilt_screen[2]; /* Tilt debug: the last gravity, and after the rotation mapping */
+    bool tilt_have, tilt_flipped;
     float tilt_shake_dir;
     float tilt_debug_x, tilt_debug_y;
     bool sys_reduce_motion, sys_reduce_logged;
@@ -456,6 +458,7 @@ bool game_init(MgApp *app)
     }
     tilt_init(&g->tilt);
     g->tilt_circle = has_flag(app->argc, app->argv, "--tilt-circle");
+    g->settings.show_tilt_debug = has_flag(app->argc, app->argv, "--tilt-debug"); /* desktop: the overlay on */
     for (int i = 1; i + 3 < app->argc; i++) { /* --debug tilt <tx> <ty>: the tilt target, no sensor */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "tilt") == 0) {
             g->tilt_debug = true;
@@ -695,9 +698,12 @@ static void tilt_step(Game *g, MgApp *app)
     }
     float sx = 0.0f, sy = 0.0f, gx, gy, gz;
     const bool have = g->motion_on && motion_gravity(&gx, &gy, &gz);
+    g->tilt_flipped = SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay()) == SDL_ORIENTATION_LANDSCAPE_FLIPPED;
     if (have) {
-        tilt_screen_gravity(gx, gy, gz, SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay()) == SDL_ORIENTATION_LANDSCAPE_FLIPPED, &sx, &sy);
+        tilt_screen_gravity(gx, gy, gz, g->tilt_flipped, &sx, &sy);
+        g->tilt_raw[0] = gx, g->tilt_raw[1] = gy, g->tilt_raw[2] = gz, g->tilt_screen[0] = sx, g->tilt_screen[1] = sy;
     }
+    g->tilt_have = have;
     /* desktop and tests: --debug tilt, or the mouse while T is held */
     g->tilt.forced = g->tilt_debug || app->input.key_down[SDL_SCANCODE_T];
     if (app->input.key_down[SDL_SCANCODE_T] && app->input.mouse_seen) {
@@ -2742,10 +2748,63 @@ static void update_thermal(Game *g, MgApp *app)
 
 static void game_frame_inner(MgApp *app, float alpha);
 
+/* Developer -> Tilt debug: the raw gravity, the mapped screen values, the tilt, and a test card with arrows for
+ * where the layers shift and where its lip swings, so an inverted axis shows in a screenshot. Debug builds. */
+static void tilt_debug_draw(Game *g, MgApp *app)
+{
+#ifndef NDEBUG
+    if (!g->settings.show_tilt_debug) {
+        return;
+    }
+    GfxContext *gfx = app->gfx;
+    const float x0 = app->safe_left + 200.0f, y0 = app->safe_top + 110.0f;
+    char line[160];
+    gfx_ui_depth(gfx, 0.0f, 0);
+    ui_round_rect(gfx, &app->font, x0 - 10.0f, y0 - 10.0f, 360.0f, 104.0f, 12.0f, ui_rgba(0x101318D0));
+    if (g->tilt_have) {
+        SDL_snprintf(line, sizeof(line), "gravity  x %+.2f  y %+.2f  z %+.2f  (%s)", (double)g->tilt_raw[0], (double)g->tilt_raw[1], (double)g->tilt_raw[2],
+                     g->tilt_flipped ? "landscape flipped" : "landscape");
+    } else {
+        SDL_snprintf(line, sizeof(line), "gravity  none (%s)", g->tilt.forced ? "forced: --debug tilt / T + mouse" : "no sensor or S = 0");
+    }
+    text_draw(gfx, &app->font, x0, y0, 13.0f, ui_rgba(0xFFFFFFFF), line);
+    SDL_snprintf(line, sizeof(line), "screen   x %+.3f  y %+.3f   neutral %+.3f %+.3f", (double)g->tilt_screen[0], (double)g->tilt_screen[1], (double)g->tilt.nx,
+                 (double)g->tilt.ny);
+    text_draw(gfx, &app->font, x0, y0 + 22.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
+    SDL_snprintf(line, sizeof(line), "target   %+.2f %+.2f   tilt %+.2f %+.2f   S %.1f   signs %+.0f %+.0f", (double)g->tilt.target_x, (double)g->tilt.target_y,
+                 (double)g->tilt.tx, (double)g->tilt.ty, (double)g->tilt_s, (double)k_ui.tilt_sign_x, (double)k_ui.tilt_sign_y);
+    text_draw(gfx, &app->font, x0, y0 + 44.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
+    text_draw(gfx, &app->font, x0, y0 + 66.0f, 12.0f, ui_rgba(0xFFD166FF), "yellow: the layers shift   teal: the lip swings   white: tilt");
+    /* the test card: a real card + button through the same pipeline */
+    const float cx = x0 + 450.0f, cy = y0 + 50.0f;
+    ui_depth(&g->ui, 1, 0, 0);
+    ui_surface(&g->ui, cx - 70.0f, cy - 40.0f, 140.0f, 80.0f, k_ui.r_card * 0.6f, k_ui.lip_card, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+    ui_depth(&g->ui, 2, 0, GFX_TILT_GLOSS);
+    ui_surface(&g->ui, cx - 40.0f, cy - 14.0f, 80.0f, 28.0f, 14.0f, k_ui.lip_button, ui_rgba(k_ui.primary), ui_rgba(k_ui.primary_lip), k_ui.highlight_band, ui_rgba(k_ui.highlight));
+    gfx_ui_depth(gfx, 0.0f, 0);
+    const float tx = g->ui.tilt_x, ty = g->ui.tilt_y;
+    struct { float dx, dy; uint32_t c; } arrows[3] = {{-tx * 50.0f, -ty * 50.0f, 0xFFD166FF}, {-0.7f * tx * 50.0f, -0.4f * ty * 50.0f, 0x12A594FF}, {tx * 50.0f, ty * 50.0f, 0xFFFFFFFF}};
+    for (int i = 0; i < 3; i++) {
+        const float ex = cx + arrows[i].dx, ey = cy + 70.0f + arrows[i].dy, len = sqrtf(arrows[i].dx * arrows[i].dx + arrows[i].dy * arrows[i].dy);
+        ui_circle(gfx, &app->font, cx, cy + 70.0f, 3.0f, ui_rgba(arrows[i].c));
+        if (len > 2.0f) {
+            const float ux = arrows[i].dx / len, uy = arrows[i].dy / len;
+            ui_line(gfx, &app->font, cx, cy + 70.0f, ex, ey, 2.5f, ui_rgba(arrows[i].c));
+            ui_line(gfx, &app->font, ex, ey, ex - 8.0f * ux + 5.0f * uy, ey - 8.0f * uy - 5.0f * ux, 2.5f, ui_rgba(arrows[i].c));
+            ui_line(gfx, &app->font, ex, ey, ex - 8.0f * ux - 5.0f * uy, ey - 8.0f * uy + 5.0f * ux, 2.5f, ui_rgba(arrows[i].c));
+        }
+    }
+    gfx_ui_depth(gfx, k_ui.tilt_depth[1], 0);
+#else
+    (void)g, (void)app;
+#endif
+}
+
 void game_frame(MgApp *app, float alpha)
 {
     game_frame_inner(app, alpha);
     Game *g = (Game *)app->game;
+    tilt_debug_draw(g, app);
     gfx_ui_screen(app->gfx, 0.0f, 0.0f, 1.0f);
     {
         PROF_SCOPE("ui.fx"); /* tweens' effects: particles, rings, tokens, banner */
