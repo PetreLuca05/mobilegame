@@ -101,14 +101,31 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/strings_ro.json
   ${CMAKE_SOURCE_DIR}/assets/npcs.json
   ${CMAKE_SOURCE_DIR}/assets/npc_names.json
+  ${CMAKE_SOURCE_DIR}/assets/world/books.json
+  ${CMAKE_SOURCE_DIR}/assets/world/kumar.island.json
 )
+# WORLD-1: mgmesh text -> engine mesh binary at build time (tools/meshgen.py); a malformed line fails the build
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(MG_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+foreach(mesh kumar_island ambulance)
+  set(out ${MG_GEN_DIR}/assets/world/${mesh}.mgmb)
+  add_custom_command(
+    OUTPUT ${out}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/world
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/meshgen.py ${CMAKE_SOURCE_DIR}/assets/world/${mesh}.mgmesh ${out}
+    DEPENDS ${CMAKE_SOURCE_DIR}/assets/world/${mesh}.mgmesh ${CMAKE_SOURCE_DIR}/tools/meshgen.py
+    COMMENT "meshgen ${mesh}.mgmesh"
+    VERBATIM
+  )
+  list(APPEND MG_EMBED_FILES ${out})
+endforeach()
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
 endif()
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
   OUTPUT ${MG_EMBED_C}
-  COMMAND ${CMAKE_COMMAND} -DOUT=${MG_EMBED_C} -DBASE=${CMAKE_SOURCE_DIR}
+  COMMAND ${CMAKE_COMMAND} -DOUT=${MG_EMBED_C} -DBASE=${CMAKE_SOURCE_DIR} -DGENBASE=${MG_GEN_DIR}
           "-DFILES=${MG_EMBED_FILES}" -P ${CMAKE_SOURCE_DIR}/cmake/embed_files.cmake
   DEPENDS ${MG_EMBED_FILES} ${CMAKE_SOURCE_DIR}/cmake/embed_files.cmake
   COMMENT "Embedding shaders, font atlas and CA bundle"
