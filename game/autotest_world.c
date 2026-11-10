@@ -559,6 +559,7 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
                 }
                 mg_log_info("autotest worldmap2: 3 Next x%d cycles all of Lawrance's hospitals back to %s (ok)", is->book->level_count, is->book->levels[0].name);
                 next_stage(w, now);
+                w->stage = 30; /* the voyage skip, then the shuffle */
             } else if (settled && tap_key(&w->tap, app, p, now, "wm_next")) {
                 w->arrivals0 = m->arrivals;
                 w->seen_level++;
@@ -566,6 +567,45 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
             } else {
                 tap_busy(&w->tap, app, now);
             }
+        }
+        return 0;
+    case 30: /* Islands -> BOOKS on Lawrance; voyage back; a tap at 0.8 s does nothing, one after 1.6 s lands at once */
+        if (w->count == 0) {
+            if (m->state == WM_BOOKS && in > 0.8) {
+                w->count = 1;
+            } else if (m->state != WM_BOOKS) {
+                tap_key(&w->tap, app, p, now, "wm_islands");
+            }
+        } else if (w->count == 1) {
+            if (m->state == WM_VOYAGE) {
+                w->voy_start = now;
+                w->count = 2;
+            } else {
+                tap_key(&w->tap, app, p, now, "wm_isl_prev");
+            }
+        } else if (w->count == 2 && m->voy.elapsed > 0.8f) {
+            if (tap_at(&w->tap, app, now, m->view_w * 0.5f, m->view_h * 0.4f)) {
+                w->count = 3;
+            }
+        } else if (w->count == 3 && m->voy.elapsed > 1.6f) {
+            if (m->state != WM_VOYAGE) {
+                return fail(w, "a tap before 1.5 s ended the voyage");
+            }
+            if (tap_at(&w->tap, app, now, m->view_w * 0.5f, m->view_h * 0.4f)) {
+                w->count = 4;
+                w->voy_start = now;
+            }
+        } else if (w->count == 4) {
+            tap_busy(&w->tap, app, now);
+            if (m->state == WM_BOOKS && m->cur == 0) {
+                mg_log_info("autotest worldmap2: skip: a tap at 0.8 s ignored, a tap at 1.6 s landed on %s in %.2f s (ok)", m->isles[0].book->name, now - w->voy_start);
+                next_stage(w, now);
+                w->stage = 4;
+            } else if (now - w->voy_start > 0.6) {
+                return fail(w, "a tap after 1.5 s did not skip to the arrival");
+            }
+        } else {
+            tap_busy(&w->tap, app, now);
         }
         return 0;
     case 4:
