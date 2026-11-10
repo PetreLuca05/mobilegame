@@ -87,66 +87,7 @@ void frontend_toast(Frontend *f, const char *msg, double now)
 static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const AvatarMeshes *meshes, float side)
 {
     GfxContext *g = app->gfx;
-    if (ctx->world_behind && f->state == FE_MAIN_MENU && ctx->row_count > 0) { /* the whole lobby, in a line */
-        const float dt = mg_minf(app->frame_dt, 0.1f);
-        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
-            f->avatars[e].listed = false;
-        }
-        for (int i = 0; i < ctx->row_count; i++) {
-            const LobbyRow *r = &ctx->rows[i];
-            int found = -1, free_at = -1;
-            for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
-                if (f->avatars[e].active && strcmp(f->avatars[e].id, r->id) == 0) {
-                    found = e;
-                } else if (!f->avatars[e].active && free_at < 0) {
-                    free_at = e;
-                }
-            }
-            if (found < 0 && free_at >= 0) {
-                found = free_at;
-                memset(&f->avatars[found], 0, sizeof(f->avatars[found]));
-                f->avatars[found].active = true;
-                SDL_snprintf(f->avatars[found].id, sizeof(f->avatars[found].id), "%s", r->id);
-            }
-            if (found >= 0) {
-                FeAvatar *av = &f->avatars[found];
-                av->listed = true;
-                av->at = i;
-                av->skin = r->skin;
-                av->host = r->host;
-                SDL_snprintf(av->name, sizeof(av->name), "%s", r->name);
-            }
-        }
-        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
-            FeAvatar *av = &f->avatars[e];
-            if (!av->active) {
-                continue;
-            }
-            av->fade = av->listed ? mg_minf(av->fade + dt / LOBBY_SLOT_FADE_S, 1.0f) : mg_maxf(av->fade - dt / LOBBY_SLOT_FADE_S, 0.0f);
-            if (av->fade <= 0.0f && !av->listed) {
-                av->active = false;
-                continue;
-            }
-            /* the host keeps the hero's turn; the others look slightly inward */
-            const float yaw = av->at == 0 ? HMM_PI32 - HMM_AngleDeg(45.0f) : HMM_PI32 + HMM_AngleDeg(14.0f);
-            AvatarPose pose = {ctx->slots[av->at], yaw, HMM_V3(0, 0, 0), true, false, false, false};
-            pose.flat_ground = true;
-            pose.hide = 1.0f - av->fade;
-            avatar_animate(meshes, &av->anim, &pose, dt);
-            AvatarLook look = avatar_look_from_skin(av->skin);
-            avatar_draw(g, meshes, &look, &pose, &av->anim, NULL);
-        }
-        return;
-    }
-    if (ctx->world_behind) { /* the hospital is drawn already: the hero stands in front, turned 45 degrees to its right */
-        const float turn_dt = mg_minf(app->frame_dt, 0.1f);
-        f->hero_turn = f->state == FE_CREATOR ? f->hero_turn + f->spin_vel * turn_dt : 0.0f;
-        f->spin_vel *= 1.0f - mg_minf(turn_dt * 3.0f, 1.0f);
-        AvatarPose hero = {ctx->hero_feet, HMM_PI32 - HMM_AngleDeg(45.0f) + f->hero_turn, HMM_V3(0, 0, 0), true, false, false, false};
-        hero.flat_ground = true; /* the contact disc */
-        avatar_animate(meshes, &f->anim, &hero, mg_minf(app->frame_dt, 0.1f));
-        AvatarLook hero_look = avatar_look_from_skin(*ctx->skin);
-        avatar_draw(g, meshes, &hero_look, &hero, &f->anim, NULL);
+    if (ctx->world_behind) { /* LIB-1: the library draws the hero and the lobby itself */
         return;
     }
     float aspect = app->width_pt / app->height_pt;

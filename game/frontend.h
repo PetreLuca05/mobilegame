@@ -60,7 +60,7 @@ typedef struct FrontendCtx {
     bool google_available, apple_available;
     bool signin_busy;
     bool has_save;
-    bool world_behind;    /* the game has drawn the hospital: only the hero goes on top */
+    bool world_behind;    /* the game has drawn the menu's backdrop (LIB-1: the library, its avatars included) */
     HMM_Vec3 hero_feet;
     int friend_requests;  /* the Friends row's red badge */
     struct HeadIcons *heads;

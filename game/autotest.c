@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -1183,6 +1183,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         const int r = tt_run(&t->tt, app, p, out, app->time);
         if (r < 0) {
             finished = fail(t, "tilt", t->tt.why);
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
+    case AUTOTEST_LIBRARY: {
+        const int r = lt_run(&t->lt, app, p, out, app->time);
+        if (r < 0) {
+            finished = fail(t, "library", t->lt.why);
         } else if (r > 0) {
             mg_log_info("AUTOTEST PASSED");
             t->passed = finished = true;

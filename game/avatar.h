@@ -122,6 +122,7 @@ typedef struct AvatarPose {
     float hands_w;    /* 0 .. 1: the seated hands go to hand_l / hand_r (avatar frame) */
     HMM_Vec3 hand_l, hand_r;
     float breath_k;   /* 0 = 1 */
+    float body_yaw;   /* the body and head turn about the body base (+ to its left); the hands stay */
 } AvatarPose;
 
 /* The solved pose: what the draw uses, what tests measure. */

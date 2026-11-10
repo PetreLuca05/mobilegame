@@ -280,7 +280,10 @@ set(MG_GAME_SOURCES
   game/autotest.c
   game/avatar.c
   game/avatar_gallery.c
+  game/menu_library.c
+  game/lib_study.c
   game/autotest_avatar.c
+  game/autotest_library.c
   game/scenery.c
   game/net_session.c
   game/friends.c

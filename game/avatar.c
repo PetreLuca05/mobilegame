@@ -580,6 +580,7 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     const float lean = r->walk_lean_rad * a->move + (elder ? ELDER_LEAN : 0.0f) + 0.3f * p->crouch + p->lean + step_lean;
     const float roll = a->lean_side + p->weight_tilt;
     HMM_Mat4 body = HMM_MulM4(root, HMM_Translate(HMM_V3(0, base, 0)));
+    body = HMM_MulM4(body, HMM_Rotate_RH(p->body_yaw, HMM_V3(0, 1, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(lean, HMM_V3(1, 0, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(-roll, HMM_V3(0, 0, 1)));
     s->body = body;

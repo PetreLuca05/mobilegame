@@ -19,6 +19,7 @@
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
  *   netsoak     NET-1: 10 min online, the socket dropped every 30 s (20 times): each time it must be back with its channel within 10 s
+ *   library     LIB-1: the menu's library, the study loop (autotest_library.h)
  *   avatar      LIB-1 A1: assembly, walk, turn, options, old skins on the pose function (autotest_avatar.h)
  *   tilt        TILT-1: shifts, lips, taps at rest, rotations, neutral pose, noise, spring, shake, freeze, strength (autotest_tilt.h)
  *   haptics     HAPTIC-1: coverage, order, same frame, limiter, setting, sequences, lifecycle (autotest_haptics.h)
@@ -41,6 +42,7 @@
 #include "autotest_stick.h"
 #include "autotest_tilt.h"
 #include "autotest_avatar.h"
+#include "autotest_library.h"
 #include "autotest_ui.h"
 #include "autotest_world.h"
 #include "platform/app.h"
@@ -119,6 +121,7 @@ typedef struct AutotestProbe {
     int net_status;            /* NetStatus of the room socket, -1 without a network */
     bool net_ready;            /* the socket is up with a channel joined (user:<uid> or a room) */
     const struct AvatarMeshes *avatar_meshes; /* --autotest avatar */
+    const struct MenuLibrary *library;        /* --autotest library */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -179,6 +182,7 @@ typedef struct Autotest {
     HapticTest ht;
     TiltTest tt;
     AvatarTest at;
+    LibraryTest lt;
     struct {
         int cycles, worst_ms, total_ms;
         double dropped_at, next_drop;
