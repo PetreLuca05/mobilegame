@@ -147,7 +147,7 @@ typedef struct Game {
     UiTest uitest; /* --autotest ui */
     Tilt tilt;      /* TILT-1: device tilt for the UI (visual only) */
     float tilt_s;   /* this tick's strength S */
-    bool motion_on, tilt_debug, test_low_power, tilt_shake_pending;
+    bool motion_on, tilt_debug, test_low_power, tilt_shake_pending, tilt_circle;
     float tilt_shake_dir;
     float tilt_debug_x, tilt_debug_y;
     bool sys_reduce_motion, sys_reduce_logged;
@@ -455,6 +455,7 @@ bool game_init(MgApp *app)
         }
     }
     tilt_init(&g->tilt);
+    g->tilt_circle = has_flag(app->argc, app->argv, "--tilt-circle");
     for (int i = 1; i + 3 < app->argc; i++) { /* --debug tilt <tx> <ty>: the tilt target, no sensor */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "tilt") == 0) {
             g->tilt_debug = true;
@@ -704,6 +705,9 @@ static void tilt_step(Game *g, MgApp *app)
         g->tilt.target_y = mg_clampf((app->input.mouse_y - app->height_pt * 0.5f) / (app->height_pt * 0.5f), -1.0f, 1.0f);
     } else if (g->tilt_debug) {
         g->tilt.target_x = g->tilt_debug_x, g->tilt.target_y = g->tilt_debug_y;
+    } else if (g->tilt_circle) { /* --tilt-circle (perf): a slow circle at full tilt, no sensor */
+        g->tilt.forced = true;
+        g->tilt.target_x = cosf((float)app->time * 0.6f), g->tilt.target_y = sinf((float)app->time * 0.6f);
     }
     tilt_tick(&g->tilt, MG_TICK_DT, have, sx, sy, app->time);
     if (g->tilt.shaken && g->tilt_s > 0.0f) { /* the frame plays the jiggle */
@@ -2870,6 +2874,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     for (int i = 0; i < 3; i++) {
         probe.text_center_each[i] = g->text_center_each[i];
     }
+    probe.tilt = (TiltCtl){&g->tilt, &g->tilt_debug, &g->test_low_power, &g->tilt_debug_x, &g->tilt_debug_y, &g->tilt_s, &g->settings.ui_tilt};
     probe.stick = &g->stick_view;
     probe.touch = &g->touch;
     probe.stick_r = g->touch_cfg.radius_pt;
@@ -3079,6 +3084,10 @@ static void game_frame_inner(MgApp *app, float alpha)
 
     /* UI claims touches first (pause button + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
+    if (g->tilt_shake_pending) { /* a sharp movement: every control visible last frame wobbles once, staggered */
+        g->tilt_shake_pending = false;
+        ui_jiggle(&g->ui, g->tilt_shake_dir, app->time);
+    }
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
     { /* TILT-1: this frame's tilt for the UI shaders (HUD at half strength in play); the safe rect bounds every shift */
         const float k = g->tilt_s * (g->playing ? k_ui.tilt_hud : 1.0f);
@@ -3086,10 +3095,6 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->ui.tilt_x = g->tilt.tx * k, g->ui.tilt_y = g->tilt.ty * k;
         memcpy(g->ui.safe, safe, sizeof(safe));
         gfx_ui_set_tilt(app->gfx, g->ui.tilt_x, g->ui.tilt_y, k, safe);
-        if (g->tilt_shake_pending) { /* a sharp movement: every visible control wobbles once, staggered */
-            g->tilt_shake_pending = false;
-            ui_jiggle(&g->ui, g->tilt_shake_dir, app->time);
-        }
         ui_jiggle_update(&g->ui);
     }
     {

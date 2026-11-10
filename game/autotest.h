@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   tilt        TILT-1: shifts, lips, taps at rest, rotations, neutral pose, noise, spring, shake, freeze, strength (autotest_tilt.h)
  *   haptics     HAPTIC-1: coverage, order, same frame, limiter, setting, sequences, lifecycle (autotest_haptics.h)
  *   stick       UI-1b: release spring, full-speed ticks, marker taps, reduced motion, safe rect (autotest_stick.h)
  *   ui          UI-1: press / release / tiers / reduced motion / targets / screenshots (autotest_ui.h)
@@ -36,6 +37,7 @@
 #include "autotest_friends.h"
 #include "autotest_haptics.h"
 #include "autotest_stick.h"
+#include "autotest_tilt.h"
 #include "autotest_ui.h"
 #include "autotest_world.h"
 #include "platform/app.h"
@@ -110,6 +112,7 @@ typedef struct AutotestProbe {
     const struct StickView *stick; /* --autotest stick */
     const TouchControls *touch;
     float stick_r, stick_rest_x, stick_rest_y;
+    TiltCtl tilt;              /* --autotest tilt */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -167,6 +170,7 @@ typedef struct Autotest {
     WtTap map_tap; /* save / offline: through the island after New Game */
     StickTest st;
     HapticTest ht;
+    TiltTest tt;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

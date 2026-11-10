@@ -1,6 +1,7 @@
 #include "autotest_ui.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "autotest.h"
 #include "core/log.h"
@@ -14,6 +15,23 @@
 #define FRAME_S (1.0 / 60.0)
 
 static const char *const k_button_id[UT_BUTTONS] = {"ut_b0", "ut_b1", "ut_b2", "ut_b3", "ut_b4"};
+
+/* TILT-1: the lip (a shape carrying tilt[1]) and the face drawn right after it, from instances n0..n1 */
+static void capture(UiTest *t, int r, GfxContext *g, uint32_t n0)
+{
+    uint32_t n1;
+    const GfxUiInst *in = gfx_ui_instances(g, &n1);
+    t->tref[r].ok = false;
+    for (uint32_t i = n0; i + 1 < n1; i++) {
+        if (in[i].kind == (float)GFX_UI_SHAPE && in[i].tilt[1] > 0.0f && in[i + 1].kind == (float)GFX_UI_SHAPE) {
+            memcpy(t->tref[r].lip, in[i].rect, sizeof(t->tref[r].lip));
+            memcpy(t->tref[r].face, in[i + 1].rect, sizeof(t->tref[r].face));
+            t->tref[r].lip_depth = in[i].tilt[0], t->tref[r].face_depth = in[i + 1].tilt[0], t->tref[r].lip_h = in[i].tilt[1];
+            t->tref[r].ok = true;
+            return;
+        }
+    }
+}
 
 /* ------------------------------------------------------------------ the test screen */
 
@@ -31,7 +49,10 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
     }
     const float l = mg_maxf(app->safe_left, 0.0f) + 28.0f, r = app->width_pt - mg_maxf(app->safe_right, 0.0f) - 28.0f;
     const float top = mg_maxf(app->safe_top, 8.0f) + 20.0f, bottom = app->height_pt - mg_maxf(app->safe_bottom, 8.0f) - 8.0f;
+    uint32_t n0;
+    gfx_ui_instances(ui->gfx, &n0);
     ui_card(ui, l - 16.0f, top - 12.0f, r - l + 32.0f, bottom - top + 12.0f);
+    capture(t, 0, ui->gfx, n0);
     const double now = ui->anim ? ui->anim->now : 0.0;
     const float gap = 12.0f, size = k_ui.icon_button, bw = (r - l - 4.0f * gap - size) / 4.0f;
     float x = l;
@@ -40,8 +61,12 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
         static const UiVariant v[UT_BUTTONS] = {UI_V_PRIMARY, UI_V_SECONDARY, UI_V_ACCENT, UI_V_DESTRUCTIVE, UI_V_DISABLED};
         char label[48];
         SDL_snprintf(label, sizeof(label), "%s##%s", names[b], k_button_id[b]);
+        gfx_ui_instances(ui->gfx, &n0);
         const bool hit = b == 2 ? ui_icon_button(ui, k_button_id[b], UI_ICON_PLUS, x, top, size, v[b])
                                 : ui_button_v(ui, label, x, top, bw, k_ui.button_h, v[b], UI_F_SMALL);
+        if (b == 0) {
+            capture(t, 1, ui->gfx, n0);
+        }
         t->bx[b] = x + (b == 2 ? size : bw) * 0.5f, t->by[b] = top + (b == 2 ? size : k_ui.button_h) * 0.5f;
         const bool active = ui->active_id == ui_key(k_button_id[b]) && ui->press_inside;
         if (active && !t->was_active[b]) {
@@ -61,7 +86,9 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
     ui_switch(ui, "ut_toggle", l, y2, &t->toggle);
     static const char *const tabs[3] = {"Unu", "Doi", "Trei"};
     ui_tabs(ui, "ut_tabs", tabs, 3, &t->tab, l + k_ui.toggle_w + 24.0f, y2, 300.0f, 44.0f);
+    gfx_ui_instances(ui->gfx, &n0);
     ui_counter(ui, "ut_counter", l + k_ui.toggle_w + 348.0f, y2, 44.0f, "", t->counter, "", &t->counter_shown);
+    capture(t, 2, ui->gfx, n0);
     const float y3 = y2 + 44.0f + 24.0f, aw = (r - l - gap) * 0.5f;
     if (ui_answer(ui, "ut_ans0", "Corect", l, y3, aw, (UiAnswer)t->answer[0])) {
         t->answer[0] = UI_ANS_OK, t->answer[1] = UI_ANS_DIM;

@@ -45,15 +45,17 @@ UiOut VSMain(UiIn i)
     float2 p = centre + float2(i.xf.x * local.x + i.xf.z * local.y, i.xf.y * local.x + i.xf.w * local.y);
     // TILT-1: nearer layers shift more, against the tilt; a lip swings to the side you would see
     // (-0.7 L tx, -0.4 L ty) from rest (k_ui.tilt_lip_x / _y), 1.5x for the title. All zero at tilt 0.
-    // within 14 pt of a safe edge the shift is limited to the room left (k_ui.tilt_edge_pt); full-screen rects stay put
-    float room = min(min(i.rect.x - u_safe.x, i.rect.y - u_safe.y), min(u_safe.z - (i.rect.x + i.rect.z), u_safe.w - (i.rect.y + i.rect.w)));
-    float depth = room < 14.0 ? min(i.tilt.x, max(room, 0.0)) : i.tilt.x;
-    float2 shift = -u_tilt.xy * depth;
+    float2 shift = -u_tilt.xy * i.tilt.x;
     if (i.tilt.y > 0.0)
     {
         float k = i.tilt.z >= 2.0 ? 1.5 : 1.0;
         shift += float2(-0.7 * i.tilt.y * u_tilt.x, -0.4 * i.tilt.y * u_tilt.y) * k;
     }
+    // nothing crosses the safe rect: a rect inside it may move up to its edges, one outside (a full-screen
+    // background, a scrim) never moves further out; so edge elements clamp to the room they have
+    float2 lo = min(float2(0.0, 0.0), u_safe.xy - i.rect.xy);
+    float2 hi = max(float2(0.0, 0.0), u_safe.zw - (i.rect.xy + i.rect.zw));
+    shift = clamp(shift, lo, hi);
     p += shift;
     UiOut o;
     o.pos = float4(p.x * u_screen.x - 1.0, 1.0 - p.y * u_screen.y, 0.0, 1.0);

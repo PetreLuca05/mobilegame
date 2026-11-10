@@ -44,6 +44,11 @@ typedef struct UiTest {
     int cmd_reward;         /* > 0: fly this much into the counter */
     int cmd_tier;           /* 1 + UiTier: play it at the screen's centre */
     bool cmd_wrong;         /* as if the wrong row were tapped */
+    struct {                /* TILT-1: what the card, the primary button and the counter emitted last frame */
+        float face[4], lip[4];
+        float face_depth, lip_depth, lip_h;
+        bool ok;
+    } tref[3];
     /* the script */
     int stage, sub, button, taps, motion_pass;
     double at;
