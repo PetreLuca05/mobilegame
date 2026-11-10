@@ -2794,6 +2794,10 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.world_rides = &g->prefs.world.rides;
     probe.play_level = g->play_level;
     probe.uitest = &g->uitest;
+    probe.stick = &g->stick_view;
+    probe.touch = &g->touch;
+    probe.stick_r = g->touch_cfg.radius_pt;
+    stick_view_rest(&g->touch_cfg, app->safe_left, app->height_pt, app->safe_bottom, &probe.stick_rest_x, &probe.stick_rest_y);
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2855,6 +2859,10 @@ static void game_frame_inner(MgApp *app, float alpha)
         world_debug_progress(&g->prefs.world, ato.debug_level, ato.debug_pct);
         maps_tag_update(g);
         mg_log_info("world: test progress %s = %d%%", ato.debug_level, ato.debug_pct);
+    }
+    if (ato.add_marker_left && g->playing) {
+        const HMM_Vec3 at = HMM_AddV3(g->player.kin.pos, HMM_V3(-5.0f, 0.0f, 0.0f));
+        marker_add(&g->markers, at, probe.nav_storey, MARKER_OBJECTIVE, 0xFF9F0AFF);
     }
     if (ato.respawn_markers) {
         marker_clear(&g->markers, MARKER_TEST);
@@ -4003,8 +4011,10 @@ static void layout_autotest(Game *g, MgApp *app)
     }
     static const char *const edge[4] = {"left", "top", "right", "bottom"};
     const float gap[4] = {left, top, right, bottom}, inset[4] = {f.inset_l, f.inset_t, f.inset_r, f.inset_b};
+    /* the stick (UI-1b) keeps to the device's real safe rect, so an edge may be used from its real inset */
+    const float real[4] = {app->safe_left, app->safe_top, app->safe_right, app->safe_bottom};
     for (int e = 0; e < 4; e++) {
-        const bool close = inset[e] > 0.0f || gap[e] <= 20.0f + f.corner;
+        const bool close = inset[e] > 0.0f || gap[e] <= 20.0f + f.corner + mg_maxf(real[e], 0.0f);
         ok = ok && close;
         if (!close) {
             mg_log_error("autotest layout: assert uses_edge: %s edge has no inset but the nearest element is %.0f pt away", edge[e], (double)gap[e]);

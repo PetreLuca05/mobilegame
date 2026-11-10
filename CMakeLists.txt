@@ -294,6 +294,7 @@ set(MG_GAME_SOURCES
   game/autotest_friends.c
   game/autotest_world.c
   game/autotest_ui.c
+  game/autotest_stick.c
   game/lobby.c
   game/frontend.c
   game/creator.c

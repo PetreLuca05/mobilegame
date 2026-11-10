@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   stick       UI-1b: release spring, full-speed ticks, marker taps, reduced motion, safe rect (autotest_stick.h)
  *   ui          UI-1: press / release / tiers / reduced motion / targets / screenshots (autotest_ui.h)
  *   worldmap2   WORLD-2: two islands, the four vehicles, the shuffle rule (tools/worldmap2_test.sh adds the relaunch)
  *   nav         every room reachable, rides, timings (no walking)
@@ -32,10 +33,12 @@
 
 #include <SDL3/SDL.h>
 #include "autotest_friends.h"
+#include "autotest_stick.h"
 #include "autotest_ui.h"
 #include "autotest_world.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
+#include "ui/touch_controls.h"
 #include "ui/widgets.h"
 
 typedef struct AutotestProbe {
@@ -100,6 +103,9 @@ typedef struct AutotestProbe {
     struct WorldRides *world_rides; /* WORLD-2: the game's shuffle (prefs) */
     int play_level;            /* the level being played (book 0) */
     UiTest *uitest;            /* --autotest ui: the test screen's state */
+    const struct StickView *stick; /* --autotest stick */
+    const TouchControls *touch;
+    float stick_r, stick_rest_x, stick_rest_y;
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -116,6 +122,7 @@ typedef struct AutotestOut {
     int force_ride;        /* worldmap2: 1 + the vehicle for the next trip, 0 none */
     char last_book[24];    /* worldmap2: make this the island played last */
     bool save_prefs;       /* worldmap2: write prefs.json now (the ride bag) */
+    bool add_marker_left;  /* stick: an objective marker 5 m west of the player */
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -153,6 +160,7 @@ typedef struct Autotest {
     WorldTest wt;
     char wt_phase[16]; /* worldmap2: "" or "relaunch" */
     WtTap map_tap; /* save / offline: through the island after New Game */
+    StickTest st;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

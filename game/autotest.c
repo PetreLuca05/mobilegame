@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -51,7 +51,8 @@ bool autotest_starts_in_game(int argc, char **argv)
                    SDL_strcmp(argv[i + 1], "markers") == 0 || SDL_strcmp(argv[i + 1], "perf") == 0 || SDL_strcmp(argv[i + 1], "interact") == 0 || SDL_strcmp(argv[i + 1], "text") == 0 || SDL_strcmp(argv[i + 1], "hudclamp") == 0 ||
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
-                   SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0;
+                   SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0 ||
+                   SDL_strcmp(argv[i + 1], "stick") == 0;
         }
     }
     return false;
@@ -1139,6 +1140,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_HUDCLAMP:
         finished = run_hud_clamp(t, p, out, el);
         break;
+    case AUTOTEST_STICK: {
+        const int r = st_run(&t->st, app, p, out, app->time);
+        if (r < 0) {
+            finished = fail(t, "stick", t->st.why);
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
     case AUTOTEST_UI: {
         const int r = p->uitest ? ut_run(p->uitest, app, p, out, app->time) : -1;
         if (r < 0) {
