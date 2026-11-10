@@ -418,7 +418,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     MenuAction action = MENU_NONE;
     m->preview_visible = false;
     bool held;
-    if (!m->open) { /* pause button, top-left: part of the edge-to-edge HUD */
+    if (!m->open) { /* pause button, top right: part of the edge-to-edge HUD */
         const ui_frame_t uf = {w_pt, h_pt, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
         float gs, gx, gy;
         ui_pause_rect(&uf, &gx, &gy, &gs);

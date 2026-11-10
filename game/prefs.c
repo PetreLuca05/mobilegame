@@ -59,6 +59,7 @@ void prefs_load(Prefs *p, const char *profile)
     SDL_zerop(p);
     settings_default(&p->settings);
     p->lobby_open = true;
+    world_rides_seed(&p->world.rides, (uint32_t)SDL_GetTicksNS() ^ (uint32_t)SDL_rand_bits()); /* a first launch: stored from then on */
     char path[512];
     size_t len = 0;
     void *data = prefs_path(profile, "prefs.json", path, sizeof(path)) ? SDL_LoadFile(path, &len) : NULL;
@@ -114,6 +115,8 @@ void prefs_load(Prefs *p, const char *profile)
         p->stats_queue.rooms_joined = (int)num(q, "rooms_joined", 0);
     }
     world_progress_read(&p->world, cJSON_GetObjectItemCaseSensitive(j, "world"));
+    text(j, "last_book", p->world.last_book, sizeof(p->world.last_book));
+    world_rides_read(&p->world.rides, cJSON_GetObjectItemCaseSensitive(j, "rides"));
     cJSON_Delete(j);
 }
 
@@ -180,6 +183,8 @@ bool prefs_save(const Prefs *p, const char *profile)
         cJSON_AddNumberToObject(q, "rooms_joined", p->stats_queue.rooms_joined);
     }
     world_progress_write(&p->world, j, "world");
+    cJSON_AddStringToObject(j, "last_book", p->world.last_book);
+    world_rides_write(&p->world.rides, j, "rides");
     char *txt = cJSON_Print(j);
     cJSON_Delete(j);
     if (!txt) {

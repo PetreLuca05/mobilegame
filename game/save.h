@@ -3,15 +3,17 @@
  *   (v2, M5: yaw is the top-down camera yaw; v1 = player facing, still read)
  *   play_seconds u32 | elevator_rides u32 | visited_rooms u64 |
  *   (v3, M7) npc_seed u32 | (v4) npc_tick u32 |
- *   (v5, WORLD-1) book_id char[16] | level_id char[16] (older saves: kumar / gastro)
+ *   (v5, WORLD-1) book_id char[16] | level_id char[16] (older saves: kumar / gastro) |
+ *   (v6, WORLD-2) rides: rng u32 | bag u8[4] | bag_left u8 | last i8 | prev u8[2][4] | prev_count u8 | pad u8
  * One slot; written atomically (temp file + rename). The day cycle keeps
  * following the device clock, so no game time is stored. */
 #ifndef MG_SAVE_H
 #define MG_SAVE_H
 
 #include "core/mg_types.h"
+#include "world_progress.h"
 
-#define SAVE_VERSION 5
+#define SAVE_VERSION 6
 
 typedef struct SaveGame {
     HMM_Vec3 pos;
@@ -24,6 +26,8 @@ typedef struct SaveGame {
     uint32_t npc_tick;      /* Continue replays the NPCs to here */
     char book_id[16];       /* the island and hospital this save is in */
     char level_id[16];
+    WorldRides rides;       /* v6: a copy of the ride shuffle (prefs.json "rides" is the live one) */
+    bool has_rides;
     uint32_t version;       /* read: the file's version */
 } SaveGame;
 

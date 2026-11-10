@@ -220,7 +220,7 @@ typedef struct Game {
     WorldBooks books;      /* WORLD-1: assets/world/books.json */
     WorldMap wm;           /* the island; loaded on first open */
     bool wm_tried;
-    int play_level;        /* this game's level in book 0 (the save's level) */
+    int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
 } Game;
@@ -323,8 +323,9 @@ static bool ensure_world(Game *g, MgApp *app)
     return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
 }
 
-/* the account chip, top right; the perf text goes under the pause button, top left */
-#define STATS_Y(top, corner) ((top) + 8.0f + (corner) + UI_PAUSE_SIZE + 8.0f)
+/* in play: the account chip top left, the pause button top right; the perf text goes under the chip */
+#define CHIP_H 44.0f
+#define STATS_Y(top, corner) ((top) + 8.0f + (corner) + CHIP_H + 8.0f)
 #define CHIP_RESERVED_W 170.0f
 /* the main menu's view: from the gate, the hero in the right half */
 #define MENU_EYE_X 0.5f
@@ -427,6 +428,11 @@ bool game_init(MgApp *app)
     for (int i = 1; i + 3 < app->argc; i++) { /* --debug level-progress <level> <percent> (test builds) */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "level-progress") == 0) {
             world_debug_progress(&g->prefs.world, app->argv[i + 2], SDL_atoi(app->argv[i + 3]));
+        }
+    }
+    for (int i = 1; i + 2 < app->argc; i++) { /* --debug ride <plane|helicopter|boat|submarine>: the next trip */
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "ride") == 0) {
+            g->prefs.world.rides.forced = world_ride_from_name(app->argv[i + 2]);
         }
     }
     maps_tag_update(g);
@@ -568,7 +574,8 @@ bool game_init(MgApp *app)
     if (g->perf.active && (SDL_strncmp(g->perf.scenario, "worldmap", 8) == 0 || SDL_strcmp(g->perf.scenario, "island") == 0)) {
         play_now = false; /* the map scene alone: the hospital is never built */
         g->fe.state = FE_MAIN_MENU;
-        open_map(g, app, SDL_strcmp(g->perf.scenario, "worldmap") == 0 ? WM_OVERVIEW : WM_ARRIVED); /* travel starts parked, then drives on */
+        const char *sc = g->perf.scenario;
+        open_map(g, app, SDL_strcmp(sc, "worldmap") == 0 ? WM_OVERVIEW : SDL_strcmp(sc, "worldmap_voyage") == 0 ? WM_BOOKS : WM_ARRIVED); /* travel starts parked, then drives on */
     }
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
         play_now = false;
@@ -848,13 +855,20 @@ static void write_save(Game *g)
     g->has_save = save_write(s, g->profile_name) || g->has_save;
 }
 
-/* ------------------------------------------------------------ WORLD-1 */
+/* ------------------------------------------------------------ WORLD-1/2 */
 
-static const WorldBookDef *cur_book(const Game *g) { return &g->books.books[0]; }
+static const WorldBookDef *cur_book(const Game *g) { return &g->books.books[g->play_book]; }
+
+/* The island played last (Maps opens it), else the first. */
+static int last_book_index(const Game *g)
+{
+    const int i = world_book_find(&g->books, g->prefs.world.last_book);
+    return i < 0 ? 0 : i;
+}
 
 static void maps_tag_update(Game *g)
 {
-    const WorldBookDef *b = cur_book(g);
+    const WorldBookDef *b = &g->books.books[last_book_index(g)];
     const IslandCompletion ic = world_island_completion(&g->prefs.world, b);
     if (ic.known) {
         SDL_snprintf(g->maps_tag, sizeof(g->maps_tag), "%s %d%%", b->name, ic.percent);
@@ -884,14 +898,15 @@ static int level_index(const Game *g, const char *id)
     return i < 0 ? 0 : i;
 }
 
-/* The island: BOOKS after New Game, ARRIVED on the last played hospital from Maps and the pause card. */
+/* The islands: BOOKS after New Game, ARRIVED on the last played hospital of the last played island
+ * from Maps and the pause card. */
 static bool open_map(Game *g, MgApp *app, WmState state)
 {
     const double t0 = (double)SDL_GetTicksNS() * 1e-6;
     if (!g->wm.loaded && !g->wm_tried) {
         g->wm_tried = true;
-        prof_allocs_exempt(true); /* once: the island's meshes */
-        worldmap_load(&g->wm, cur_book(g), 1, app->gfx, &app->perm);
+        prof_allocs_exempt(true); /* once: the islands' meshes */
+        worldmap_load(&g->wm, &g->books, app->gfx, &app->perm);
         prof_allocs_exempt(false);
         arena_release_unused(&app->perm);
     }
@@ -899,15 +914,15 @@ static bool open_map(Game *g, MgApp *app, WmState state)
         frontend_toast(&g->fe, "Could not load the map", app->time);
         return false;
     }
-    const WorldBookState *bs = world_book_state(&g->prefs.world, cur_book(g)->id);
-    const int level = bs->last_level[0] ? level_index(g, bs->last_level) : 0;
-    worldmap_open(&g->wm, state, level, state == WM_BOOKS ? bs->ambulance_s : -1.0f, &g->prefs.world);
+    g->wm.rides = &g->prefs.world.rides;
+    const int island = last_book_index(g);
+    worldmap_open(&g->wm, state, island, &g->prefs.world);
     maps_tag_update(g);
     g->fe.depth = 0;
     g->fe.state = FE_MAIN_MENU;
     frontend_go(&g->fe, FE_MAP);
-    mg_log_info("world: map open (%s) in %.1f ms, level %s", state == WM_BOOKS ? "books" : state == WM_OVERVIEW ? "overview" : "arrived", (double)SDL_GetTicksNS() * 1e-6 - t0,
-                cur_book(g)->levels[level].id);
+    mg_log_info("world: map open (%s) in %.1f ms, %s / %s", state == WM_BOOKS ? "books" : state == WM_OVERVIEW ? "overview" : "arrived", (double)SDL_GetTicksNS() * 1e-6 - t0,
+                g->books.books[island].id, g->books.books[island].levels[g->wm.isles[island].selected].id);
     return true;
 }
 
@@ -916,10 +931,12 @@ static void start_loading(Game *g, int what);
 /* Join on the card: the level's scene through the normal New Game / lobby path. */
 static void join_level(Game *g, MgApp *app, int level)
 {
+    g->play_book = g->wm.cur;
     const WorldBookDef *b = cur_book(g);
     const WorldLevelDef *lv = &b->levels[level];
     g->play_level = level;
-    world_set_last_level(&g->prefs.world, b->id, lv->id, worldmap_stop_s(&g->wm, level), wall_clock_ms());
+    world_set_last_level(&g->prefs.world, b->id, lv->id, worldmap_stop_s(wm_cur(&g->wm), level), wall_clock_ms());
+    SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", b->id);
     push_book_state(g);
     save_prefs(g);
     SaveGame cur;
@@ -1443,7 +1460,9 @@ static void load_step(Game *g, MgApp *app)
             }
             g->save_play_base = g->save.play_seconds - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = g->save.elevator_rides - (uint32_t)g->stats.rides;
+            g->play_book = SDL_max(world_book_find(&g->books, g->save.book_id), 0);
             g->play_level = level_index(g, g->save.level_id);
+            SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", cur_book(g)->id);
             g->keep_save_pos = true;
             world_set_last_level(&g->prefs.world, cur_book(g)->id, cur_book(g)->levels[g->play_level].id, -1.0f, wall_clock_ms());
             push_book_state(g);
@@ -1463,7 +1482,8 @@ static void load_step(Game *g, MgApp *app)
             g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
         }
         if (g->pending_play == 4) { /* a friend's game: the host's level */
-            g->play_level = SDL_clamp(g->lobby.grant.map_id, 0, cur_book(g)->level_count - 1);
+            g->play_book = SDL_clamp(g->lobby.grant.map_id / 64, 0, g->books.count - 1); /* map_id = book * 64 + level */
+            g->play_level = SDL_clamp(g->lobby.grant.map_id % 64, 0, cur_book(g)->level_count - 1);
         }
         SDL_snprintf(g->save.book_id, sizeof(g->save.book_id), "%s", cur_book(g)->id);
         SDL_snprintf(g->save.level_id, sizeof(g->save.level_id), "%s", cur_book(g)->levels[g->play_level].id);
@@ -1482,7 +1502,7 @@ static void load_step(Game *g, MgApp *app)
                 g->npc_epoch_ms = wall_clock_ms() - (double)g->npc_resume_tick / 0.06;
                 session_set_npc_epoch(&g->session, g->npc_epoch_ms);
             }
-            lobby_start_host(&g->lobby, g->play_level, npc_seed_for(g, app)); /* map_id = the level; online when signed in, offline nothing leaves the device */
+            lobby_start_host(&g->lobby, g->play_book * 64 + g->play_level, npc_seed_for(g, app)); /* map_id = book * 64 + level; online when signed in, offline nothing leaves the device */
         }
         g->playing = true;
         g->fe.depth = 0;
@@ -1617,17 +1637,23 @@ static void map_flow(Game *g, MgApp *app)
     scene_defaults(&sp, (float)app->time, &g->day_state);
     g->wm.join_disabled = lobby_is_guest(&g->lobby); /* only the host starts the game */
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "worldmap_travel") == 0 && g->wm.state == WM_ARRIVED) {
-        worldmap_go(&g->wm, g->wm.selected + 1); /* on to the next hospital, around the island */
+        worldmap_go(&g->wm, wm_cur(&g->wm)->selected + 1); /* on to the next hospital, around the island */
+    }
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "worldmap_voyage") == 0 && g->wm.state == WM_BOOKS) {
+        g->prefs.world.rides.forced = RIDE_PLANE; /* back and forth by plane */
+        worldmap_voyage(&g->wm, (g->wm.cur + 1) % g->wm.count);
     }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
-    world_book_state(&g->prefs.world, cur_book(g)->id)->ambulance_s = g->wm.amb_s;
+    for (int i = 0; i < g->wm.count; i++) { /* every island keeps its ambulance where it is */
+        world_book_state(&g->prefs.world, g->wm.isles[i].book->id)->ambulance_s = g->wm.isles[i].amb_s;
+    }
     draw_notices(g, app);
     frontend_toast_draw(&g->fe, &g->ui, app);
     if (a == WM_BACK) {
         save_prefs(g);
         frontend_back(&g->fe);
     } else if (a == WM_JOIN) {
-        join_level(g, app, g->wm.selected);
+        join_level(g, app, wm_cur(&g->wm)->selected);
     }
 }
 
@@ -1776,7 +1802,10 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         save_delete(g->profile_name);
         g->has_save = false;
         SDL_zero(g->save);
-        world_progress_reset(&g->prefs.world, cur_book(g)->id, wall_clock_ms());
+        for (int i = 0; i < g->books.count; i++) { /* every island: no last hospital, the ambulance on its start pad */
+            world_progress_reset(&g->prefs.world, g->books.books[i].id, wall_clock_ms());
+        }
+        SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", g->books.books[0].id);
         save_prefs(g);
         open_map(g, app, WM_BOOKS);
         break;
@@ -2686,6 +2715,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     probe.fe = &g->fe;
     probe.wm = g->wm.loaded ? &g->wm : NULL;
+    probe.world_rides = &g->prefs.world.rides;
     probe.play_level = g->play_level;
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
@@ -2733,6 +2763,16 @@ static void game_frame_inner(MgApp *app, float alpha)
 #endif
         gfx_request_screenshot(app->gfx, path);
         prof_allocs_exempt(false);
+    }
+    if (ato.force_ride > 0) { /* --autotest worldmap2 */
+        g->prefs.world.rides.forced = ato.force_ride - 1;
+    }
+    if (ato.last_book[0]) {
+        SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", ato.last_book);
+        maps_tag_update(g);
+    }
+    if (ato.save_prefs) {
+        save_prefs(g);
     }
     if (ato.debug_level[0]) { /* --autotest worldmap: level-progress */
         world_debug_progress(&g->prefs.world, ato.debug_level, ato.debug_pct);
@@ -3225,7 +3265,8 @@ static void game_frame_inner(MgApp *app, float alpha)
         const ui_frame_t cf = hud_frame(app);
         float cpx, cpy, cps;
         ui_pause_rect(&cf, &cpx, &cpy, &cps);
-        head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, ui_safe_right(&cf) - UI_MARGIN - cf.corner, cpy);
+        const float chip_l = ui_safe_left(&cf) + UI_MARGIN + cf.corner; /* head_chip_draw takes the right edge */
+        head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, chip_l + head_chip_width(&app->font, g->profile.display_name), cpy);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
     touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, 0.0f, app->height_pt, 0.0f);
@@ -3569,7 +3610,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         rc++;
     }
     {
-        const float chip[4] = {ui_safe_right(&uf) - UI_MARGIN - uf.corner - CHIP_RESERVED_W, py, CHIP_RESERVED_W, 44.0f};
+        const float chip[4] = {ui_safe_left(&uf) + UI_MARGIN + uf.corner, py, CHIP_RESERVED_W, CHIP_H};
         memcpy(res + rc * 4, chip, sizeof(chip));
         rc++;
     }
@@ -3841,7 +3882,7 @@ static void layout_autotest(Game *g, MgApp *app)
     const struct { const char *name; float x, y, w, h; } items[] = {
         {"pause", px, py, ps, ps},
         {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r},
-        {"chip", ui_safe_right(&f) - UI_MARGIN - f.corner - CHIP_RESERVED_W, py, CHIP_RESERVED_W, 44.0f},
+        {"chip", ui_safe_left(&f) + UI_MARGIN + f.corner, py, CHIP_RESERVED_W, CHIP_H},
         {"stats", f.inset_l + 10.0f + f.corner, STATS_Y(f.inset_t, f.corner), 200.0f, 90.0f},
         {"notice", (f.w - 360.0f * nk) * 0.5f, f.inset_t + 8.0f, 360.0f * nk, 64.0f * nk},
     };

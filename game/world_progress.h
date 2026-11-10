@@ -30,9 +30,25 @@ typedef struct WorldBookState {
     bool unsynced;      /* changed since book_state last heard of it */
 } WorldBookState;
 
+/* WORLD-2: the vehicle for the next island trip (world_next_ride). */
+typedef enum WorldRide { RIDE_PLANE, RIDE_HELICOPTER, RIDE_BOAT, RIDE_SUBMARINE, RIDE_COUNT } WorldRide;
+
+typedef struct WorldRides {
+    uint32_t rng;       /* the game's xorshift stream (npc_rand), seeded once, stored */
+    uint8_t bag[RIDE_COUNT];
+    int bag_left;       /* rides still in the bag: the next is bag[RIDE_COUNT - bag_left] */
+    int last;           /* the previous trip's vehicle, -1 none */
+    uint8_t prev[2][RIDE_COUNT]; /* the two previous bags' orders, newest first */
+    int prev_count;
+    int forced;         /* --debug ride: the next one, -1 none (not stored) */
+    bool stored;        /* read from prefs (else a fresh seed) */
+} WorldRides;
+
 typedef struct WorldProgress {
     int book_count;
     WorldBookState books[WORLD_MAX_BOOKS];
+    char last_book[WORLD_ID_LEN]; /* WORLD-2: Maps opens this island */
+    WorldRides rides;
     /* debug overrides, this run only */
     int debug_count;
     struct {
@@ -56,5 +72,14 @@ void world_debug_progress(WorldProgress *wp, const char *level, int percent);
 
 void world_progress_read(WorldProgress *wp, const struct cJSON *arr);
 void world_progress_write(const WorldProgress *wp, struct cJSON *parent, const char *key);
+
+/* The shuffle rule: a bag of all four in a random order; an order is redrawn if it starts with the last
+ * trip's vehicle, or equals or is a rotation of either of the two previous bags. */
+WorldRide world_next_ride(WorldRides *r);
+void world_rides_seed(WorldRides *r, uint32_t seed); /* first launch only */
+const char *world_ride_name(WorldRide v);             /* "plane", "helicopter", "boat", "submarine" */
+int world_ride_from_name(const char *name);           /* -1 if unknown */
+void world_rides_read(WorldRides *r, const struct cJSON *o);
+void world_rides_write(const WorldRides *r, struct cJSON *parent, const char *key);
 
 #endif

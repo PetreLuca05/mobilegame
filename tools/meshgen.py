@@ -7,12 +7,14 @@ Input (y-up, map units, flat-shaded triangle soup, counter-clockwise = outward):
     g <name>                            starts a group
     t <colour> x y z x y z x y z        one triangle
     i <name> x y z [size sx sy sz]      instance (wheel positions, roof light boxes)
+    i <name> x y z axis <x|y|z>         spinner: where a moving part sits and the axis it turns about
 
-Output, little endian ("MGMB" version 1):
+Output, little endian ("MGMB" version 2):
     "MGMB" | version u32 | group_count u32
     per group: name char[24] | vertex_count u32 | instance_count u32
                vertices: px py pz nx ny nz f32, r g b a u8 (28 bytes, GfxVertex), 3 per triangle
-               instances: name char[16] | x y z sx sy sz f32 (size 0 when absent)
+               instances: name char[16] | kind u32 (0 point, 1 box, 2 spinner) | x y z f32 |
+                          sx sy sz f32 (box size; spinner: the unit axis; 0 for a point)
 One vertex-coloured mesh per group, the normal of each triangle on its three
 vertices. Any malformed line fails the build.
 
@@ -81,14 +83,17 @@ def parse(path):
                 if not groups:
                     fail(path, line_no, "instance before any group")
                 if len(parts) == 5:
-                    pos, size = floats(path, 3, parts[2:5], line_no), [0.0, 0.0, 0.0]
+                    kind, pos, size = 0, floats(path, 3, parts[2:5], line_no), [0.0, 0.0, 0.0]
                 elif len(parts) == 9 and parts[5] == "size":
-                    pos, size = floats(path, 3, parts[2:5], line_no), floats(path, 3, parts[6:9], line_no)
+                    kind, pos, size = 1, floats(path, 3, parts[2:5], line_no), floats(path, 3, parts[6:9], line_no)
+                elif len(parts) == 7 and parts[5] == "axis" and parts[6] in ("x", "y", "z"):
+                    kind, pos = 2, floats(path, 3, parts[2:5], line_no)
+                    size = [1.0 if parts[6] == a else 0.0 for a in ("x", "y", "z")]
                 else:
-                    fail(path, line_no, "instance line is 'i <name> x y z [size sx sy sz]'")
+                    fail(path, line_no, "instance line is 'i <name> x y z [size sx sy sz | axis x|y|z]'")
                 if len(parts[1]) > 15:
                     fail(path, line_no, "instance name is at most 15 chars")
-                groups[-1][2].append((parts[1], pos, size))
+                groups[-1][2].append((parts[1], kind, pos, size))
             else:
                 fail(path, line_no, f"unknown line kind '{kind}'")
     if not groups:
@@ -114,7 +119,7 @@ def main():
     src, dst = sys.argv[1], sys.argv[2]
     palette, groups = parse(src)
     out = bytearray(b"MGMB")
-    out += struct.pack("<II", 1, len(groups))
+    out += struct.pack("<II", 2, len(groups))
     for name, tris, insts in groups:
         out += struct.pack("<24sII", name.encode(), len(tris) * 3, len(insts))
         for ci, v in tris:
@@ -122,8 +127,8 @@ def main():
             r, g, b = palette[ci]
             for k in range(3):
                 out += struct.pack("<6f4B", v[3 * k], v[3 * k + 1], v[3 * k + 2], n[0], n[1], n[2], r, g, b, 255)
-        for iname, pos, size in insts:
-            out += struct.pack("<16s6f", iname.encode(), *pos, *size)
+        for iname, kind, pos, size in insts:
+            out += struct.pack("<16sI6f", iname.encode(), kind, *pos, *size)
     with open(dst + ".tmp", "wb") as f:
         f.write(out)
     import os

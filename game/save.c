@@ -5,7 +5,8 @@
 #include "core/log.h"
 #include "prefs.h"
 
-#define SAVE_BYTES 88
+#define SAVE_BYTES 108
+#define SAVE_BYTES_V5 88
 #define SAVE_BYTES_V4 56
 #define SAVE_BYTES_V3 52
 #define SAVE_BYTES_V2 48
@@ -59,6 +60,15 @@ bool save_write(const SaveGame *s, const char *profile)
     SDL_memcpy(b + 56, s->book_id, 16);
     SDL_memcpy(b + 72, s->level_id, 16);
     b[56 + 15] = b[72 + 15] = 0;
+    put32(b + 88, s->rides.rng);
+    for (int i = 0; i < RIDE_COUNT; i++) {
+        b[92 + i] = s->rides.bag[i];
+        b[98 + i] = s->rides.prev[0][i];
+        b[102 + i] = s->rides.prev[1][i];
+    }
+    b[96] = (uint8_t)s->rides.bag_left;
+    b[97] = (uint8_t)(int8_t)s->rides.last;
+    b[106] = (uint8_t)s->rides.prev_count;
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     bool ok = SDL_SaveFile(tmp, b, sizeof(b)) && SDL_RenamePath(tmp, path);
     if (!ok) {
@@ -83,7 +93,20 @@ bool save_read(SaveGame *s, const char *profile)
         s->visited_rooms = (uint64_t)get32(b + 36) | ((uint64_t)get32(b + 40) << 32);
         s->npc_seed = s->version >= 3 && len >= SAVE_BYTES_V3 ? get32(b + 48) : 0;
         s->npc_tick = s->version >= 4 && len >= SAVE_BYTES_V4 ? get32(b + 52) : 0;
-        if (s->version >= 5 && len >= SAVE_BYTES) {
+        s->has_rides = s->version >= 6 && len >= SAVE_BYTES;
+        if (s->has_rides) {
+            s->rides.rng = get32(b + 88);
+            for (int i = 0; i < RIDE_COUNT; i++) {
+                s->rides.bag[i] = b[92 + i];
+                s->rides.prev[0][i] = b[98 + i];
+                s->rides.prev[1][i] = b[102 + i];
+            }
+            s->rides.bag_left = SDL_min(b[96], RIDE_COUNT);
+            s->rides.last = (int8_t)b[97];
+            s->rides.prev_count = SDL_min(b[106], 2);
+            s->rides.forced = -1;
+        }
+        if (s->version >= 5 && len >= SAVE_BYTES_V5) {
             SDL_memcpy(s->book_id, b + 56, 16);
             SDL_memcpy(s->level_id, b + 72, 16);
             s->book_id[15] = s->level_id[15] = 0;

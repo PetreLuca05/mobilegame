@@ -13,12 +13,13 @@ import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
 PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "worldmap", "worldmap_travel", "island"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "worldmap", "worldmap_travel", "island", "worldmap_voyage"]
 # WORLD-1 estimates (iPad Air 4); a measurement over 2x an estimate fails. Draws counted by the renderer include the
 # HUD batch: <= 16 world + 1 x-ray (a cube hides the parked ambulance) + 1 HUD = 18.
 WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_tick_ms": 0.05},
                 "worldmap_travel": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
-                "island": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05}}
+                "island": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
+                "worldmap_voyage": {"gpu_effective_ms": 2.5, "render_ms": 0.25, "cpu_tick_ms": 0.05}}
 WORLD_MAX_DRAWS = 18
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}

@@ -33,8 +33,21 @@ typedef struct WorldTest {
     float px, pz, py;
     int floor;
     WtTap tap;
+    int ride;       /* worldmap2: the vehicle under test */
+    double voy_start;
     char why[160];
 } WorldTest;
+
+/* --autotest worldmap2 [relaunch] (WORLD-2):
+ *   1 BOOKS on Kumar: a right button "Lawrance", no left one; on Lawrance the reverse
+ *   2 each vehicle forced: Kumar -> Lawrance ends in BOOKS on Lawrance within duration + 1 s; a picture at t = 0.5
+ *     (worldmap2_<vehicle>); then the submarine's hull is under y = 0 and the plane above y = 90
+ *   3 Lawrance: tap the island -> hospital 1 "Trauma", Coming soon instead of Join; Next x7 comes back round
+ *   4 the shuffle rule over 4,000 draws (no rendering)
+ *   5 the bag is stored: one draw, prefs written, the expected next vehicle in wm2_expect.txt; the
+ *     "relaunch" run checks that the next draw is that one
+ *   6 Maps after Lawrance was played last opens Lawrance */
+int wt2_run(WorldTest *w, MgApp *app, const struct AutotestProbe *p, struct AutotestOut *out, double now, const char *phase);
 
 /* 1 passed, -1 failed (why), 0 running */
 int wt_run(WorldTest *w, MgApp *app, const struct AutotestProbe *p, struct AutotestOut *out, double now);

@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   worldmap2   WORLD-2: two islands, the four vehicles, the shuffle rule (tools/worldmap2_test.sh adds the relaunch)
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -94,6 +95,7 @@ typedef struct AutotestProbe {
     bool text_ok;              /* --autotest text: every Romanian letter has its glyph */
     struct Frontend *fe;
     const struct WorldMap *wm; /* WORLD-1: NULL until the island has been opened */
+    struct WorldRides *world_rides; /* WORLD-2: the game's shuffle (prefs) */
     int play_level;            /* the level being played (book 0) */
 } AutotestProbe;
 
@@ -108,6 +110,9 @@ typedef struct AutotestOut {
     int nav_to;
     char debug_level[24];  /* worldmap: level-progress <level> <debug_pct> */
     int debug_pct;
+    int force_ride;        /* worldmap2: 1 + the vehicle for the next trip, 0 none */
+    char last_book[24];    /* worldmap2: make this the island played last */
+    bool save_prefs;       /* worldmap2: write prefs.json now (the ride bag) */
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -143,6 +148,7 @@ typedef struct Autotest {
     int it_rides, it_hover;
     int clamp_frames, clamp_edge, clamp_hidden;
     WorldTest wt;
+    char wt_phase[16]; /* worldmap2: "" or "relaunch" */
     WtTap map_tap; /* save / offline: through the island after New Game */
 } Autotest;
 

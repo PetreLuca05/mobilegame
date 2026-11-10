@@ -40,6 +40,8 @@ bool world_books_load(WorldBooks *b)
 {
     SDL_zerop(b);
     cJSON *root = parse_asset("assets/world/books.json");
+    copy_str(b->ambulance, sizeof(b->ambulance), root, "ambulance");
+    copy_str(b->vehicles, sizeof(b->vehicles), root, "vehicles");
     const cJSON *book;
     cJSON_ArrayForEach(book, cJSON_GetObjectItemCaseSensitive(root, "books"))
     {
@@ -51,7 +53,6 @@ bool world_books_load(WorldBooks *b)
         copy_str(d->name, sizeof(d->name), book, "name");
         copy_str(d->island, sizeof(d->island), book, "island");
         copy_str(d->mesh, sizeof(d->mesh), book, "mesh");
-        copy_str(d->ambulance, sizeof(d->ambulance), book, "ambulance");
         const cJSON *lv;
         cJSON_ArrayForEach(lv, cJSON_GetObjectItemCaseSensitive(book, "levels"))
         {
@@ -105,7 +106,10 @@ bool world_island_load(WorldIsland *w, const char *asset, Arena *arena)
         cJSON_Delete(root);
         return false;
     }
+    copy_str(w->id, sizeof(w->id), root, "id");
     copy_str(w->book, sizeof(w->book), root, "book");
+    w->book_number = (int)num(root, "book_number", 1);
+    w->world_pos = pair(cJSON_GetObjectItemCaseSensitive(root, "world_pos"));
     w->ground_y = num(root, "ground_y", 0);
     w->road_y = num(root, "road_y", 0);
     w->road_half_width = num(root, "road_half_width", 2);
@@ -223,8 +227,8 @@ bool mgmb_load(Mgmb *m, const char *asset, Arena *arena)
 {
     SDL_zerop(m);
     const MgAsset *a = mg_asset_find(asset);
-    if (!a || a->size < 12 || memcmp(a->data, "MGMB", 4) != 0 || rd32(a->data + 4) != 1) {
-        mg_log_error("world: %s is missing or not an mgmb 1 file", asset);
+    if (!a || a->size < 12 || memcmp(a->data, "MGMB", 4) != 0 || rd32(a->data + 4) != 2) {
+        mg_log_error("world: %s is missing or not an mgmb 2 file", asset);
         return false;
     }
     const uint8_t *p = a->data + 12, *end = a->data + a->size;
@@ -239,7 +243,7 @@ bool mgmb_load(Mgmb *m, const char *asset, Arena *arena)
         g->vert_count = rd32(p + 24);
         g->inst_count = rd32(p + 28);
         p += 32;
-        if ((size_t)(end - p) < (size_t)g->vert_count * 28u + (size_t)g->inst_count * 40u) {
+        if ((size_t)(end - p) < (size_t)g->vert_count * 28u + (size_t)g->inst_count * 44u) {
             goto bad;
         }
         g->verts = ARENA_PUSH(arena, GfxVertex, SDL_max(g->vert_count, 1u));
@@ -250,12 +254,13 @@ bool mgmb_load(Mgmb *m, const char *asset, Arena *arena)
             o->r = p[24], o->g = p[25], o->b = p[26], o->a = p[27];
         }
         g->inst = ARENA_PUSH(arena, MgmbInstance, SDL_max(g->inst_count, 1u));
-        for (uint32_t k = 0; k < g->inst_count; k++, p += 40) {
+        for (uint32_t k = 0; k < g->inst_count; k++, p += 44) {
             MgmbInstance *o = &g->inst[k];
             memcpy(o->name, p, 16);
             o->name[15] = 0;
-            o->pos = HMM_V3(rdf(p + 16), rdf(p + 20), rdf(p + 24));
-            o->size = HMM_V3(rdf(p + 28), rdf(p + 32), rdf(p + 36));
+            o->kind = rd32(p + 16);
+            o->pos = HMM_V3(rdf(p + 20), rdf(p + 24), rdf(p + 28));
+            o->size = HMM_V3(rdf(p + 32), rdf(p + 36), rdf(p + 40));
         }
     }
     return m->count > 0;

@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2 };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -31,6 +31,9 @@ void autotest_init(Autotest *t, int argc, char **argv)
     for (int i = 1; i + 2 < argc; i++) {
         if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "friends") == 0) {
             ft_init(&t->ft, argv[i + 2]);
+        }
+        if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "worldmap2") == 0) {
+            SDL_snprintf(t->wt_phase, sizeof(t->wt_phase), "%s", argv[i + 2]);
         }
         if (SDL_strcmp(argv[i], "--autotest") == 0 && SDL_strcmp(argv[i + 1], "screenshot") == 0) {
             SDL_snprintf(t->shot_name, sizeof(t->shot_name), "%s", argv[i + 2]);
@@ -1113,6 +1116,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_INTERACT:
         finished = run_interact(t, app, p, out, el);
         break;
+    case AUTOTEST_WORLDMAP2: {
+        const int r = wt2_run(&t->wt, app, p, out, app->time, t->wt_phase);
+        if (r < 0) {
+            finished = fail(t, "worldmap2", t->wt.why);
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
     case AUTOTEST_WORLDMAP: {
         const int r = wt_run(&t->wt, app, p, out, app->time);
         if (r < 0) {

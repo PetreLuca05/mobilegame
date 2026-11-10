@@ -25,12 +25,13 @@ typedef struct WorldLevelDef {
 typedef struct WorldBookDef {
     char id[WORLD_ID_LEN];
     char name[WORLD_NAME_LEN];
-    char island[96], mesh[96], ambulance[96]; /* asset paths */
+    char island[96], mesh[96]; /* asset paths */
     int level_count;
     WorldLevelDef levels[WORLD_MAX_LEVELS];
 } WorldBookDef;
 
 typedef struct WorldBooks {
+    char ambulance[96], vehicles[96]; /* shared by every island */
     int count;
     WorldBookDef books[WORLD_MAX_BOOKS];
 } WorldBooks;
@@ -55,7 +56,10 @@ typedef struct WorldPropGroup {
 } WorldPropGroup;
 
 typedef struct WorldIsland {
+    char id[WORLD_ID_LEN];
     char book[WORLD_NAME_LEN];
+    int book_number;
+    HMM_Vec2 world_pos; /* where the island sits in the sea; everything else in the file is local to it */
     float ground_y, road_y, road_half_width, plot_size;
     HMM_Vec2 start;
     int level_count;
@@ -75,9 +79,12 @@ bool world_island_load(WorldIsland *w, const char *asset, Arena *arena);
 HMM_Vec2 world_road_at(const WorldIsland *w, float s, HMM_Vec2 *dir);
 
 /* meshgen output: one vertex-coloured mesh per group, plus its "i" lines */
+enum { MGMB_POINT, MGMB_BOX, MGMB_SPINNER };
+
 typedef struct MgmbInstance {
     char name[16];
-    HMM_Vec3 pos, size;
+    uint32_t kind; /* MGMB_* */
+    HMM_Vec3 pos, size; /* size: a box's size, a spinner's unit axis */
 } MgmbInstance;
 
 typedef struct MgmbGroup {

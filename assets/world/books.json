@@ -1,22 +1,103 @@
 {
   "format": "mg-books 1",
+  "ambulance": "assets/world/ambulance.mgmb",
+  "vehicles": "assets/world/vehicles.mgmb",
   "books": [
     {
       "id": "kumar",
       "name": "Kumar",
       "island": "assets/world/kumar.island.json",
       "mesh": "assets/world/kumar_island.mgmb",
-      "ambulance": "assets/world/ambulance.mgmb",
       "levels": [
-        {"id": "gastro", "name": "Gastro", "map_id": "institute", "scene": "hospital_v1"},
-        {"id": "hepato", "name": "Hepato", "map_id": null},
-        {"id": "cardio", "name": "Cardio", "map_id": null},
-        {"id": "pneumo", "name": "Pneumo", "map_id": null},
-        {"id": "nefro", "name": "Nefro", "map_id": null},
-        {"id": "endocrino", "name": "Endocrino", "map_id": null},
-        {"id": "hemato", "name": "Hemato", "map_id": null},
-        {"id": "reumato", "name": "Reumato", "map_id": null},
-        {"id": "neuro", "name": "Neuro", "map_id": null}
+        {
+          "id": "gastro",
+          "name": "Gastro",
+          "map_id": "institute",
+          "scene": "hospital_v1"
+        },
+        {
+          "id": "hepato",
+          "name": "Hepato",
+          "map_id": null
+        },
+        {
+          "id": "cardio",
+          "name": "Cardio",
+          "map_id": null
+        },
+        {
+          "id": "pneumo",
+          "name": "Pneumo",
+          "map_id": null
+        },
+        {
+          "id": "nefro",
+          "name": "Nefro",
+          "map_id": null
+        },
+        {
+          "id": "endocrino",
+          "name": "Endocrino",
+          "map_id": null
+        },
+        {
+          "id": "hemato",
+          "name": "Hemato",
+          "map_id": null
+        },
+        {
+          "id": "reumato",
+          "name": "Reumato",
+          "map_id": null
+        },
+        {
+          "id": "neuro",
+          "name": "Neuro",
+          "map_id": null
+        }
+      ]
+    },
+    {
+      "id": "lawrance",
+      "name": "Lawrance",
+      "island": "assets/world/lawrance.island.json",
+      "mesh": "assets/world/lawrance_island.mgmb",
+      "levels": [
+        {
+          "id": "trauma",
+          "name": "Trauma",
+          "map_id": null
+        },
+        {
+          "id": "abdomen",
+          "name": "Abdomen",
+          "map_id": null
+        },
+        {
+          "id": "hernii",
+          "name": "Hernii",
+          "map_id": null
+        },
+        {
+          "id": "vascular",
+          "name": "Vascular",
+          "map_id": null
+        },
+        {
+          "id": "tiroida",
+          "name": "Tiroida",
+          "map_id": null
+        },
+        {
+          "id": "colorectal",
+          "name": "Colorectal",
+          "map_id": null
+        },
+        {
+          "id": "arsuri",
+          "name": "Arsuri",
+          "map_id": null
+        }
       ]
     }
   ]
