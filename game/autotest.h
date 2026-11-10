@@ -100,6 +100,8 @@ typedef struct AutotestProbe {
     const float *hud_res;      /* what marker icons stay out of: x, y, w, h */
     int hud_res_count;
     bool text_ok;              /* --autotest text: every Romanian letter has its glyph */
+    float text_center_err;     /* --autotest text: worst |label capitals' centre - face centre|, pt */
+    float text_center_each[3]; /* 54 pt button, 54 pt small label, 44 pt small label */
     struct Frontend *fe;
     const struct WorldMap *wm; /* WORLD-1: NULL until the island has been opened */
     struct WorldRides *world_rides; /* WORLD-2: the game's shuffle (prefs) */

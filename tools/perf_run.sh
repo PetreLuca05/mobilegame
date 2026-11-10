@@ -51,9 +51,13 @@ json_commit() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).
 have() { # file: present and from this build (for --resume)
   [[ -s $1 ]] && same_build "$(json_commit "$1")"
 }
+wake() { # dev: an idle CoreDevice tunnel drops the device from Instruments even on USB; a devicectl call wakes it
+  xcrun devicectl device info details --device "$(device_name $1)" >/dev/null 2>&1
+}
 wait_device() { # dev: until both devicectl and Instruments list it as connected (10 min)
   local udid=$(device_udid $1) name=$(device_name $1) t
   for t in {1..40}; do
+    wake $1
     if xcrun devicectl list devices 2>/dev/null | grep -F "$name" | grep -q "available" &&
        { (( ! GPU )) || xcrun xctrace list devices 2>/dev/null | sed '/Devices Offline/,$d' | grep -q "$udid"; }; then
       return 0
@@ -77,8 +81,10 @@ gpu_trace() { # device scenario; returns non-zero and sets GPU_ERROR
   local dev=$1 s=$2 name udid base id start
   name=$(device_name $dev); udid=$(device_udid $dev); base="$OUT/${dev}_$s${TAG}_gpu"
   id=$(date +%s)$RANDOM
+  wake $dev
   xcrun devicectl device process launch --terminate-existing --device "$name" $BID --quit-after 1 >/dev/null 2>&1
   sleep 8
+  wake $dev
   rm -rf "$base.trace" "$base.stamp"
   start=$(date +%s)
   timeout -s KILL 120 xcrun xctrace record --template 'Metal System Trace' --device $udid --time-limit 10s --output "$base.trace" \
@@ -104,6 +110,7 @@ smoke_trace() { # dev: a 60 s Metal System Trace before the gate; no gate withou
   local dev=$1 udid=$(device_udid $1) base="$OUT/${1}_smoke" transport
   transport=$(xcrun devicectl device info details --device "$(device_name $dev)" 2>/dev/null | sed -n 's/.*transportType: //p' | head -1)
   echo "$dev: GPU smoke trace (60 s, link: ${transport:-unknown})"
+  wake $dev
   rm -rf "$base.trace"
   timeout -s KILL 150 xcrun xctrace record --template 'Metal System Trace' --device $udid --time-limit 60s --output "$base.trace" \
     --launch -- $BID --autotest perf yard 60 --quit-after 75 > "$base.log" 2>&1

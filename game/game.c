@@ -175,6 +175,7 @@ typedef struct Game {
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
+    float text_center_err, text_center_each[3]; /* --autotest text: label capitals vs face centre, pt */
     float hud_res[24];       /* what the marker icons stay out of: x, y, w, h */
     int hud_res_count;
     int player_storey_cached;
@@ -2803,6 +2804,10 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.world_rides = &g->prefs.world.rides;
     probe.play_level = g->play_level;
     probe.uitest = &g->uitest;
+    probe.text_center_err = g->text_test ? g->text_center_err : -1.0f;
+    for (int i = 0; i < 3; i++) {
+        probe.text_center_each[i] = g->text_center_each[i];
+    }
     probe.stick = &g->stick_view;
     probe.touch = &g->touch;
     probe.stick_r = g->touch_cfg.radius_pt;
@@ -3438,6 +3443,30 @@ static void game_frame_inner(MgApp *app, float alpha)
         ui_round_rect(app->gfx, &app->font, tx, ty, tw, 140.0f, 14.0f, ui_rgba(0x101218F0));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 44.0f, 30.0f, ui_rgba(0xFFFFFFFF), str("autotest_text"));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 100.0f, 20.0f, ui_rgba(0xFFD166FF), str("autotest_text_line"));
+        /* label centring: read back what three buttons emit; the capitals' middle against the face's middle */
+        static const struct { float h; int flags; } btn[3] = {{54.0f, 0}, {54.0f, UI_F_SMALL}, {44.0f, UI_F_SMALL}};
+        const TextGlyph *H = &app->font_display.glyphs['H'];
+        g->text_center_err = 0.0f;
+        for (int b = 0; b < 3; b++) {
+            char id[24];
+            SDL_snprintf(id, sizeof(id), "HHH##tc%d", b);
+            uint32_t n0, n1;
+            gfx_ui_instances(app->gfx, &n0);
+            ui_button_v(&g->ui, id, tx + (float)b * 220.0f, ty + 160.0f, 200.0f, btn[b].h, UI_V_PRIMARY, btn[b].flags);
+            const GfxUiInst *in = gfx_ui_instances(app->gfx, &n1);
+            float face_c = -1.0f, cap_c = -1.0f;
+            for (uint32_t i = n0; i < n1; i++) {
+                if (in[i].kind == (float)GFX_UI_SHAPE && in[i].shape[2] > 0.0f) { /* the face: the shape with the highlight band */
+                    face_c = in[i].rect[1] + in[i].rect[3] * 0.5f;
+                } else if (in[i].kind == (float)GFX_UI_GLYPH && H->h > 0.0f) {
+                    const float scale = in[i].rect[3] / H->h, baseline = in[i].rect[1] - H->yoff * scale;
+                    cap_c = baseline - app->font_display.cap_px * scale * 0.5f;
+                }
+            }
+            const float err = face_c < 0.0f || cap_c < 0.0f ? 99.0f : fabsf(cap_c - face_c);
+            g->text_center_err = mg_maxf(g->text_center_err, err);
+            g->text_center_each[b] = err;
+        }
     }
     if (g->greet_t > 0.0f) { /* bottom right, beside the preview card */
         g->greet_t = mg_maxf(g->greet_t - mg_minf(app->frame_dt, 0.1f), 0.0f);

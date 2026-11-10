@@ -1178,7 +1178,14 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (t->stage == 1 && el > 4.0) {
             if (!p->text_ok) {
                 finished = fail(t, "text", "a Romanian letter has no glyph, or a cedilla form is not mapped");
+            } else if (p->text_center_err < 0.0f || p->text_center_err > 1.0f) {
+                char why[128];
+                SDL_snprintf(why, sizeof(why), "button labels are off the face centre by %.2f / %.2f / %.2f pt (max 1)", (double)p->text_center_each[0],
+                             (double)p->text_center_each[1], (double)p->text_center_each[2]);
+                finished = fail(t, "text", why);
             } else {
+                mg_log_info("autotest text: label capitals on the face centre: %.2f / %.2f / %.2f pt off (54 pt, 54 pt small, 44 pt small; max 1)",
+                            (double)p->text_center_each[0], (double)p->text_center_each[1], (double)p->text_center_each[2]);
                 mg_log_info("autotest text: all ten letters have glyphs, cedilla forms map to the comma ones (ok)");
                 mg_log_info("AUTOTEST PASSED");
                 t->passed = finished = true;

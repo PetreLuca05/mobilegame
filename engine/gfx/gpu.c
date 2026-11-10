@@ -1264,6 +1264,12 @@ void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h)
     g->ui_clip[0] = x, g->ui_clip[1] = y, g->ui_clip[2] = x + w, g->ui_clip[3] = y + h;
 }
 
+const GfxUiInst *gfx_ui_instances(const GfxContext *g, uint32_t *count)
+{
+    *count = g->ui_count;
+    return g->ui_insts;
+}
+
 void gfx_ui_clip_fade(GfxContext *g, float pt) { g->ui_clip_fade = pt > 0.0f ? pt : 0.0f; }
 
 void gfx_ui_clip_off(GfxContext *g)

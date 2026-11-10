@@ -214,6 +214,8 @@ void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);
 /* With a clip on: dissolve the instances over the last `pt` inside its edges (0 = hard edge); cleared by clip_off. */
 void gfx_ui_clip_fade(GfxContext *g, float pt);
+/* This frame's UI instances so far (autotests read back what a widget emitted). */
+const GfxUiInst *gfx_ui_instances(const GfxContext *g, uint32_t *count);
 /* Render this frame's GFX_DRAW_PREVIEW draws with a second camera into an
  * offscreen square, shown at (x, y) `size` pt wide with rounded corners,
  * over the UI quads (keep other UI out of that square). Lighting comes from
