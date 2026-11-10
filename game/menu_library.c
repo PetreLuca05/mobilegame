@@ -106,6 +106,33 @@ static bool load_scene(LibScene *s)
     const cJSON *tr = cJSON_GetObjectItemCaseSensitive(root, "transition");
     s->transition.duration_s = jnum(tr, "duration_s", 3.0f), s->transition.hump = jnum(tr, "hump", 0.3f);
     jfloats(cJSON_GetObjectItemCaseSensitive(tr, "shell_fade"), s->transition.shell_fade, 2);
+    for (const cJSON *nj = cJSON_GetObjectItemCaseSensitive(root, "npcs") ? cJSON_GetObjectItemCaseSensitive(root, "npcs")->child : NULL; nj && s->npc_n < LIB_NPCS;
+         nj = nj->next) {
+        LibNpcDef *d = &s->npcs[s->npc_n++];
+        SDL_snprintf(d->id, sizeof(d->id), "%s", cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(nj, "id")) ? cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(nj, "id")) : "");
+        d->speed = jnum(nj, "speed", 1.0f);
+        d->push_cart = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(nj, "push_cart"));
+        d->uses_door = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(nj, "uses_door"));
+        const cJSON *seated = cJSON_GetObjectItemCaseSensitive(nj, "seated");
+        if (cJSON_IsObject(seated)) {
+            d->seated = true;
+            d->seat_pos = jv2(seated, "pos");
+            d->seat_yaw_deg = jnum(seated, "yaw", 0.0f);
+        }
+        jfloats(cJSON_GetObjectItemCaseSensitive(nj, "read_s"), d->read_s, 2);
+        for (const cJSON *rj = cJSON_GetObjectItemCaseSensitive(nj, "route") ? cJSON_GetObjectItemCaseSensitive(nj, "route")->child : NULL; rj && d->route_n < LIB_ROUTE_MAX;
+             rj = rj->next) {
+            LibRouteStep *r = &d->route[d->route_n++];
+            r->p = jv2(rj, "p");
+            r->wait_s = jnum(rj, "wait_s", 0.0f);
+            const cJSON *face = cJSON_GetObjectItemCaseSensitive(rj, "face_deg");
+            r->has_face = cJSON_IsNumber(face);
+            r->face_deg = r->has_face ? (float)face->valuedouble : 0.0f;
+            r->outside = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(rj, "outside"));
+            const char *act = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(rj, "act"));
+            r->act = act && SDL_strcmp(act, "browse") == 0 ? LIB_ACT_BROWSE : act && SDL_strcmp(act, "post") == 0 ? LIB_ACT_POST : LIB_ACT_NONE;
+        }
+    }
     cJSON_Delete(root);
     if (n != LIB_SEATS) {
         mg_log_error("library: %d seats in the scene, want %d", n, LIB_SEATS);
@@ -131,6 +158,56 @@ static GfxMeshId upload(GfxContext *g, Arena *arena, const Mgmb *mb, const char 
     const GfxMeshId id = gfx_mesh_upload(g, gr->verts, gr->vert_count, idx, gr->vert_count);
     arena_reset_to(arena, mark);
     return id;
+}
+
+/* The NPCs' looks: assets/avatar/avatar.json demo_looks by id (suit, skin, hair colours); plain clothes,
+ * the short cap. The elder ("batran", Romanian for old man) takes the elder age class. */
+static void npc_looks(MenuLibrary *L)
+{
+    const MgAsset *a = mg_asset_find("assets/avatar/avatar.json");
+    cJSON *root = a ? cJSON_ParseWithLength((const char *)a->data, a->size) : NULL;
+    const cJSON *looks = cJSON_GetObjectItemCaseSensitive(root, "demo_looks");
+    for (int i = 0; i < L->sc.npc_n; i++) {
+        AvatarLook *l = &L->npc[i].look;
+        *l = avatar_look_from_skin((NetSkin){.skin = (uint8_t)i, .hair = HAIR_SHORT, .hair_color = (uint8_t)i, .suit = (uint8_t)i});
+        l->outfit_style = OUTFIT_PLAIN;
+        l->decal = DECAL_NONE;
+        l->accessory = ACC_NONE;
+        for (const cJSON *d = looks ? looks->child : NULL; d; d = d->next) {
+            const char *name = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(d, "name"));
+            if (!name || SDL_strcmp(name, L->sc.npcs[i].id) != 0) {
+                continue;
+            }
+            const char *suit = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(d, "suit"));
+            const char *skin = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(d, "skin"));
+            const char *hair = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(d, "hair"));
+            l->outfit = suit ? (uint32_t)SDL_strtoul(suit, NULL, 16) : l->outfit;
+            l->skin = skin ? (uint32_t)SDL_strtoul(skin, NULL, 16) : l->skin;
+            l->hair = hair ? (uint32_t)SDL_strtoul(hair, NULL, 16) : l->hair;
+        }
+        if (SDL_strcmp(L->sc.npcs[i].id, "batran") == 0) {
+            l->age = AVATAR_ELDER;
+        }
+    }
+    cJSON_Delete(root);
+}
+
+static void npcs_reset(MenuLibrary *L)
+{
+    for (int i = 0; i < L->sc.npc_n; i++) {
+        const LibNpcDef *d = &L->sc.npcs[i];
+        LibNpc *n = &L->npc[i];
+        n->step = 0, n->waiting = true, n->t = 0.0f;
+        n->pos = d->seated ? d->seat_pos : d->route_n ? d->route[0].p : HMM_V2(0, 0);
+        n->yaw_deg = d->seated ? d->seat_yaw_deg : d->route_n && d->route[0].has_face ? d->route[0].face_deg : 0.0f;
+        n->cart_yaw_deg = n->yaw_deg;
+        n->cart = n->pos; /* placed ahead on the first step */
+        SDL_zero(n->anim);
+        lib_study_init(&n->study, &L->sc, 101u + (uint32_t)i);
+        if (d->seated && d->read_s[1] > 0.0f) {
+            lib_study_read_range(&n->study, d->read_s[0], d->read_s[1]);
+        }
+    }
 }
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
@@ -159,6 +236,8 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->ok = L->room != GFX_MESH_NONE && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
             L->leaf_b != GFX_MESH_NONE;
+    npc_looks(L);
+    npcs_reset(L);
     L->seat[0].state = LM_STUDY; /* the hero: always at seat 0 */
     L->seat[0].blend = L->seat[0].study_w = 1.0f;
     L->seat[0].pos = L->sc.seats[0].pos, L->seat[0].yaw_deg = L->sc.seats[0].yaw_deg;
@@ -303,12 +382,12 @@ static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, 
     }
 }
 
-void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, float w, AvatarPose *p)
+static void study_pose_at(const MenuLibrary *L, HMM_Vec2 pos, float yaw_deg, const LibStudy *st, float w, AvatarPose *p)
 {
     const LibScene *s = &L->sc;
     SDL_zerop(p);
-    p->feet = menu_library_seat_world(L, i);
-    p->yaw = HMM_AngleDeg(s->seats[i].yaw_deg) + HMM_PI32; /* library yaw 0 faces +z; avatar yaw 0 looks along -Z */
+    p->feet = lib_point(L, HMM_V3(pos.X, 0.0f, pos.Y));
+    p->yaw = HMM_AngleDeg(yaw_deg) + HMM_PI32; /* library yaw 0 faces +z; avatar yaw 0 looks along -Z */
     p->grounded = true;
     p->flat_ground = true;
     p->sit = 1.0f;
@@ -320,6 +399,12 @@ void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, fl
     p->hands_w = w;
     p->hand_l = st->hand_l;
     p->hand_r = st->hand_r;
+}
+
+void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, float w, AvatarPose *p)
+{
+    const LibSeat *seat = &L->sc.seats[i < 0 || i >= LIB_SEATS ? 0 : i];
+    study_pose_at(L, seat->pos, seat->yaw_deg, st, w, p);
 }
 
 /* ------------------------------------------------------------------ the seats' people */
@@ -521,6 +606,85 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
     p->sit = mb->blend;
 }
 
+/* ------------------------------------------------------------------ background NPCs */
+
+static void npc_step(MenuLibrary *L, int i, float dt)
+{
+    const LibNpcDef *d = &L->sc.npcs[i];
+    LibNpc *n = &L->npc[i];
+    n->vel = HMM_V2(0, 0);
+    if (d->seated) {
+        lib_study_step(&n->study, &L->sc, dt);
+        return;
+    }
+    if (d->route_n == 0) {
+        return;
+    }
+    const LibRouteStep *st = &d->route[n->step];
+    if (n->waiting) {
+        if (st->has_face) {
+            n->yaw_deg = st->face_deg;
+        }
+        n->t += dt;
+        if (st->wait_s >= 0.0f && n->t >= st->wait_s && d->speed > 0.0f) {
+            n->waiting = false;
+            n->step = (n->step + 1) % d->route_n;
+            n->t = 0.0f;
+        }
+        return;
+    }
+    const HMM_Vec2 to = HMM_SubV2(st->p, n->pos);
+    const float dist = HMM_LenV2(to), stride = d->speed * dt;
+    if (dist <= stride) {
+        n->pos = st->p;
+        n->waiting = true;
+        n->t = 0.0f;
+    } else {
+        const HMM_Vec2 dir = HMM_DivV2F(to, dist);
+        n->pos = HMM_AddV2(n->pos, HMM_MulV2F(dir, stride));
+        n->vel = HMM_MulV2F(dir, d->speed);
+        n->yaw_deg = yaw_of(dir);
+    }
+    if (d->push_cart && !(n->waiting && st->act == LIB_ACT_BROWSE)) { /* the cart rides 0.75 m ahead while pushed */
+        const float yw = HMM_AngleDeg(n->yaw_deg);
+        n->cart = HMM_AddV2(n->pos, HMM_V2(HMM_SinF(yw) * L->avatar_push_ahead, HMM_CosF(yw) * L->avatar_push_ahead));
+        n->cart_yaw_deg = n->yaw_deg;
+    }
+}
+
+/* Walking NPCs near the door count for it, like the lobby's walkers */
+static bool npc_at_door(const MenuLibrary *L, int i)
+{
+    const LibNpc *n = &L->npc[i];
+    return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, L->sc.door.centre)) < L->sc.door.open_radius;
+}
+
+static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i, float dt)
+{
+    const LibNpcDef *d = &L->sc.npcs[i];
+    LibNpc *n = &L->npc[i];
+    const LibRouteStep *st = d->route_n ? &d->route[n->step] : NULL;
+    if (st && n->waiting && st->outside) {
+        return; /* outside the door, waiting to come in */
+    }
+    AvatarPose p;
+    if (d->seated) {
+        study_pose_at(L, d->seat_pos, d->seat_yaw_deg, &n->study, 1.0f, &p);
+    } else {
+        SDL_zero(p);
+        p.feet = lib_point(L, HMM_V3(n->pos.X, 0.0f, n->pos.Y));
+        p.yaw = HMM_AngleDeg(n->yaw_deg) + HMM_PI32;
+        p.vel = HMM_MulM4V4(L->xf, HMM_V4(n->vel.X, 0.0f, n->vel.Y, 0.0f)).XYZ;
+        p.grounded = true;
+        p.flat_ground = true;
+        const bool browsing = st && n->waiting && st->act == LIB_ACT_BROWSE;
+        p.browse = browsing ? 1.0f : 0.0f;
+        p.push = d->push_cart && !browsing ? 1.0f : 0.0f;
+    }
+    avatar_animate(m, &n->anim, &p, dt);
+    avatar_draw(g, m, &n->look, &p, &n->anim, NULL);
+}
+
 bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_Vec3 *top, const char **name, bool *host)
 {
     if (i <= 0 || i >= LIB_SEATS || L->seat[i].state == LM_EMPTY) {
@@ -539,7 +703,12 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         return;
     }
     const LibScene *s = &L->sc;
+    L->avatar_push_ahead = m->rig.push_ahead_m;
     bool walker_at_door = false;
+    for (int i = 0; i < s->npc_n; i++) {
+        npc_step(L, i, dt);
+        walker_at_door |= npc_at_door(L, i);
+    }
     for (int i = 0; i < LIB_SEATS; i++) {
         member_step(L, i, dt);
         const LibMember *mb = &L->seat[i];
@@ -562,6 +731,19 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         const HMM_Mat4 cm = placed(L, s->extra_chairs[i][0], s->extra_chairs[i][1], s->extra_chairs[i][2]);
         gfx_draw(g, L->chair, &cm, &room, 0);
     }
+    for (int i = 0; i < s->npc_n; i++) { /* the reader NPC's chair and open book; the cart */
+        const LibNpcDef *d = &s->npcs[i];
+        if (d->seated) {
+            const HMM_Mat4 cm = placed(L, d->seat_pos.X, d->seat_pos.Y, d->seat_yaw_deg);
+            gfx_draw(g, L->chair, &cm, &room, 0);
+            const LibSeat at = {d->seat_pos, d->seat_yaw_deg, d->seat_pos, {{{0}}}, 0};
+            draw_book(L, g, &at, true, &L->npc[i].study);
+        }
+        if (d->push_cart) {
+            const HMM_Mat4 cart = placed(L, L->npc[i].cart.X, L->npc[i].cart.Y, L->npc[i].cart_yaw_deg);
+            gfx_draw(g, L->cart, &cart, &room, 0);
+        }
+    }
     for (int i = 0; i < LIB_SEATS; i++) {
         LibMember *mb = &L->seat[i];
         /* the book: closed until its reader's sit blend passes 0.9 */
@@ -575,5 +757,8 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         const AvatarLook look = i == 0 ? *hero : avatar_look_from_skin(mb->skin);
         avatar_animate(m, &mb->anim, &p, dt);
         avatar_draw(g, m, &look, &p, &mb->anim, NULL);
+    }
+    for (int i = 0; i < s->npc_n; i++) {
+        npc_draw(L, g, m, i, dt);
     }
 }

@@ -14,6 +14,40 @@
 #define LIB_SEATS 4
 #define LIB_PATH_MAX 8
 #define LIB_EXTRA_CHAIRS 4
+#define LIB_NPCS 8
+#define LIB_ROUTE_MAX 10
+
+enum { LIB_ACT_NONE, LIB_ACT_BROWSE, LIB_ACT_POST };
+
+typedef struct LibRouteStep {
+    HMM_Vec2 p;
+    float wait_s;   /* -1: forever */
+    float face_deg; /* while waiting; has_face false: keeps the walking direction */
+    bool has_face, outside; /* outside: hidden while it waits */
+    int act;        /* LIB_ACT_* while waiting */
+} LibRouteStep;
+
+typedef struct LibNpcDef {
+    char id[24];
+    float speed;
+    bool push_cart, uses_door, seated;
+    HMM_Vec2 seat_pos; /* seated readers */
+    float seat_yaw_deg, read_s[2];
+    LibRouteStep route[LIB_ROUTE_MAX];
+    int route_n;
+} LibNpcDef;
+
+/* One background NPC at run time (a small route runner, not the M7 packages). */
+typedef struct LibNpc {
+    AvatarLook look;
+    int step;
+    bool waiting;
+    float t;
+    HMM_Vec2 pos, vel, cart;
+    float yaw_deg, cart_yaw_deg;
+    AvatarAnim anim;
+    LibStudy study;
+} LibNpc;
 
 typedef struct LibSeat {
     HMM_Vec2 pos;   /* the chair, x z */
@@ -56,6 +90,8 @@ typedef struct LibScene {
     struct {
         float duration_s, hump, shell_fade[2];
     } transition;
+    LibNpcDef npcs[LIB_NPCS];
+    int npc_n;
 } LibScene;
 
 /* Who is at a seat: seat 0 is always the local player, 1..3 the lobby's other members (presentation only). */
@@ -89,6 +125,8 @@ typedef struct MenuLibrary {
     float door_angle;
     AvatarAnim hero_anim;
     LibMember seat[LIB_SEATS];
+    LibNpc npc[LIB_NPCS];
+    float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
     bool debug_turns; /* --debug turn-page: a page every 2.5 s */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
 } MenuLibrary;

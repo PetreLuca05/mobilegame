@@ -25,6 +25,7 @@ typedef struct LibStudy {
     bool turning, force;
     float t;        /* seconds in this read / turn */
     float read_len; /* this read's length */
+    float read_s[2]; /* the range reads are drawn from (study.read_s unless set) */
     float u;        /* turn progress 0..1 */
     float theta, theta_b; /* the leaf's inner and outer halves */
     int turns;
@@ -35,6 +36,8 @@ typedef struct LibStudy {
 } LibStudy;
 
 void lib_study_init(LibStudy *s, const LibScene *sc, uint32_t seed);
+/* Another read range (the reader NPC's own read_s); takes effect from the next read. */
+void lib_study_read_range(LibStudy *s, float lo, float hi);
 void lib_study_step(LibStudy *s, const LibScene *sc, float dt);
 void lib_study_force_turn(LibStudy *s); /* --debug turn-page: the next step starts a turn */
 /* The leaf's outer edge (tip) in the seat frame for the two half angles. */

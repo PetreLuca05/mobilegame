@@ -21,19 +21,23 @@ static uint32_t next(uint32_t *r)
 static float read_len(LibStudy *s, const LibScene *sc)
 {
     const float k = (float)(next(&s->rng) >> 8) / 16777216.0f;
-    return lerpf(sc->study.read_s[0], sc->study.read_s[1], k);
+    (void)sc;
+    return lerpf(s->read_s[0], s->read_s[1], k);
 }
 
 void lib_study_init(LibStudy *s, const LibScene *sc, uint32_t seed)
 {
     *s = (LibStudy){0};
     s->rng = seed * 2654435761u + 1u;
+    s->read_s[0] = sc->study.read_s[0], s->read_s[1] = sc->study.read_s[1];
     s->read_len = read_len(s, sc);
     s->t = (float)(next(&s->rng) >> 8) / 16777216.0f * s->read_len; /* each reader starts at its own point */
     lib_study_step(s, sc, 0.0f);
 }
 
 void lib_study_force_turn(LibStudy *s) { s->force = true; }
+
+void lib_study_read_range(LibStudy *s, float lo, float hi) { s->read_s[0] = lo, s->read_s[1] = hi; }
 
 HMM_Vec3 lib_study_tip(const LibScene *sc, float theta, float theta_b)
 {

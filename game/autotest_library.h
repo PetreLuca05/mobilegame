@@ -1,5 +1,6 @@
 /* --autotest library (LIB-1): the library behind the menu. Steps so far:
- *   1  the menu opens on the library: the hero in seat 0, seated, its book open; screenshot library_menu
+ *   1  the menu opens on the library: the hero in seat 0, seated, its book open, 6 NPCs present (drawn, or the
+ *      visitor waiting outside the door); screenshot library_menu
  *   2  a forced page turn (lib_study.h) in seat 0 and seat 2 (yaw 90): the leaf angle rises monotonically
  *      0 -> pi, the drawn right hand (avatar_solve, world) within 2 cm of the drawn leaf tip while
  *      theta < release_theta (after the reach), both hands at
