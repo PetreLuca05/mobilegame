@@ -23,7 +23,8 @@ typedef struct FriendsPage {
     char action_name[NET_NAME_LEN];
     char confirm_id[NET_ID_LEN]; /* "Remove friend?" is up */
     char confirm_name[NET_NAME_LEN];
-    char note[80];              /* last result of an action */
+    char note[80];
+    bool note_bad; /* the note is a refusal: red, shaken */              /* last result of an action */
     double note_until;
 } FriendsPage;
 
