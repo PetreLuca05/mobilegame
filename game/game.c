@@ -568,7 +568,7 @@ bool game_init(MgApp *app)
     if (g->perf.active && (SDL_strncmp(g->perf.scenario, "worldmap", 8) == 0 || SDL_strcmp(g->perf.scenario, "island") == 0)) {
         play_now = false; /* the map scene alone: the hospital is never built */
         g->fe.state = FE_MAIN_MENU;
-        open_map(g, app, g->perf.scenario[0] == 'i' ? WM_ARRIVED : WM_OVERVIEW);
+        open_map(g, app, SDL_strcmp(g->perf.scenario, "worldmap") == 0 ? WM_OVERVIEW : WM_ARRIVED); /* travel starts parked, then drives on */
     }
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
         play_now = false;
@@ -906,7 +906,7 @@ static bool open_map(Game *g, MgApp *app, WmState state)
     g->fe.depth = 0;
     g->fe.state = FE_MAIN_MENU;
     frontend_go(&g->fe, FE_MAP);
-    mg_log_info("world: map open (%s) in %.1f ms, level %s", state == WM_BOOKS ? "books" : "arrived", (double)SDL_GetTicksNS() * 1e-6 - t0,
+    mg_log_info("world: map open (%s) in %.1f ms, level %s", state == WM_BOOKS ? "books" : state == WM_OVERVIEW ? "overview" : "arrived", (double)SDL_GetTicksNS() * 1e-6 - t0,
                 cur_book(g)->levels[level].id);
     return true;
 }
