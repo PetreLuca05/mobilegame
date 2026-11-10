@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|stick|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -375,6 +375,10 @@ Details, motion table, tiers and how to add a widget: [docs/UI.md](docs/UI.md).
 - Input: `ui_press` = press motion + T0 + the action on the touch-up frame; targets >= 44 pt; `ui_remember` for rects that are not targets. Screens enter (layer slides in, rows stagger); toasts and notices also exit.
 - Settings -> Animații interfață (`ui_motion` 0 full / 1 reduced; iOS Reduce Motion forces 1); `ui_sounds` (was `marker_sounds`, migrated), `haptics`.
 - `--autotest ui` (all windows incl. `MG_WINDOW=iphone|iphone-flip|ipad`), perf scenario `ui_juice`; the perf gate checks `ui.anim` + `ui.fx` and `render.ui` against the UI-1 estimates and at most 3 UI draws.
+
+## Haptics (HAPTIC-1)
+
+- One table `engine/ui/haptic_table.h`, one call `ui_haptic(HAPTIC_*)`; never touch haptic hardware anywhere else (only `engine/ui/haptics.c` and `platform/ios/haptics.m`, Core Haptics). Widgets play through their class (`k_haptic_class`) from `ui_press`; new events get a table row and a `ui_haptic` call. Limiter one start per 50 ms (`ui_haptics_flush` at the end of the frame). Vibrații pref `haptics` 0 / 1 / 2 (Oprit / Fin / Complet). Debug: Developer -> Haptic lab. `--autotest haptics`. Details: docs/UI.md.
 
 ## Networking
 
