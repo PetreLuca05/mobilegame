@@ -73,6 +73,7 @@
 #include "settings_menu.h"
 #include "stats.h"
 #include "ui/hud.h"
+#include "ui/stick_view.h"
 #include "ui/touch_controls.h"
 #include "ui/ui_widgets.h"
 #include "world_data.h"
@@ -117,6 +118,7 @@ typedef struct Game {
     GameSettings settings;
     TouchControlsConfig touch_cfg;
     TouchControls touch;
+    StickView stick_view; /* UI-1b: the stick's look; reads touch, never writes it */
     Ui ui;
     SettingsMenu menu;
     AvatarAnim preview_anim;
@@ -446,6 +448,7 @@ bool game_init(MgApp *app)
     }
     maps_tag_update(g);
     touch_controls_default_config(&g->touch_cfg);
+    stick_view_init(&g->stick_view);
 #if !PLAYER_SPRINT_ENABLED
     g->touch_cfg.sprint_at = 2.0f; /* never: no rim sprint, no knob highlight */
     g->touch_cfg.full_at = 0.75f;  /* walk speed from a 3/4 push on; slower below */
@@ -3078,6 +3081,7 @@ static void game_frame_inner(MgApp *app, float alpha)
 #endif
     if (g->menu.open || riding) {
         touch_controls_reset(&g->touch);
+        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open, g->ui_anim.reduced); /* fades out under a menu */
     } else {
         /* iPad: bigger controls so thumbs reach them */
         float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
@@ -3357,7 +3361,14 @@ static void game_frame_inner(MgApp *app, float alpha)
         head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, chip_l + head_chip_width(&app->font, g->profile.display_name), cpy);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
-    touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, 0.0f, app->height_pt, 0.0f);
+    {
+        float rx, ry;
+        stick_view_rest(&g->touch_cfg, app->safe_left, app->height_pt, app->safe_bottom, &rx, &ry);
+        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open || g->fpage.open || g->touch.hide_hint,
+                          g->ui_anim.reduced);
+        stick_view_draw(&g->stick_view, &g->touch, &g->touch_cfg, app->gfx, rx, ry);
+    }
+    touch_controls_draw(&g->touch, &g->touch_cfg, app->gfx, &app->font, 0.0f, app->height_pt, 0.0f); /* the jump button (off) */
     frontend_toast_draw(&g->fe, &g->ui, app);
     draw_name_tags(g, app, floor, player_floor, feet);
     HudInfo hud = {0};
@@ -3964,12 +3975,14 @@ static void layout_autotest(Game *g, MgApp *app)
     static const char *const orient[5] = {"unknown", "landscape (SDL)", "landscape-flipped (SDL)", "portrait", "portrait-flipped"};
     const SDL_DisplayOrientation so = SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay());
     mg_log_info("autotest layout: display orientation %s", orient[so >= 0 && so < 5 ? so : 0]);
-    const float r = g->touch_cfg.radius_pt * 0.75f;
-    const float stick_x = f.inset_l + 16.0f, stick_y = f.h - f.inset_b - 16.0f - 2.0f * r;
+    const float r = g->touch_cfg.radius_pt, lip = k_ui.stick_lip_off * r / k_ui.stick_design_r;
+    float stick_cx, stick_cy;
+    stick_view_rest(&g->touch_cfg, app->safe_left, app->height_pt, app->safe_bottom, &stick_cx, &stick_cy);
+    const float stick_x = stick_cx - r, stick_y = stick_cy - r;
     const float nk = f.h >= 600.0f ? 1.3f : 1.0f; /* the join panel, ui/notice_panel.c */
     const struct { const char *name; float x, y, w, h; } items[] = {
         {"pause", px, py, ps, ps},
-        {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r},
+        {"stick", stick_x, stick_y, 2.0f * r, 2.0f * r + lip},
         {"chip", ui_safe_left(&f) + UI_MARGIN + f.corner, py, CHIP_RESERVED_W, CHIP_H},
         {"stats", f.inset_l + 10.0f + f.corner, STATS_Y(f.inset_t, f.corner), 200.0f, 90.0f},
         {"notice", (f.w - 360.0f * nk) * 0.5f, f.inset_t + 8.0f, 360.0f * nk, 64.0f * nk},

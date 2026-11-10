@@ -189,6 +189,7 @@ add_library(mg_engine STATIC
   engine/ui/ui_fx.c
   engine/ui/ui_widgets.c
   engine/ui/touch_controls.c
+  engine/ui/stick_view.c
   engine/ui/marker_hud.c
   engine/ui/hud.c
   engine/ui/prof_hud.c

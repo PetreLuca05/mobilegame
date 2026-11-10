@@ -5,6 +5,7 @@
 #define MG_UI_FX_H
 
 #include "audio/audio.h"
+#include "platform/haptics.h"
 #include "text.h"
 #include "ui_anim.h"
 
@@ -54,12 +55,14 @@ typedef struct UiFx {
     int peak_particles, peak_rings, peak_tokens;
     int sound_count, last_sound;   /* autotests */
     float last_pitch;
+    int haptic_count;              /* autotests: haptics asked for (played only when enabled) */
     int coin_count;                /* autotests: coin ticks played and their nominal pitch */
     float coin_pitch[8];
 } UiFx;
 
 void ui_fx_init(UiFx *fx, UiAnim *anim, Audio *audio, const TextFont *display);
 void ui_fx_sound(UiFx *fx, UiSound s, int index);
+void ui_fx_haptic(UiFx *fx, HapticKind k); /* respects the haptics setting */
 void ui_fx_burst(UiFx *fx, float cx, float cy, int n, float dist);
 void ui_fx_ring(UiFx *fx, float cx, float cy);
 void ui_fx_shake(UiFx *fx, float amp);

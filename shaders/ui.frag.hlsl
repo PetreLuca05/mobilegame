@@ -69,11 +69,16 @@ float4 shade(UiOut i)
     }
     // shape: rounded box, filled or stroked, an optional dashed ring and top highlight band
     float d = rounded_box(i.local, i.half_size, i.shape.x);
+    float aa = max(fwidth(d), 1e-3);
+    float border = 0.0; // stroke < 0: filled, with a border of -stroke in colour 2
+    if (i.shape.y < 0.0)
+    {
+        border = saturate(0.5 - (abs(d - i.shape.y * 0.5) + i.shape.y * 0.5) / aa);
+    }
     if (i.shape.y > 0.0)
     {
         d = abs(d + i.shape.y * 0.5) - i.shape.y * 0.5;
     }
-    float aa = max(fwidth(d), 1e-3);
     float cover = saturate(0.5 - d / aa);
     if (i.shape.w > 0.5) // dashes around a circle: on for the first half of each period
     {
@@ -90,6 +95,12 @@ float4 shade(UiOut i)
         float band = saturate((-i.half_size.y + i.shape.z - i.local.y) / max(fwidth(i.local.y), 1e-3)) * saturate(-inner / aa);
         float k = band * i.col2.a;
         rgb = lerp(rgb, i.col2.rgb, k);
+    }
+    if (border > 0.0) // premultiplied mix of the fill and the border
+    {
+        float4 fill = float4(rgb * a, a) * (1.0 - border);
+        float4 edge = float4(i.col2.rgb * i.col2.a, i.col2.a) * border;
+        return (fill + edge) * cover;
     }
     a *= cover;
     return float4(rgb * a, a);

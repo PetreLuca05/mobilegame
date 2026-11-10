@@ -51,6 +51,13 @@ typedef struct UiStyleTable {
     float ring_size, ring_stroke, ring_s, ring_from, ring_to;
     float token_size, token_gap_s, token_s, token_pop_t, token_pop_scale, token_end_scale, token_dx, token_dy_min, token_dy_max;
     float banner_size, banner_radius, banner_lip, banner_s;
+    /* UI-1b stick (pt at R = 75; scaled by R / 75) */
+    uint32_t stick_base, stick_border, stick_lip, stick_ring, stick_dot, stick_full, stick_full_fill;
+    float stick_design_r, stick_lip_off, stick_border_w, stick_ring_at, stick_ring_w, stick_ring_full_w, stick_ring_dashes, stick_dot_d;
+    float stick_knob_d, stick_knob_lip, stick_knob_hl;
+    float stick_idle_alpha, stick_in_s, stick_pop_s, stick_pop_from, stick_pop_peak, stick_stretch_along, stick_stretch_across;
+    float stick_rearm_at, stick_tick_gap_s, stick_release_s, stick_fade_s, stick_hide_s, stick_reduced_s;
+    float stick_rel_t[5], stick_rel_k[5], stick_rel_along[5], stick_rel_across[5];
     /* sound: gain, pitch jitter */
     float sound_gain, sound_jitter;
 } UiStyleTable;
@@ -95,6 +102,17 @@ static const UiStyleTable k_ui = {
     .token_size = 26.0f, .token_gap_s = 0.06f, .token_s = 0.72f, .token_pop_t = 0.30f, .token_pop_scale = 1.25f, .token_end_scale = 0.6f,
     .token_dx = 70.0f, .token_dy_min = -100.0f, .token_dy_max = -30.0f,
     .banner_size = 84.0f, .banner_radius = 40.0f, .banner_lip = 12.0f, .banner_s = 1.7f,
+    .stick_base = 0xFFFFFF99, .stick_border = 0xFFFFFFFF, .stick_lip = 0x173A3A2E, .stick_ring = 0x173A3A4D, .stick_dot = 0x173A3A40,
+    .stick_full = 0x0E8F83FF, .stick_full_fill = 0x0E8F8329,
+    .stick_design_r = 75.0f, .stick_lip_off = 6.0f, .stick_border_w = 3.0f, .stick_ring_at = 0.75f, .stick_ring_w = 2.0f, .stick_ring_full_w = 3.0f,
+    .stick_ring_dashes = 24.0f, .stick_dot_d = 8.0f, .stick_knob_d = 68.0f, .stick_knob_lip = 7.0f, .stick_knob_hl = 4.0f,
+    .stick_idle_alpha = 0.55f, .stick_in_s = 0.08f, .stick_pop_s = 0.26f, .stick_pop_from = 0.8f, .stick_pop_peak = 1.05f,
+    .stick_stretch_along = 0.12f, .stick_stretch_across = 0.08f,
+    .stick_rearm_at = 0.70f, .stick_tick_gap_s = 0.4f, .stick_release_s = 0.42f, .stick_fade_s = 0.2f, .stick_hide_s = 0.15f, .stick_reduced_s = 0.1f,
+    .stick_rel_t = {0.0f, 0.35f, 0.62f, 0.82f, 1.0f},
+    .stick_rel_k = {1.0f, -0.2f, 0.08f, -0.02f, 0.0f},
+    .stick_rel_along = {1.0f, 0.94f, 1.03f, 1.0f, 1.0f},
+    .stick_rel_across = {1.0f, 1.08f, 0.97f, 1.0f, 1.0f},
     .sound_gain = 0.07f, .sound_jitter = 0.03f,
 };
 

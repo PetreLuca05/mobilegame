@@ -89,10 +89,13 @@ void ui_fx_sound(UiFx *fx, UiSound s, int index)
 
 static void haptic(UiFx *fx, HapticKind k)
 {
+    fx->haptic_count++;
     if (fx->haptics) {
         haptic_play(k);
     }
 }
+
+void ui_fx_haptic(UiFx *fx, HapticKind k) { haptic(fx, k); }
 
 void ui_fx_burst(UiFx *fx, float cx, float cy, int n, float dist)
 {

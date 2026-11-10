@@ -136,22 +136,7 @@ void touch_controls_update(TouchControls *tc, const TouchControlsConfig *cfg, Mg
 void touch_controls_draw(const TouchControls *tc, const TouchControlsConfig *cfg, GfxContext *g, const TextFont *f,
                          float safe_left, float h_pt, float safe_bottom)
 {
-    float r = cfg->radius_pt;
-    if (tc->stick_touch >= 0) {
-        ui_circle(g, f, tc->stick_ox, tc->stick_oy, r, ui_rgba(0xFFFFFF26));
-        ui_circle(g, f, tc->stick_ox, tc->stick_oy, cfg->dead_zone_pt, ui_rgba(0xFFFFFF1A));
-        UiColor knob = tc->sprint ? ui_rgba(0xFFB347E6) : ui_rgba(0xFFFFFFC8);
-        ui_circle(g, f, tc->stick_ox + tc->knob_dx, tc->stick_oy + tc->knob_dy, r * 0.283f, knob);
-    } else if (!tc->hide_hint) {
-        /* resting hint where a left thumb usually lands */
-        float cx = safe_left + 16.0f + r * 0.75f;
-        float cy = h_pt - safe_bottom - 16.0f - r * 0.75f;
-        ui_circle(g, f, cx, cy, r * 0.75f, ui_rgba(0xFFFFFF14));
-        ui_circle(g, f, cx, cy, r * 0.25f, ui_rgba(0xFFFFFF40));
-        if (tc->auto_dot) {
-            ui_circle(g, f, cx, cy, 10.0f, ui_rgba(0x4A8BFFFF));
-        }
-    }
+    (void)safe_left, (void)h_pt, (void)safe_bottom; /* the stick is drawn by stick_view.c (UI-1b) */
     float jr = cfg->jump_size_pt * 0.5f;
     if (jr <= 0.0f) {
         return; /* jump disabled */

@@ -227,6 +227,9 @@ void ui_shape(GfxContext *g, const UiShape *sh)
     const float cs = cosf(sh->rot), sn = sinf(sh->rot);
     GfxUiInst in = {{sh->x, sh->y, sh->w, sh->h}, {0}, {cs * sx, sn * sx, -sn * sy, cs * sy}, {0}, {r, sh->stroke, sh->highlight, sh->dashes},
                     {sh->color.r, sh->color.g, sh->color.b, sh->color.a}, {sh->color2.r, sh->color2.g, sh->color2.b, sh->color2.a}, (float)GFX_UI_SHAPE, 0};
+    if (sh->use_m) {
+        memcpy(in.xf, sh->m, sizeof(in.xf));
+    }
     if (sh->origin_bottom && sy != 1.0f) { /* scale about the bottom edge, not the centre (press / release) */
         in.rect[1] += sh->h * 0.5f * (1.0f - sy);
     }
