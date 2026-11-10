@@ -241,10 +241,10 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         for (int i = 0; i < L->sc.npc_n; i++) {
             npcs += L->npc[i].anim.t > 0.0f || (L->sc.npcs[i].route_n && L->sc.npcs[i].route[L->npc[i].step].outside); /* drawn, or waiting outside */
         }
-        if (npcs != 6) {
-            return failf(t, "menu: %d NPCs present (want 6)", npcs);
+        if (npcs != L->sc.npc_n) { /* every NPC of the hall (§9: 25) */
+            return failf(t, "menu: %d NPCs present (want %d)", npcs, L->sc.npc_n);
         }
-        mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0, 6 NPCs present (ok)");
+        mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0, %d NPCs present (ok)", npcs);
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_menu");
         t->stage = 2;
         return 0;

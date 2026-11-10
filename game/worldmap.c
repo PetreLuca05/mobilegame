@@ -100,7 +100,7 @@ static GfxMeshId build_road(const WorldIsland *w, GfxContext *g, Arena *arena)
         uint32_t b = 0;
         for (int k = 0; k < 4; k++) {
             const float sx = (k == 1 || k == 2) ? 0.5f : -0.5f, sz = k >= 2 ? 0.5f : -0.5f;
-            const HMM_Vec2 p = HMM_AddV2(w->library, HMM_AddV2(HMM_MulV2F(ax, sx * w->pad_w), HMM_MulV2F(az, sz * w->pad_d)));
+            const HMM_Vec2 p = HMM_AddV2(w->pad_c, HMM_AddV2(HMM_MulV2F(ax, sx * w->pad_w), HMM_MulV2F(az, sz * w->pad_d)));
             const uint32_t v = mb_vertex(&mb, HMM_V3(p.X, py, p.Y), up, stone);
             b = k == 0 ? v : b;
         }

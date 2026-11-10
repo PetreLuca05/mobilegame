@@ -558,6 +558,9 @@ bool game_init(MgApp *app)
         }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
+        if (arg_value(app->argc, app->argv, "--lib-bay")) { /* desktop: my table in another bay of the hall (pictures) */
+            menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
+        }
     }
     g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
     g->profile.skin = AVATAR_DEFAULT_SKIN;

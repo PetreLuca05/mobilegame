@@ -573,15 +573,20 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 
 ## Library menu (LIB-1)
 
-- `game/menu_library.c`: `assets/menu/library.mgmesh` + `library.scene.json` (mg-library 1; every position, angle and duration comes
+- `game/menu_library.c`: `assets/menu/library.mgmesh` + `library.scene.json` (mg-library 10, exported by the prototype; every position, angle and duration comes
   from it). A cutaway (the shell is not drawn in the menu); the camera from `camera.menu`, backed off and re-centred until the table and
   its four seats fit the free rect. `game/lib_study.c` = STUDY (read / page turn, the right hand rides the leaf tip). Seats: walk in
   through the door along the seat's path, sit (`sit_s`, the chair slides), study; leavers stand and walk out; already-listed members
   are seated on the frame the menu opens; the door eases while a walker is near it. Six NPCs on a small route runner (+ the cart and the
   seated reader). The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
+- The hall is square (user decision): 2 x 2 bays of 16 x 16 m = 32 x 32 m (`hall.bx` / `bz`, front row 0 1, back row 2 3, home bay 1).
+  A bay's back wall is at local z -5.5, the extra depth is open floor up to +10.5; the front row's back wall (doors) parts the rows, the
+  back row's doors lead outside. While my table is in the back row the front rooms are not drawn. Desktop `--lib-bay N` puts my table in bay N.
 - The library stands on the island played last (island JSON `library`, `library_pad`, `library_path`; `tools/place_library.py`: the spot
-  nearest `start` >= 30 from every hospital plot, >= 8 from the road, on the plateau, facing the road, and (added) the 13 x 10.5 pad on bare
-  grass, no scenery triangle under it; props within 10.5 removed; the pad and the path are part of the island's road mesh) at `lib_scale`.
+  nearest `start` with the 15 x 15 pad (the 32 x 32 m hall x 0.35 + 1.9 round it) >= 30 from every hospital plot and >= 8 from the road
+  (measured from the pad's edge), on the plateau, facing the road, on bare grass with no scenery triangle under it; the path crosses no
+  water, plot, raised ground or scenery; props within 1.0 of the pad / 0.5 of the path removed; the pad and the path are part of the
+  island's road mesh) at `lib_scale`. `library` is the hall's origin, `library_pad.x/z` the pad's centre (the hall's centre is off its origin).
 - The map preloads behind the menu (`worldmap_load_step`, one island per frame; the Maps row waits). Maps / Back / New Game are one camera
   move (`game/lib_move.c`: log-distance + hump, target along the cumulative distance, the shell dithers in, the map UI enters at t 0.9);
   Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch.

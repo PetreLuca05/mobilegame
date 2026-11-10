@@ -95,7 +95,8 @@ typedef struct LibScene {
     LibNpcDef npcs[LIB_NPCS];
     int npc_n;
     int home_bay;
-    float bay_x[LIB_BAYS];
+    float bay_x[LIB_BAYS], bay_z[LIB_BAYS]; /* hall.bx / bz: the 2 x 2 bays (mg-library 10) */
+    float mid_wall_z; /* the front row's back wall, between the rows */
 } LibScene;
 
 /* Who is at a seat: seat 0 is always the local player, 1..3 the lobby's other members (presentation only). */
@@ -127,11 +128,11 @@ typedef struct MenuLibrary {
     bool ok;
     LibScene sc;
     GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
-    float bay_x[LIB_BAYS]; /* hall.bx: each bay's centre (the bay meshes are placed already) */
+    float bay_x[LIB_BAYS], bay_z[LIB_BAYS]; /* hall.bx / bz: each bay's origin (the bay meshes are placed already) */
     int home_bay;
     /* my table: the scene's seats and table (local to a bay) shifted to its bay */
     int table_bay;
-    float table_x;
+    float table_x, table_z;
     LibSeat tseats[LIB_SEATS];
     HMM_Vec2 tcentre;
     float door_open[LIB_BAYS]; /* each bay's door angle */

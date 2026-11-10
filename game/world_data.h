@@ -74,7 +74,8 @@ typedef struct WorldIsland {
     float fov_deg, overview_pitch, follow_pitch, follow_dist, arrive_pitch, arrive_dist;
     /* LIB-1: the library building (tools/place_library.py), its pad and the path to the road */
     bool has_library;
-    HMM_Vec2 library;  /* x, z */
+    HMM_Vec2 library;  /* x, z: the hall's origin (menu_library_place) */
+    HMM_Vec2 pad_c;    /* library_pad x, z: the pad's centre (the square hall's centre is off its origin) */
     float library_yaw_deg; /* its front (+z) faces (sin yaw, cos yaw) */
     float pad_w, pad_d, pad_y;
     HMM_Vec2 path_from, path_to;
