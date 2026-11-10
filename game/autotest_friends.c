@@ -188,7 +188,7 @@ static const FtOp k_lw[] = { /* the Welcome screen's button goes through the sam
     {OP_FE_STATE, NULL, FE_MAIN_MENU}, {OP_NAME_IS, "Seeded", 0}, {OP_END, NULL, 0},
 };
 static const FtOp k_lp[] = { /* the pause card: saves, closes the lobby, opens Settings -> Account */
-    START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(0.5),
+    START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), {OP_DRAG_UP, "p_map", 0}, SLEEP(0.5), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(0.5),
     TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 
@@ -579,8 +579,11 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     case OP_NOTICE_GONE:
         done = p->notice->count == 0;
         break;
-    case OP_LINK_STATE:
-        done = (int)p->link->state == (int)o->n;
+    case OP_LINK_STATE: /* current, or entered since the last check (the new transport can be faster than a frame) */
+        done = (int)p->link->state == (int)o->n || (p->link->visited & (1u << (unsigned)o->n)) != 0;
+        if (done) {
+            p->link->visited = 0;
+        }
         break;
     case OP_UID_SAVE:
         SDL_snprintf(t->saved_uid, sizeof(t->saved_uid), "%s", f->self_id);

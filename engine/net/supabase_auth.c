@@ -10,7 +10,6 @@
 
 #include "cJSON.h"
 #include "core/log.h"
-#include "mongoose.h"
 
 #define REFRESH_KEY "sb_refresh_token"
 #define REFRESH_MARGIN_S 300.0
@@ -25,15 +24,17 @@ void supa_auth_init(SupaAuth *a, const SecureStore *store, const NetEndpoint *ep
     snprintf(a->anon_key, sizeof(a->anon_key), "%s", anon_key);
 }
 
-static bool post(SupaAuth *a, struct mg_mgr *mgr, const char *path, const char *body)
+static bool post(SupaAuth *a, NetIo *mgr, const char *path, const char *body)
 {
+    a->io = mgr;
     char headers[320];
     snprintf(headers, sizeof(headers), "apikey: %s\r\nContent-Type: application/json\r\n", a->anon_key);
     return https_request(&a->req, mgr, &a->ep, "POST", path, headers, body, request_done, a);
 }
 
-static void sign_up(SupaAuth *a, struct mg_mgr *mgr)
+static void sign_up(SupaAuth *a, NetIo *mgr)
 {
+    a->io = mgr;
     a->state = AUTH_SIGNING_UP;
     if (!post(a, mgr, "/auth/v1/signup", "{}")) {
         a->state = AUTH_FAILED;
@@ -41,8 +42,9 @@ static void sign_up(SupaAuth *a, struct mg_mgr *mgr)
     }
 }
 
-static void refresh(SupaAuth *a, struct mg_mgr *mgr)
+static void refresh(SupaAuth *a, NetIo *mgr)
 {
+    a->io = mgr;
     char body[320];
     snprintf(body, sizeof(body), "{\"refresh_token\":\"%s\"}", a->refresh_token);
     a->state = AUTH_REFRESHING;
@@ -52,8 +54,9 @@ static void refresh(SupaAuth *a, struct mg_mgr *mgr)
     }
 }
 
-static bool post_link(SupaAuth *a, struct mg_mgr *mgr, bool with_guest_jwt)
+static bool post_link(SupaAuth *a, NetIo *mgr, bool with_guest_jwt)
 {
+    a->io = mgr;
     char headers[2400], body[2400];
 #ifdef MG_TEST_AUTH
     if (strcmp(a->link_provider, "test") == 0) { /* link_token is "<email> <password>" */
@@ -93,7 +96,7 @@ static void read_token_name(SupaAuth *a)
         b64[n++] = '=';
     }
     b64[n] = 0;
-    const size_t jl = mg_base64_decode(b64, n, json, sizeof(json));
+    const size_t jl = net_base64_decode(b64, n, json, sizeof(json));
     cJSON *j = jl ? cJSON_ParseWithLength(json, jl) : NULL;
     const cJSON *name = j ? cJSON_GetObjectItemCaseSensitive(j, "name") : NULL;
     if (cJSON_IsString(name)) {
@@ -102,9 +105,10 @@ static void read_token_name(SupaAuth *a)
     cJSON_Delete(j);
 }
 
-bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, const char *id_token,
+bool supa_auth_link_idp(SupaAuth *a, NetIo *mgr, const char *provider, const char *id_token,
                         const char *nonce)
 {
+    a->io = mgr;
     if (a->state != AUTH_OK || !a->access_token[0] || !a->is_anonymous) {
         return false; /* only a guest links */
     }
@@ -124,8 +128,9 @@ bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, c
     return true;
 }
 
-bool supa_auth_link_signin(SupaAuth *a, struct mg_mgr *mgr)
+bool supa_auth_link_signin(SupaAuth *a, NetIo *mgr)
 {
+    a->io = mgr;
     snprintf(a->guest_token, sizeof(a->guest_token), "%s", a->access_token);
     snprintf(a->guest_refresh, sizeof(a->guest_refresh), "%s", a->refresh_token);
     snprintf(a->guest_id, sizeof(a->guest_id), "%s", a->user_id);
@@ -188,8 +193,9 @@ void supa_auth_sign_out(SupaAuth *a)
     a->account_changed = true;
 }
 
-void supa_auth_start(SupaAuth *a, struct mg_mgr *mgr, double now)
+void supa_auth_start(SupaAuth *a, NetIo *mgr, double now)
 {
+    a->io = mgr;
     (void)now;
     a->error[0] = 0;
     a->refreshing_in_background = false;
@@ -205,8 +211,9 @@ bool supa_auth_ready(const SupaAuth *a)
     return a->access_token[0] && (a->state == AUTH_OK || a->refreshing_in_background);
 }
 
-void supa_auth_update(SupaAuth *a, struct mg_mgr *mgr, double now)
+void supa_auth_update(SupaAuth *a, NetIo *mgr, double now)
 {
+    a->io = mgr;
 #ifdef MG_TEST_AUTH
     if (a->state == AUTH_TEST_CONVERT && now >= a->test_next) { /* a refreshed token says when the script has done it */
         a->test_convert = true;
@@ -352,7 +359,7 @@ static void test_probe_done(SupaAuth *a, int status)
 static void request_done(void *user, int status, const char *body, size_t len)
 {
     SupaAuth *a = (SupaAuth *)user;
-    struct mg_mgr *mgr = a->req.c ? a->req.c->mgr : NULL;
+    NetIo *mgr = a->io; /* the session the last request went through */
     if (a->state == AUTH_LINKING || a->state == AUTH_LINK_SIGNIN) {
         link_done(a, status, body, len);
         return;

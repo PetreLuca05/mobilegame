@@ -21,6 +21,7 @@ typedef enum AccountLinkState {
 typedef struct AccountLink {
     NetTransport *net;
     AccountLinkState state;
+    uint32_t visited;   /* tests: a bit per state entered (a fast flow can pass a state within one frame) */
     char provider[12];
     char identity_name[NET_NAME_LEN]; /* the provider's name for the identity */
     int merge_step;

@@ -19,7 +19,7 @@ static void finished(void *user, int status, const char *body, size_t len)
     }
 }
 
-bool rpc_call(SupaRpc *r, struct mg_mgr *mgr, const char *access_token, const char *fn, const char *json_body,
+bool rpc_call(SupaRpc *r, NetIo *mgr, const char *access_token, const char *fn, const char *json_body,
               HttpDoneFn done, void *user)
 {
     if (r->busy) {

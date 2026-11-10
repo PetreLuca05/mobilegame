@@ -94,8 +94,7 @@ Best for friends: they install with the **TestFlight** app, no cable.
 4. In App Store Connect → TestFlight add yourself and friends as testers.
    Everyone installs **TestFlight** from the App Store and accepts the invite.
 
-Note: before publishing beyond your own testing, read the mongoose licence
-note in `README.md`.
+Third-party licences: `docs/LICENSES.md` (no GPL code in the app).
 
 ---
 

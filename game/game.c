@@ -2937,6 +2937,8 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.world_rides = &g->prefs.world.rides;
     probe.play_level = g->play_level;
     probe.uitest = &g->uitest;
+    probe.net_status = g->net ? (int)net_status(g->net) : -1;
+    probe.net_ready = g->net && net_socket_ready(g->net);
     probe.text_center_err = g->text_test ? g->text_center_err : -1.0f;
     for (int i = 0; i < 3; i++) {
         probe.text_center_each[i] = g->text_center_each[i];
@@ -3007,6 +3009,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         world_debug_progress(&g->prefs.world, ato.debug_level, ato.debug_pct);
         maps_tag_update(g);
         mg_log_info("world: test progress %s = %d%%", ato.debug_level, ato.debug_pct);
+    }
+    if (ato.net_drop && g->net) {
+        net_debug_drop(g->net);
     }
     if (ato.set_haptics > 0) {
         g->settings.haptics = ato.set_haptics - 1;

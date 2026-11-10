@@ -12,7 +12,6 @@
 
 #include "config.local.h"
 #include "core/log.h"
-#include "mongoose.h"
 #include "net/net_transport.h"
 #include "net/replication.h"
 #include "net/ws_client.h"
@@ -62,36 +61,31 @@ static void p_close(void *u, const char *reason)
 
 static int probe(void)
 {
-    static char ca[512 * 1024];
-    static char wsbuf[WS_MAX_MESSAGE];
     NetEndpoint ep;
-    net_endpoint_init(&ep, MG_SUPABASE_HOST, ca, sizeof(ca));
-    printf("endpoint %s:%d proxy=%s ca=%zu bytes\n", ep.host, ep.port, ep.proxy[0] ? ep.proxy : "-", ep.ca_len);
-    struct mg_mgr mgr;
-    mg_log_set(MG_LL_ERROR);
-    mg_mgr_init(&mgr);
-    net_sync_clock();
-    HttpRequest req;
+    net_endpoint_init(&ep, MG_SUPABASE_HOST);
+    printf("endpoint %s (the OS's TLS and proxy)\n", ep.host);
+    NetIo *mgr = net_io_create();
+    HttpRequest req = {0}; /* zeroed: https_request reads its last task */
     char headers[256];
     snprintf(headers, sizeof(headers), "apikey: %s\r\n", MG_SUPABASE_ANON_KEY);
-    https_request(&req, &mgr, &ep, "GET", "/auth/v1/settings", headers, NULL, on_http, NULL);
+    https_request(&req, mgr, &ep, "GET", "/auth/v1/settings", headers, NULL, on_http, NULL);
     for (int i = 0; i < 1000 && g_http_status < 0; i++) {
-        mg_mgr_poll(&mgr, 10);
+        net_io_poll(mgr, 10);
     }
     printf("https GET /auth/v1/settings -> %d %s\n", g_http_status, g_http_body);
 
     Probe p;
     memset(&p, 0, sizeof(p));
-    ws_init(&p.ws, wsbuf);
+    ws_init(&p.ws);
     char path[256];
     snprintf(path, sizeof(path), "/realtime/v1/websocket?apikey=%s&vsn=1.0.0", MG_SUPABASE_ANON_KEY);
     WsCallbacks cb = {p_open, p_text, p_close, &p};
-    ws_connect(&p.ws, &mgr, &ep, path, &cb);
+    ws_connect(&p.ws, mgr, &ep, path, &cb);
     for (int i = 0; i < 1000 && !p.closed; i++) {
-        mg_mgr_poll(&mgr, 10);
+        net_io_poll(mgr, 10);
     }
     printf("websocket open=%d heartbeat rtt=%d ms close=%s\n", p.open, p.rtt_ms, p.reason);
-    mg_mgr_free(&mgr);
+    net_io_destroy(mgr);
     return (g_http_status == 200 && p.open && p.rtt_ms > 0) ? 0 : 1;
 }
 

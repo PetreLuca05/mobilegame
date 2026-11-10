@@ -69,24 +69,13 @@ add_subdirectory(third_party/SDL3 EXCLUDE_FROM_ALL)
 # ------------------------------------------------------------ third party
 add_library(mg_thirdparty STATIC
   third_party/cjson/cJSON.c
-  third_party/mongoose/mongoose.c
 )
 target_include_directories(mg_thirdparty SYSTEM PUBLIC
   third_party/cjson
-  third_party/mongoose
   third_party/handmade_math
 )
-target_compile_definitions(mg_thirdparty PUBLIC
-  MG_TLS=MG_TLS_BUILTIN      # mongoose built-in TLS 1.3, no OpenSSL needed on phones
-  MG_ENABLE_LINES=0
-  MG_ENABLE_IPV6=1           # NAT64 / IPv6-only mobile networks
-)
-set_target_properties(mg_thirdparty PROPERTIES C_EXTENSIONS ON) # mongoose needs POSIX/GNU declarations
 if(NOT MSVC)
   target_compile_options(mg_thirdparty PRIVATE -w)
-endif()
-if(WIN32)
-  target_link_libraries(mg_thirdparty PUBLIC ws2_32)
 endif()
 
 # ------------------------------------------------- embedded assets (C arrays)
@@ -96,7 +85,6 @@ set(MG_EMBED_FILES
   ${MG_SHADER_SPV}
   ${MG_SHADER_MSL}
   ${CMAKE_SOURCE_DIR}/assets/font_atlas.mgf
-  ${CMAKE_SOURCE_DIR}/assets/cacert.pem
   ${CMAKE_SOURCE_DIR}/assets/strings.json
   ${CMAKE_SOURCE_DIR}/assets/strings_ro.json
   ${CMAKE_SOURCE_DIR}/assets/npcs.json
@@ -198,7 +186,7 @@ add_library(mg_engine STATIC
   engine/ui/layout.c
   engine/platform/secure_store.c
   engine/platform/google_auth.c
-  engine/net/ws_client.c
+  engine/net/net_util.c
   engine/net/supabase_auth.c
   engine/net/supabase_rt.c
   engine/net/supabase_rest.c
@@ -233,11 +221,11 @@ endif()
 # --metal-capture: one-frame .gputrace (Apple only)
 if(APPLE)
   enable_language(OBJC)
-  target_sources(mg_engine PRIVATE platform/apple/metal_capture.m platform/apple/device_stats.m)
-  set_source_files_properties(platform/apple/metal_capture.m platform/apple/device_stats.m PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_sources(mg_engine PRIVATE platform/apple/metal_capture.m platform/apple/device_stats.m platform/apple/net_apple.m)
+  set_source_files_properties(platform/apple/metal_capture.m platform/apple/device_stats.m platform/apple/net_apple.m PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
   target_link_libraries(mg_engine PUBLIC "-framework Metal" "-framework Foundation")
 else()
-  target_sources(mg_engine PRIVATE engine/platform/metal_capture_stub.c engine/platform/device_stats_stub.c)
+  target_sources(mg_engine PRIVATE engine/platform/metal_capture_stub.c engine/platform/device_stats_stub.c engine/net/net_stub.c)
 endif()
 target_compile_options(mg_engine PRIVATE ${MG_WARNINGS})
 # the NPC sim must give the same floats in every build type: no fused multiply-add in only some of them

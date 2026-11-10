@@ -19,7 +19,7 @@ static void finished(void *user, int status, const char *body, size_t len)
     }
 }
 
-bool rest_call(SupaRest *r, struct mg_mgr *mgr, const char *access_token, const char *method, const char *path,
+bool rest_call(SupaRest *r, NetIo *mgr, const char *access_token, const char *method, const char *path,
                const char *body, HttpDoneFn done, void *user)
 {
     if (r->busy) {

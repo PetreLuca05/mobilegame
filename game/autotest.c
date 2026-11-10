@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -52,7 +52,7 @@ bool autotest_starts_in_game(int argc, char **argv)
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0 ||
-                   SDL_strcmp(argv[i + 1], "stick") == 0;
+                   SDL_strcmp(argv[i + 1], "stick") == 0 || SDL_strcmp(argv[i + 1], "netsoak") == 0;
         }
     }
     return false;
@@ -1140,6 +1140,45 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_HUDCLAMP:
         finished = run_hud_clamp(t, p, out, el);
         break;
+    case AUTOTEST_NETSOAK: { /* NET-1: 20 drops, 30 s apart, each back with its channel within 10 s */
+        if (p->net_status < 0) {
+            finished = fail(t, "netsoak", "no network transport");
+            break;
+        }
+        if (t->soak.next_drop == 0.0) {
+            if (!p->net_ready) {
+                if (el > 60.0) {
+                    finished = fail(t, "netsoak", "the socket never joined a channel");
+                }
+                break;
+            }
+            t->soak.next_drop = app->time + 5.0;
+            mg_log_info("autotest netsoak: socket up with its channel after %.1f s", el);
+        }
+        if (t->soak.waiting) {
+            if (p->net_ready && app->time - t->soak.dropped_at > 0.2) {
+                const int ms = (int)((app->time - t->soak.dropped_at) * 1000.0);
+                t->soak.waiting = false;
+                t->soak.cycles++;
+                t->soak.total_ms += ms;
+                t->soak.worst_ms = ms > t->soak.worst_ms ? ms : t->soak.worst_ms;
+                mg_log_info("autotest netsoak: cycle %d: back with its channel in %d ms", t->soak.cycles, ms);
+                t->soak.next_drop = t->soak.dropped_at + 30.0;
+                if (t->soak.cycles >= 20) {
+                    mg_log_info("autotest netsoak: 20 cycles in %.0f s; reconnect worst %d ms, mean %d ms", el, t->soak.worst_ms, t->soak.total_ms / 20);
+                    mg_log_info("AUTOTEST PASSED");
+                    t->passed = finished = true;
+                }
+            } else if (app->time - t->soak.dropped_at > 10.0) {
+                finished = fail(t, "netsoak", "not back with its channel 10 s after a drop");
+            }
+        } else if (app->time >= t->soak.next_drop) {
+            out->net_drop = true;
+            t->soak.dropped_at = app->time;
+            t->soak.waiting = true;
+        }
+        break;
+    }
     case AUTOTEST_TILT: {
         const int r = tt_run(&t->tt, app, p, out, app->time);
         if (r < 0) {

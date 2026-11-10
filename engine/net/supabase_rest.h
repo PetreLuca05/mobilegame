@@ -19,7 +19,7 @@ typedef struct SupaRest {
 void rest_init(SupaRest *r, const NetEndpoint *ep, const char *anon_key);
 /* method GET / PATCH / POST; body may be NULL. `done` gets the HTTP status
  * and body; busy until then. False if a request is already in flight. */
-bool rest_call(SupaRest *r, struct mg_mgr *mgr, const char *access_token, const char *method, const char *path,
+bool rest_call(SupaRest *r, NetIo *mgr, const char *access_token, const char *method, const char *path,
                const char *body, HttpDoneFn done, void *user);
 
 #endif

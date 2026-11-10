@@ -1,12 +1,10 @@
-/* Secure byte streams on top of mongoose TCP + built-in TLS 1.3, with our own
- * WebSocket (RFC 6455) client and a one-shot HTTPS request helper.
+/* NET-1: secure WebSocket and HTTPS on the platform's own stack. Apple (iOS, macOS):
+ * NSURLSessionWebSocketTask for Realtime, NSURLSession data tasks for REST / Auth, TLS and proxies
+ * from the OS (platform/apple/net_apple.m). Elsewhere every connection fails at once (offline).
  *
- *   resolve (getaddrinfo, OS resolver: works on NAT64/IPv6-only networks)
- *   -> TCP connect (directly, or to an HTTP proxy + CONNECT on desktop)
- *   -> TLS (hostname verified against the embedded CA bundle)
- *   -> HTTP request or WebSocket upgrade
- *
- * Runs on the network thread only; mongoose is not thread-safe. */
+ * Everything here is called on the network thread. The session's callbacks only queue events;
+ * net_io_poll() delivers them (on_open / on_text / on_close, the HTTP callback) on the network thread,
+ * so the protocol code above stays single-threaded, as it was with mongoose. */
 #ifndef MG_WS_CLIENT_H
 #define MG_WS_CLIENT_H
 
@@ -14,32 +12,25 @@
 #include <stddef.h>
 #include <stdint.h>
 
-struct mg_mgr;
-struct mg_connection;
+typedef struct NetIo NetIo; /* the session and its event queue */
+
+NetIo *net_io_create(void);
+/* Wait up to `ms` for events and deliver them. */
+void net_io_poll(NetIo *io, int ms);
+void net_io_destroy(NetIo *io);
 
 typedef struct NetEndpoint {
-    char host[128];       /* TLS server name and Host header */
-    int port;             /* 443 */
-    char proxy[96];       /* "tcp://127.0.0.1:43841" or "" (desktop only) */
-    const char *ca;       /* PEM bundle */
-    size_t ca_len;
+    char host[128]; /* the Supabase host; https:// and wss:// on 443 */
 } NetEndpoint;
 
-/* Build the endpoint for `host`, honouring HTTPS_PROXY and SSL_CERT_FILE on
- * desktop. `ca_storage` must outlive the endpoint (holds a file read). */
-void net_endpoint_init(NetEndpoint *ep, const char *host, char *ca_storage, size_t ca_storage_cap);
-
-/* Certificate validity checks need wall-clock time. Seed mongoose from the
- * OS clock (NTP-synced on phones) so it never falls back to its own SNTP
- * query, which many networks block. Call on the network thread. */
-void net_sync_clock(void);
+void net_endpoint_init(NetEndpoint *ep, const char *host);
 
 /* ---------------------------------------------------------- WebSocket */
 
 typedef enum WsState {
     WS_CLOSED,
-    WS_CONNECTING, /* tcp / proxy / tls */
-    WS_UPGRADING,  /* waiting for 101 */
+    WS_CONNECTING, /* the task is resumed, the handshake is running */
+    WS_UPGRADING,  /* (kept for callers: the OS does the upgrade inside CONNECTING) */
     WS_OPEN,
 } WsState;
 
@@ -53,24 +44,16 @@ typedef struct WsCallbacks {
 #define WS_MAX_MESSAGE (256 * 1024)
 
 typedef struct WsClient {
-    struct mg_connection *c;
+    void *task;       /* the platform's socket */
+    uint32_t gen;     /* events from an older socket are dropped */
     WsState state;
     NetEndpoint ep;
-    char path[640];
-    char key[32];
-    bool via_proxy;
-    bool proxy_ok;
     WsCallbacks cb;
-    char *msg;  /* reassembly buffer for fragmented frames (WS_MAX_MESSAGE) */
-    size_t msg_len;
-    bool msg_active;
     char close_reason[96];
 } WsClient;
 
-/* msg_buf must hold WS_MAX_MESSAGE bytes and outlive the client. */
-void ws_init(WsClient *ws, char *msg_buf);
-bool ws_connect(WsClient *ws, struct mg_mgr *mgr, const NetEndpoint *ep, const char *path_and_query,
-                const WsCallbacks *cb);
+void ws_init(WsClient *ws);
+bool ws_connect(WsClient *ws, NetIo *io, const NetEndpoint *ep, const char *path_and_query, const WsCallbacks *cb);
 bool ws_send_text(WsClient *ws, const char *data, size_t len);
 void ws_close(WsClient *ws);
 
@@ -79,18 +62,27 @@ void ws_close(WsClient *ws);
 typedef void (*HttpDoneFn)(void *user, int status, const char *body, size_t len);
 
 typedef struct HttpRequest {
-    struct mg_connection *c;
-    NetEndpoint ep;
-    bool via_proxy, proxy_ok, done;
-    char request[4096];
-    size_t request_len;
+    void *task;
+    uint32_t gen;
+    bool done;
     HttpDoneFn fn;
     void *user;
 } HttpRequest;
 
-/* One request with Connection: close. `headers` are extra lines ending in
- * \r\n. The callback fires exactly once (status 0 on transport error). */
-bool https_request(HttpRequest *r, struct mg_mgr *mgr, const NetEndpoint *ep, const char *method,
-                   const char *path, const char *headers, const char *body, HttpDoneFn fn, void *user);
+/* One request. `headers` are extra "Name: value\r\n" lines. The callback fires exactly once,
+ * on the network thread (status 0 on a transport error: no network, timeout, TLS). */
+bool https_request(HttpRequest *r, NetIo *io, const NetEndpoint *ep, const char *method, const char *path, const char *headers, const char *body,
+                   HttpDoneFn fn, void *user);
+
+/* Abort a request in flight: its callback fires once, with status 0 (a transport error). */
+void https_cancel(HttpRequest *r);
+
+/* ------------------------------------------------------------ helpers */
+
+size_t net_base64_encode(const void *in, size_t n, char *out, size_t cap); /* returns the length, 0 if it does not fit */
+size_t net_base64_decode(const char *in, size_t n, void *out, size_t cap);
+void net_random(void *out, size_t n); /* the OS's secure random */
+/* Every connection attempt is logged ("net: attempt"; offline play must make none). */
+void net_log_attempt(const char *kind, const char *method, const NetEndpoint *ep, const char *path);
 
 #endif

@@ -34,6 +34,7 @@ typedef struct SupaAuth {
     NetEndpoint ep;
     char anon_key[160];
     HttpRequest req;
+    NetIo *io;     /* the session requests go through (set by every call that takes it) */
     SupaAuthState state;
     bool refreshing_in_background; /* token still valid while refreshing */
     char access_token[2048];
@@ -66,14 +67,14 @@ typedef struct SupaAuth {
 } SupaAuth;
 
 void supa_auth_init(SupaAuth *a, const SecureStore *store, const NetEndpoint *ep, const char *anon_key);
-void supa_auth_start(SupaAuth *a, struct mg_mgr *mgr, double now);
-void supa_auth_update(SupaAuth *a, struct mg_mgr *mgr, double now);
+void supa_auth_start(SupaAuth *a, NetIo *mgr, double now);
+void supa_auth_update(SupaAuth *a, NetIo *mgr, double now);
 bool supa_auth_ready(const SupaAuth *a);
 /* Link the signed-in guest to Google (or switch to the existing Google user). */
-bool supa_auth_link_idp(SupaAuth *a, struct mg_mgr *mgr, const char *provider, const char *id_token,
+bool supa_auth_link_idp(SupaAuth *a, NetIo *mgr, const char *provider, const char *id_token,
                         const char *nonce);
 /* Case B, after the player confirmed: sign in to the identity's account, in memory only. */
-bool supa_auth_link_signin(SupaAuth *a, struct mg_mgr *mgr);
+bool supa_auth_link_signin(SupaAuth *a, NetIo *mgr);
 /* The merge committed: this account is the one on the device now. */
 void supa_auth_link_commit(SupaAuth *a);
 /* Anything failed before the merge: back to the guest, as if nothing happened. */

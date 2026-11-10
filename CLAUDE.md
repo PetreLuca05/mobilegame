@@ -18,7 +18,7 @@ engine/audio     procedural sound (elevator ding) through an SDL audio stream
 engine/gfx       gfx.h interface; gpu.c = SDL3 GPU backend; meshes, camera, materials, planar
                  reflection, one instanced SDF UI draw (UI-1), preview camera
 engine/physics   capsule-vs-OBB queries (collide.c) and the kinematic controller (kinematic.c)
-engine/net       net_transport.h interface; mongoose WebSocket + Supabase auth/Realtime/PostgREST; replication
+engine/net       net_transport.h interface; ws_client.h (platform WebSocket + HTTPS) + Supabase auth/Realtime/PostgREST; replication
 engine/ui        SDF text + UI shapes, HUD, touch controls
 game/            scene.h (hospital.c default, devroom.c via MG_SCENE=devroom), elevator, player,
                  avatar + skins, camera, settings menu, stats, net session, autotests, main.c
@@ -389,10 +389,12 @@ Details, motion table, tiers and how to add a widget: [docs/UI.md](docs/UI.md).
 - `engine/net/net_transport.h` is the only API the game uses; `supabase_rt.c`
   implements it on a network thread (fixed-size command/event queues, no
   allocation on the caller side).
-- `ws_client.c`: mongoose TCP + built-in TLS 1.3, our own WebSocket framing
-  and a one-shot HTTPS helper. Hostnames resolve with getaddrinfo (works on
-  NAT64). Desktop honours `HTTPS_PROXY` + `SSL_CERT_FILE`; phones use the
-  embedded `assets/cacert.pem` (regenerate: `python3 tools/gen_ca_bundle.py`).
+- `ws_client.h` (NET-1): the platform's own network stack. Apple (iOS and macOS): `platform/apple/net_apple.m`,
+  NSURLSessionWebSocketTask for Realtime and NSURLSession data tasks for PostgREST / Auth; TLS, certificates,
+  proxies and DNS (NAT64) from the OS; no third-party code, no CA bundle. The session's callbacks only queue
+  events; `net_io_poll` delivers them on the network thread, so the protocol code stays single-threaded.
+  Linux desktop and Android: `engine/net/net_stub.c` (every connection fails: offline) until they get a
+  native transport. `mg_nettest probe` checks HTTPS + WebSocket + heartbeat.
 - Auth: refresh token in Keychain / Android Keystore (`SecureStore.java`) /
   desktop pref file per `--profile`.
 - Topics: `user:<uid>` (private, receive only, whole app run) and `room:<token>` (a lobby, max 4), one socket. RLS in `supabase/migrations`.
@@ -542,7 +544,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
 - UI units are points (pt): window pixels / display scale. Respect
   `app->safe_*` insets.
 - Game code talks to `gfx.h` and `net_transport.h` only, never SDL_GPU or
-  mongoose directly.
+  the platform network APIs directly.
 - Third-party code is compiled with warnings off; our code must build with no
   warnings (`-Wall -Wextra -Wshadow`).
 - Before trusting memory of a dependency API, read its header in `third_party/`.

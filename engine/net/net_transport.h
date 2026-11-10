@@ -234,6 +234,10 @@ void net_set_background(NetTransport *n, bool background);
 /* Offline play: after a failed sign-in (no network) make no new attempts
  * until quiet is cleared, so airplane mode stays silent. */
 void net_set_quiet(NetTransport *n, bool quiet);
+/* Tests (NET-1 soak): drop the live socket as a lost connection would; the transport reconnects by itself. */
+void net_debug_drop(NetTransport *n);
+/* The socket is up with a channel joined (user:<uid>, or a room). */
+bool net_socket_ready(const NetTransport *n);
 
 /* Account: sign in (guest if nothing stored) and load profile + stats once;
  * answers with NET_EV_PROFILE. */

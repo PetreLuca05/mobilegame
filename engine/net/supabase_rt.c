@@ -14,7 +14,6 @@
 
 #include "cJSON.h"
 #include "core/log.h"
-#include "mongoose.h"
 #include "net_transport.h"
 #include "platform/secure_store.h"
 #include "supabase_auth.h"
@@ -25,7 +24,6 @@
 #define CMD_CAPACITY 64
 #define EVENT_CAPACITY 256
 #define MAX_PEERS 16
-#define CA_STORAGE (512 * 1024)
 #define BACKOFF_STEPS 6
 #define RPC_QUEUE 16
 #define USER_CHANNEL_RETRY_S 10.0
@@ -48,6 +46,7 @@ typedef enum NetCmdType {
     CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
     CMD_SIGN_OUT,
     CMD_QUIET,
+    CMD_DEBUG_DROP,
     CMD_USER_CHANNEL,
     CMD_MEMBERS,  /* list in NetTransport.members_out */
     CMD_ROOM,     /* start / to_menu */
@@ -102,6 +101,7 @@ struct NetTransport {
     SDL_Mutex *lock;
     SDL_AtomicInt quit;
     SDL_AtomicInt status;
+    SDL_AtomicInt socket_ready; /* a channel joined on the live socket (net_socket_ready) */
     SDL_AtomicInt room_sends;
     char self_id[NET_ID_LEN]; /* under lock */
 
@@ -119,10 +119,8 @@ struct NetTransport {
     char members_out[(NET_ID_LEN + 1) * 8];
 
     /* ---- network thread only ---- */
-    struct mg_mgr mgr;
+    NetIo *io;
     NetEndpoint ep;
-    char *ca_storage;
-    char *ws_buf;
     SupaAuth auth;
     WsClient ws;
     char topic[NET_TOPIC_LEN];
@@ -390,7 +388,7 @@ static void send_access_token(NetTransport *n, const char *topic, int join_ref)
 static void send_state(NetTransport *n, const uint8_t *data, uint16_t len)
 {
     char b64[NET_STATE_MAX * 2];
-    mg_base64_encode(data, len, b64, sizeof(b64));
+    net_base64_encode(data, len, b64, sizeof(b64));
     n->ref++;
     int l = snprintf(n->line, sizeof(n->line),
                      "{\"topic\":\"realtime:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
@@ -584,6 +582,7 @@ static void handle_reply(NetTransport *n, const cJSON *topic, int ref, const cJS
         e.type = NET_EV_USER_CHANNEL;
         if (ok) {
             n->user_joined = true;
+            SDL_SetAtomicInt(&n->socket_ready, 1);
             e.value = 1;
         } else {
             const cJSON *resp = cJSON_GetObjectItemCaseSensitive(payload, "response");
@@ -599,6 +598,7 @@ static void handle_reply(NetTransport *n, const cJSON *topic, int ref, const cJS
     if (ref == n->join_ref && !n->joined) {
         if (ok) {
             n->joined = true;
+            SDL_SetAtomicInt(&n->socket_ready, 1);
             n->backoff = 0;
             send_track(n);
             set_status(n, NET_JOINED, NULL);
@@ -709,7 +709,7 @@ static void handle_broadcast(NetTransport *n, const cJSON *payload)
     if (dl > (size_t)NET_STATE_MAX * 4 / 3 + 4) {
         return;
     }
-    e.len = (uint16_t)mg_base64_decode(d->valuestring, dl, (char *)e.data, sizeof(e.data));
+    e.len = (uint16_t)net_base64_decode(d->valuestring, dl, (char *)e.data, sizeof(e.data));
     if (e.len > 0) {
         push_event(n, &e);
     }
@@ -840,6 +840,7 @@ static void on_ws_close(void *user, const char *reason)
 {
     NetTransport *n = (NetTransport *)user;
     bool was_joined = n->joined || n->user_joined;
+    SDL_SetAtomicInt(&n->socket_ready, 0);
     n->joined = false;
     n->room_join_sent = false;
     n->user_joined = false;
@@ -849,7 +850,7 @@ static void on_ws_close(void *user, const char *reason)
         static const double steps[BACKOFF_STEPS] = {1.0, 2.0, 4.0, 8.0, 15.0, 30.0};
         double delay = steps[n->backoff < BACKOFF_STEPS ? n->backoff : BACKOFF_STEPS - 1];
         uint8_t r = 0;
-        mg_random(&r, 1);
+        net_random(&r, 1);
         delay *= 0.8 + 0.4 * (double)r / 255.0; /* jitter so clients do not reconnect in lockstep */
         if (was_joined) {
             n->backoff = 0;
@@ -890,7 +891,7 @@ static void connect_socket(NetTransport *n)
     snprintf(path, sizeof(path), "/realtime/v1/websocket?apikey=%s&vsn=1.0.0", n->anon_key);
     WsCallbacks cb = {on_ws_open, on_ws_text, on_ws_close, n};
     room_status(n, NET_CONNECTING, NULL);
-    if (!ws_connect(&n->ws, &n->mgr, &n->ep, path, &cb)) {
+    if (!ws_connect(&n->ws, n->io, &n->ep, path, &cb)) {
         n->reconnect_at = n->now + 2.0;
         room_status(n, NET_RECONNECTING, "cannot reach server");
     }
@@ -963,13 +964,19 @@ static void process_commands(NetTransport *n)
             n->user_retry_at = 0.0;
             if (c.flag) {
                 n->backoff = n->want_room ? n->backoff : 0;
-            } else if (!n->want_room && n->ws.c) {
+            } else if (!n->want_room && n->ws.task) {
+                ws_close(&n->ws);
+            }
+            break;
+        case CMD_DEBUG_DROP:
+            if (n->ws.task) {
+                mg_log_info("net: test drop of the realtime socket");
                 ws_close(&n->ws);
             }
             break;
         case CMD_BACKGROUND:
             n->background = c.flag;
-            if (c.flag && n->ws.c) {
+            if (c.flag && n->ws.task) {
                 /* leave now so others see us go immediately */
                 if (n->joined) {
                     send_leave(n);
@@ -1025,7 +1032,7 @@ static bool ensure_auth(NetTransport *n, bool report)
         if (report) {
             set_status(n, NET_SIGNING_IN, NULL);
         }
-        supa_auth_start(&n->auth, &n->mgr, n->now);
+        supa_auth_start(&n->auth, n->io, n->now);
     } else if (n->auth.state == AUTH_FAILED) {
         if (n->auth.retry_at == 0.0) { /* report once, retry every 10 s */
             n->auth.retry_at = n->now + 10.0;
@@ -1039,7 +1046,7 @@ static bool ensure_auth(NetTransport *n, bool report)
             if (report) {
                 set_status(n, NET_SIGNING_IN, NULL);
             }
-            supa_auth_start(&n->auth, &n->mgr, n->now);
+            supa_auth_start(&n->auth, n->io, n->now);
         }
     }
     return false;
@@ -1185,7 +1192,7 @@ static void drive_account(NetTransport *n)
         n->auth.account_changed = false;
         n->loaded_uid[0] = 0;
         n->want_account = true;
-        if (n->ws.c && strcmp(n->joined_uid, n->auth.user_id) != 0) {
+        if (n->ws.task && strcmp(n->joined_uid, n->auth.user_id) != 0) {
             ws_close(&n->ws); /* rejoin the room under the new identity */
         }
     }
@@ -1195,7 +1202,7 @@ static void drive_account(NetTransport *n)
     if (n->link_pending) {
         n->link_pending = false;
         SDL_LockMutex(n->lock);
-        supa_auth_link_idp(&n->auth, &n->mgr, n->link_provider, n->link_token, n->link_nonce); /* failure: link_outcome */
+        supa_auth_link_idp(&n->auth, n->io, n->link_provider, n->link_token, n->link_nonce); /* failure: link_outcome */
         memset(n->link_token, 0, sizeof(n->link_token));
         SDL_UnlockMutex(n->lock);
         if (n->auth.state == AUTH_OK && !n->auth.link_outcome) {
@@ -1209,7 +1216,7 @@ static void drive_account(NetTransport *n)
         snprintf(n->loaded_uid, sizeof(n->loaded_uid), "%s", n->auth.user_id);
         snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*),book_state(book_id,last_level,updated_at),ride_state(state,updated_at)",
                  n->auth.user_id);
-        rest_call(&n->rest, &n->mgr, n->auth.access_token, "GET", path, NULL, profile_loaded, n);
+        rest_call(&n->rest, n->io, n->auth.access_token, "GET", path, NULL, profile_loaded, n);
     } else if (n->profile_pending) {
         char name[NET_NAME_LEN * 2];
         json_escape(name, sizeof(name), n->profile_save.name);
@@ -1217,7 +1224,7 @@ static void drive_account(NetTransport *n)
         write_skin(skin, sizeof(skin), &n->profile_save.skin);
         snprintf(n->rest_body, sizeof(n->rest_body), "{\"display_name\":\"%s\",\"skin\":%s}", name, skin);
         snprintf(path, sizeof(path), "profiles?id=eq.%s", n->auth.user_id);
-        n->profile_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
+        n->profile_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "PATCH", path, n->rest_body,
                                         profile_saved, n);
     } else if (n->stats_pending) {
         const NetStats *s = &n->stats_save;
@@ -1226,18 +1233,18 @@ static void drive_account(NetTransport *n)
                  "\"rooms_joined\":%d,\"last_seen_at\":\"now\"}",
                  s->sessions, s->play_seconds, (double)s->distance_m, s->elevator_rides, s->rooms_joined);
         snprintf(path, sizeof(path), "stats?user_id=eq.%s", n->auth.user_id);
-        n->stats_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
+        n->stats_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "PATCH", path, n->rest_body,
                                       stats_saved, n);
     } else if (n->book_pending) {
         const NetBookState *b = &n->book_save;
         snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_book\":\"%s\",\"p_level\":\"%s\",\"p_at_ms\":%.0f}", b->book, b->level,
                  b->updated_ms);
-        n->book_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "POST", "rpc/book_state_set", n->rest_body, book_saved, n);
+        n->book_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "POST", "rpc/book_state_set", n->rest_body, book_saved, n);
     } else if (n->ride_pending) {
         SDL_LockMutex(n->lock);
         snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_state\":%s,\"p_at_ms\":%.0f}", n->ride_save, n->ride_save_ms);
         SDL_UnlockMutex(n->lock);
-        n->ride_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "POST", "rpc/ride_state_set", n->rest_body, book_saved, n);
+        n->ride_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "POST", "rpc/ride_state_set", n->rest_body, book_saved, n);
     }
 }
 
@@ -1382,7 +1389,7 @@ static void drive_rpc(NetTransport *n)
         return;
     }
     n->rpc_running = job.rpc;
-    if (!ready || !rpc_call(&n->rpc, &n->mgr, n->auth.access_token, k_fn[job.rpc], job.body, rpc_done, n)) {
+    if (!ready || !rpc_call(&n->rpc, n->io, n->auth.access_token, k_fn[job.rpc], job.body, rpc_done, n)) {
         rpc_done(n, 0, "", 0); /* no account: every waiting call fails now, nothing stalls */
     }
 }
@@ -1502,17 +1509,17 @@ static void drive_link(NetTransport *n)
         return;
     }
     if (n->now > n->link_deadline) { /* closing the connection reports a transport error to its callback */
-        if (n->rpc.busy && n->rpc.req.c) {
-            n->rpc.req.c->is_closing = 1;
-        } else if (a->state == AUTH_LINK_SIGNIN && a->req.c) {
-            a->req.c->is_closing = 1;
+        if (n->rpc.busy && n->rpc.req.task) {
+            https_cancel(&n->rpc.req);
+        } else if (a->state == AUTH_LINK_SIGNIN && a->req.task) {
+            https_cancel(&a->req);
         }
         n->link_deadline = n->now + LINK_STEP_S;
     }
     if (n->link_stage == LS_SIGNIN) {
         if (!n->link_sent) {
             n->link_sent = true;
-            supa_auth_link_signin(a, &n->mgr);
+            supa_auth_link_signin(a, n->io);
         } else if (a->signin_outcome == 1) {
             a->signin_outcome = 0;
             link_stage(n, LS_REDEEM);
@@ -1540,7 +1547,7 @@ static void drive_link(NetTransport *n)
         return;
     }
 #endif
-    if (!rpc_call(&n->rpc, &n->mgr, a->access_token, fn, body, link_rpc_done, n)) {
+    if (!rpc_call(&n->rpc, n->io, a->access_token, fn, body, link_rpc_done, n)) {
         link_rpc_done(n, 0, "", 0);
     }
 }
@@ -1553,7 +1560,7 @@ static void drive(NetTransport *n)
     if (n->cfg.public_test && !n->auth.user_id[0]) {
         /* diagnostics: no sign-in, random presence key */
         uint8_t rnd[16];
-        mg_random(rnd, sizeof(rnd));
+        net_random(rnd, sizeof(rnd));
         snprintf(n->auth.user_id, sizeof(n->auth.user_id),
                  "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", rnd[0], rnd[1], rnd[2], rnd[3],
                  rnd[4], rnd[5], rnd[6], rnd[7], rnd[8], rnd[9], rnd[10], rnd[11], rnd[12], rnd[13], rnd[14], rnd[15]);
@@ -1570,7 +1577,7 @@ static void drive(NetTransport *n)
         memcpy(n->self_id, id, sizeof(id));
         SDL_UnlockMutex(n->lock);
     }
-    if (!n->ws.c && n->now >= n->reconnect_at && (n->want_room || !n->quiet)) {
+    if (!n->ws.task && n->now >= n->reconnect_at && (n->want_room || !n->quiet)) {
         connect_socket(n);
         return;
     }
@@ -1611,18 +1618,19 @@ static void drive(NetTransport *n)
 static int net_thread(void *arg)
 {
     NetTransport *n = (NetTransport *)arg;
-    mg_log_set(MG_LL_NONE);
-    mg_mgr_init(&n->mgr);
-    net_sync_clock();
+    n->io = net_io_create();
+    if (!n->io) {
+        return 0;
+    }
     while (!SDL_GetAtomicInt(&n->quit)) {
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         process_commands(n);
-        supa_auth_update(&n->auth, &n->mgr, n->now);
+        supa_auth_update(&n->auth, n->io, n->now);
         drive_link(n);
         drive(n);
         drive_account(n);
         drive_rpc(n);
-        mg_mgr_poll(&n->mgr, n->want_room || n->rest.busy || n->rpc.busy ? 5 : 20);
+        net_io_poll(n->io, n->want_room || n->rest.busy || n->rpc.busy ? 5 : 20);
     }
     /* last profile/stats writes before closing (bounded) */
     for (int i = 0; i < 300 && n->want_account && supa_auth_ready(&n->auth) &&
@@ -1631,15 +1639,15 @@ static int net_thread(void *arg)
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         drive_account(n);
         drive_rpc(n);
-        mg_mgr_poll(&n->mgr, 5);
+        net_io_poll(n->io, 5);
     }
     if (n->joined) {
         send_leave(n);
         for (int i = 0; i < 10; i++) {
-            mg_mgr_poll(&n->mgr, 5);
+            net_io_poll(n->io, 5);
         }
     }
-    mg_mgr_free(&n->mgr);
+    net_io_destroy(n->io);
     return 0;
 }
 
@@ -1655,11 +1663,6 @@ NetTransport *net_create(Arena *perm, const NetConfig *cfg)
     if (!n) {
         return NULL;
     }
-    n->ca_storage = (char *)arena_alloc(perm, CA_STORAGE, 16);
-    n->ws_buf = (char *)arena_alloc(perm, WS_MAX_MESSAGE, 16);
-    if (!n->ca_storage || !n->ws_buf) {
-        return NULL;
-    }
     n->cfg = *cfg;
     snprintf(n->host, sizeof(n->host), "%s", cfg->host);
     snprintf(n->anon_key, sizeof(n->anon_key), "%s", cfg->anon_key);
@@ -1671,11 +1674,11 @@ NetTransport *net_create(Arena *perm, const NetConfig *cfg)
         n->cfg.heartbeat_s = 25;
     }
     secure_store_init(&n->store, n->profile);
-    net_endpoint_init(&n->ep, n->host, n->ca_storage, CA_STORAGE);
+    net_endpoint_init(&n->ep, n->host);
     supa_auth_init(&n->auth, &n->store, &n->ep, n->anon_key);
     rest_init(&n->rest, &n->ep, n->anon_key);
     rpc_init(&n->rpc, &n->ep, n->anon_key);
-    ws_init(&n->ws, n->ws_buf);
+    ws_init(&n->ws);
     n->lock = SDL_CreateMutex();
     SDL_SetAtomicInt(&n->status, NET_OFFLINE);
     n->thread = SDL_CreateThread(net_thread, "net", n);
@@ -1683,7 +1686,7 @@ NetTransport *net_create(Arena *perm, const NetConfig *cfg)
         mg_log_error("net: cannot start network thread: %s", SDL_GetError());
         return NULL;
     }
-    mg_log_info("net: realtime backend ready (%s%s)", n->host, n->ep.proxy[0] ? ", via proxy" : "");
+    mg_log_info("net: realtime backend ready (%s, the platform's TLS)", n->host);
     return n;
 }
 
@@ -1780,6 +1783,19 @@ void net_self_id(const NetTransport *n, char out[NET_ID_LEN])
     SDL_LockMutex(n->lock);
     memcpy(out, n->self_id, NET_ID_LEN);
     SDL_UnlockMutex(n->lock);
+}
+
+bool net_socket_ready(const NetTransport *n) { return n && SDL_GetAtomicInt((SDL_AtomicInt *)&n->socket_ready) != 0; }
+
+void net_debug_drop(NetTransport *n)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    SDL_zero(c);
+    c.type = CMD_DEBUG_DROP;
+    push_cmd(n, &c);
 }
 
 void net_set_background(NetTransport *n, bool background)

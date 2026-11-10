@@ -6,6 +6,12 @@
 #include "strings.h"
 #include "ui/ui_widgets.h"
 
+static void link_state(AccountLink *l, AccountLinkState st)
+{
+    l->state = st;
+    l->visited |= 1u << (unsigned)st;
+}
+
 #define LOAD_TIMEOUT_S 20.0
 
 void account_link_init(AccountLink *l, NetTransport *net)
@@ -19,7 +25,7 @@ bool account_link_active(const AccountLink *l) { return l->state != AL_IDLE; }
 void account_link_begin(AccountLink *l, const char *provider, const char *id_token, const char *nonce)
 {
     SDL_snprintf(l->provider, sizeof(l->provider), "%s", provider);
-    l->state = AL_LINKING;
+    link_state(l, AL_LINKING);
     l->failed = NULL;
     net_link_idp(l->net, provider, id_token, nonce);
 }
@@ -28,7 +34,7 @@ void account_link_on_event(AccountLink *l, const NetEvent *e)
 {
     if (e->type == NET_EV_PROFILE && l->state == AL_LOADING) {
         l->loaded = e->profile;
-        l->state = AL_RESULT;
+        link_state(l, AL_RESULT);
         return;
     }
     if (e->type != NET_EV_LINK) {
@@ -36,23 +42,23 @@ void account_link_on_event(AccountLink *l, const NetEvent *e)
     }
     switch ((NetLinkEvent)e->value) {
     case NET_LINK_LINKED:
-        l->state = AL_IDLE;
+        link_state(l, AL_IDLE);
         l->linked = true;
         break;
     case NET_LINK_CONFLICT:
         SDL_snprintf(l->identity_name, sizeof(l->identity_name), "%s", e->text);
-        l->state = AL_DIALOG;
+        link_state(l, AL_DIALOG);
         break;
     case NET_LINK_STEP:
         l->merge_step = (int)e->len;
         break;
     case NET_LINK_MERGED:
-        l->state = AL_LOADING;
+        link_state(l, AL_LOADING);
         l->load_until = 0.0;
         l->merged = true;
         break;
     case NET_LINK_FAILED:
-        l->state = AL_IDLE;
+        link_state(l, AL_IDLE);
         l->failed = "link_failed";
         break;
     }
@@ -85,7 +91,7 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
             if (l->load_until == 0.0) {
                 l->load_until = now + LOAD_TIMEOUT_S;
             } else if (now > l->load_until) { /* the account is on this device; the network thread keeps loading it */
-                l->state = AL_IDLE;
+                link_state(l, AL_IDLE);
                 l->failed = "link_load_slow";
                 return;
             }
@@ -130,13 +136,13 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
         SDL_snprintf(label, sizeof(label), "%s##link_cancel", str("link_cancel"));
         if (ui_button(ui, label, dx + 16.0f, by, bw, 48.0f, false)) {
             net_link_cancel(l->net);
-            l->state = AL_IDLE;
+            link_state(l, AL_IDLE);
         }
         SDL_snprintf(label, sizeof(label), "%s##link_continue", str("link_continue"));
         if (ui_button(ui, label, dx + 32.0f + bw, by, bw, 48.0f, true)) {
             net_link_merge(l->net);
             l->merge_step = 0;
-            l->state = AL_MERGING;
+            link_state(l, AL_MERGING);
         }
         return;
     }
@@ -150,6 +156,6 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
     text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 134.0f, 14.0f, ui_rgba(0xFFFFFFB3), label);
     SDL_snprintf(label, sizeof(label), "%s##link_done", str("done"));
     if (ui_button(ui, label, dx + 20.0f, dy + dh - 62.0f, dw - 40.0f, 48.0f, true)) {
-        l->state = AL_IDLE;
+        link_state(l, AL_IDLE);
     }
 }

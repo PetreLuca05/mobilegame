@@ -30,7 +30,7 @@ jump and see each other in real time over Supabase Realtime.
 | Shaders | HLSL → SPIR-V + MSL (`tools/build_shaders.sh`, SDL_shadercross or glslang + spirv-cross) |
 | Math | HandmadeMath 2 |
 | Physics | own kinematic capsule controller vs. oriented boxes |
-| JSON / WebSocket | cJSON, mongoose 7.23 (built-in TLS 1.3) |
+| JSON / WebSocket | cJSON; NSURLSession (WebSocket + HTTPS, the OS's TLS) on iOS / macOS |
 | Backend | Supabase anonymous Auth + Realtime (Broadcast + Presence) |
 | Text | SDF atlas from Fredoka (OFL) |
 
@@ -119,8 +119,6 @@ Inspector; the HUD shows fps, CPU ms and draw counts.
 ## Licences
 
 Our code: no licence chosen yet. Third-party: SDL3 (zlib), cJSON (MIT),
-HandmadeMath (public domain), Fredoka font (SIL OFL 1.1, `assets/fonts/OFL.txt`),
-Mozilla CA bundle (MPL 2.0).
-**mongoose is GPLv2 or commercial**: publishing the app (TestFlight, Play
-Store) with mongoose requires either releasing the game under the GPL or a
-commercial licence from Cesanta.
+HandmadeMath (CC0), Baloo 2 and Nunito (SIL OFL 1.1, `assets/fonts/`). The network
+stack is Apple's (NSURLSession); there is no GPL code in the app. Details and the
+audit: `docs/LICENSES.md`.

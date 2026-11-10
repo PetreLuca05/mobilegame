@@ -17,7 +17,7 @@ typedef struct SupaRpc {
 
 void rpc_init(SupaRpc *r, const NetEndpoint *ep, const char *anon_key);
 /* `done` gets the HTTP status (0: transport error) and body. False if a call is in flight. */
-bool rpc_call(SupaRpc *r, struct mg_mgr *mgr, const char *access_token, const char *fn, const char *json_body,
+bool rpc_call(SupaRpc *r, NetIo *mgr, const char *access_token, const char *fn, const char *json_body,
               HttpDoneFn done, void *user);
 
 #endif

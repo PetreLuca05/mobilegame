@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   netsoak     NET-1: 10 min online, the socket dropped every 30 s (20 times): each time it must be back with its channel within 10 s
  *   tilt        TILT-1: shifts, lips, taps at rest, rotations, neutral pose, noise, spring, shake, freeze, strength (autotest_tilt.h)
  *   haptics     HAPTIC-1: coverage, order, same frame, limiter, setting, sequences, lifecycle (autotest_haptics.h)
  *   stick       UI-1b: release spring, full-speed ticks, marker taps, reduced motion, safe rect (autotest_stick.h)
@@ -113,6 +114,8 @@ typedef struct AutotestProbe {
     const TouchControls *touch;
     float stick_r, stick_rest_x, stick_rest_y;
     TiltCtl tilt;              /* --autotest tilt */
+    int net_status;            /* NetStatus of the room socket, -1 without a network */
+    bool net_ready;            /* the socket is up with a channel joined (user:<uid> or a room) */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -131,6 +134,7 @@ typedef struct AutotestOut {
     bool save_prefs;       /* worldmap2: write prefs.json now (the ride bag) */
     bool add_marker_left;  /* stick: an objective marker 5 m west of the player */
     int set_haptics;       /* haptics: 1 + the Vibrații level to set, 0 none */
+    bool net_drop;         /* netsoak: drop the realtime socket now */
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -171,6 +175,11 @@ typedef struct Autotest {
     StickTest st;
     HapticTest ht;
     TiltTest tt;
+    struct {
+        int cycles, worst_ms, total_ms;
+        double dropped_at, next_drop;
+        bool waiting;
+    } soak;
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);
