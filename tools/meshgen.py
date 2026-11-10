@@ -3,7 +3,7 @@
 
 Input (y-up, map units, flat-shaded triangle soup, counter-clockwise = outward):
     # comment
-    c <index> <rrggbb>                  palette entry
+    c <index> <rrggbb>[:<zone>]         palette entry; zone 0..15 (decimal, default 0)
     g <name>                            starts a group
     t <colour> x y z x y z x y z        one triangle
     i <name> x y z [size sx sy sz]      instance (wheel positions, roof light boxes)
@@ -15,6 +15,9 @@ Output, little endian ("MGMB" version 2):
                vertices: px py pz nx ny nz f32, r g b a u8 (28 bytes, GfxVertex), 3 per triangle
                instances: name char[16] | kind u32 (0 point, 1 box, 2 spinner) | x y z f32 |
                           sx sy sz f32 (box size; spinner: the unit axis; 0 for a point)
+The vertex alpha byte carries the palette entry's zone as 255 - zone, so a mesh
+without zones (every entry zone 0) keeps alpha 255. The engine reads the zone
+to pick a per-instance tint or hide a detail (avatar suits: V-neck, coat, ...).
 One vertex-coloured mesh per group, the normal of each triangle on its three
 vertices. Any malformed line fails the build.
 
@@ -53,14 +56,18 @@ def parse(path):
             parts = line.split()
             kind = parts[0]
             if kind == "c":
-                if len(parts) != 3 or len(parts[2]) != 6:
-                    fail(path, line_no, "palette line is 'c <index> <rrggbb>'")
+                colour, _, zone_txt = parts[2].partition(":") if len(parts) == 3 else ("", "", "")
+                if len(parts) != 3 or len(colour) != 6 or (":" in parts[2] and not zone_txt):
+                    fail(path, line_no, "palette line is 'c <index> <rrggbb>[:<zone>]'")
                 try:
                     idx = int(parts[1])
-                    rgb = int(parts[2], 16)
+                    rgb = int(colour, 16)
+                    zone = int(zone_txt, 10) if zone_txt else 0
                 except ValueError:
-                    fail(path, line_no, "bad palette index or colour")
-                palette[idx] = ((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)
+                    fail(path, line_no, "bad palette index, colour or zone")
+                if not 0 <= zone <= 15:
+                    fail(path, line_no, f"zone {zone} is outside 0..15")
+                palette[idx] = ((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 255 - zone)
             elif kind == "g":
                 if len(parts) != 2 or len(parts[1]) > 23:
                     fail(path, line_no, "group line is 'g <name>' (at most 23 chars)")
@@ -124,9 +131,9 @@ def main():
         out += struct.pack("<24sII", name.encode(), len(tris) * 3, len(insts))
         for ci, v in tris:
             n = normal(v)
-            r, g, b = palette[ci]
+            r, g, b, a = palette[ci]
             for k in range(3):
-                out += struct.pack("<6f4B", v[3 * k], v[3 * k + 1], v[3 * k + 2], n[0], n[1], n[2], r, g, b, 255)
+                out += struct.pack("<6f4B", v[3 * k], v[3 * k + 1], v[3 * k + 2], n[0], n[1], n[2], r, g, b, a)
         for iname, kind, pos, size in insts:
             out += struct.pack("<16sI6f", iname.encode(), kind, *pos, *size)
     with open(dst + ".tmp", "wb") as f:
