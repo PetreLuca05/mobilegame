@@ -301,3 +301,23 @@ Gate against the new baseline: passed. `corridor_f2` dropped 1 frame on its firs
 | `menu` (4 players) | 76.5 | 0.85 | 6.19 / 37 / 2.30 | 169 |
 
 Four avatars in the menu against one (87b762a): +0.3 draws, +31.7 k triangles (223.7 k -> 255.4 k), +57 instances, GPU effective 2.27 -> 2.30 ms.
+
+## WORLD-1: the island map (2026-11-10)
+
+Design: one main pass + UI. World draws: sea 1, island 1, road 1, props 7 (one instanced draw per group), hospitals 1, rings 1, ambulance body, wheels, roof lights, contact disc = 16; +1 x-ray of the body on frames where a placeholder cube hides the parked ambulance (5 of 9 stops lie north of their hospital). The renderer's draw counter also counts the HUD batch, so the numbers below read 17 / 18. Prop transforms are built once at load, sorted into an 8 x 5 grid, and cells are culled against the frustum.
+
+iPad Air 4, `--autotest perf` 60 s, commit 9a9cbb3 (CPU and memory only; the GPU traces were cut off by the device link, see the open issue below). `worldmap_travel` from that commit never drove (it opened in the overview); fixed in 5811809, not yet remeasured on the iPad.
+
+| Scenario | Draws (avg / max) | Triangles | Heap allocs | Dropped | Memory MB | Tick + frame ms | Render ms (encode) |
+|---|---|---|---|---|---|---|---|
+| worldmap (overview) | 17 / 17 | 28.5 k | 0 | 0 | 153 | 0.002 + 0.183 | 0.71 (0.085) |
+| island (parked, card up) | 18 / 18 | 15.8 k | 0 | 0 | 173 | 0.003 + 0.138 | 1.08 (0.088) |
+
+Estimates against measurements: tick 0.05 ms -> 0.002-0.003; render submit 0.15 ms -> encode 0.085-0.088 (the `render` scope, 0.71-1.08, also holds the drawable wait; `yard` reads 1.28 on the same scope); memory below the hospital scene: 153 MB overview against 159 (`yard`), but 173 parked with the card up (not yet explained: the same meshes, plus the card's blur panel). GPU (estimate <= 1.5 ms overview, <= 1.0 ms zoomed): not measured.
+
+Mac (desktop, labelled sanity, not the gate), 30 s, after the fix: worldmap 17 draws / 28.5 k tris, worldmap_travel 16.9 avg (18 max) / 18.5 k tris (grid culling), island 18 / 19.1 k; 0 heap allocations; tick 0.001 ms; render encode 0.016-0.017 ms; 1-2 dropped frames per run, as `yard` (1) on the same machine. Scene switch: map load 1.6-2.1 ms on first open, open 1.8-2.3 ms.
+
+## Open issues
+
+- **First-run allocations and first-run regressions (trace task).** Since FRIENDS-2 the first run of a scenario sometimes has a few small allocations (24-56 bytes) inside `render` and a dropped frame, or reads over 10 % worse on render / GPU, and is clean on its one rerun (`stress200`, `menu`, then `yard`, `lobby`, `corridor_f2` at 3681449). Treated as one bug, for the allocation / Instruments trace task; not closed by the reruns.
+- **Device link drops during the gate (2026-11-10).** The iPad (linked over the network) dropped `devicectl --console` sessions about 30 s in, three times; `tools/perf_run.sh --no-console` launches detached and still checks run id, mtime and commit. The full gate for WORLD-1 has not run: device testing now needs the user's permission per run.
