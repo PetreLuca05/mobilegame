@@ -9,13 +9,16 @@ static const float k_two_px_per_m = 0.0009;
 VSOut VSMain(VSIn i)
 {
     VSOut o;
-    float4 w = mul(u_model, float4(i.pos, 1.0));
+    float3 pos = i.pos;
+    float4 col = i.col;
+    zone_apply(pos, col, u_extra);
+    float4 w = mul(u_model, float4(pos, 1.0));
     float3 n = normalize(mul((float3x3)u_normal, i.nrm));
     float depth = mul(u_view_proj, w).w;
     w.xyz += n * depth * k_two_px_per_m;
     o.wpos = w.xyz;
     o.nrm = n;
-    o.col = i.col;
+    o.col = col;
     o.pos = mul(u_view_proj, w);
     return o;
 }

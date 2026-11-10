@@ -4,6 +4,7 @@
 InstOut VSMain(InstIn i)
 {
     InstOut o;
+    zone_apply(i.pos, i.col, i.extra);
     float3 w = inst_world(i);
     o.wpos = w;
     o.nrm = inst_normal(i);

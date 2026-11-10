@@ -28,19 +28,48 @@ struct VSMain_in
     float4 i_row2 [[attribute(5)]];
     float4 i_tint [[attribute(6)]];
     float4 i_params [[attribute(7)]];
+    float4 i_extra [[attribute(8)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _125 [[buffer(1)]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _277 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float4 _241 = float4(in.i_pos, 1.0);
-    float _245 = dot(in.i_row0, _241);
-    float _249 = dot(in.i_row1, _241);
-    float _253 = dot(in.i_row2, _241);
-    out.gl_Position = _125.u_view_proj * float4(_245, _249, _253, 1.0);
-    out._entryPointOutput_wpos = float3(_245, _249, _253);
+    float3 _357 = in.i_pos;
+    float4 _358 = in.i_col;
+    do
+    {
+        uint _417 = uint(in.i_extra.w);
+        if (_417 == 0u)
+        {
+            break;
+        }
+        uint _427 = 255u - uint((_358.w * 255.0) + 0.5);
+        if ((_417 & 256u) != 0u)
+        {
+            float _433 = _357.y;
+            float3 _438 = _357;
+            float2 _440 = _438.xz * mix(0.920000016689300537109375, 1.059999942779541015625, fast::clamp((_433 - 0.1599999964237213134765625) * 2.5, 0.0, 1.0));
+            _357.x = _440.x;
+            _357.z = _440.y;
+        }
+        if ((_427 != 0u) && (((_417 >> _427) & 1u) == 0u))
+        {
+            _357 = float3(0.0);
+        }
+        uint _496 = uint(in.i_extra.y);
+        uint _515 = uint(in.i_extra.z);
+        uint _534 = uint(in.i_extra.x);
+        _358 = float4(_358.xyz * select(select(select(float3(float((_534 >> uint(16)) & 255u), float((_534 >> uint(8)) & 255u), float(_534 & 255u)) * float3(0.0039215688593685626983642578125), float3(1.0), bool3((_427 == 3u) || (_427 == 7u))), float3(float((_515 >> uint(16)) & 255u), float((_515 >> uint(8)) & 255u), float(_515 & 255u)) * float3(0.0039215688593685626983642578125), bool3((_427 == 4u) || (_427 == 6u))), float3(float((_496 >> uint(16)) & 255u), float((_496 >> uint(8)) & 255u), float(_496 & 255u)) * float3(0.0039215688593685626983642578125), bool3(_427 == 1u)), 1.0);
+        break;
+    } while(false);
+    float4 _557 = float4(_357, 1.0);
+    float _561 = dot(in.i_row0, _557);
+    float _565 = dot(in.i_row1, _557);
+    float _569 = dot(in.i_row2, _557);
+    out.gl_Position = _277.u_view_proj * float4(_561, _565, _569, 1.0);
+    out._entryPointOutput_wpos = float3(_561, _565, _569);
     out._entryPointOutput_nrm = float3(dot(cross(in.i_row1.xyz, in.i_row2.xyz), in.i_nrm), dot(cross(in.i_row2.xyz, in.i_row0.xyz), in.i_nrm), dot(cross(in.i_row0.xyz, in.i_row1.xyz), in.i_nrm));
-    out._entryPointOutput_col = half4(in.i_col);
+    out._entryPointOutput_col = half4(_358);
     out._entryPointOutput_tint = half4(in.i_tint);
     out._entryPointOutput_params = half4(in.i_params);
     return out;

@@ -33,12 +33,12 @@ struct VSMain_in
 vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _88 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float4 _203 = float4(in.i_pos, 1.0);
-    float _207 = dot(in.i_row0, _203);
-    float _211 = dot(in.i_row1, _203);
-    float _215 = dot(in.i_row2, _203);
-    out.gl_Position = _88.u_view_proj * float4(_207, _211, _215, 1.0);
-    out._entryPointOutput_wpos = float3(_207, _211, _215);
+    float4 _207 = float4(in.i_pos, 1.0);
+    float _211 = dot(in.i_row0, _207);
+    float _215 = dot(in.i_row1, _207);
+    float _219 = dot(in.i_row2, _207);
+    out.gl_Position = _88.u_view_proj * float4(_211, _215, _219, 1.0);
+    out._entryPointOutput_wpos = float3(_211, _215, _219);
     out._entryPointOutput_nrm = in.i_nrm;
     out._entryPointOutput_col = half4(in.i_col);
     out._entryPointOutput_tint = half4(in.i_tint);

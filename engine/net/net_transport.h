@@ -48,6 +48,9 @@ typedef struct NetSkin {
     uint8_t palette;    /* M2 preset */
 } NetSkin;
 
+/* profiles.skin as stored ({"body":..,...}; missing keys read as 0, old M2 rows): what loading a profile uses. */
+bool net_skin_parse(const char *json, NetSkin *out);
+
 /* Presence payload {name, skin:{palette,hair,accessory}, slot}: what other
  * players need to draw us. */
 typedef struct NetPeerMeta {

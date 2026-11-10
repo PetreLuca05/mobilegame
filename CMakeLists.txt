@@ -92,6 +92,8 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/world/books.json
   ${CMAKE_SOURCE_DIR}/assets/world/kumar.island.json
   ${CMAKE_SOURCE_DIR}/assets/world/lawrance.island.json
+  ${CMAKE_SOURCE_DIR}/assets/avatar/avatar.json
+  ${CMAKE_SOURCE_DIR}/assets/menu/library.scene.json
 )
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # Pinned downloads (assets/ASSETS.lock): a missing file or a different hash fails configure and every build
@@ -103,13 +105,14 @@ add_custom_target(mg_assets_lock ALL COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURC
                   COMMENT "Checking assets/ASSETS.lock" VERBATIM)
 # WORLD-1: mgmesh text -> engine mesh binary at build time (tools/meshgen.py); a malformed line fails the build
 set(MG_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
-foreach(mesh kumar_island lawrance_island ambulance vehicles)
-  set(out ${MG_GEN_DIR}/assets/world/${mesh}.mgmb)
+foreach(mesh world/kumar_island world/lawrance_island world/ambulance world/vehicles avatar/avatar menu/library)
+  get_filename_component(mesh_dir ${mesh} DIRECTORY)
+  set(out ${MG_GEN_DIR}/assets/${mesh}.mgmb)
   add_custom_command(
     OUTPUT ${out}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/world
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/meshgen.py ${CMAKE_SOURCE_DIR}/assets/world/${mesh}.mgmesh ${out}
-    DEPENDS ${CMAKE_SOURCE_DIR}/assets/world/${mesh}.mgmesh ${CMAKE_SOURCE_DIR}/tools/meshgen.py
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/${mesh_dir}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/meshgen.py ${CMAKE_SOURCE_DIR}/assets/${mesh}.mgmesh ${out}
+    DEPENDS ${CMAKE_SOURCE_DIR}/assets/${mesh}.mgmesh ${CMAKE_SOURCE_DIR}/tools/meshgen.py
     COMMENT "meshgen ${mesh}.mgmesh"
     VERBATIM
   )
@@ -276,6 +279,8 @@ set(MG_GAME_SOURCES
   game/settings_menu.c
   game/autotest.c
   game/avatar.c
+  game/avatar_gallery.c
+  game/autotest_avatar.c
   game/scenery.c
   game/net_session.c
   game/friends.c

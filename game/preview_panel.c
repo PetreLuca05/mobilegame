@@ -15,7 +15,7 @@
 #define YAW_SWING HMM_AngleDeg(14.0f)
 #define YAW_HZ 0.35f
 #define HEAD_TAP_S 0.45f
-#define HEAD_DIST 1.8f /* fills most of the square */
+#define HEAD_DIST 2.0f /* fills most of the square (the LIB-1 head: r 0.25) */
 
 bool preview_panel_init(PreviewPanel *p, GfxContext *g, Arena *scratch)
 {
@@ -103,7 +103,7 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
     }
     /* the model, turning gently */
     const bool avatar = d->look != NULL;
-    const float cy = head ? 0.0f : avatar ? 0.72f : 0.0f, dist = head ? HEAD_DIST : avatar ? 5.6f : 2.2f; /* framed high: the label covers the bottom */
+    const float cy = head ? 0.0f : avatar ? 0.75f : 0.0f, dist = head ? HEAD_DIST : avatar ? 4.8f : 2.2f; /* framed high: the label covers the bottom */
     const HMM_Vec3 eye = HMM_V3(0.0f, cy, dist); /* the sun side: faces towards +Z are the lit ones */
     const HMM_Mat4 view = HMM_LookAt_RH(eye, HMM_V3(0.0f, cy, 0.0f), HMM_V3(0, 1, 0));
     const HMM_Mat4 proj = HMM_Perspective_RH_ZO(HMM_AngleDeg(28.0f), 1.0f, 0.2f, 12.0f);
@@ -124,7 +124,7 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
                 pose.hide = mg_maxf(pose.hide, 0.35f); /* nothing to say: faded */
             }
         }
-        avatar_animate(&p->anim, &pose, 1.0f / 60.0f);
+        avatar_animate(m, &p->anim, &pose, 1.0f / 60.0f);
         avatar_draw(g, m, d->look, &pose, &p->anim, NULL);
     } else if (d->mesh != GFX_MESH_NONE) {
         HMM_Mat4 model = HMM_MulM4(HMM_Translate(HMM_V3(0.0f, d->y_offset, 0.0f)), HMM_Rotate_RH(yaw, HMM_V3(0, 1, 0)));

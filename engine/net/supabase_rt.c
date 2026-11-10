@@ -337,6 +337,19 @@ static void read_skin(const cJSON *skin, NetSkin *out)
     }
 }
 
+bool net_skin_parse(const char *json, NetSkin *out)
+{
+    cJSON *o = cJSON_Parse(json);
+    SDL_zerop(out);
+    if (!cJSON_IsObject(o)) {
+        cJSON_Delete(o);
+        return false;
+    }
+    read_skin(o, out);
+    cJSON_Delete(o);
+    return true;
+}
+
 /* {"body":..,"skin":..,...} into buf */
 static void write_skin(char *buf, size_t cap, const NetSkin *k)
 {

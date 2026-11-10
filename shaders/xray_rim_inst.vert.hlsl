@@ -7,6 +7,7 @@ static const float k_two_px_per_m = 0.0009;
 InstOut VSMain(InstIn i)
 {
     InstOut o;
+    zone_apply(i.pos, i.col, i.extra);
     float3 w = inst_world(i);
     float3 n = normalize(inst_normal(i));
     float depth = mul(u_view_proj, float4(w, 1.0)).w;

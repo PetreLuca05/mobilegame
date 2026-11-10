@@ -13,6 +13,10 @@
 
 #define HOSP_FLOORS 3
 #define HOSP_STOREY 4.0f
+/* seat tops above the floor (chair(): 0.48, the yard benches: 0.47): a seated body base goes there + the
+ * library's clearance (AvatarRig.seat_clearance) */
+#define HOSP_CHAIR_TOP 0.48f
+#define HOSP_BENCH_TOP 0.47f
 #define HOSP_SPAWNS 4
 #define HOSP_CELLS 16     /* interior chunks per storey: 8 columns x 2 bands */
 #define HOSP_MAX_LIGHTS 64

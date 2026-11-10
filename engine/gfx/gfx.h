@@ -73,7 +73,12 @@ typedef struct GfxMaterial {
     HMM_Vec4 tint;   /* multiplied with vertex colour */
     HMM_Vec4 params; /* per-kind, see material.c */
     float hide;      /* M5 screen-door fade: 0 drawn .. 1 gone (4x4 Bayer clip); > 0.5 casts no shadow */
+    /* Zone-coded meshes (LIB-1 avatar suits; all 0 = off): outfit, trim, accent as 0xRRGGBB in floats, w a mask
+     * of the zones drawn (bit z; vertex alpha = 255 - zone) | GFX_ZONE_BODY1. The vertex shader colours each
+     * zone and collapses the ones not in the mask; pass a white tint (its alpha still picks the light). */
+    HMM_Vec4 extra;
 } GfxMaterial;
+#define GFX_ZONE_BODY1 256u /* body type 1: the widest ring 8 % narrower, the top ring 6 % wider */
 
 enum {
     GFX_DRAW_REFLECT = 1u << 0, /* also render into the planar reflection */

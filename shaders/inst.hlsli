@@ -10,6 +10,7 @@ struct InstIn
     [[vk::location(5)]] float4 row2 : TEXCOORD5;
     [[vk::location(6)]] float4 tint : TEXCOORD6;
     [[vk::location(7)]] float4 params : TEXCOORD7; // x rim, y gloss, z emissive (< 0: flat colour), w hide
+    [[vk::location(8)]] float4 extra : TEXCOORD8;  // zone-coded meshes (common.hlsli zone_apply)
 };
 
 struct InstOut
@@ -24,7 +25,7 @@ struct InstOut
 
 float3 inst_world(InstIn i)
 {
-    float4 p = float4(i.pos, 1.0);
+    float4 p = float4(i.pos, 1.0); // after zone_apply
     return float3(dot(i.row0, p), dot(i.row1, p), dot(i.row2, p));
 }
 

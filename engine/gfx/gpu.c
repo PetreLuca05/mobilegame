@@ -46,6 +46,7 @@ typedef struct DrawItem {
     HMM_Mat4 model;
     HMM_Vec4 tint;
     HMM_Vec4 params;
+    HMM_Vec4 extra;
     float hide;
     float sort;
     uint32_t range_first, range_count; /* count 0 = the whole mesh */
@@ -63,6 +64,7 @@ typedef struct GfxInstance {
     HMM_Vec4 row[3];
     HMM_Vec4 tint;
     HMM_Vec4 params; /* x rim, y gloss, z emissive (< 0 flat colour), w hide */
+    HMM_Vec4 extra;  /* GfxMaterial.extra */
 } GfxInstance;
 #define GFX_MAX_INSTANCES 4096
 #define GFX_BUFFER_RING 4 /* more than the frames in flight: uploads never need SDL to allocate another buffer */
@@ -70,6 +72,7 @@ typedef struct GfxInstance {
 typedef struct DrawVSUniforms {
     HMM_Mat4 model;
     HMM_Mat4 normal;
+    HMM_Vec4 extra; /* GfxMaterial.extra (zone-coded meshes) */
 } DrawVSUniforms;
 
 typedef struct DrawFSUniforms {
@@ -405,10 +408,10 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
         vbds[1].slot = 1;
         vbds[1].pitch = sizeof(GfxInstance);
         vbds[1].input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
-        for (uint32_t r = 0; r < 5; r++) {
+        for (uint32_t r = 0; r < 6; r++) {
             attrs[3 + r] = (SDL_GPUVertexAttribute){3 + r, 1, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, r * (uint32_t)sizeof(HMM_Vec4)};
         }
-        nattr += 5;
+        nattr += 6;
     }
     ci.vertex_input_state.vertex_buffer_descriptions = nattr ? vbds : NULL;
     ci.vertex_input_state.num_vertex_buffers = nattr ? (d->instanced ? 2 : 1) : 0;
@@ -1201,6 +1204,7 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->model = *model;
     d->tint = mat->tint;
     d->params = mat->params;
+    d->extra = mat->extra;
     d->hide = mat->hide;
     d->range_first = d->range_count = 0;
     d->inset = (uint8_t)g->current_inset;
@@ -1433,6 +1437,7 @@ static void build_instances(GfxContext *g)
             }
             o->tint = e->tint;
             o->params = HMM_V4(e->params.X, e->params.W, e->params.Y > 0.5f ? -1.0f : e->params.Z, e->hide);
+            o->extra = e->extra;
             if (j > i) {
                 g->run_len[j] = 0;
             }
@@ -1598,7 +1603,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
                 g->stats.tex_binds++;
             }
         }
-        DrawVSUniforms vu = {d->model, draw_normal(d)};
+        DrawVSUniforms vu = {d->model, draw_normal(d), d->extra};
         DrawFSUniforms fu = {d->tint, d->params, {HMM_V4(0, 0, 0, 0), HMM_V4(0, 0, 0, 0)}, HMM_V4(d->hide, 0, 0, 0)};
 #ifdef MG_RENDER_FULL
         for (int k = 0; k < GFX_LIGHTS_PER_DRAW; k++) {
@@ -1767,7 +1772,7 @@ static uint32_t draw_casters(GfxContext *g, SDL_GPURenderPass *pass, const HMM_M
         if (!casts_shadow(d) || (dynamic_only && !(d->flags & GFX_DRAW_DYNAMIC))) {
             continue;
         }
-        DrawVSUniforms vu = {d->model, draw_normal(d)};
+        DrawVSUniforms vu = {d->model, draw_normal(d), d->extra};
         SDL_PushGPUVertexUniformData(g->cmd, 0, &vu, sizeof(vu));
         const GfxMeshRec *m = &g->meshes[d->mesh];
         SDL_DrawGPUIndexedPrimitives(pass, m->index_count, 1, m->first_index, m->vertex_offset, 0);

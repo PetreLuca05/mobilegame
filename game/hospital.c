@@ -343,7 +343,7 @@ static void chair(Build *b, int f, float x, float z, int dir, uint32_t hex)
     float y = (float)f * HOSP_STOREY;
     int g = HM_INT0 + f;
     box(b, g, x - 0.24f, y, z - 0.24f, x + 0.24f, y + 0.4f, z + 0.24f, C_DARK, 0, false);
-    box(b, g, x - 0.26f, y + 0.4f, z - 0.26f, x + 0.26f, y + 0.48f, z + 0.26f, hex, 0, false);
+    box(b, g, x - 0.26f, y + 0.4f, z - 0.26f, x + 0.26f, y + HOSP_CHAIR_TOP, z + 0.26f, hex, 0, false);
     float bx0 = x - 0.26f, bx1 = x + 0.26f, bz0 = z - 0.26f, bz1 = z + 0.26f;
     switch (dir) {
     case 0: bz1 = bz0 + 0.07f; break; /* faces +Z: back on the -Z side */
@@ -471,8 +471,8 @@ static void build_yard(Build *b, Hospital *h)
         float x = benches[i][0], z = benches[i][1];
         float s = benches[i][2] > 0.5f ? 1.0f : -1.0f; /* back on the -X (s=-1) or +X side */
         box(b, HM_YARD, x - 0.3f, 0.0f, z - 0.8f, x + 0.3f, 0.4f, z + 0.8f, C_DARK, F_ALL, false);
-        box(b, HM_YARD, x - 0.32f, 0.4f, z - 0.85f, x + 0.32f, 0.47f, z + 0.85f, C_WOOD, F_ALL, false);
-        box(b, HM_YARD, x + s * 0.26f, 0.47f, z - 0.85f, x + s * 0.33f, 0.95f, z + 0.85f, C_WOOD, F_ALL, false);
+        box(b, HM_YARD, x - 0.32f, 0.4f, z - 0.85f, x + 0.32f, HOSP_BENCH_TOP, z + 0.85f, C_WOOD, F_ALL, false);
+        box(b, HM_YARD, x + s * 0.26f, HOSP_BENCH_TOP, z - 0.85f, x + s * 0.33f, 0.95f, z + 0.85f, C_WOOD, F_ALL, false);
         blocker(b, x - 0.33f, 0.0f, z - 0.85f, x + 0.33f, 0.95f, z + 0.85f);
     }
     static const float lamps[2][2] = {{-2.3f, 10.0f}, {-2.3f, 3.5f}};

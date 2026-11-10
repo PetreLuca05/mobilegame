@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define COLS 8
-#define CAM_DIST 1.6f  /* hair and accessories stay inside the circle */
+#define CAM_DIST 1.78f /* hair and accessories stay inside the circle (the LIB-1 head: r 0.25) */
 #define CAM_FOV 28.0f
 
 /* suit is part of the key by definition, though the head does not show it */

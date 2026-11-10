@@ -132,7 +132,7 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
             AvatarPose pose = {ctx->slots[av->at], yaw, HMM_V3(0, 0, 0), true, false, false, false};
             pose.flat_ground = true;
             pose.hide = 1.0f - av->fade;
-            avatar_animate(&av->anim, &pose, dt);
+            avatar_animate(meshes, &av->anim, &pose, dt);
             AvatarLook look = avatar_look_from_skin(av->skin);
             avatar_draw(g, meshes, &look, &pose, &av->anim, NULL);
         }
@@ -144,7 +144,7 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
         f->spin_vel *= 1.0f - mg_minf(turn_dt * 3.0f, 1.0f);
         AvatarPose hero = {ctx->hero_feet, HMM_PI32 - HMM_AngleDeg(45.0f) + f->hero_turn, HMM_V3(0, 0, 0), true, false, false, false};
         hero.flat_ground = true; /* the contact disc */
-        avatar_animate(&f->anim, &hero, mg_minf(app->frame_dt, 0.1f));
+        avatar_animate(meshes, &f->anim, &hero, mg_minf(app->frame_dt, 0.1f));
         AvatarLook hero_look = avatar_look_from_skin(*ctx->skin);
         avatar_draw(g, meshes, &hero_look, &hero, &f->anim, NULL);
         return;
@@ -193,7 +193,7 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
     f->yaw += HMM_AngleDeg(6.0f) * dt + f->spin_vel * dt;
     f->spin_vel *= 1.0f - mg_minf(dt * 3.0f, 1.0f);
     AvatarPose pose = {HMM_V3(0, 0.08f, 0), f->yaw, HMM_V3(0, 0, 0), true, false, false, false};
-    avatar_animate(&f->anim, &pose, dt);
+    avatar_animate(meshes, &f->anim, &pose, dt);
     AvatarLook look = avatar_look_from_skin(*ctx->skin);
     avatar_draw(g, meshes, &look, &pose, &f->anim, NULL);
 }

@@ -1,337 +1,294 @@
 #include "avatar.h"
 #include "player.h"
+#include "world_data.h"
 
+#include <SDL3/SDL_stdinc.h>
 #include <string.h>
 #include <math.h>
 
+#include <cJSON.h>
+
 #include "scene.h"
+#include "core/assets.h"
+#include "core/log.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 
-/* Dimensions (metres) */
-#define BODY_BASE 0.5f   /* body floats this high */
-#define BODY_H 0.9f
-#define BODY_RB 0.25f    /* 0.5 m wide */
-#define BODY_RT 0.19f
-#define HEAD_R 0.225f    /* 0.45 m head */
-#define HEAD_GAP 0.03f
-#define HAND_R 0.07f     /* 0.14 m hands */
-#define HAND_X 0.35f
-#define HAND_Y 0.82f     /* hip height */
-
-/* Doctor outfit */
-#define MASK_COLOR 0x9FD3EE
-#define BUTTON_COLOR 0xC9CED6
 #define OUTLINE_COLOR 0x000000 /* pure black: unlit, so day, night and shading never change it */
+#define MASK_COLOR 0x9FD3EE
+/* elders: forward lean (A1), grey hair is in their look; children: the whole avatar x 0.72, the head x 1.18 */
+#define ELDER_LEAN 0.12f
+#define ELDER_HAND_DROP 0.08f
+#define CHILD_SCALE 0.72f
+#define CHILD_HEAD 1.18f
+/* seated hands rest on the lap: x, y above the body base, z (avatar frame) */
+#define LAP_X 0.19f
+#define LAP_Y 0.2f
+#define LAP_Z 0.24f
+/* lying in a hospital bed (mattress top 0.6 m, pillow top 0.72 m, the slot point at the bed's middle):
+ * on the back, head towards the pillow end behind the slot's facing, the body axis raised so the head rests
+ * on the pillow (atan((0.97 - 0.855) / 0.86)) */
+#define BED_BASE_Y 0.855f
+#define BED_BASE_Z 0.16f
+#define BED_PITCH (-HMM_PI32 * 0.5f + 0.133f)
 
-/* Patch of a sphere around the face (head space, forward = -Z). Azimuth
- * runs from az_from down to az_to (az_from > az_to keeps the winding
- * outward), elevation from el_top down to el_bottom; radians. `pleat`
- * darkens horizontal bands (0 = plain). */
-static void face_patch(MeshBuilder *mb, float radius, float az_from, float az_to, float el_top, float el_bottom,
-                       int rows, int cols, float pleats, float pleat)
+/* ------------------------------------------------------------------ rig (avatar.json) */
+
+static float jnum(const cJSON *o, const char *key, float dflt)
 {
-    uint32_t base = mb->nv;
-    for (int i = 0; i <= rows; i++) {
-        float el = el_top + (el_bottom - el_top) * (float)i / (float)rows;
-        float band = 0.5f + 0.5f * HMM_CosF((el - el_top) / (el_bottom - el_top) * pleats * 2.0f * HMM_PI32);
-        float shade = 1.0f - pleat * band;
-        HMM_Vec4 c = HMM_V4(shade, shade, shade, 1.0f);
-        for (int j = 0; j <= cols; j++) {
-            float az = az_from + (az_to - az_from) * (float)j / (float)cols;
-            HMM_Vec3 d = HMM_V3(HMM_SinF(az) * HMM_CosF(el), HMM_SinF(el), -HMM_CosF(az) * HMM_CosF(el));
-            mb_vertex(mb, HMM_MulV3F(d, radius), d, c);
-        }
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, key);
+    return cJSON_IsNumber(v) ? (float)v->valuedouble : dflt;
+}
+
+static HMM_Vec3 jvec(const cJSON *o, const char *key, HMM_Vec3 dflt)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, key);
+    if (cJSON_GetArraySize(v) != 3) {
+        return dflt;
     }
-    uint32_t stride = (uint32_t)cols + 1;
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            uint32_t a = base + (uint32_t)i * stride + (uint32_t)j;
-            uint32_t b = a + stride;
-            mb_triangle_idx(mb, a, b, a + 1);
-            mb_triangle_idx(mb, a + 1, b, b + 1);
-        }
+    return HMM_V3((float)cJSON_GetArrayItem(v, 0)->valuedouble, (float)cJSON_GetArrayItem(v, 1)->valuedouble,
+                  (float)cJSON_GetArrayItem(v, 2)->valuedouble);
+}
+
+static bool load_rig(AvatarRig *r)
+{
+    const MgAsset *a = mg_asset_find("assets/avatar/avatar.json");
+    cJSON *root = a ? cJSON_ParseWithLength((const char *)a->data, a->size) : NULL;
+    if (!root) {
+        mg_log_error("avatar: assets/avatar/avatar.json is missing or not JSON");
+        return false;
     }
+    const cJSON *parts = cJSON_GetObjectItemCaseSensitive(root, "parts");
+    const cJSON *head = cJSON_GetObjectItemCaseSensitive(parts, "head");
+    const cJSON *eye = cJSON_GetObjectItemCaseSensitive(parts, "eye");
+    const cJSON *hand = cJSON_GetObjectItemCaseSensitive(parts, "hand");
+    r->stand_y = jnum(root, "stand_y", 0.42f);
+    r->seat_y = jnum(root, "seat_y", 0.5f);
+    r->head_up = jnum(head, "centre_above_body_base", 0.86f);
+    r->head_r = jnum(head, "radius", 0.25f);
+    r->hand_r = jnum(hand, "radius", 0.085f);
+    r->eye = jvec(eye, "pos_in_head", HMM_V3(0.095f, 0.0f, 0.225f));
+    const char *ec = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(eye, "colour"));
+    r->eye_rgb = ec ? (uint32_t)SDL_strtoul(ec, NULL, 16) : 0x1B2A2A;
+    const cJSON *hr = cJSON_GetObjectItemCaseSensitive(root, "hands_rest");
+    r->hands_rest = HMM_V3(jnum(hr, "x", 0.34f), jnum(hr, "y_above_body_base", 0.28f), jnum(hr, "z", 0.04f));
+    const cJSON *idle = cJSON_GetObjectItemCaseSensitive(root, "idle");
+    r->idle_bob_m = jnum(idle, "bob_m", 0.015f);
+    r->idle_bob_rad_s = jnum(idle, "bob_rad_s", 2.1f);
+    r->breath_scale = jnum(idle, "breath_scale", 0.012f);
+    r->breath_rad_s = jnum(idle, "breath_rad_s", 1.6f);
+    const cJSON *walk = cJSON_GetObjectItemCaseSensitive(root, "walk");
+    r->walk_phase_rad_s = jnum(walk, "phase_rad_s", 9.0f);
+    r->walk_bob_m = jnum(walk, "bob_m", 0.035f);
+    r->walk_swing_m = jnum(walk, "hand_swing_m", 0.16f);
+    r->walk_lean_rad = jnum(walk, "lean_rad", 0.05f);
+    r->turn_rate = jnum(walk, "turn_rate", 10.0f);
+    r->move_ease_rate = jnum(walk, "move_ease_rate", 12.0f);
+    const cJSON *br = cJSON_GetObjectItemCaseSensitive(root, "browse");
+    r->browse_hand = jvec(br, "hand_right", HMM_V3(-0.16f, 1.2f, 0.44f));
+    r->browse_bob_m = jnum(br, "hand_bob_m", 0.1f);
+    r->browse_bob_rad_s = jnum(br, "hand_bob_rad_s", 1.3f);
+    r->browse_head_pitch = jnum(br, "head_pitch_rad", -0.2f);
+    r->browse_head_yaw = jnum(br, "head_yaw_rad", 0.25f);
+    r->browse_head_yaw_rad_s = jnum(br, "head_yaw_rad_s", 0.7f);
+    r->browse_ease = jnum(br, "ease_rate", 5.0f);
+    const cJSON *pu = cJSON_GetObjectItemCaseSensitive(root, "push");
+    r->push_hands = jvec(pu, "hands", HMM_V3(0.2f, 0.95f, 0.3f));
+    r->push_ahead_m = jnum(pu, "cart_ahead_m", 0.75f);
+    r->push_ease = jnum(pu, "ease_rate", 6.0f);
+    const cJSON *lk = cJSON_GetObjectItemCaseSensitive(root, "creator_look");
+    r->look_lean_factor = jnum(lk, "lean_factor", 0.15f);
+    r->look_head_pitch = jnum(lk, "head_pitch_rad", -0.06f);
+    r->look_head_yaw = jnum(lk, "head_yaw_rad", 0.12f);
+    r->look_head_yaw_rad_s = jnum(lk, "head_yaw_rad_s", 0.8f);
+    r->look_hands = jvec(lk, "hands", HMM_V3(0.22f, 0.84f, 0.46f));
+    r->look_ease = jnum(lk, "ease_rate", 6.0f);
+    const cJSON *sh = cJSON_GetObjectItemCaseSensitive(root, "shadow");
+    r->shadow_r = jnum(sh, "radius", 0.3f);
+    r->shadow_alpha = jnum(sh, "alpha", 0.16f);
+    r->shadow_y = jnum(sh, "y", 0.02f);
+    const cJSON *tag = cJSON_GetObjectItemCaseSensitive(root, "name_tag_y");
+    r->tag_standing = jnum(tag, "standing", 1.72f);
+    r->tag_seated = jnum(tag, "seated", 1.62f);
+    cJSON_Delete(root);
+    return true;
 }
 
-/* Point on the front of the body (body space, before lean), `off` metres out. */
-static HMM_Vec3 body_surface(float x, float y, float off)
+/* ------------------------------------------------------------------ meshes */
+
+static GfxMeshId upload_verts(GfxContext *g, Arena *arena, const GfxVertex *v, uint32_t n)
 {
-    const float yb = BODY_RB, yt = BODY_H - BODY_RT;
-    float r;
-    if (y < yb) {
-        r = sqrtf(mg_maxf(BODY_RB * BODY_RB - (yb - y) * (yb - y), 0.0f));
-    } else if (y > yt) {
-        r = sqrtf(mg_maxf(BODY_RT * BODY_RT - (y - yt) * (y - yt), 0.0f));
-    } else {
-        r = BODY_RB + (BODY_RT - BODY_RB) * (y - yb) / (yt - yb);
+    if (n == 0) {
+        return GFX_MESH_NONE;
     }
-    r += off;
-    return HMM_V3(x, y, -sqrtf(mg_maxf(r * r - x * x, 0.0f)));
-}
-
-/* Matrix at a body surface point whose -Z faces outward (+Y stays up). */
-static HMM_Mat4 body_frame(float x, float y, float off)
-{
-    HMM_Vec3 p = body_surface(x, y, off);
-    return HMM_MulM4(HMM_Translate(p), HMM_Rotate_RH(atan2f(-p.X, -p.Z), HMM_V3(0, 1, 0)));
-}
-
-/* Patch hugging the body front: rows run top -> bottom, columns from the
- * +X edge to the -X edge (keeps the winding outward). Corners in (x, y). */
-static void body_patch(MeshBuilder *mb, HMM_Vec2 top_px, HMM_Vec2 top_nx, HMM_Vec2 bot_px, HMM_Vec2 bot_nx, int n,
-                       HMM_Vec4 color)
-{
-    uint32_t base = mb->nv;
-    for (int i = 0; i <= n; i++) {
-        float v = (float)i / (float)n;
-        HMM_Vec2 l = HMM_LerpV2(top_px, v, bot_px), r = HMM_LerpV2(top_nx, v, bot_nx);
-        for (int j = 0; j <= n; j++) {
-            HMM_Vec2 q = HMM_LerpV2(l, (float)j / (float)n, r);
-            HMM_Vec3 p = body_surface(q.X, q.Y, 0.006f);
-            mb_vertex(mb, p, HMM_NormV3(HMM_V3(p.X, 0, p.Z)), color);
-        }
+    const size_t mark = arena_mark(arena);
+    uint32_t *idx = ARENA_PUSH(arena, uint32_t, n);
+    for (uint32_t i = 0; i < n; i++) {
+        idx[i] = i;
     }
-    uint32_t stride = (uint32_t)n + 1;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            uint32_t a = base + (uint32_t)i * stride + (uint32_t)j;
-            uint32_t b = a + stride;
-            mb_triangle_idx(mb, a, b, a + 1);
-            mb_triangle_idx(mb, a + 1, b, b + 1);
-        }
+    const GfxMeshId id = gfx_mesh_upload(g, v, n, idx, n);
+    arena_reset_to(arena, mark);
+    return id;
+}
+
+static GfxMeshId upload_group(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
+{
+    const MgmbGroup *gr = mb ? mgmb_group(mb, name) : NULL;
+    return gr ? upload_verts(g, arena, gr->verts, gr->vert_count) : GFX_MESH_NONE;
+}
+
+/* The same triangles with smooth normals (averaged over every corner at one position): the outline hull and
+ * the x-ray rim push the mesh out along its normals, and flat normals would split it at every facet edge. */
+static GfxMeshId upload_hull(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
+{
+    const MgmbGroup *gr = mb ? mgmb_group(mb, name) : NULL;
+    if (!gr || gr->vert_count == 0) {
+        return GFX_MESH_NONE;
     }
-}
-
-/* Rotation taking +Y onto the unit vector `dir`. */
-static HMM_Mat4 align_y(HMM_Vec3 dir)
-{
-    HMM_Vec3 axis = HMM_Cross(HMM_V3(0, 1, 0), dir);
-    float s = HMM_LenV3(axis);
-    return s > 1e-5f ? HMM_Rotate_RH(atan2f(s, dir.Y), HMM_DivV3F(axis, s))
-                     : HMM_Rotate_RH(dir.Y > 0.0f ? 0.0f : HMM_PI32, HMM_V3(1, 0, 0));
-}
-
-/* Point on the head sphere: `up` degrees from the crown, `around` degrees
- * from the back (+Z) towards +X. */
-static HMM_Vec3 head_dir(float up, float around)
-{
-    float u = HMM_AngleDeg(up), a = HMM_AngleDeg(around);
-    return HMM_V3(HMM_SinF(u) * HMM_SinF(a), HMM_CosF(u), HMM_SinF(u) * HMM_CosF(a));
-}
-
-static void short_cap(MeshBuilder *mb, float grow, HMM_Vec4 c)
-{
-    HMM_Mat4 m = HMM_MulM4(HMM_Rotate_RH(HMM_AngleDeg(28.0f), HMM_V3(1, 0, 0)), HMM_Scale(HMM_V3(1.0f, 0.98f, 1.0f)));
-    mb_sphere_cap(mb, m, HEAD_R * (1.07f + grow), HMM_AngleDeg(88.0f), 12, 28, c);
-}
-
-/* Hair caps in head space (origin = head centre, face towards -Z). */
-static void build_hair(MeshBuilder *mb, int style, HMM_Vec4 c)
-{
-    switch (style) {
-    case HAIR_SHORT:
-        short_cap(mb, 0.0f, c);
-        break;
-    case HAIR_BOB: /* covers the sides and back down to the jaw, face clear */
-        mb_sphere_cap(mb, HMM_Rotate_RH(HMM_AngleDeg(35.0f), HMM_V3(1, 0, 0)), HEAD_R * 1.09f, HMM_AngleDeg(106.0f), 14,
-                      28, c);
-        break;
-    case HAIR_BUN:
-        short_cap(mb, 0.0f, c);
-        mb_sphere(mb, HMM_Translate(HMM_MulV3F(head_dir(40.0f, 0.0f), HEAD_R * 1.12f)), 0.1f, 10, 14, c, NULL, NULL);
-        break;
-    case HAIR_SPIKY: {
-        short_cap(mb, 0.0f, c);
-        static const float spikes[7][2] = {{0, 0}, {35, 0}, {35, 72}, {35, 144}, {35, 216}, {35, 288}, {62, 0}};
-        for (int i = 0; i < 7; i++) {
-            HMM_Vec3 d = head_dir(spikes[i][0], spikes[i][1]);
-            HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_MulV3F(d, HEAD_R * 1.0f)), align_y(d));
-            mb_cone(mb, m, 0.055f, 0.15f, 8, c);
-        }
-        break;
-    }
-    case HAIR_CURLY: {
-        short_cap(mb, 0.01f, c);
-        for (int ring = 0; ring < 3; ring++) {
-            int n = ring == 0 ? 1 : ring * 6;
-            for (int k = 0; k < n; k++) {
-                float up = (float)ring * 30.0f, around = (float)k * 360.0f / (float)n + (float)ring * 15.0f;
-                HMM_Vec3 d = head_dir(up, around);
-                if (d.Z < -0.55f) {
-                    continue; /* keep the forehead clear */
-                }
-                mb_sphere(mb, HMM_Translate(HMM_MulV3F(d, HEAD_R * 1.08f)), 0.065f, 6, 10, c, NULL, NULL);
+    const size_t mark = arena_mark(arena);
+    const uint32_t n = gr->vert_count;
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, n);
+    SDL_memcpy(v, gr->verts, sizeof(GfxVertex) * n);
+    for (uint32_t i = 0; i < n; i++) {
+        HMM_Vec3 sum = HMM_V3(0, 0, 0);
+        for (uint32_t j = 0; j < n; j++) {
+            const GfxVertex *o = &gr->verts[j];
+            if (fabsf(o->px - v[i].px) < 1e-4f && fabsf(o->py - v[i].py) < 1e-4f && fabsf(o->pz - v[i].pz) < 1e-4f) {
+                sum = HMM_AddV3(sum, HMM_V3(o->nx, o->ny, o->nz));
             }
         }
-        break;
+        const float len = HMM_LenV3(sum);
+        if (len > 1e-6f) {
+            v[i].nx = sum.X / len, v[i].ny = sum.Y / len, v[i].nz = sum.Z / len;
+        }
     }
-    default:
-        break;
-    }
+    const GfxMeshId id = upload_verts(g, arena, v, n);
+    arena_reset_to(arena, mark);
+    return id;
 }
 
-/* Tube along a polyline of (x, y) points on the body front. */
-static void body_tube(MeshBuilder *mb, const HMM_Vec2 *pts, int n, float radius, HMM_Vec4 color)
+/* The library chair's seat top: the highest upward face between 0.3 and 0.7 m with at least 0.05 m2 of area. */
+static float library_seat_top(Arena *scratch)
 {
-    for (int i = 0; i < n; i++) {
-        HMM_Vec3 a = body_surface(pts[i].X, pts[i].Y, radius + 0.004f);
-        mb_sphere(mb, HMM_Translate(a), radius, 4, 8, color, NULL, NULL);
-        if (i + 1 == n) {
-            break;
+    const size_t mark = arena_mark(scratch);
+    Mgmb lib;
+    float top = -1.0f;
+    const MgmbGroup *ch = mgmb_load(&lib, "assets/menu/library.mgmb", scratch) ? mgmb_group(&lib, "chair") : NULL;
+    for (uint32_t probe = 0; ch && probe < ch->vert_count; probe += 3) {
+        const float y = ch->verts[probe].py;
+        if (y < 0.3f || y > 0.7f || y <= top || ch->verts[probe].ny < 0.99f) {
+            continue;
         }
-        HMM_Vec3 b = body_surface(pts[i + 1].X, pts[i + 1].Y, radius + 0.004f);
-        HMM_Vec3 d = HMM_SubV3(b, a);
-        float len = HMM_LenV3(d);
-        HMM_Vec3 dir = HMM_DivV3F(d, len);
-        HMM_Vec3 axis = HMM_Cross(HMM_V3(0, 1, 0), dir);
-        float s = HMM_LenV3(axis);
-        HMM_Mat4 rot = s > 1e-5f ? HMM_Rotate_RH(atan2f(s, dir.Y), HMM_DivV3F(axis, s))
-                                 : HMM_Rotate_RH(dir.Y > 0.0f ? 0.0f : HMM_PI32, HMM_V3(1, 0, 0));
-        mb_cylinder(mb, HMM_MulM4(HMM_Translate(a), rot), radius, len, 8, color);
+        float area = 0.0f;
+        for (uint32_t v = 0; v + 2 < ch->vert_count; v += 3) {
+            const GfxVertex *a = &ch->verts[v], *b = &ch->verts[v + 1], *c = &ch->verts[v + 2];
+            if (a->ny >= 0.99f && fabsf(a->py - y) < 1e-3f) {
+                const HMM_Vec3 n = HMM_Cross(HMM_V3(b->px - a->px, b->py - a->py, b->pz - a->pz), HMM_V3(c->px - a->px, c->py - a->py, c->pz - a->pz));
+                area += 0.5f * HMM_LenV3(n);
+            }
+        }
+        if (area >= 0.05f) {
+            top = y;
+        }
     }
+    arena_reset_to(scratch, mark);
+    return top;
+}
+
+/* The nearest vertex of a head-space part to the head's centre, minus the head's radius. */
+static float head_gap(const Mgmb *mb, const char *name, float head_r)
+{
+    const MgmbGroup *gr = mb && name ? mgmb_group(mb, name) : NULL;
+    if (!gr || gr->vert_count == 0) {
+        return 1.0f;
+    }
+    float best = 1e9f;
+    for (uint32_t i = 0; i < gr->vert_count; i++) {
+        const GfxVertex *v = &gr->verts[i];
+        best = fminf(best, sqrtf(v->px * v->px + v->py * v->py + v->pz * v->pz));
+    }
+    return best - head_r;
 }
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
 {
-    size_t mark = arena_mark(scratch);
+    SDL_zerop(m);
+    if (!load_rig(&m->rig)) {
+        return false;
+    }
+    const float lib_top = library_seat_top(scratch);
+    m->rig.seat_clearance = lib_top > 0.0f ? m->rig.seat_y - lib_top : 0.0f;
+    mg_log_info("avatar: library seat top %.3f m, seat clearance %.3f m", (double)lib_top, (double)m->rig.seat_clearance);
+    const size_t mark = arena_mark(scratch);
+    Mgmb base, opt;
+    if (!mgmb_load(&base, "assets/avatar/avatar.mgmb", scratch)) {
+        arena_reset_to(scratch, mark);
+        return false;
+    }
+    const bool have_opt = mg_asset_find("assets/avatar/avatar_options.mgmb") && mgmb_load(&opt, "assets/avatar/avatar_options.mgmb", scratch);
+    const Mgmb *o = have_opt ? &opt : NULL;
+    if (!have_opt) {
+        mg_log_error("avatar: avatar_options.mgmb missing: plain body, one hair cap, no extras");
+    }
+    /* the suit body (zones) and its hull, else the plain exported body */
+    m->body = upload_group(g, scratch, o, "body_suit");
+    m->body_hull = upload_hull(g, scratch, o, "body_suit_hull");
+    if (m->body == GFX_MESH_NONE) {
+        m->body = upload_group(g, scratch, &base, "avatar_body");
+    }
+    if (m->body_hull == GFX_MESH_NONE) {
+        m->body_hull = upload_hull(g, scratch, &base, "avatar_body");
+    }
+    m->head = upload_group(g, scratch, &base, "avatar_head");
+    m->head_hull = upload_hull(g, scratch, &base, "avatar_head");
+    m->hand = upload_group(g, scratch, &base, "avatar_hand");
+    m->hand_hull = upload_hull(g, scratch, &base, "avatar_hand");
+    m->eye = upload_group(g, scratch, &base, "avatar_eye");
+    static const char *const hair_groups[AVATAR_HAIRS] = {NULL, "avatar_hair", "hair_bob", "hair_bun", "hair_spiky", "hair_curly"};
+    for (int s = HAIR_SHORT; s < AVATAR_HAIRS; s++) {
+        const Mgmb *src = s == HAIR_SHORT ? &base : o;
+        m->hair[s] = upload_group(g, scratch, src, hair_groups[s]);
+        m->hair_gap[s] = head_gap(src, hair_groups[s], m->rig.head_r);
+        m->hair_hull[s] = upload_hull(g, scratch, src, hair_groups[s]);
+        if (m->hair[s] == GFX_MESH_NONE) { /* no options file: every style is the short cap */
+            m->hair[s] = m->hair[HAIR_SHORT];
+            m->hair_hull[s] = m->hair_hull[HAIR_SHORT];
+        }
+    }
+    m->lod_body = upload_group(g, scratch, &base, "avatar_body_lod1");
+    m->lod_body_hull = upload_hull(g, scratch, &base, "avatar_body_lod1");
+    m->lod_head = upload_group(g, scratch, &base, "avatar_head_lod1");
+    m->lod_head_hull = upload_hull(g, scratch, &base, "avatar_head_lod1");
+    m->lod_hair = upload_group(g, scratch, &base, "avatar_hair_lod1");
+    m->lod_hand = upload_group(g, scratch, &base, "avatar_hand_lod1");
+    m->glasses = upload_group(g, scratch, o, "acc_sunglasses");
+    m->ears = upload_group(g, scratch, o, "acc_cat_ears");
+    m->mask = upload_group(g, scratch, o, "acc_mask");
+    m->hat = upload_group(g, scratch, o, "npc_hat");
+    static const char *const acc_groups[4] = {"acc_sunglasses", "acc_cat_ears", "acc_mask", "npc_hat"};
+    for (int i = 0; i < 4; i++) {
+        m->acc_gap[i] = head_gap(o, acc_groups[i], m->rig.head_r);
+    }
+    m->cane = upload_group(g, scratch, o, "npc_cane");
+    m->bucket = upload_group(g, scratch, o, "npc_bucket");
+    /* LOD2, far away or on another storey: the old representation re-proportioned to the new avatar */
     MeshBuilder mb;
-    if (!mb_init(&mb, scratch, 8192, 32768)) {
+    if (!mb_init(&mb, scratch, 512, 2048)) {
+        arena_reset_to(scratch, mark);
         return false;
     }
     const HMM_Vec4 white = HMM_V4(1, 1, 1, 1);
-    const HMM_Vec4 dark = mg_rgb(0x23222B);
-
-    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 20, 28, white);
-    m->body = mb_upload(&mb, g);
+    mb_tapered_capsule(&mb, HMM_M4D(1.0f), 0.24f, 0.13f, 0.64f, 4, 7, white);
+    m->far_body = mb_upload(&mb, g);
     mb_reset(&mb);
-    mb_cylinder(&mb, HMM_M4D(1.0f), 0.018f, 0.86f, 8, white); /* cane: shaft + handle */
-    mb_cylinder(&mb, HMM_MulM4(HMM_Translate(HMM_V3(0, 0.86f, 0)), HMM_Rotate_RH(HMM_AngleDeg(90.0f), HMM_V3(1, 0, 0))), 0.02f, 0.12f, 8, white);
-    m->cane = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_cylinder(&mb, HMM_M4D(1.0f), 0.3f, 0.025f, 20, white); /* sun hat: brim + crown */
-    mb_cylinder(&mb, HMM_Translate(HMM_V3(0, 0.025f, 0)), 0.17f, 0.1f, 16, white);
-    m->hat = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_cylinder(&mb, HMM_M4D(1.0f), 0.09f, 0.16f, 12, white);
-    m->bucket = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.035f, 0.005f, 0.005f), dark);
-    m->brow = mb_upload(&mb, g);
-    mb_reset(&mb); /* a child's smile: three short strokes curving up at the ends */
-    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.016f, 0.005f, 0.005f), dark);
-    for (int side = -1; side <= 1; side += 2) {
-        HMM_Mat4 end = HMM_MulM4(HMM_Translate(HMM_V3((float)side * 0.027f, 0.006f, 0.0f)), HMM_Rotate_RH((float)side * HMM_AngleDeg(35.0f), HMM_V3(0, 0, 1)));
-        mb_box(&mb, end, HMM_V3(0.016f, 0.005f, 0.005f), dark);
-    }
-    m->smile = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 9, 12, white);
-    m->lod_body[0] = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB, BODY_RT, BODY_H, 4, 7, white);
-    m->lod_body[1] = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 9, 12, white, NULL, NULL);
-    m->lod_head[0] = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 4, 7, white, NULL, NULL);
-    m->lod_head[1] = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), HAND_R, 4, 6, white, NULL, NULL);
-    m->lod_hand = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere_cap(&mb, HMM_M4D(1.0f), HEAD_R * 1.07f, HMM_AngleDeg(88.0f), 5, 10, white);
-    m->lod_hair = mb_upload(&mb, g);
-    mb_reset(&mb); /* female: 0.86 m tall, 0.46 m wide, a slightly narrower top */
-    mb_tapered_capsule(&mb, HMM_M4D(1.0f), BODY_RB * 0.92f, BODY_RT * 0.9f, BODY_H * 0.955f, 20, 28, white);
-    m->body_female = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), HEAD_R, 20, 28, white, NULL, NULL);
-    m->head = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* hair caps: the short one is tilted back so the forehead shows */
-    m->hair[HAIR_NONE] = GFX_MESH_NONE;
-    for (int s = HAIR_SHORT; s < AVATAR_HAIRS; s++) {
-        mb_reset(&mb);
-        build_hair(&mb, s, white);
-        m->hair[s] = mb_upload(&mb, g);
-    }
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_Scale(HMM_V3(0.8f, 1.25f, 0.45f)), 0.028f, 8, 12, dark, NULL, NULL);
-    m->eye = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), 0.016f, 6, 10, white, NULL, NULL);
-    m->nose = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(0.038f, 0.006f, 0.006f), dark);
-    m->mouth = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_sphere(&mb, HMM_M4D(1.0f), HAND_R, 10, 16, white, NULL, NULL);
-    m->hand = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* chest decal slot: a flat badge facing -Z (a texture can replace it later) */
-    HMM_Mat4 dec = HMM_Rotate_RH(HMM_AngleDeg(90.0f), HMM_V3(1, 0, 0));
-    mb_cylinder(&mb, dec, 0.075f, 0.012f, 24, white);
-    m->decal = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* sunglasses: two dark lenses and a bridge, centred on the eye line */
-    HMM_Mat4 lens_l = HMM_MulM4(HMM_Translate(HMM_V3(-0.072f, 0, 0)), HMM_Scale(HMM_V3(1.25f, 0.9f, 0.35f)));
-    HMM_Mat4 lens_r = HMM_MulM4(HMM_Translate(HMM_V3(0.072f, 0, 0)), HMM_Scale(HMM_V3(1.25f, 0.9f, 0.35f)));
-    mb_sphere(&mb, lens_l, 0.045f, 8, 14, dark, NULL, NULL);
-    mb_sphere(&mb, lens_r, 0.045f, 8, 14, dark, NULL, NULL);
-    mb_box(&mb, HMM_Translate(HMM_V3(0, 0.012f, 0)), HMM_V3(0.03f, 0.006f, 0.006f), dark);
-    m->glasses = mb_upload(&mb, g);
-    mb_reset(&mb);
-    mb_cone(&mb, HMM_M4D(1.0f), 0.075f, 0.13f, 4, white);
-    m->ear = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* surgical mask: pleated patch over nose + chin, plus ear loops (head space) */
-    const float deg = HMM_PI32 / 180.0f;
-    face_patch(&mb, HEAD_R * 1.045f, 72 * deg, -72 * deg, -4 * deg, -60 * deg, 24, 24, 3.0f, 0.12f);
-    face_patch(&mb, HEAD_R * 1.02f, 100 * deg, 70 * deg, -6 * deg, -9 * deg, 1, 6, 0.0f, 0.0f);
-    face_patch(&mb, HEAD_R * 1.02f, 100 * deg, 70 * deg, -42 * deg, -45 * deg, 1, 6, 0.0f, 0.0f);
-    face_patch(&mb, HEAD_R * 1.02f, -70 * deg, -100 * deg, -6 * deg, -9 * deg, 1, 6, 0.0f, 0.0f);
-    face_patch(&mb, HEAD_R * 1.02f, -70 * deg, -100 * deg, -42 * deg, -45 * deg, 1, 6, 0.0f, 0.0f);
-    m->mask = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* stethoscope (body space): tubing from both sides of the neck to a Y,
-     * one tube down to a silver chest piece */
-    const HMM_Vec4 tube = mg_rgb(0x2E3440), steel = mg_rgb(0xC8CDD3);
-    const HMM_Vec2 left[] = {{{-0.14f, 0.80f}}, {{-0.13f, 0.70f}}, {{-0.10f, 0.61f}}, {{-0.05f, 0.53f}}, {{0.0f, 0.50f}}};
-    const HMM_Vec2 right[] = {{{0.14f, 0.80f}}, {{0.13f, 0.70f}}, {{0.10f, 0.61f}}, {{0.05f, 0.53f}}, {{0.0f, 0.50f}}};
-    const HMM_Vec2 down[] = {{{0.0f, 0.50f}}, {{0.02f, 0.44f}}, {{0.045f, 0.39f}}};
-    body_tube(&mb, left, 5, 0.011f, tube);
-    body_tube(&mb, right, 5, 0.011f, tube);
-    body_tube(&mb, down, 3, 0.011f, tube);
-    mb_cylinder(&mb, HMM_MulM4(body_frame(0.05f, 0.36f, 0.004f), HMM_Rotate_RH(-HMM_PI32 * 0.5f, HMM_V3(1, 0, 0))),
-                0.032f, 0.014f, 20, steel);
-    m->scope = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* scrubs V-neck showing between the coat lapels */
-    body_patch(&mb, (HMM_Vec2){{0.085f, 0.83f}}, (HMM_Vec2){{-0.085f, 0.83f}}, (HMM_Vec2){{0.0f, 0.64f}},
-               (HMM_Vec2){{0.0f, 0.64f}}, 8, white);
-    m->vneck = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* red cross on the left chest */
-    HMM_Mat4 cf = body_frame(-0.135f, 0.56f, 0.004f);
-    mb_box(&mb, cf, HMM_V3(0.028f, 0.009f, 0.005f), white);
-    mb_box(&mb, cf, HMM_V3(0.009f, 0.028f, 0.005f), white);
-    m->cross = mb_upload(&mb, g);
-    mb_reset(&mb);
-    /* chest pocket: a flat panel with a darker flap */
-    HMM_Mat4 pf = body_frame(-0.13f, 0.52f, 0.003f);
-    mb_box(&mb, pf, HMM_V3(0.055f, 0.05f, 0.004f), white);
-    mb_box(&mb, HMM_MulM4(pf, HMM_Translate(HMM_V3(0, 0.04f, -0.004f))), HMM_V3(0.057f, 0.012f, 0.004f),
-           HMM_V4(0.7f, 0.7f, 0.72f, 1));
-    m->pocket = mb_upload(&mb, g);
+    mb_sphere(&mb, HMM_M4D(1.0f), m->rig.head_r, 4, 7, white, NULL, NULL);
+    m->far_head = mb_upload(&mb, g);
     mb_reset(&mb);
     mb_sprite_quad(&mb);
     m->shadow = mb_upload(&mb, g);
     arena_reset_to(scratch, mark);
-    return m->body != GFX_MESH_NONE && m->body_female != GFX_MESH_NONE && m->pocket != GFX_MESH_NONE &&
-           m->mask != GFX_MESH_NONE && m->scope != GFX_MESH_NONE &&
-           m->shadow != GFX_MESH_NONE;
+    return m->body != GFX_MESH_NONE && m->head != GFX_MESH_NONE && m->hand != GFX_MESH_NONE && m->eye != GFX_MESH_NONE &&
+           m->hair[HAIR_SHORT] != GFX_MESH_NONE && m->lod_body != GFX_MESH_NONE && m->shadow != GFX_MESH_NONE;
 }
 
 typedef struct PalettePreset {
@@ -431,37 +388,145 @@ static float approach(float v, float target, float rate, float dt)
     return target + (v - target) * expf(-rate * dt);
 }
 
-#define WALK_POSE_SPEED 4.5f
-
-void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt)
+static float wrap_pi(float a)
 {
-    float hs = sqrtf(p->vel.X * p->vel.X + p->vel.Z * p->vel.Z);
-#if !PLAYER_SPRINT_ENABLED
-    hs = mg_minf(hs, WALK_POSE_SPEED); /* remote old builds may still sprint: never the sprint pose */
-#endif
-    if (p->grounded) {
-        a->stride += hs * dt;
+    while (a > HMM_PI32) {
+        a -= 2.0f * HMM_PI32;
     }
-    a->idle_t += dt;
-    /* lean into movement, in the avatar's local frame (forward = -Z) */
-    float s = HMM_SinF(p->yaw), c = HMM_CosF(p->yaw);
-    float fwd = -s * p->vel.X - c * p->vel.Z;
-    float side = c * p->vel.X - s * p->vel.Z;
-    const float max_lean = HMM_AngleDeg(10.0f);
-#if PLAYER_SPRINT_ENABLED
-    const float lean_cap = 1.0f;
-#else
-    const float lean_cap = WALK_POSE_SPEED / 7.0f; /* the walk tilt is the most it ever leans */
-#endif
-    float lf = mg_clampf(fwd / 7.0f, -lean_cap, lean_cap) * max_lean;
-    float ls = mg_clampf(side / 7.0f, -lean_cap, lean_cap) * max_lean;
-    a->lean_fwd = approach(a->lean_fwd, lf, 10.0f, dt);
-    a->lean_side = approach(a->lean_side, ls, 10.0f, dt);
-    a->swing = approach(a->swing, p->grounded ? mg_saturate(hs / 4.5f) : 0.3f, 8.0f, dt);
-    a->raise = approach(a->raise, p->grounded ? 0.0f : 1.0f, p->grounded ? 12.0f : 9.0f, dt);
+    while (a < -HMM_PI32) {
+        a += 2.0f * HMM_PI32;
+    }
+    return a;
 }
 
-static HMM_Mat4 compose(HMM_Mat4 parent, HMM_Vec3 t) { return HMM_MulM4(parent, HMM_Translate(t)); }
+static float smooth01(float x)
+{
+    x = mg_saturate(x);
+    return x * x * (3.0f - 2.0f * x);
+}
+
+/* "Walking" for the pose: 1 m/s and faster is a full stride; the stride frequency is the rig's, whatever the speed. */
+#define WALK_FULL_SPEED 1.0f
+
+void avatar_animate(const AvatarMeshes *m, AvatarAnim *a, const AvatarPose *p, float dt)
+{
+    const AvatarRig *r = &m->rig;
+    if (!a->init) {
+        SDL_zerop(a);
+        a->init = true;
+        a->yaw = p->yaw;
+        /* a random phase per avatar: from where it was stored (visual only, never in the sim) */
+        uint32_t h = (uint32_t)(uintptr_t)a * 2654435761u;
+        a->seed = (float)(h >> 8) * (6.2831853f / 16777216.0f);
+    }
+    a->t += dt;
+    const float hs = sqrtf(p->vel.X * p->vel.X + p->vel.Z * p->vel.Z);
+    a->move = approach(a->move, p->grounded ? mg_saturate(hs / WALK_FULL_SPEED) : 0.0f, r->move_ease_rate, dt);
+    a->phase = fmodf(a->phase + r->walk_phase_rad_s * a->move * dt, 2.0f * HMM_PI32 * 64.0f);
+    /* heading: towards the pose's yaw along the shorter arc, exponential, never a snap */
+    a->yaw = wrap_pi(a->yaw + wrap_pi(p->yaw - a->yaw) * (1.0f - expf(-r->turn_rate * dt)));
+    a->browse = approach(a->browse, p->browse, r->browse_ease, dt);
+    a->push = approach(a->push, p->push, r->push_ease, dt);
+    a->look = approach(a->look, p->look, r->look_ease, dt);
+    a->raise = approach(a->raise, p->grounded ? 0.0f : 1.0f, p->grounded ? 12.0f : 9.0f, dt);
+    /* side lean into a turn of the velocity (avatar frame, +x its left) */
+    const float s = HMM_SinF(a->yaw), c = HMM_CosF(a->yaw);
+    const float side = -(c * p->vel.X - s * p->vel.Z);
+    a->lean_side = approach(a->lean_side, mg_clampf(side / 7.0f, -0.65f, 0.65f) * HMM_AngleDeg(10.0f) * a->move, 10.0f, dt);
+}
+
+float avatar_name_tag_y(const AvatarMeshes *m, const AvatarLook *look, float sit)
+{
+    const float k = look && look->age == AVATAR_CHILD ? CHILD_SCALE : 1.0f;
+    return mg_lerpf(m->rig.tag_standing, m->rig.tag_seated, smooth01(sit)) * k;
+}
+
+static HMM_Vec3 xform(HMM_Mat4 m, HMM_Vec3 p) { return HMM_MulM4V4(m, HMM_V4V(p, 1.0f)).XYZ; }
+
+void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p, const AvatarAnim *a, AvatarSolved *s)
+{
+    const AvatarRig *r = &m->rig;
+    const bool child = look->age == AVATAR_CHILD, elder = look->age == AVATAR_ELDER;
+    const float k = child ? CHILD_SCALE : 1.0f;
+    const float t = a->t, sit = smooth01(p->sit), lying = mg_saturate(p->lying);
+    const float yaw = p->head_only ? p->yaw : a->yaw;
+    /* the avatar frame faces +z; yaw 0 looks along -Z, so turn it half a circle */
+    HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(yaw + HMM_PI32, HMM_V3(0, 1, 0)));
+    if (lying > 0.0f) { /* in bed: on the back, head on the pillow (behind the facing) */
+        root = HMM_MulM4(root, HMM_Translate(HMM_V3(0.0f, BED_BASE_Y * lying, BED_BASE_Z * lying)));
+        root = HMM_MulM4(root, HMM_Rotate_RH(BED_PITCH * lying, HMM_V3(1, 0, 0)));
+    }
+    if (p->sway != 0.0f) {
+        root = HMM_MulM4(root, HMM_Rotate_RH(-p->sway, HMM_V3(0, 0, 1)));
+    }
+    root = HMM_MulM4(root, HMM_Scale(HMM_V3(k, k, k)));
+    s->root = root;
+    s->scale = k;
+
+    /* body base: floats at stand_y; seated on the seat's top (world metres, so / k); bobs; lying: on the frame */
+    const float seat = (p->seat_y > 0.0f ? p->seat_y : r->seat_y) / k;
+    /* idle bob (fades out as the walk's bob comes in: a full stride peaks at exactly walk_bob_m) */
+    const float bob = r->idle_bob_m * HMM_SinF(r->idle_bob_rad_s * t + a->seed) * (elder ? 0.5f : 1.0f) * (1.0f - 0.7f * sit) * (1.0f - a->move) +
+                      r->walk_bob_m * fabsf(HMM_SinF(a->phase)) * a->move;
+    float base = mg_lerpf(r->stand_y, seat, sit) - 0.3f * p->crouch;
+    base = mg_lerpf(base, 0.0f, lying) + bob;
+    s->base_y = base * k;
+    const float lean = r->walk_lean_rad * a->move + (elder ? ELDER_LEAN : 0.0f) + 0.3f * p->crouch + p->lean;
+    const float roll = a->lean_side + p->weight_tilt;
+    HMM_Mat4 body = HMM_MulM4(root, HMM_Translate(HMM_V3(0, base, 0)));
+    body = HMM_MulM4(body, HMM_Rotate_RH(lean, HMM_V3(1, 0, 0)));
+    body = HMM_MulM4(body, HMM_Rotate_RH(-roll, HMM_V3(0, 0, 1)));
+    s->body = body;
+    const float breath = 1.0f + r->breath_scale * HMM_SinF(r->breath_rad_s * t + a->seed * 1.37f) * (p->breath_k > 0.0f ? p->breath_k : 1.0f);
+    s->body_s = HMM_MulM4(body, HMM_Scale(HMM_V3(1.0f, breath, 1.0f)));
+
+    /* head: 0.86 m up the body's own axis (it moves forward when the body leans), plus the chat pop */
+    const float hk = child ? CHILD_HEAD : 1.0f;
+    float hyaw = p->head_yaw, hpitch = p->head_pitch;
+    hyaw += a->browse * r->browse_head_yaw * HMM_SinF(r->browse_head_yaw_rad_s * t + a->seed);
+    hpitch -= a->browse * r->browse_head_pitch;
+    hyaw += a->look * r->look_head_yaw * HMM_SinF(r->look_head_yaw_rad_s * t);
+    hpitch -= a->look * r->look_head_pitch;
+    HMM_Mat4 head = p->head_only ? root : HMM_MulM4(body, HMM_Translate(HMM_V3(0, r->head_up * breath + p->head_lift / k, 0)));
+    head = HMM_MulM4(head, HMM_Rotate_RH(hyaw, HMM_V3(0, 1, 0)));
+    head = HMM_MulM4(head, HMM_Rotate_RH(-hpitch, HMM_V3(1, 0, 0))); /* + looks up */
+    head = HMM_MulM4(head, HMM_Scale(HMM_V3(hk, hk, hk)));
+    s->head = head;
+    s->head_centre = head.Columns[3].XYZ;
+
+    /* hands, avatar frame: standing (rest, walk swing, browse / push / stretch applied first), seated (the lap,
+     * or the activity's targets), blended by sit */
+    const HMM_Vec3 rest = r->hands_rest;
+    const float sb = r->stand_y + bob - (elder ? ELDER_HAND_DROP : 0.0f);
+    const float swing = r->walk_swing_m * HMM_SinF(a->phase) * a->move;
+    const float up = mg_maxf(a->raise, p->stretch) * 0.5f;
+    HMM_Vec3 stand[2] = {HMM_V3(rest.X + a->raise * 0.08f, sb + rest.Y + up, rest.Z + swing),
+                         HMM_V3(-rest.X - a->raise * 0.08f, sb + rest.Y + up, rest.Z - swing)};
+    const HMM_Vec3 bh = HMM_V3(r->browse_hand.X, r->browse_hand.Y + r->browse_bob_m * HMM_SinF(r->browse_bob_rad_s * t + a->seed), r->browse_hand.Z);
+    stand[1] = HMM_LerpV3(stand[1], a->browse, bh);
+    stand[0] = HMM_LerpV3(stand[0], a->push, HMM_V3(r->push_hands.X, r->push_hands.Y, r->push_hands.Z));
+    stand[1] = HMM_LerpV3(stand[1], a->push, HMM_V3(-r->push_hands.X, r->push_hands.Y, r->push_hands.Z));
+    const float lb = seat + bob;
+    HMM_Vec3 seated[2] = {HMM_V3(LAP_X, lb + LAP_Y + up, LAP_Z), HMM_V3(-LAP_X, lb + LAP_Y + up, LAP_Z)};
+    if (p->hands_w > 0.0f) {
+        seated[0] = HMM_LerpV3(seated[0], p->hands_w, HMM_MulV3F(p->hand_l, 1.0f / k));
+        seated[1] = HMM_LerpV3(seated[1], p->hands_w, HMM_MulV3F(p->hand_r, 1.0f / k));
+    }
+    if (a->look > 0.0f) {
+        seated[0] = HMM_LerpV3(seated[0], a->look, r->look_hands);
+        seated[1] = HMM_LerpV3(seated[1], a->look, HMM_V3(-r->look_hands.X, r->look_hands.Y, r->look_hands.Z));
+    }
+    for (int i = 0; i < 2; i++) {
+        HMM_Vec3 h = HMM_LerpV3(stand[i], sit, seated[i]);
+        if (lying > 0.0f) { /* in bed the hands rest beside the body: relative to the body base */
+            h.Y = mg_lerpf(h.Y, base + rest.Y, lying);
+        }
+        h.Y -= 0.3f * p->crouch;
+        s->hand[i] = xform(root, h);
+    }
+}
+
+/* ------------------------------------------------------------------ draw */
 
 typedef enum Surface { SURF_MATTE, SURF_GLOSSY, SURF_FLAT } Surface;
 
@@ -470,34 +535,77 @@ typedef struct DrawCtx {
     uint32_t flags;  /* GFX_DRAW_* for every part */
     float outdoor;   /* tint alpha: 1 sun, 0 indoor light */
     const GfxMaterial *override; /* ghost / x-ray pass: every part with this */
+    bool rim;        /* the override pushes along normals: draw the hulls */
     float hide;      /* screen-door fade of the whole avatar */
 } DrawCtx;
 
+static void part_mat(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, GfxMaterial mat)
+{
+    mat.hide = dc->hide;
+    gfx_draw(dc->g, mesh, &m, &mat, dc->flags);
+}
+
 static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, Surface surf)
 {
+    if (mesh == GFX_MESH_NONE) {
+        return;
+    }
     if (dc->override) {
         gfx_draw(dc->g, mesh, &m, dc->override, dc->flags);
         return;
     }
     HMM_Vec4 c = mg_rgb(color);
     c.W = dc->outdoor;
-    GfxMaterial mat = surf == SURF_FLAT     ? mat_toon_flat(c)
-                      : surf == SURF_GLOSSY ? mat_toon_glossy(c, 0.35f, 1.0f)
-                                            : mat_toon(c, 0.3f);
-    mat.hide = dc->hide;
-    gfx_draw(dc->g, mesh, &m, &mat, dc->flags);
+    part_mat(dc, mesh, m, surf == SURF_FLAT ? mat_toon_flat(c) : surf == SURF_GLOSSY ? mat_toon_glossy(c, 0.35f, 1.0f) : mat_toon(c, 0.3f));
 }
 
-/* A part with a toon outline around its silhouette. */
-static void outlined(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color)
+/* A part with a toon outline round its silhouette (drawn with the smooth-normal hull). */
+static void outlined(const DrawCtx *dc, GfxMeshId mesh, GfxMeshId hull, HMM_Mat4 m, uint32_t color, HMM_Vec4 extra)
 {
-    part(dc, mesh, m, color, SURF_MATTE);
-    if (dc->override) {
+    if (mesh == GFX_MESH_NONE) {
         return;
     }
-    GfxMaterial ol = mat_outline(mg_rgb(OUTLINE_COLOR));
-    ol.hide = dc->hide;
-    gfx_draw(dc->g, mesh, &m, &ol, dc->flags);
+    if (dc->override) {
+        gfx_draw(dc->g, dc->rim && hull != GFX_MESH_NONE ? hull : mesh, &m, dc->override, dc->flags);
+        return;
+    }
+    HMM_Vec4 c = extra.W != 0.0f ? HMM_V4(1, 1, 1, 1) : mg_rgb(color);
+    c.W = dc->outdoor;
+    GfxMaterial mat = mat_toon(c, 0.3f);
+    mat.extra = extra;
+    part_mat(dc, mesh, m, mat);
+    if (hull != GFX_MESH_NONE) {
+        GfxMaterial ol = mat_outline(mg_rgb(OUTLINE_COLOR));
+        ol.extra = HMM_V4(0, 0, 0, extra.W != 0.0f ? (float)(1u | ((uint32_t)extra.W & GFX_ZONE_BODY1)) : 0.0f);
+        part_mat(dc, hull, m, ol);
+    }
+}
+
+/* The suit as zones of one body mesh: which details show, in which colours. */
+static HMM_Vec4 suit_extra(const AvatarLook *l)
+{
+    uint32_t mask = 1u;
+    const bool coat = l->outfit_style == OUTFIT_COAT;
+    if (l->outfit_style != OUTFIT_PLAIN) {
+        mask |= 1u << 1; /* V-neck */
+    }
+    if (coat) {
+        mask |= (1u << 2) | (1u << 3); /* coat front, buttons */
+    }
+    if (l->decal == DECAL_CROSS) {
+        mask |= 1u << 4;
+    } else if (l->decal == DECAL_POCKET) {
+        mask |= 1u << 5;
+    } else if (l->decal == DECAL_BADGE && l->accessory != ACC_STETHOSCOPE) {
+        mask |= 1u << 6;
+    }
+    if (coat || l->accessory == ACC_STETHOSCOPE) {
+        mask |= 1u << 7;
+    }
+    if (l->body == BODY_FEMALE) {
+        mask |= GFX_ZONE_BODY1;
+    }
+    return HMM_V4((float)(l->outfit & 0xFFFFFFu), (float)(l->trim & 0xFFFFFFu), (float)(l->accent & 0xFFFFFFu), (float)mask);
 }
 
 /* contact shadow: shrinks and fades with height above the ground */
@@ -505,34 +613,14 @@ static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const Avat
 {
     float ground = p->feet.Y;
     if (p->flat_ground || (world && col_raycast_down(world, HMM_AddV3(p->feet, HMM_V3(0, 0.2f, 0)), 20.0f, &ground))) {
-        float h = mg_maxf(p->feet.Y - ground, 0.0f);
-        float k = 1.0f / (1.0f + h * 0.8f);
-        HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + 0.02f, p->feet.Z)); /* above decals */
+        const float h = mg_maxf(p->feet.Y - ground, 0.0f);
+        const float k = 1.0f / (1.0f + h * 0.8f);
+        const float rad = m->rig.shadow_r * k * scale;
+        HMM_Mat4 sm = HMM_Translate(HMM_V3(p->feet.X, ground + m->rig.shadow_y, p->feet.Z));
         sm = HMM_MulM4(sm, HMM_Rotate_RH(HMM_AngleDeg(-90.0f), HMM_V3(1, 0, 0)));
-        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(0.46f * k * scale, 0.46f * k * scale, 1.0f))); /* +10 % for the top-down view */
-        GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, 0.45f * k), GFX_SPRITE_DISC);
+        sm = HMM_MulM4(sm, HMM_Scale(HMM_V3(rad, rad, 1.0f)));
+        GfxMaterial sh = mat_sprite(HMM_V4(0.05f, 0.07f, 0.12f, m->rig.shadow_alpha * k), GFX_SPRITE_DISC);
         gfx_draw(g, m->shadow, &sm, &sh, GFX_DRAW_GROUND);
-    }
-}
-
-/* LOD 1 and 2: the same transforms, far fewer parts */
-static void draw_avatar_low(const DrawCtx *dc, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p, HMM_Mat4 root,
-                            HMM_Mat4 body, HMM_Mat4 body_s, float head_y, float hs, HMM_Vec3 lh, HMM_Vec3 rh)
-{
-    const int l = p->lod >= 2 ? 1 : 0;
-    HMM_Mat4 head = HMM_MulM4(compose(body, HMM_V3(0, head_y + p->head_lift, 0)), HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
-    head = HMM_MulM4(HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0))), HMM_Scale(HMM_V3(hs, hs, hs)));
-    if (l == 0) {
-        outlined(dc, m->lod_body[0], body_s, look->outfit);
-        outlined(dc, m->lod_head[0], head, look->skin);
-        if (look->hair_style != HAIR_NONE) {
-            part(dc, m->lod_hair, head, look->hair, SURF_MATTE);
-        }
-        part(dc, m->lod_hand, compose(root, lh), look->skin, SURF_MATTE);
-        part(dc, m->lod_hand, compose(root, rh), look->skin, SURF_MATTE);
-    } else {
-        part(dc, m->lod_body[1], body_s, look->outfit, SURF_MATTE);
-        part(dc, m->lod_head[1], head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
     }
 }
 
@@ -543,148 +631,77 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
                         override        ? GFX_DRAW_NO_SHADOW
                         : p->preview    ? GFX_DRAW_PREVIEW
                                         : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC,
-                        p->indoors ? 0.0f : 1.0f, override, p->hide};
-    HMM_Mat4 root = HMM_MulM4(HMM_Translate(p->feet), HMM_Rotate_RH(p->yaw, HMM_V3(0, 1, 0)));
-    const float phase = a->stride * (2.0f * HMM_PI32 / 1.6f); /* one bob cycle per 0.8 m step */
-    float bob = (0.02f * HMM_SinF(phase * 2.0f)) * a->swing + 0.008f * HMM_SinF(a->idle_t * 2.4f) * (1.0f - a->swing);
-
-    /* ages: proportion, posture and motion (players are always adults) */
-    float sw = 1.0f, sh = 1.0f, head_k = 1.0f, base = BODY_BASE, tilt = 0.0f, hand_dy = 0.0f, eye_k = 1.0f;
-    if (look->age == AVATAR_CHILD) {
-        sw = 0.75f;
-        sh = 0.60f;
-        head_k = 0.92f;
-        base = 0.32f;
-        tilt = HMM_AngleDeg(-4.0f);
-        eye_k = 1.2f;
-        bob *= 1.5f;
-    } else if (look->age == AVATAR_ELDER) {
-        sw = sh = 0.95f;
-        base = 0.46f;
-        tilt = HMM_AngleDeg(6.0f);
-        hand_dy = -0.08f;
-        eye_k = 0.9f;
-        bob *= 0.5f;
+                        p->indoors ? 0.0f : 1.0f, override, override && override->kind == GFX_MAT_XRAY_RIM, p->hide};
+    AvatarSolved s;
+    avatar_solve(m, look, p, a, &s);
+    const HMM_Vec4 extra = suit_extra(look);
+    const HMM_Vec4 none = HMM_V4(0, 0, 0, 0);
+    const float shadow_k = look->age == AVATAR_CHILD ? CHILD_SCALE : 1.0f;
+    /* hands: spheres, the root's rotation and scale */
+    HMM_Mat4 hm[2];
+    for (int i = 0; i < 2; i++) {
+        hm[i] = s.root;
+        hm[i].Columns[3] = HMM_V4V(s.hand[i], 1.0f);
     }
-    base -= 0.25f * p->sit + 0.3f * p->crouch;
-    if (p->lying > 0.0f) { /* on the mattress, head at the pillow end */
-        root = HMM_MulM4(root, HMM_Translate(HMM_V3(0.0f, 0.62f * p->lying, -0.98f * p->lying)));
-        root = HMM_MulM4(root, HMM_Rotate_RH(HMM_AngleDeg(80.0f) * p->lying, HMM_V3(1, 0, 0)));
-        bob *= 0.4f;
+    const int lod = override ? 0 : p->lod;
+    if (lod == 2) {
+        part(&dc, m->far_body, s.body_s, look->outfit, SURF_MATTE);
+        part(&dc, m->far_head, s.head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
+        draw_contact_shadow(g, m, p, world, shadow_k);
+        return;
     }
-    if (p->sway != 0.0f) {
-        root = HMM_MulM4(root, HMM_Rotate_RH(p->sway, HMM_V3(0, 0, 1)));
-    }
-
-    /* body: floats 0.5 m up, tilts about its base */
-    HMM_Mat4 body = compose(root, HMM_V3(0, base + bob, 0));
-    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_fwd - tilt, HMM_V3(1, 0, 0)));
-    body = HMM_MulM4(body, HMM_Rotate_RH(-a->lean_side - p->weight_tilt, HMM_V3(0, 0, 1)));
-    const HMM_Mat4 body_s = HMM_MulM4(body, HMM_Scale(HMM_V3(sw, sh, sw)));
-    const bool female = look->body == BODY_FEMALE;
-    if (p->lod > 0 && !override) {
-        const float bh = (female ? BODY_H * 0.955f : BODY_H) * sh;
-        const float low_hs = (female ? 0.956f : 1.0f) * head_k;
-        const float low_swing = HMM_SinF(phase) * 0.16f * a->swing;
-        const float low_hand_y = HAND_Y * sh + hand_dy + bob + base - BODY_BASE;
-        draw_avatar_low(&dc, m, look, p, root, body, body_s, bh + HEAD_GAP + HEAD_R * low_hs - 2.0f * bob, low_hs,
-                        HMM_V3(-HAND_X * sw, low_hand_y, low_swing), HMM_V3(HAND_X * sw, low_hand_y, -low_swing * 0.6f - 0.04f));
-        draw_contact_shadow(g, m, p, world, look->age == AVATAR_CHILD ? 0.75f : 1.0f);
+    if (lod == 1) {
+        outlined(&dc, m->lod_body, m->lod_body_hull, s.body_s, look->outfit, HMM_V4(extra.X, 0, 0, (float)(1u | ((uint32_t)extra.W & GFX_ZONE_BODY1))));
+        outlined(&dc, m->lod_head, m->lod_head_hull, s.head, look->skin, none);
+        if (look->hair_style != HAIR_NONE) {
+            part(&dc, m->lod_hair, s.head, look->hair, SURF_MATTE);
+        }
+        part(&dc, m->lod_hand, hm[0], look->skin, SURF_MATTE);
+        part(&dc, m->lod_hand, hm[1], look->skin, SURF_MATTE);
+        draw_contact_shadow(g, m, p, world, shadow_k);
         return;
     }
     if (!p->head_only) {
-        outlined(&dc, female ? m->body_female : m->body, body_s, look->outfit);
-        /* chest details were modelled on the male body: scale them onto the female one */
-        HMM_Mat4 chest = female ? HMM_MulM4(body_s, HMM_Scale(HMM_V3(0.92f, 0.955f, 0.92f))) : body_s;
-        const bool coat = look->outfit_style == OUTFIT_COAT;
-        if (look->outfit_style != OUTFIT_PLAIN) {
-            part(&dc, m->vneck, chest, look->trim, SURF_MATTE);
-        }
-        if (coat || look->accessory == ACC_STETHOSCOPE) {
-            part(&dc, m->scope, chest, 0xFFFFFF, SURF_GLOSSY);
-        }
-        if (coat) {
-            for (int i = 0; i < 3; i++) {
-                part(&dc, m->nose, HMM_MulM4(chest, HMM_Translate(body_surface(0.0f, 0.30f - 0.08f * (float)i, 0.004f))),
-                     BUTTON_COLOR, SURF_GLOSSY);
-            }
-        }
-        if (look->decal == DECAL_CROSS) {
-            part(&dc, m->cross, chest, look->accent, SURF_GLOSSY);
-        } else if (look->decal == DECAL_POCKET) {
-            part(&dc, m->pocket, chest, look->outfit == 0xF5F7FA || look->outfit == 0xF2F2F2 ? 0xE6E9EE : look->accent,
-                 SURF_MATTE);
-        } else if (look->decal != DECAL_NONE && look->accessory != ACC_STETHOSCOPE) {
-            part(&dc, m->decal, compose(chest, HMM_V3(-0.12f, BODY_H * 0.62f, -0.205f)), look->accent, SURF_GLOSSY);
-        }
+        outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, extra);
     }
-
-    /* head rides on the body top, bobbing in opposite phase; smaller on the female body */
-    const float body_h = (female ? BODY_H * 0.955f : BODY_H) * sh;
-    const float hs = (female ? 0.956f : 1.0f) * head_k; /* 0.43 m head */
-    HMM_Mat4 head = p->head_only ? root : compose(body, HMM_V3(0, body_h + HEAD_GAP + HEAD_R * hs - 2.0f * bob + p->head_lift, 0));
-    head = HMM_MulM4(head, HMM_Rotate_RH(p->head_yaw, HMM_V3(0, 1, 0)));
-    head = HMM_MulM4(head, HMM_Rotate_RH(p->head_pitch, HMM_V3(1, 0, 0)));
-    head = HMM_MulM4(head, HMM_Scale(HMM_V3(hs, hs, hs)));
-    outlined(&dc, m->head, head, look->skin);
+    outlined(&dc, m->head, m->head_hull, s.head, look->skin, none);
     if (look->hair_style != HAIR_NONE && look->hair_style < AVATAR_HAIRS) {
-        outlined(&dc, m->hair[look->hair_style], head, look->hair);
+        outlined(&dc, m->hair[look->hair_style], m->hair_hull[look->hair_style], s.head, look->hair, none);
     }
-    const float eye_y = 0.03f, eye_x = 0.075f;
-    const float fz = -HEAD_R * 0.93f;
-    if (look->accessory == ACC_SUNGLASSES) {
-        part(&dc, m->glasses, compose(head, HMM_V3(0, eye_y, fz - 0.012f)), (look->extras & AVATAR_EXTRA_READING_GLASSES) ? 0x8FA3B8 : 0x23222B,
-             SURF_GLOSSY);
-    } else {
-        const HMM_Mat4 eye_s = HMM_Scale(HMM_V3(eye_k, eye_k, 1.0f));
-        part(&dc, m->eye, HMM_MulM4(compose(head, HMM_V3(-eye_x, eye_y, fz + 0.004f)), eye_s), 0x23222B, SURF_FLAT);
-        part(&dc, m->eye, HMM_MulM4(compose(head, HMM_V3(eye_x, eye_y, fz + 0.004f)), eye_s), 0x23222B, SURF_FLAT);
+    const HMM_Vec3 e = m->rig.eye;
+    if (look->accessory == ACC_SUNGLASSES || (look->extras & AVATAR_EXTRA_READING_GLASSES)) {
+        part(&dc, m->glasses, s.head, (look->extras & AVATAR_EXTRA_READING_GLASSES) ? 0x8FA3B8 : 0x23222B, SURF_GLOSSY);
     }
-    if (look->age == AVATAR_ELDER) {
-        part(&dc, m->brow, compose(head, HMM_V3(-eye_x, eye_y + 0.05f, fz + 0.004f)), 0x8A8A8A, SURF_FLAT);
-        part(&dc, m->brow, compose(head, HMM_V3(eye_x, eye_y + 0.05f, fz + 0.004f)), 0x8A8A8A, SURF_FLAT);
+    if (look->accessory != ACC_SUNGLASSES) {
+        part(&dc, m->eye, HMM_MulM4(s.head, HMM_Translate(e)), m->rig.eye_rgb, SURF_FLAT);
+        part(&dc, m->eye, HMM_MulM4(s.head, HMM_Translate(HMM_V3(-e.X, e.Y, e.Z))), m->rig.eye_rgb, SURF_FLAT);
     }
-    if (look->extras & AVATAR_EXTRA_HAT) {
-        part(&dc, m->hat, compose(head, HMM_V3(0, HEAD_R * 0.82f, 0)), 0xE8D8A0, SURF_MATTE);
-    }
-    if (look->accessory == ACC_MASK) { /* the mask covers nose and mouth */
-        outlined(&dc, m->mask, head, MASK_COLOR);
-    } else {
-        part(&dc, m->nose, compose(head, HMM_V3(0, -0.02f, -HEAD_R * 0.99f)), look->skin, SURF_MATTE);
-        part(&dc, look->age == AVATAR_CHILD ? m->smile : m->mouth, compose(head, HMM_V3(0, -0.075f, -HEAD_R * 0.955f)), 0x23222B, SURF_FLAT);
+    if (look->accessory == ACC_MASK) {
+        part(&dc, m->mask, s.head, MASK_COLOR, SURF_MATTE);
     }
     if (look->accessory == ACC_CAT_EARS) {
-        HMM_Mat4 el = compose(head, HMM_V3(-0.12f, HEAD_R * 0.78f, 0.02f));
-        HMM_Mat4 er = compose(head, HMM_V3(0.12f, HEAD_R * 0.78f, 0.02f));
-        el = HMM_MulM4(el, HMM_Rotate_RH(HMM_AngleDeg(22.0f), HMM_V3(0, 0, 1)));
-        er = HMM_MulM4(er, HMM_Rotate_RH(HMM_AngleDeg(-22.0f), HMM_V3(0, 0, 1)));
-        outlined(&dc, m->ear, el, look->hair);
-        outlined(&dc, m->ear, er, look->hair);
+        part(&dc, m->ears, s.head, look->hair, SURF_MATTE);
     }
-
+    if (look->extras & AVATAR_EXTRA_HAT) {
+        part(&dc, m->hat, s.head, 0xE8D8A0, SURF_MATTE);
+    }
     if (p->head_only) {
         return;
     }
-
-    /* hands: hip height, swing fore/aft while walking, both rise on jumps */
-    float swing = HMM_SinF(phase) * 0.16f * a->swing;
-    float lift = mg_maxf(a->raise, p->stretch) * 0.5f;
-    float spread = (HAND_X + a->raise * 0.08f) * sw;
-    const float hand_y = HAND_Y * sh + hand_dy + lift + bob + base - BODY_BASE;
-    const float lap = -0.2f * p->sit; /* seated: hands forward on the lap */
-    HMM_Vec3 lh = HMM_V3(-spread * (1.0f - 0.45f * p->sit), hand_y, swing + lap);
-    HMM_Vec3 rh = HMM_V3(spread * (1.0f - 0.45f * p->sit), hand_y, -swing * 0.6f - 0.04f + lap);
-    outlined(&dc, m->hand, compose(root, lh), look->skin);
-    outlined(&dc, m->hand, compose(root, rh), look->skin);
+    outlined(&dc, m->hand, m->hand_hull, hm[0], look->skin, none);
+    outlined(&dc, m->hand, m->hand_hull, hm[1], look->skin, none);
     if ((look->extras & AVATAR_EXTRA_CANE) && p->sit <= 0.0f && p->lying <= 0.0f) {
-        part(&dc, m->cane, compose(root, HMM_V3(spread + 0.03f, 0.0f, -0.08f)), 0x6B4A2E, SURF_MATTE);
+        HMM_Mat4 cm = s.root;
+        cm.Columns[3] = HMM_V4V(xform(s.root, HMM_V3(-m->rig.hands_rest.X - 0.03f, 0.0f, 0.08f)), 1.0f);
+        part(&dc, m->cane, cm, 0x6B4A2E, SURF_MATTE);
     }
     if ((look->extras & AVATAR_EXTRA_BUCKET) && p->lying <= 0.0f) {
-        part(&dc, m->bucket, compose(root, HMM_V3(lh.X, lh.Y - 0.24f, lh.Z)), 0x9AA0A6, SURF_MATTE);
+        HMM_Mat4 bm = s.root;
+        bm.Columns[3] = HMM_V4V(HMM_SubV3(s.hand[0], HMM_V3(0, 0.24f * s.scale, 0)), 1.0f);
+        part(&dc, m->bucket, bm, 0x9AA0A6, SURF_MATTE);
     }
-
     if (!override && p->lying <= 0.0f) {
-        draw_contact_shadow(g, m, p, world, look->age == AVATAR_CHILD ? 0.75f : 1.0f);
+        draw_contact_shadow(g, m, p, world, shadow_k);
     }
 }
 

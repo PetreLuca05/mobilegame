@@ -1,11 +1,11 @@
-/* Limbless toon avatar, no skeleton: floating tapered body, sphere head with
- * a flat face and a hair cap, two floating hands, one accessory and a
- * contact shadow. One toon material, tinted per part from a 4-colour
- * palette (skin, outfit, hair, accent).
+/* The LIB-1 avatar (A1): a floating bean body, a faceted head with a hair cap and two eyes, two floating
+ * hands, a contact disc. The parts come from assets/avatar/avatar.mgmesh (+ avatar_options.mgmesh: the other
+ * hair styles, the suit details as zones of one body mesh, the extras), the sizes and the motion from
+ * assets/avatar/avatar.json. Every player and NPC is posed by one function (avatar_solve) from a few inputs:
+ * move (eased), sit, browse, push, a head look, and the hand / lean overrides of seated activities.
  *
- * Skins (profiles.skin, synced through Presence) pick a palette preset
- * (which also sets the outfit cut: plain, lab coat or scrubs), a hair cap
- * and an accessory; avatar_look_from_skin() turns them into an AvatarLook. */
+ * Skins (profiles.skin, synced through Presence) keep their format: avatar_look_from_skin() turns them into
+ * an AvatarLook. */
 #ifndef MG_AVATAR_H
 #define MG_AVATAR_H
 
@@ -46,28 +46,55 @@ typedef struct AvatarLook {
 /* The default character: male doctor, white coat, short dark hair, mask. */
 #define AVATAR_DEFAULT_SKIN ((NetSkin){.skin = 1, .hair = HAIR_SHORT, .hair_color = 1, .suit = 3, .accessory = ACC_MASK})
 
+/* assets/avatar/avatar.json (format mg-avatar 1). Avatar frame: forward +z, its left +x, metres. */
+typedef struct AvatarRig {
+    float stand_y, seat_y;       /* body base above the feet: standing (it floats), seated in the library */
+    float seat_clearance;        /* seat_y - the library chair's seat top: the body base over any other seat */
+    float head_up, head_r, hand_r;
+    HMM_Vec3 eye;                /* in the head, mirrored in x */
+    uint32_t eye_rgb;
+    HMM_Vec3 hands_rest;         /* x, y above the body base, z */
+    float idle_bob_m, idle_bob_rad_s, breath_scale, breath_rad_s;
+    float walk_phase_rad_s, walk_bob_m, walk_swing_m, walk_lean_rad, turn_rate, move_ease_rate;
+    HMM_Vec3 browse_hand;        /* the right hand */
+    float browse_bob_m, browse_bob_rad_s, browse_head_pitch, browse_head_yaw, browse_head_yaw_rad_s, browse_ease;
+    HMM_Vec3 push_hands;         /* x mirrored */
+    float push_ahead_m, push_ease;
+    float look_lean_factor, look_head_pitch, look_head_yaw, look_head_yaw_rad_s, look_ease;
+    HMM_Vec3 look_hands;         /* x mirrored */
+    float shadow_r, shadow_alpha, shadow_y;
+    float tag_standing, tag_seated;
+} AvatarRig;
+
 typedef struct AvatarMeshes {
-    GfxMeshId body, head, hair[AVATAR_HAIRS], eye, nose, mouth, hand, decal, glasses, ear, shadow;
-    GfxMeshId mask, scope, vneck, cross, pocket;
-    GfxMeshId body_female;
-    /* LOD1 (~40 % of the triangles, one hair cap, no face), LOD2 (body + head) */
-    GfxMeshId lod_body[2], lod_head[2], lod_hand, lod_hair;
-    GfxMeshId cane, hat, bucket, brow, smile;
+    /* LOD0; *_hull: the same shape with smooth normals for the outline and the x-ray rim */
+    GfxMeshId body, body_hull, head, head_hull, hand, hand_hull, eye;
+    GfxMeshId hair[AVATAR_HAIRS], hair_hull[AVATAR_HAIRS];
+    /* LOD1 (no eyes, one hair cap), LOD2 (body + head) */
+    GfxMeshId lod_body, lod_body_hull, lod_head, lod_head_hull, lod_hair, lod_hand;
+    GfxMeshId far_body, far_head;
+    GfxMeshId glasses, ears, mask, hat, cane, bucket, shadow;
+    /* how far each head-space part's nearest vertex is from the head's surface (m): attached when ~0 */
+    float hair_gap[AVATAR_HAIRS], acc_gap[4]; /* acc: glasses, cat ears, mask, hat */
+    AvatarRig rig;
 } AvatarMeshes;
 
-/* Animation state, advanced once per rendered frame. */
+/* Motion state, advanced once per rendered frame (avatar_animate). */
 typedef struct AvatarAnim {
-    float stride;     /* distance walked, drives bob + swing */
-    float lean_fwd;   /* radians, smoothed */
-    float lean_side;
-    float swing;      /* 0..1 how much the hands swing */
-    float raise;      /* 0..1 hands up (jump) */
-    float idle_t;
+    bool init;
+    float t;          /* seconds since the first frame */
+    float seed;       /* random phase of the idle bob and the breathing */
+    float yaw;        /* heading, eased towards the pose's yaw (10 /s), never snapped */
+    float move;       /* 0 .. 1, eased (12 /s) */
+    float phase;      /* walk phase, radians */
+    float browse, push, look; /* eased weights */
+    float raise;      /* 0..1 hands up (airborne) */
+    float lean_side;  /* radians, smoothed */
 } AvatarAnim;
 
 typedef struct AvatarPose {
     HMM_Vec3 feet;
-    float yaw;
+    float yaw;        /* 0: the avatar looks along -Z (north) */
     HMM_Vec3 vel;
     bool grounded;
     bool jumping;
@@ -76,18 +103,37 @@ typedef struct AvatarPose {
     bool flat_ground; /* feet are on the floor: no ray cast for the contact shadow (NPCs) */
     uint8_t lod;      /* 0 full, 1 coarse, 2 body + head */
     /* NPC poses (all 0 for players) */
-    float sit;        /* 0 standing .. 1 seated: body lowered, hands on the lap */
-    float lying;      /* 0 .. 1 in bed: pitched 80 degrees */
+    float sit;        /* 0 standing .. 1 seated: the body base on the seat (seat_y), hands on the lap */
+    float lying;      /* 0 .. 1 in bed: on the back, head at the pillow end */
     float crouch;     /* 0 .. 1: lowered, hands down */
     float sway;       /* side-to-side (mopping), radians */
     float hide;       /* screen-door fade: spawning in or leaving */
     /* idle touches, radians (0 for players) */
-    float head_yaw, head_pitch; /* a look, a nod */
+    float head_yaw, head_pitch; /* a look (+ turns to the avatar's left), a nod (+ looks up) */
     float weight_tilt;          /* shifting weight, body roll */
     float stretch;              /* 0 .. 1: hands up */
-    float head_lift;            /* metres: the head pops up for a chat */
+    float head_lift;            /* metres the head pops up along the body's up axis (a chat) */
     bool head_only;             /* just the head, centred on `feet` (the interact preview) */
+    /* LIB-1 */
+    float seat_y;     /* seated body base above the feet; 0 = the rig's seat_y */
+    float browse, push, look;   /* targets 0 / 1, eased by avatar_animate */
+    float lean;       /* extra forward lean of the body about its base, radians (seated activities) */
+    float hands_w;    /* 0 .. 1: the seated hands go to hand_l / hand_r (avatar frame) */
+    HMM_Vec3 hand_l, hand_r;
+    float breath_k;   /* 0 = 1 */
 } AvatarPose;
+
+/* The solved pose: what the draw uses, what tests measure. */
+typedef struct AvatarSolved {
+    HMM_Mat4 root;    /* feet, heading; avatar frame (forward +z) */
+    HMM_Mat4 body;    /* body base frame, leaned */
+    HMM_Mat4 body_s;  /* + proportions and breathing: draws the body */
+    HMM_Mat4 head;    /* head centre frame, scaled: draws head, hair, eyes */
+    HMM_Vec3 head_centre;
+    HMM_Vec3 hand[2]; /* world centres: 0 its left (+x), 1 its right */
+    float scale;      /* whole avatar (children 0.72) */
+    float base_y;     /* body base above the feet (in metres, after the scale) */
+} AvatarSolved;
 
 bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch);
 AvatarLook avatar_look_from_skin(NetSkin skin);
@@ -101,7 +147,10 @@ void avatar_suit_colors(int suit, uint32_t *outfit, uint32_t *accent);
 const char *avatar_suit_name(int suit);
 const char *avatar_hair_name(int i);
 const char *avatar_accessory_name(int i);
-void avatar_animate(AvatarAnim *a, const AvatarPose *p, float dt);
+void avatar_animate(const AvatarMeshes *m, AvatarAnim *a, const AvatarPose *p, float dt);
+void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p, const AvatarAnim *a, AvatarSolved *s);
+/* Name tag height above the feet (standing / seated, scaled for children). */
+float avatar_name_tag_y(const AvatarMeshes *m, const AvatarLook *look, float sit);
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                  const AvatarAnim *a, const ColWorld *world);
 /* Every part with one material, no outlines or contact shadow: the x-ray

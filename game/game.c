@@ -22,11 +22,13 @@
 #include "perf_run.h"
 #include "preview_panel.h"
 #include "rooms.h"
+#include "hospital.h"
 #include "platform/device_stats.h"
 #include "stress.h"
 #include "ui/layout.h"
 #include "ui/prof_hud.h"
 #include "avatar.h"
+#include "avatar_gallery.h"
 #include "camera_td.h"
 #include "gfx/floorfade.h"
 #include "camera_tp.h"
@@ -130,6 +132,7 @@ typedef struct Game {
     GfxMeshId ref_capsule; /* 1.8 m x 0.35 m player-sized ghost for the collider view */
     Scenery scenery;
     AvatarMeshes avatar_meshes;
+    AvatarGallery gallery; /* --avatar-gallery NAME */
     AvatarAnim local_anim;
     AvatarLook local_look;
     NetTransport *net;
@@ -411,7 +414,7 @@ static void draw_head_icon(void *user, GfxContext *gfx, const NetSkin *skin)
     pose.head_only = true;
     AvatarAnim anim;
     SDL_zero(anim);
-    avatar_animate(&anim, &pose, 1.0f / 60.0f);
+    avatar_animate(&g->avatar_meshes, &anim, &pose, 1.0f / 60.0f);
     avatar_draw(gfx, &g->avatar_meshes, &look, &pose, &anim, NULL);
 }
 
@@ -491,6 +494,7 @@ bool game_init(MgApp *app)
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
+    g->gallery.mode = avatar_gallery_parse(arg_value(app->argc, app->argv, "--avatar-gallery"));
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
     g->settings.show_nav = has_flag(app->argc, app->argv, "--nav");
@@ -1729,7 +1733,7 @@ static void lobby_layout_check(Game *g, MgApp *app, const FrontendCtx *ctx)
         bad = "the panel does not fit under the chip, right of the menu column";
     }
     for (int i = 0; i < ctx->row_count && !bad; i++) {
-        const float head = 2.2f;
+        const float head = avatar_name_tag_y(&g->avatar_meshes, NULL, 0.0f);
         const HMM_Vec3 top = HMM_AddV3(ctx->slots[i], HMM_V3(0, head, 0));
         const HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(top, 1.0f));
         const float x = (c.X / c.W * 0.5f + 0.5f) * w, y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
@@ -1879,7 +1883,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     }
     gfx_ui_depth(app->gfx, 0.0f, 0); /* TILT-1: the lobby players' tags are world-anchored */
     if (f->state == FE_MAIN_MENU && world_behind && g->lobby_visible) { /* the players' name tags, the same style as in play */
-        const float head = 2.2f;
+        const float head = avatar_name_tag_y(&g->avatar_meshes, NULL, 0.0f);
         for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
             const FeAvatar *av = &f->avatars[e];
             if (!av->active || av->fade < 0.5f) {
@@ -2068,7 +2072,7 @@ static void draw_crowd(Game *g, MgApp *app, int floor, float alpha)
         HMM_Vec3 feet = HMM_V3(h->prev_x + (h->x - h->prev_x) * w, h->y, h->prev_z + (h->z - h->prev_z) * w);
         AvatarPose pose = {feet, h->yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
         npc_cold_t *cold = &p->cold[i];
-        avatar_animate(&cold->anim, &pose, dt);
+        avatar_animate(&g->avatar_meshes, &cold->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &cold->look, &pose, &cold->anim, NULL);
         rendered++;
     }
@@ -2625,7 +2629,8 @@ static void draw_chat_bubbles(Game *g, MgApp *app, int floor)
             continue;
         }
         faint += !active;
-        const float top = c->pose == POSE_BED ? 1.1f : (c->pose == POSE_SIT ? 1.85f : 2.1f);
+        /* the head's top: lying on the pillow, seated, standing (LIB-1 avatar; children x 0.72) */
+        const float top = (c->pose == POSE_BED ? 1.25f : (c->pose == POSE_SIT ? 1.66f : 1.6f)) * (c->look.age == AVATAR_CHILD ? 0.72f : 1.0f);
         const float sx = c->pose == POSE_SIT ? c->seat_x : h->x, sz = c->pose == POSE_SIT ? c->seat_z : h->z;
         draw_one_cloud(g, app, HMM_V3(sx, h->y + top + 0.35f, sz), active, g->fade.vis[h->storey < 0 ? 0 : h->storey]);
     }
@@ -2696,6 +2701,10 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         feet.Z += c->vis_z;
         AvatarPose pose = {feet, h->yaw + c->vis_yaw, HMM_V3(h->vx, 0.0f, h->vz), true, false, h->storey >= 0, false, true, lods[i]};
         pose.sit = c->pose == POSE_SIT ? c->sit_t : 0.0f;
+        if (c->pose == POSE_SIT) { /* the body base on the seat's top (+ the library's clearance) */
+            const bool bench = c->slot != SLOT_NONE && c->slot < (uint32_t)g->rooms.slot_count && (g->rooms.slots[c->slot].tags & SLOT_BENCH);
+            pose.seat_y = (bench ? HOSP_BENCH_TOP : HOSP_CHAIR_TOP) + g->avatar_meshes.rig.seat_clearance;
+        }
         pose.lying = c->pose == POSE_BED ? c->sit_t : 0.0f;
         pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
         pose.sway = c->pose == POSE_MOP ? 0.12f * HMM_SinF((float)app->time * 3.0f + (float)i) : 0.0f;
@@ -2704,7 +2713,7 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
             pose.hide = mg_maxf(pose.hide, mg_clampf((feet.Z - (MENU_HERO_Z - 1.0f)) / 1.5f, 0.0f, 1.0f));
         }
         npc_idle_touches(g, app, i, h, c, &pose, dt, queue_waiting);
-        avatar_animate(&c->anim, &pose, dt);
+        avatar_animate(&g->avatar_meshes, &c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
         g->rendered_entities++;
         if (g->settings.show_npc_paths && h->state == MOVE_WALK) {
@@ -2939,6 +2948,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.uitest = &g->uitest;
     probe.net_status = g->net ? (int)net_status(g->net) : -1;
     probe.net_ready = g->net && net_socket_ready(g->net);
+    probe.avatar_meshes = &g->avatar_meshes;
     probe.text_center_err = g->text_test ? g->text_center_err : -1.0f;
     for (int i = 0; i < 3; i++) {
         probe.text_center_each[i] = g->text_center_each[i];
@@ -3238,7 +3248,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         gfx_preview(app->gfx, &pc, g->menu.preview_x, g->menu.preview_y, g->menu.preview_size, 14.0f,
                     HMM_V4(0.16f, 0.19f, 0.26f, 1.0f));
         AvatarPose pv = {HMM_V3(0, 0, 0), (float)app->time * 0.6f, HMM_V3(0, 0, 0), true, false, false, true};
-        avatar_animate(&g->preview_anim, &pv, mg_minf(app->frame_dt, 0.1f));
+        avatar_animate(&g->avatar_meshes, &g->preview_anim, &pv, mg_minf(app->frame_dt, 0.1f));
         AvatarLook look = avatar_look_from_skin(g->profile.skin);
         avatar_draw(app->gfx, &g->avatar_meshes, &look, &pv, &g->preview_anim, NULL);
     }
@@ -3391,9 +3401,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     gfx_set_scene(app->gfx, &sp);
 
     /* M5 floor fade: inside, storeys above the view floor and the roof
-     * dissolve over 350 ms (the third-person camera and fly cam keep the
-     * building whole) */
-    bool inside = scene_indoors(g->scene, feet) && !g->fly_mode;
+     * dissolve over 350 ms (the third-person camera keeps the building whole; the fly cam
+     * opens it only while the eye itself is inside) */
+    bool inside = g->fly_mode ? scene_indoors(g->scene, sp.eye) : scene_indoors(g->scene, feet);
 #ifdef MG_CAMERA_THIRDPERSON
     inside = false;
 #endif
@@ -3481,9 +3491,12 @@ static void game_frame_inner(MgApp *app, float alpha)
                            autonav_active(&g->autonav) ? &g->autonav.path : (g->nav_path_ok ? &g->nav_path : NULL), true);
         }
     }
+    if (g->gallery.mode != GALLERY_OFF) {
+        avatar_gallery_draw(&g->gallery, app->gfx, &g->avatar_meshes, mg_minf(app->frame_dt, 0.1f));
+    }
     AvatarPose pose = {feet, player_render_yaw(&g->player, alpha), g->player.kin.vel, g->player.kin.grounded,
                        g->player.kin.jumping, scene_indoors(g->scene, feet), false};
-    avatar_animate(&g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
+    avatar_animate(&g->avatar_meshes, &g->local_anim, &pose, mg_minf(app->frame_dt, 0.1f));
 #ifdef MG_CAMERA_THIRDPERSON
     avatar_draw(app->gfx, &g->avatar_meshes, &g->local_look, &pose, &g->local_anim, &g->world);
 #else
@@ -3510,7 +3523,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
         AvatarPose rp = {r->pos, r->yaw, r->sample.vel, (r->sample.flags & REP_GROUNDED) != 0,
                          (r->sample.flags & REP_JUMPING) != 0, scene_indoors(g->scene, r->pos), false};
-        avatar_animate(&r->anim, &rp, mg_minf(app->frame_dt, 0.1f));
+        avatar_animate(&g->avatar_meshes, &r->anim, &rp, mg_minf(app->frame_dt, 0.1f));
         avatar_draw(app->gfx, &g->avatar_meshes, &r->look, &rp, &r->anim, &g->world);
 #ifndef MG_CAMERA_THIRDPERSON
         if (s->show_xray && (int)r->sample.floor == floor) { /* only players on the view floor */
@@ -4293,7 +4306,7 @@ static void draw_name_tags(Game *g, MgApp *app, int view_floor, int player_floor
 #ifdef MG_CAMERA_THIRDPERSON
     (void)g, (void)app, (void)view_floor, (void)player_floor, (void)feet;
 #else
-    const float head = 2.2f;
+    const float head = avatar_name_tag_y(&g->avatar_meshes, NULL, 0.0f);
     if (g->settings.show_own_name && player_floor == view_floor) {
         name_tag(g, app, HMM_AddV3(feet, HMM_V3(0, head, 0)), g->profile.display_name);
     }
