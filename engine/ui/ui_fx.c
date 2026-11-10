@@ -34,6 +34,9 @@ void ui_fx_sound(UiFx *fx, UiSound s, int index)
 {
     fx->sound_count++;
     fx->last_sound = (int)s;
+    if (s == UI_SND_COIN) {
+        fx->coin_pitch[fx->coin_count++ & 7] = 880.0f + 70.0f * (float)index;
+    }
     if (!fx->sounds || !fx->audio) {
         return;
     }

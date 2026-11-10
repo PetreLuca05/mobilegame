@@ -143,6 +143,7 @@ typedef struct GfxStats {
     uint32_t reflect_draws;
     uint32_t ui_quads;
     uint32_t ui_draws;       /* UI-1: the whole UI is one instanced draw */
+    uint32_t head_passes;    /* of `passes`: the head-icon atlas (a new head rendered this frame) */
 #ifdef MG_RENDER_FULL
     uint32_t lights;
     uint32_t shadow_views;   /* depth views rendered this frame (cascades + tiles) */

@@ -35,7 +35,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     float sx = wide ? x2 : x, sy = wide ? y : y + 44.0f;
     float sw = (cw - 16.0f) / 3.0f;
     for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, speed_labels[i], sx + (float)i * (sw + 8.0f), sy - 2.0f, sw, 40.0f,
+        if (ui_button(ui, speed_labels[i], sx + (float)i * (sw + 8.0f), sy - 2.0f, sw, k_ui.target_min,
                       s->time_speed == speeds[i])) {
             s->time_speed = speeds[i];
         }
@@ -54,7 +54,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     static const char *const bubble_keys[3] = {"npc_off##bub", "bubble_active##bub", "npc_all##bub"};
     const float bub_w = (cw - 16.0f) / 3.0f;
     for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, str(bubble_keys[i]), cx + (float)i * (bub_w + 8.0f), cy, bub_w, 40.0f, s->chat_bubbles == i)) {
+        if (ui_button(ui, str(bubble_keys[i]), cx + (float)i * (bub_w + 8.0f), cy, bub_w, k_ui.target_min, s->chat_bubbles == i)) {
             s->chat_bubbles = i;
         }
     }
@@ -65,7 +65,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     static const char *const npc_d_keys[3] = {"npc_off##den", "npc_low##den", "npc_normal##den"};
     const float third = (cw - 16.0f) / 3.0f;
     for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, str(npc_d_keys[i]), cx + (float)i * (third + 8.0f), cy, third, 40.0f, s->npc_density == npc_d[i])) {
+        if (ui_button(ui, str(npc_d_keys[i]), cx + (float)i * (third + 8.0f), cy, third, k_ui.target_min, s->npc_density == npc_d[i])) {
             s->npc_density = npc_d[i];
         }
     }
@@ -141,7 +141,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         static const char *const tiers[3] = {"Auto##tier", "Low##tier", "High##tier"};
         float tb = (cw - 16.0f) / 3.0f;
         for (int i = 0; i < 3; i++) {
-            if (ui_button(ui, tiers[i], x + (float)i * (tb + 8.0f), y, tb, 40.0f, s->tier_override == i)) {
+            if (ui_button(ui, tiers[i], x + (float)i * (tb + 8.0f), y, tb, k_ui.target_min, s->tier_override == i)) {
                 s->tier_override = i;
             }
         }
@@ -175,7 +175,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += 52.0f;
         ui_toggle(ui, "Freeze NPCs", x, y, cw, &s->freeze_npcs);
         y += 52.0f;
-        if (ui_button(ui, "Respawn NPCs##npc", x, y, cw, 40.0f, false)) {
+        if (ui_button(ui, "Respawn NPCs##npc", x, y, cw, k_ui.target_min, false)) {
             s->respawn_npcs = true;
         }
         y += 52.0f;
@@ -191,7 +191,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += step;
         ui_toggle(ui, "Show paths for all markers", x, y, cw, &s->show_all_paths);
         y += 52.0f;
-        if (ui_button(ui, "Respawn all##mkr", x, y, cw, 40.0f, false)) {
+        if (ui_button(ui, "Respawn all##mkr", x, y, cw, k_ui.target_min, false)) {
             *action = MENU_RESPAWN_MARKERS;
         }
         y += 52.0f;
@@ -340,7 +340,7 @@ static void lobby_column(SettingsMenu *m, Ui *ui, MenuAction *action, float x, f
         text_draw(ui->gfx, ui->font, x + head + 8.0f, py + 12.0f, 15.0f, k_ui_theme.text, r->meta.name);
         if (lobby_can_toggle(l)) {
             SDL_snprintf(label, sizeof(label), "%s##p_kick%d", str("lobby_kick"), i);
-            if (ui_button(ui, label, x + w - 84.0f, py + 2.0f, 84.0f, 40.0f, false)) {
+            if (ui_button(ui, label, x + w - 84.0f, py + 2.0f, 84.0f, k_ui.target_min, false)) {
                 lobby_kick(l, r->id);
             }
         }

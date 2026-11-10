@@ -253,7 +253,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
         char tid[64];
         bool held = false;
         SDL_snprintf(tid, sizeof(tid), "%s%d", id, i);
-        if (ui_press(ui, tid, x + inner + seg * (float)i, y, seg, face_h, &held, false) && i != *sel) {
+        if (ui_press(ui, tid, x + inner + seg * (float)i, y, seg, h, &held, false) && i != *sel) { /* the lip is part of the target */
             const float from = (float)*sel;
             *sel = i;
             changed = true;
@@ -307,9 +307,7 @@ void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *p
     ui_surface(ui, x, y, w, face_h, -1.0f, lip, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
     ui_text_c(ui, TEXT_FACE_DISPLAY, x + w * 0.5f, y + face_h * 0.5f + 1.0f, face_h * 0.55f, C(k_ui.ink), text);
     gfx_ui_group_off(ui->gfx);
-    /* remember the rect for the reward flight's target */
-    bool held;
-    ui_press(ui, id, x, y, w, face_h, &held, true);
+    ui_remember(ui, id, x, y, w, face_h); /* the reward flight's target, not a button */
 }
 
 void ui_progress(Ui *ui, const char *id, float x, float y, float w, float h, float frac)

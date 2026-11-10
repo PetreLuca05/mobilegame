@@ -305,7 +305,7 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
     (void)app;
     char id[96];
     SDL_snprintf(id, sizeof(id), "%s##menurow%d", label, index);
-    ui_stagger(ui, index);
+    ui_stagger(ui, f->stagger_n++);
     const bool hit = ui_button_v(ui, id, x, y, w, ROW_H, disabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
                                  highlighted && !f->confirm_new ? UI_F_BREATHE : 0);
     if (tag) {
@@ -417,7 +417,7 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     FeAction a = FE_NONE;
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##dice", str("randomise"));
-    if (ui_button_v(ui, label, r - 120.0f, y - 6.0f, 120.0f, 42.0f, UI_V_SECONDARY, UI_F_SMALL)) {
+    if (ui_button_v(ui, label, r - 120.0f, y - 7.0f, 120.0f, k_ui.target_min, UI_V_SECONDARY, UI_F_SMALL)) {
         creator_randomise(ctx->skin);
         a = FE_SKIN_CHANGED;
     }
@@ -499,7 +499,7 @@ static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         } else if (!ctx->lobby_host && r->me) { /* leave */
             char label[48];
             SDL_snprintf(label, sizeof(label), "%s##lobby_leave", str("lobby_leave"));
-            if (ui_button_v(ui, label, x + pw - 76.0f, y + 2.0f, 70.0f, 42.0f, UI_V_SECONDARY, UI_F_SMALL) && !f->confirm_new) {
+            if (ui_button_v(ui, label, x + pw - 76.0f, y + 1.0f, 70.0f, k_ui.target_min, UI_V_SECONDARY, UI_F_SMALL) && !f->confirm_new) {
                 *a = FE_LOBBY_LEAVE;
             }
             room -= 72.0f;
@@ -522,6 +522,7 @@ static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
 
 static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
+    f->stagger_n = 0;
     float w = app->width_pt, h = app->height_pt;
     float x = EDGE, cw = column_w(app);
     float y = TOP_EDGE + 8.0f;

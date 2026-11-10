@@ -139,6 +139,7 @@ typedef struct Game {
     int pending_play;      /* what LOADING leads to: 0 new game, 3 continue, 4 a friend's lobby */
     char status[96];
     Autotest autotest;
+    UiTest uitest; /* --autotest ui */
     PerfRun perf;
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
@@ -1774,7 +1775,12 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     ctx.rows = g->menu_rows;
     ctx.row_count = g->menu_row_count;
     memcpy(ctx.slots, g->menu_slots, sizeof(ctx.slots));
+    g->ui.input_off = g->ui.input_off || g->uitest.screen; /* --autotest ui: only the test screen takes touches */
     FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
+    if (g->uitest.screen) {
+        g->ui.input_off = account_link_active(&g->link);
+        ui_test_draw(&g->uitest, &g->ui, app);
+    }
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "ui_juice") == 0 && f->state == FE_MAIN_MENU) {
         ui_juice(g, app);
     }
@@ -2784,6 +2790,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.wm = g->wm.loaded ? &g->wm : NULL;
     probe.world_rides = &g->prefs.world.rides;
     probe.play_level = g->play_level;
+    probe.uitest = &g->uitest;
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2984,7 +2991,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
     {
         PROF_SCOPE("ui.anim");
-        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion());
+        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion() || g->uitest.reduced);
     }
     g->ui_fx.haptics = s->haptics;
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;

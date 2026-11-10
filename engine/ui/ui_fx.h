@@ -54,6 +54,8 @@ typedef struct UiFx {
     int peak_particles, peak_rings, peak_tokens;
     int sound_count, last_sound;   /* autotests */
     float last_pitch;
+    int coin_count;                /* autotests: coin ticks played and their nominal pitch */
+    float coin_pitch[8];
 } UiFx;
 
 void ui_fx_init(UiFx *fx, UiAnim *anim, Audio *audio, const TextFont *display);

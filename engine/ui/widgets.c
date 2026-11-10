@@ -123,6 +123,16 @@ static void remember(Ui *ui, const char *label, float x, float y, float w, float
     ui->seen[i].y = y;
     ui->seen[i].w = w;
     ui->seen[i].h = h;
+    ui->seen[i].rect_only = false;
+}
+
+void ui_remember(Ui *ui, const char *id, float x, float y, float w, float h)
+{
+    const int before = ui->seen_count;
+    remember(ui, id, x, y, w, h);
+    if (ui->seen_count > before) {
+        ui->seen[before].rect_only = true;
+    }
 }
 
 bool ui_rect_of(const Ui *ui, const char *key, float *x, float *y, float *w, float *h)

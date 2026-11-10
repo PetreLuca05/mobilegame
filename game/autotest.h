@@ -18,6 +18,7 @@
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
  *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
+ *   ui          UI-1: press / release / tiers / reduced motion / targets / screenshots (autotest_ui.h)
  *   worldmap2   WORLD-2: two islands, the four vehicles, the shuffle rule (tools/worldmap2_test.sh adds the relaunch)
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
@@ -31,6 +32,7 @@
 
 #include <SDL3/SDL.h>
 #include "autotest_friends.h"
+#include "autotest_ui.h"
 #include "autotest_world.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
@@ -97,6 +99,7 @@ typedef struct AutotestProbe {
     const struct WorldMap *wm; /* WORLD-1: NULL until the island has been opened */
     struct WorldRides *world_rides; /* WORLD-2: the game's shuffle (prefs) */
     int play_level;            /* the level being played (book 0) */
+    UiTest *uitest;            /* --autotest ui: the test screen's state */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */

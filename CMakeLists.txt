@@ -292,6 +292,7 @@ set(MG_GAME_SOURCES
   game/account_link.c
   game/autotest_friends.c
   game/autotest_world.c
+  game/autotest_ui.c
   game/lobby.c
   game/frontend.c
   game/creator.c

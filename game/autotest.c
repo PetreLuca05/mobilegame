@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2 };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -1139,6 +1139,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_HUDCLAMP:
         finished = run_hud_clamp(t, p, out, el);
         break;
+    case AUTOTEST_UI: {
+        const int r = p->uitest ? ut_run(p->uitest, app, p, out, app->time) : -1;
+        if (r < 0) {
+            finished = fail(t, "ui", p->uitest ? p->uitest->why : "no test screen");
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
     case AUTOTEST_TEXT:
         if (t->stage == 0 && el > 3.0) {
             SDL_snprintf(out->screenshot, sizeof(out->screenshot), "text_romanian");

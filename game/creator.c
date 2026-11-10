@@ -64,18 +64,14 @@ bool creator_ui(Creator *c, Ui *ui, NetSkin *skin, float x, float y, float w, fl
 {
     (void)h;
     static const char *const tabs[5] = {"tab_body", "tab_skin", "tab_hair", "tab_suit", "tab_extras"};
-    float tw = (w - 4.0f * 6.0f) / 5.0f;
+    const char *labels[5];
     for (int i = 0; i < 5; i++) {
-        char label[48];
-        SDL_snprintf(label, sizeof(label), "%s##crtab%d", str(tabs[i]), i);
-        if (ui_button(ui, label, x + (float)i * (tw + 6.0f), y, tw, 38.0f, c->tab == i)) {
-            if (c->tab != i) {
-                c->tab = i;
-                c->rows[0].offset = c->rows[1].offset = 0.0f;
-            }
-        }
+        labels[i] = str(tabs[i]);
     }
-    y += 52.0f;
+    if (ui_tabs(ui, "crtab", labels, 5, &c->tab, x, y, w, k_ui.target_min)) { /* ids crtab0..4 */
+        c->rows[0].offset = c->rows[1].offset = 0.0f;
+    }
+    y += 54.0f;
     int p = -1, q = -1;
     NetSkin before = *skin;
     switch (c->tab) {

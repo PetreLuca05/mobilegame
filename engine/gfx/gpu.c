@@ -2176,6 +2176,7 @@ static uint32_t render_heads(GfxContext *g)
         slot++;
     }
     g->stats.passes++;
+    g->stats.head_passes++;
     return draws;
 }
 
@@ -2249,6 +2250,7 @@ static void frame_end(GfxContext *g)
     }
     g->stats.draws = 0;
     g->stats.ui_draws = 0;
+    g->stats.head_passes = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;

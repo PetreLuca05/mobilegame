@@ -91,6 +91,7 @@ typedef struct Frontend {
     FeState state;
     FeState stack[8]; /* back history */
     int depth;
+    int stagger_n; /* menu rows drawn this frame, in screen order (their enter stagger) */
     GfxMeshId room, disc;
     float yaw, spin_vel;
     float hero_turn;  /* creator: dragging turns the hero in front of the hospital */

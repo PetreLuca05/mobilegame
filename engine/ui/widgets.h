@@ -32,6 +32,7 @@ typedef struct Ui {
     struct {
         uint32_t key;
         float x, y, w, h;
+        bool rect_only; /* ui_remember: a rect others look up (a reward's counter), not something to tap */
     } seen[256];
     int seen_count;
 } Ui;
@@ -62,6 +63,8 @@ uint32_t ui_key(const char *label);
 bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, bool *held, bool quiet);
 /* The last frame's rect of a widget by id (reward flights, tests). */
 bool ui_rect_of(const Ui *ui, const char *key, float *x, float *y, float *w, float *h);
+/* Record a rect under an id for ui_rect_of / ui_find without making it a touch target. */
+void ui_remember(Ui *ui, const char *id, float x, float y, float w, float h);
 /* Claim touches that begin inside the rect (backgrounds, modal panels). */
 bool ui_block(Ui *ui, float x, float y, float w, float h);
 void ui_panel(Ui *ui, float x, float y, float w, float h);
