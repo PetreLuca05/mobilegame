@@ -18,35 +18,22 @@ static float rdf(const uint8_t *p)
     return f;
 }
 
-bool text_init(TextFont *f, GfxContext *g)
+static const uint8_t *read_face(TextFont *f, const uint8_t *p, const uint8_t *end, uint32_t aw, uint32_t ah, const float cells[7])
 {
-    const MgAsset *a = mg_asset_find("assets/font_atlas.mgf");
-    if (!a || a->size < 48 || memcmp(a->data, "MGF1", 4) != 0) {
-        mg_log_error("text: font atlas missing or invalid");
-        return false;
+    memset(f, 0, sizeof(*f));
+    if (end - p < 36) {
+        return NULL;
     }
-    const uint8_t *p = a->data + 4;
-    uint32_t aw = rd16(p), ah = rd16(p + 2), count = rd16(p + 4);
-    p += 8;
-    f->em_px = rdf(p);
-    f->ascent_px = rdf(p + 4);
-    f->line_px = rdf(p + 12);
-    float range = rdf(p + 16);
-    p += 20;
-    uint32_t sx = rd16(p), sy = rd16(p + 2), cx = rd16(p + 4), cy = rd16(p + 6), cs = rd16(p + 8);
-    p += 12;
-    f->solid_u = ((float)sx + 0.5f) / (float)aw;
-    f->solid_v = ((float)sy + 0.5f) / (float)ah;
-    f->circle_u0 = (float)cx / (float)aw;
-    f->circle_v0 = (float)cy / (float)ah;
-    f->circle_u1 = (float)(cx + cs) / (float)aw;
-    f->circle_v1 = (float)(cy + cs) / (float)ah;
-    f->circle_fill = ((float)cs * 0.5f - range - 1.0f) / ((float)cs * 0.5f);
-
+    f->em_px = rdf(p + 16);
+    f->ascent_px = rdf(p + 20);
+    f->line_px = rdf(p + 28);
+    const uint32_t count = rd16(p + 32);
+    p += 36;
+    f->solid_u = cells[0], f->solid_v = cells[1];
+    f->circle_u0 = cells[2], f->circle_v0 = cells[3], f->circle_u1 = cells[4], f->circle_v1 = cells[5], f->circle_fill = cells[6];
     const size_t glyph_bytes = 4 + 8 + 12;
-    if ((size_t)(p - a->data) + count * glyph_bytes + (size_t)aw * ah > a->size) {
-        mg_log_error("text: font atlas truncated");
-        return false;
+    if ((size_t)(end - p) < count * glyph_bytes) {
+        return NULL;
     }
     for (uint32_t i = 0; i < count; i++, p += glyph_bytes) {
         uint32_t cp = rd32(p);
@@ -76,6 +63,36 @@ bool text_init(TextFont *f, GfxContext *g)
     static const uint32_t same[][2] = {{0x15E, 0x218}, {0x15F, 0x219}, {0x162, 0x21A}, {0x163, 0x21B}};
     for (size_t i = 0; i < MG_ARRAY_COUNT(same); i++) {
         f->glyphs[same[i][0]] = f->glyphs[same[i][1]];
+    }
+    return p;
+}
+
+bool text_init_faces(TextFont *faces, int count, GfxContext *g)
+{
+    const MgAsset *a = mg_asset_find("assets/font_atlas.mgf");
+    if (!a || a->size < 32 || memcmp(a->data, "MGF2", 4) != 0) {
+        mg_log_error("text: font atlas missing or not MGF2 (tools/gen_font_atlas.py)");
+        return false;
+    }
+    const uint8_t *p = a->data + 4, *end = a->data + a->size;
+    const uint32_t aw = rd16(p), ah = rd16(p + 2), in_file = rd16(p + 4);
+    const float range = rdf(p + 8);
+    p += 12;
+    const uint32_t sx = rd16(p), sy = rd16(p + 2), cx = rd16(p + 4), cy = rd16(p + 6), cs = rd16(p + 8);
+    p += 12;
+    const float cells[7] = {((float)sx + 0.5f) / (float)aw, ((float)sy + 0.5f) / (float)ah, (float)cx / (float)aw, (float)cy / (float)ah,
+                            (float)(cx + cs) / (float)aw, (float)(cy + cs) / (float)ah, ((float)cs * 0.5f - range - 1.0f) / ((float)cs * 0.5f)};
+    for (uint32_t i = 0; i < in_file; i++) {
+        TextFont skip;
+        p = read_face(i < (uint32_t)count ? &faces[i] : &skip, p, end, aw, ah, cells);
+        if (!p) {
+            mg_log_error("text: font atlas truncated (face %u)", i);
+            return false;
+        }
+    }
+    if ((int)in_file < count || (size_t)(end - p) < (size_t)aw * ah) {
+        mg_log_error("text: font atlas has %u faces, want %d", in_file, count);
+        return false;
     }
     return gfx_set_ui_atlas(g, p, aw, ah);
 }

@@ -28,7 +28,9 @@ typedef struct MgGameCallbacks {
 struct MgApp {
     SDL_Window *window;
     GfxContext *gfx;
-    TextFont font;
+    TextFont font;          /* body: Nunito Bold (UI-1) */
+    TextFont font_display;  /* titles, buttons, numbers: Baloo 2 ExtraBold */
+    TextFont font_bold;     /* emphasis: Nunito ExtraBold */
     MgInput input;
     Arena perm;  /* lives for the whole run */
     Arena frame; /* reset every frame */

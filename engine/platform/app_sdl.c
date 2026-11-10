@@ -141,8 +141,14 @@ SDL_AppResult app_init(void **appstate, const MgGameCallbacks *cb, int argc, cha
     if (!gfx_init(&app->gfx, app->window, &app->perm)) {
         return SDL_APP_FAILURE;
     }
-    if (!text_init(&app->font, app->gfx)) {
-        return SDL_APP_FAILURE;
+    {
+        TextFont *faces = ARENA_PUSH(&app->perm, TextFont, TEXT_FACE_COUNT);
+        if (!faces || !text_init_faces(faces, TEXT_FACE_COUNT, app->gfx)) {
+            return SDL_APP_FAILURE;
+        }
+        app->font_display = faces[TEXT_FACE_DISPLAY];
+        app->font = faces[TEXT_FACE_BODY];
+        app->font_bold = faces[TEXT_FACE_BOLD];
     }
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
         app->input.touches[i].owner = MG_TOUCH_FREE;

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Generate the single-channel SDF font atlas used by engine/ui/text.c.
 
-Usage: python3 tools/gen_font_atlas.py [font.ttf] [out.mgf]
+Usage: python3 tools/gen_font_atlas.py [out.mgf]
+UI-1: three faces in one atlas (FACES below): display = Baloo 2 ExtraBold, body = Nunito Bold,
+bold = Nunito ExtraBold (assets/fonts, pinned in assets/ASSETS.lock). Both families have every
+Romanian letter, the em dash and the ellipsis, so nothing is composed.
 
 Needs Pillow, numpy and scipy (pip install pillow numpy scipy).
 Each glyph is rasterised at 8x the atlas size, a signed Euclidean distance
@@ -10,11 +13,12 @@ atlas also carries a fully-inside "solid" cell (for UI rectangles) and an
 analytic circle cell (for round buttons / joystick).
 
 File format (little endian), parsed by text.c:
-  char[4] 'MGF1'
-  u16 atlas_w, atlas_h, glyph_count, reserved
-  f32 em_px, ascent, descent, line_height, sdf_range_px
+  char[4] 'MGF2'
+  u16 atlas_w, atlas_h, face_count, reserved
+  f32 sdf_range_px
   u16 solid_x, solid_y, circle_x, circle_y, circle_size, reserved
-  glyph_count x { u32 codepoint; u16 x, y, w, h; f32 xoff, yoff, advance }
+  face_count x { char[16] name; f32 em_px, ascent, descent, line_height; u16 glyph_count, reserved;
+                 glyph_count x { u32 codepoint; u16 x, y, w, h; f32 xoff, yoff, advance } }
   u8 pixels[atlas_w * atlas_h]
 """
 import struct
@@ -27,19 +31,20 @@ from scipy import ndimage
 from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parent.parent
-FONT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "assets/fonts/Fredoka.ttf"
-OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "assets/font_atlas.mgf"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "assets/font_atlas.mgf"
+FACES = [("display", ROOT / "assets/fonts/Baloo2-wght.ttf", 800), ("body", ROOT / "assets/fonts/Nunito-wght.ttf", 700),
+         ("bold", ROOT / "assets/fonts/Nunito-wght.ttf", 800)]
 
 EM_PX = 40           # glyph em size in atlas pixels
 UPSCALE = 8          # supersampling factor for the distance transform
 RANGE_PX = 5.0       # distance (atlas px) mapped to the 0..1 value span
 PAD = 6              # atlas px padding around each glyph
-ATLAS_SIZES = [(512, 512), (1024, 512), (1024, 768), (1024, 1024)]  # the smallest that fits
+ATLAS_SIZES = [(1024, 1024), (1024, 1536), (2048, 1024), (2048, 1536), (2048, 2048)]  # the smallest that fits
 CIRCLE = 64
 # Everything the font has from Latin-1 and Latin Extended-A, on top of ASCII
 BASE_CHARS = [chr(c) for c in range(32, 127)] + ["°", "•", "—", "…"]
-LATIN_RANGE = range(0xA0, 0x180)
-# Romanian letters Fredoka does not have: built from its own letters. The cedilla forms
+LATIN_RANGE = list(range(0xA0, 0x180)) + [0x218, 0x219, 0x21A, 0x21B]
+# Romanian letters a font might lack, built from its own letters (Baloo 2 and Nunito have them all). The cedilla forms
 # (U+015E, 015F, 0162, 0163) are not generated: the game maps them onto the comma ones.
 COMPOSED = {0x102: ("A", "breve"), 0x103: ("a", "breve"),
             0x218: ("S", "comma"), 0x219: ("s", "comma"), 0x21A: ("T", "comma"), 0x21B: ("t", "comma")}
@@ -50,12 +55,9 @@ ICON_GEAR = 0x2699
 ICON_ARROW_UP = 0x2191
 
 
-def load_font(size):
-    font = ImageFont.truetype(str(FONT), size)
-    try:
-        font.set_variation_by_axes([600, 100])  # Fredoka axes: Weight, Width
-    except (OSError, ValueError):
-        pass
+def load_font(path, weight, size):
+    font = ImageFont.truetype(str(path), size)
+    font.set_variation_by_axes([weight])  # both families have one axis: wght
     return font
 
 
@@ -169,9 +171,22 @@ def icon_sdf(draw_fn):
     return (val * 255.0 + 0.5).astype(np.uint8), float(xoff), float(yoff), float(EM_PX * 1.05)
 
 
-def main():
-    font = load_font(EM_PX * UPSCALE)
+def face_items(path, weight, icons):
+    font = load_font(path, weight, EM_PX * UPSCALE)
     ascent, descent = font.getmetrics()
+    cmap = TTFont(str(path)).getBestCmap()
+    chars = BASE_CHARS + [chr(c) for c in LATIN_RANGE if c in cmap and c not in CEDILLA and chr(c) not in BASE_CHARS]
+    items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in chars]
+    if icons:
+        items += [(ICON_GEAR, lambda: icon_sdf(draw_gear)), (ICON_ARROW_UP, lambda: icon_sdf(draw_arrow_up))]
+    have = {cp for cp, _ in items}
+    missing = [c for c in ROMANIAN + "—…" if ord(c) not in have]
+    if missing:
+        raise SystemExit(f"{path.name}: no glyph for {missing}")
+    return ascent, descent, [(cp, *make()) for cp, make in items]
+
+
+def main():
     # solid cell (8x8 fully inside) and circle cell in the top-left corner
     solid = (4, 4)
     yy, xx = np.mgrid[0:CIRCLE, 0:CIRCLE] + 0.5
@@ -179,30 +194,23 @@ def main():
     dist = radius - np.hypot(xx - CIRCLE / 2, yy - CIRCLE / 2)
     circle = np.clip(0.5 + dist / (2.0 * RANGE_PX), 0, 1)
     circle_pos = (8, 0)
-
-    cmap = TTFont(str(FONT)).getBestCmap()
-    chars = BASE_CHARS + [chr(c) for c in LATIN_RANGE if c in cmap and c not in CEDILLA and chr(c) not in BASE_CHARS]
-    items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in chars]
-    items += [(cp, lambda b=b, m=m: composed_sdf(font, b, m)) for cp, (b, m) in COMPOSED.items()]
-    items += [(ICON_GEAR, lambda: icon_sdf(draw_gear)), (ICON_ARROW_UP, lambda: icon_sdf(draw_arrow_up))]
-    have = {cp for cp, _ in items}
-    missing = [c for c in ROMANIAN if ord(c) not in have]
-    if missing:
-        raise SystemExit(f"no glyph for {missing}")
-    made = [(cp, *make()) for cp, make in items]
-    # tallest first packs the shelves tighter
-    made.sort(key=lambda m: -(m[1].shape[0] if m[1] is not None else 0))
+    faces = []
+    for name, path, weight in FACES:
+        ascent, descent, made = face_items(path, weight, name == "body")
+        faces.append((name, ascent, descent, made))
+    allg = [(fi, m) for fi, f in enumerate(faces) for m in f[3]]
+    allg.sort(key=lambda g: -(g[1][1].shape[0] if g[1][1] is not None else 0))  # tallest first packs tighter
 
     for ATLAS_W, ATLAS_H in ATLAS_SIZES:
         atlas = np.zeros((ATLAS_H, ATLAS_W), dtype=np.uint8)
         atlas[0:8, 0:8] = 255
         atlas[0:CIRCLE, 8:8 + CIRCLE] = (circle * 255 + 0.5).astype(np.uint8)
-        glyphs = []
+        glyphs = [[] for _ in faces]
         x, y, row_h = 8 + CIRCLE + 2, 0, CIRCLE
         fits = True
-        for cp, sdf, xoff, yoff, adv in made:
+        for fi, (cp, sdf, xoff, yoff, adv) in allg:
             if sdf is None:
-                glyphs.append((cp, 0, 0, 0, 0, 0.0, 0.0, adv))
+                glyphs[fi].append((cp, 0, 0, 0, 0, 0.0, 0.0, adv))
                 continue
             h, w = sdf.shape
             if x + w > ATLAS_W:
@@ -211,7 +219,7 @@ def main():
                 fits = False
                 break
             atlas[y:y + h, x:x + w] = sdf
-            glyphs.append((cp, x, y, w, h, xoff, yoff, adv))
+            glyphs[fi].append((cp, x, y, w, h, xoff, yoff, adv))
             x += w + 2
             row_h = max(row_h, h)
         if fits:
@@ -220,19 +228,19 @@ def main():
         raise SystemExit("atlas too small")
 
     out = bytearray()
-    out += b"MGF1"
-    out += struct.pack("<4H", ATLAS_W, ATLAS_H, len(glyphs), 0)
-    out += struct.pack("<5f", EM_PX, ascent / UPSCALE, descent / UPSCALE,
-                       (ascent + descent) / UPSCALE * 1.1, RANGE_PX)
-    out += struct.pack("<6H", solid[0], solid[1], circle_pos[0], circle_pos[1],
-                       CIRCLE, 0)
-    for g in glyphs:
-        out += struct.pack("<I4H3f", *g)
+    out += b"MGF2"
+    out += struct.pack("<4H", ATLAS_W, ATLAS_H, len(faces), 0)
+    out += struct.pack("<f", RANGE_PX)
+    out += struct.pack("<6H", solid[0], solid[1], circle_pos[0], circle_pos[1], CIRCLE, 0)
+    for (name, ascent, descent, _), gl in zip(faces, glyphs):
+        out += struct.pack("<16s4f2H", name.encode(), EM_PX, ascent / UPSCALE, descent / UPSCALE, (ascent + descent) / UPSCALE * 1.1, len(gl), 0)
+        for g in gl:
+            out += struct.pack("<I4H3f", *g)
     out += atlas.tobytes()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(bytes(out))
     Image.fromarray(atlas).save(OUT.with_suffix(".preview.png"))
-    print(f"wrote {OUT} ({len(out)} bytes, {ATLAS_W}x{ATLAS_H}, {len(glyphs)} glyphs, rows used {y + row_h}px)")
+    print(f"wrote {OUT} ({len(out)} bytes, {ATLAS_W}x{ATLAS_H}, {sum(len(g) for g in glyphs)} glyphs in {len(faces)} faces, rows used {y + row_h}px)")
 
 
 if __name__ == "__main__":

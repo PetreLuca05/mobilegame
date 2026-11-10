@@ -43,7 +43,9 @@ static inline UiColor ui_rgba(uint32_t rgba)
     return c;
 }
 
-bool text_init(TextFont *f, GfxContext *g);
+/* The faces of assets/font_atlas.mgf in order (TEXT_FACE_*), all in one atlas: one UI texture. */
+enum { TEXT_FACE_DISPLAY, TEXT_FACE_BODY, TEXT_FACE_BOLD, TEXT_FACE_COUNT };
+bool text_init_faces(TextFont *faces, int count, GfxContext *g);
 /* Strings are UTF-8. */
 bool text_has_glyph(const TextFont *f, uint32_t cp);
 float text_width(const TextFont *f, const char *s, float size_pt);
