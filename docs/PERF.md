@@ -283,3 +283,21 @@ Gate against the new baseline: passed. `corridor_f2` dropped 1 frame on its firs
 ## Menu scenario (87b762a, iPad Air 4)
 
 `--autotest perf menu`: hospital, roaming NPCs (48 alive), hero, same budgets as gameplay. Gate: passed on its one rerun; the first run had 1 dropped frame and 4 small allocations (24-56 bytes) inside `render`, the same signature as the first `stress200` run. 76.2 draws (110 max), render 0.99 ms, GPU 6.14 ms / 37 % busy / 2.27 ms effective at Minimum clock (98 %), 172 MB.
+
+## FRIENDS-2 full gate at 3681449 (iPad Air 4)
+
+`docs/perf/after/` now holds this run, nine scenarios from one commit, gated against 22cd389. Gate: passed. `yard`, `lobby`, `corridor_f2` (render or GPU over 10 %) and `stress200` (1 dropped frame) failed on the first run and were within budget on their one rerun, which are the files kept. GPU clock Minimum for 96-99 % of every run.
+
+| Scenario | Draws | Render ms | GPU frame ms / busy % / effective ms | Memory MB |
+|---|---|---|---|---|
+| `yard` | 64.0 | 1.28 | 5.19 / 31 / 1.62 | 159 |
+| `lobby` | 63.5 | 1.27 | 5.17 / 31 / 1.61 | 158 |
+| `corridor_f2` | 83.1 | 1.32 | 5.48 / 33 / 1.81 | 158 |
+| `stress200` | 86.6 | 1.37 | 5.74 / 35 / 1.99 | 169 |
+| `npcs` | 89.1 | 1.43 | 5.63 / 34 / 1.91 | 160 |
+| `lift_panel` | 72.0 | 1.36 | 5.35 / 32 / 1.73 | 158 |
+| `interact_npc` | 94.8 | 1.41 | 5.87 / 35 / 2.07 | 159 |
+| `lobby4` | 95.4 | 1.40 | 5.85 / 35 / 2.06 | 163 |
+| `menu` (4 players) | 76.5 | 0.85 | 6.19 / 37 / 2.30 | 169 |
+
+Four avatars in the menu against one (87b762a): +0.3 draws, +31.7 k triangles (223.7 k -> 255.4 k), +57 instances, GPU effective 2.27 -> 2.30 ms.

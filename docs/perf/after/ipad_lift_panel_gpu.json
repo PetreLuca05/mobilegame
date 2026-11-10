@@ -1,1 +1,1 @@
-{"device": "ipad", "scenario": "lift_panel", "commit": "22cd389", "fps": 60, "gpu_frame_ms": 5.3, "busy_pct": 32, "effective_ms": 1.69, "clock": "Minimum", "clock_share_pct": 98}
+{"device": "ipad", "scenario": "lift_panel", "commit": "3681449", "fps": 60, "gpu_frame_ms": 5.35, "busy_pct": 32, "effective_ms": 1.73, "clock": "Minimum", "clock_share_pct": 98}

@@ -327,6 +327,17 @@ Every game is a lobby owned by its player; only friends get in, after the host s
 - Prefs: `lobby_open` (default on). Strings: `assets/strings_ro.json` first, then `strings.json` as the fallback.
 - `tools/friends_test.sh OUT` runs `--autotest friends` on desktop: roles a1, a2, a3 (restarts), b, c, offline, solo (0 room packets in 60 s), a4 (prefs and cache wiped, same account), plus a fourth account; c adds by name search, b and a3 cover friend-request decline and cancel; files in `$MG_FT_SYNC` keep them in step. SQL: `supabase/tests/friends_test.sql`.
 
+## Menu lobby (FRIENDS-2)
+
+The main menu is the lobby. `player_status.state`: 0 none, 1 menu lobby, 2 in game. `lobby.c` adds `MENU_SOLO`, `MENU_HOSTING`, `MENU_GUEST` on the same `room:<token>`: Presence only in the menu (`session_set_menu`), no state packets. Only a real game publishes its NPC tick 0 (the menu's backdrop must not).
+
+- Room events: `m` (members, host first, the order of the list), `c` = `net_send_room_cmd` (`NET_ROOM_START {map, seed, tick, save_hash}`, `NET_ROOM_TO_MENU`). The host's New Game / Continue takes everyone in; "Save & back to menu" brings everyone back (`lobby_return_to_menu`). Quitting, signing out or losing the connection still ends the session. A guest's "Ieși" = `lobby_stop`, back to their own solo lobby.
+- Invites: `lobby_invites` (60 s, RLS, no policies; named in `merge_ticket_redeem`). `lobby_invite(guest)` returns `ok` / `full` / `busy` / `offline` / `rate_limited` (one per guest per 10 s) and only reaches a friend alone in their own menu. `invite_respond(host, accept)`; accepting is the invited path of `lobby_join_request`, which skips the lock and the host's panel, deletes the invite and pushes `member_joined`. `invite_declined` tells the host. The invitee's panel (`NOTICE_INVITE`) declines itself after 30 s. The host's button says "Trimisă" until it resolves or expires (`lobby_invite_sent`).
+- `lobby_return_to_menu()` host only. `friends_list` gains `in_menu`; `open` / `locked` / `full` / `in_other_lobby` cover states 1 and 2.
+- Menu (`frontend.c` `lobby_panel`, `game.c` `menu_layout`): header + rows under the account chip (40 pt heads, procedural crown and x in the UI batch), host-only switch, Invită and kick. Every player stands in the scene on `FeAvatar` slots, 0.9 m apart, name-tagged; the camera backs off as the line grows, so it fits between the menu column and the panel. Guests get a disabled "Gazda pornește jocul…" row. Offline: hero alone, chip says Offline.
+- Friends page: Join when their lobby is open, Invite when they are online and not in your lobby, side by side. `invite_mode` (from the lobby's Invită): invitable friends first, reasons for the rest. Adaugă: your friend code with copy, one search bar (a typed code gets its own + row). Block and report are tagged "Curând".
+- Tests: `tools/friends2_test.sh OUT` (roles ma, mb, mc, md, four instances), `tools/friends2_two_device.sh OUT` (d2h on the iPad, d2g on the Mac), `--autotest lobbylayout` (full lobby: iPhone, iphone-flip, iPad), `--autotest perf menu` (a demo 4-player lobby without the network).
+
 ## Account linking (LINK-1)
 
 **Merge coverage rule, for every later migration:** a table with a foreign key to `auth.users` or `profiles` must be named (`public.<table>`) in `merge_ticket_redeem` with an explicit rule. `supabase/tests/link_test.sql` fails otherwise.

@@ -1,6 +1,6 @@
 {
-"commit": "22cd389",
-"run_id": "179425095021597",
+"commit": "3681449",
+"run_id": "17942683355732",
 "scenario": "lobby",
 "seconds": 60,
 "backend": "metal",
@@ -19,7 +19,7 @@
 "entities_sim_max": 1,
 "entities_rendered_max": 1,
 "route_failures": 0,
-"memory_mb": {"footprint": 157.7, "msaa_color": 18.9, "depth": 18.9, "scene": 9.4, "blur": 1.2, "preview": 0.0, "swapchain_est": 44.3, "ui_atlas": 0.5, "mesh_vb_reserved": 4.0, "mesh_ib_reserved": 2.0, "mesh_vb_used": 1.4, "mesh_ib_used": 0.7, "ui_buffers": 5.1, "instance_buffers": 2.5, "perm_arena_size": 96.0, "perm_arena_used": 19.8, "perm_arena_peak": 48.3, "frame_arena_peak": 0.02, "nav": 7.6, "npc": 0.9},
+"memory_mb": {"footprint": 158.4, "msaa_color": 18.9, "depth": 18.9, "scene": 9.4, "blur": 1.2, "preview": 0.0, "swapchain_est": 44.3, "ui_atlas": 0.5, "mesh_vb_reserved": 4.0, "mesh_ib_reserved": 2.0, "mesh_vb_used": 1.4, "mesh_ib_used": 0.7, "ui_buffers": 5.1, "instance_buffers": 2.5, "perm_arena_size": 96.0, "perm_arena_used": 19.8, "perm_arena_peak": 48.3, "frame_arena_peak": 0.02, "nav": 7.6, "npc": 0.9},
 "panel_samples": 0,
 "counters": {
   "draws": {"avg": 63.49, "max": 64.00},
@@ -27,25 +27,25 @@
   "instances": {"avg": 70.49, "max": 71.00},
   "pipe_binds": {"avg": 12.00, "max": 12.00},
   "tex_binds": {"avg": 3.00, "max": 3.00},
-  "uniform_bytes": {"avg": 6935.20, "max": 6976.00},
+  "uniform_bytes": {"avg": 6935.09, "max": 6976.00},
   "passes": {"avg": 4.00, "max": 4.00},
-  "gpu_main_ms_approx": {"avg": 5.93, "max": 6.86},
-  "gpu_ui_ms_approx": {"avg": 0.85, "max": 2.42}
+  "gpu_main_ms_approx": {"avg": 5.92, "max": 8.51},
+  "gpu_ui_ms_approx": {"avg": 0.84, "max": 4.18}
 },
 "scopes": [
-  {"name": "tick", "depth": 0, "avg": 0.033, "p95": 0.10, "max": 0.29},
-  {"name": "kinematic", "depth": 1, "avg": 0.025, "p95": 0.05, "max": 0.28},
-  {"name": "interact", "depth": 1, "avg": 0.006, "p95": 0.05, "max": 0.15},
+  {"name": "tick", "depth": 0, "avg": 0.034, "p95": 0.10, "max": 0.35},
+  {"name": "kinematic", "depth": 1, "avg": 0.025, "p95": 0.05, "max": 0.25},
+  {"name": "interact", "depth": 1, "avg": 0.006, "p95": 0.05, "max": 0.32},
   {"name": "npc", "depth": 1, "avg": 0.000, "p95": 0.05, "max": 0.01},
-  {"name": "frame", "depth": 0, "avg": 0.134, "p95": 0.20, "max": 0.39},
-  {"name": "net.poll", "depth": 1, "avg": 0.010, "p95": 0.05, "max": 0.20},
-  {"name": "nav.service", "depth": 1, "avg": 0.003, "p95": 0.05, "max": 0.18},
-  {"name": "markers", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.04},
-  {"name": "input", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.03},
-  {"name": "render.cull", "depth": 1, "avg": 0.012, "p95": 0.05, "max": 0.14},
-  {"name": "render", "depth": 0, "avg": 1.201, "p95": 1.60, "max": 2.68},
-  {"name": "render.sort", "depth": 1, "avg": 0.011, "p95": 0.05, "max": 0.22},
-  {"name": "render.encode", "depth": 1, "avg": 0.216, "p95": 0.30, "max": 1.05},
-  {"name": "autonav", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.11}
+  {"name": "frame", "depth": 0, "avg": 0.146, "p95": 0.25, "max": 1.30},
+  {"name": "net.poll", "depth": 1, "avg": 0.012, "p95": 0.05, "max": 0.20},
+  {"name": "nav.service", "depth": 1, "avg": 0.003, "p95": 0.05, "max": 0.20},
+  {"name": "markers", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.14},
+  {"name": "input", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.09},
+  {"name": "render.cull", "depth": 1, "avg": 0.013, "p95": 0.05, "max": 0.37},
+  {"name": "render", "depth": 0, "avg": 1.271, "p95": 1.75, "max": 2.77},
+  {"name": "render.sort", "depth": 1, "avg": 0.011, "p95": 0.05, "max": 0.12},
+  {"name": "render.encode", "depth": 1, "avg": 0.223, "p95": 0.30, "max": 1.23},
+  {"name": "autonav", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.05}
 ]
 }
