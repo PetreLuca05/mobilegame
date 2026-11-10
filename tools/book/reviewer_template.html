@@ -73,7 +73,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <script>
 /*DATA*/
 const PRINT={1:1147};for(let i=0;i<5;i++)PRINT[2+i]=1162+i;for(let i=0;i<5;i++)PRINT[7+i]=1172+i;for(let i=0;i<11;i++)PRINT[12+i]=1198+i;
-let cur=1;try{const h=location.hash.match(/^#p(\d+)$/);if(h)cur=+h[1]}catch(e){}
+let cur=1;try{const h=location.hash.match(/^#p(\d+)$/);if(h)cur=+h[1];const g=location.hash.match(/^#plan([0-3])$/);if(g)cur='plan'+g[1]}catch(e){}
 const $=id=>document.getElementById(id);
 function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 const tot={taught:0,pending:0,red:0};const redPages=new Set();
@@ -81,8 +81,9 @@ ATOMS.forEach(a=>a.s.forEach(s=>{tot[s[2]]++;if(s[2]==='red')redPages.add(a.p)})
 const st=META.stats;
 $('sum').innerHTML=`<span>atoms <b>${st.atoms}</b></span><span>sentences taught <b>${tot.taught}</b></span><span>not yet taught <b>${tot.pending}</b></span><span>red <b>${tot.red}</b></span><span>facts <b>${st.facts}</b></span><span>items <b>${st.items}</b></span><span>scripts <b>${st.scripts}</b></span><span>topics done <b>${st.topics_done.length}</b>/50</span>`;
 $('legend').innerHTML=META.chapters.map((n,i)=>`<span><i class="sw" style="background:var(--t${i})"></i>${i} · ${esc(n)}</span>`).join('')+`<span><i class="sw" style="border-bottom:2px dotted var(--pend)"></i>not yet taught</span><span><i class="sw" style="background:var(--redbg);box-shadow:0 0 0 1px var(--red)"></i>uncovered</span>`;
-function tabs(){$('tabs').innerHTML='';for(let p=1;p<=22;p++){const b=document.createElement('button');b.textContent=PRINT[p];b.setAttribute('aria-pressed',p===cur);b.title='PDF page '+p;if(redPages.has(p))b.classList.add('has-red');b.onclick=()=>{cur=p;try{history.replaceState(null,'','#p'+p)}catch(e){}render()};$('tabs').appendChild(b)}}
-function render(){tabs();$('img').src='pages/p'+String(cur).padStart(2,'0')+'.jpg';$('img').alt='Printed page '+PRINT[cur];$('imgcap').textContent='PDF page '+cur+' · printed page '+PRINT[cur]+' · OCR fixes on this page: '+(META.fixes[cur]||0);
+function tabs(){$('tabs').innerHTML='';for(let p=1;p<=22;p++){const b=document.createElement('button');b.textContent=PRINT[p];b.setAttribute('aria-pressed',p===cur);b.title='PDF page '+p;if(redPages.has(p))b.classList.add('has-red');b.onclick=()=>{cur=p;try{history.replaceState(null,'','#p'+p)}catch(e){}render()};$('tabs').appendChild(b)}
+ for(let f=0;f<4;f++){const b=document.createElement('button');b.textContent='Plan '+['G','1','2','3'][f];b.title='Storey '+f+': book props and NPC points';b.setAttribute('aria-pressed',cur==='plan'+f);b.onclick=()=>{cur='plan'+f;try{history.replaceState(null,'','#plan'+f)}catch(e){}render()};$('tabs').appendChild(b)}}
+function render(){if(typeof cur==='string'){tabs();$('img').src='plans/'+cur.slice(4)+'.png';$('img').alt='Plan of storey '+cur.slice(4);$('imgcap').textContent='Storey '+cur.slice(4)+' · green book prop · blue NPC point · violet the model\'s own furniture · orange moved (line from the authored position) · grey the model\'s furniture · labels: kind: script ids';$('atoms').innerHTML='<div class="empty">Every prop and NPC point of this storey, placed against the institute model\'s own furniture. The list of moves over 1.0 m is in report.md (§3).</div>';return}tabs();$('img').src='pages/p'+String(cur).padStart(2,'0')+'.jpg';$('img').alt='Printed page '+PRINT[cur];$('imgcap').textContent='PDF page '+cur+' · printed page '+PRINT[cur]+' · OCR fixes on this page: '+(META.fixes[cur]||0);
  const fr=$('fRed').checked,fh=$('fHid').checked,ft=$('fTaught').checked;
  const list=ATOMS.filter(a=>a.p===cur).filter(a=>(!fr||a.s.some(s=>s[2]==='red'))&&(!fh||a.layer==='under_blank'||a.layer==='mixed')&&(!ft||a.s.some(s=>s[2]==='taught')));
  if(!list.length){$('atoms').innerHTML='<div class="empty">Nothing on this page matches the filters.</div>';return}
@@ -92,6 +93,6 @@ function render(){tabs();$('img').src='pages/p'+String(cur).padStart(2,'0')+'.jp
   const frag=a.frag?`<span class="chip">fragment: ${a.frag}</span>`:'';
   return `<div class="atom ${a.k}"><div class="meta"><span>${a.id}</span><span class="chip">${a.k.replace('_',' ')}</span>${hid}${frag}<span class="room c${a.ch}b">${esc(room.name||a.room||'')}</span><span>${esc(t.title||'')}</span></div><div class="tx">${h}</div></div>`}).join('')}
 ['fRed','fHid','fTaught'].forEach(id=>$(id).addEventListener('change',render));
-window.addEventListener('hashchange',()=>{const h=location.hash.match(/^#p(\d+)$/);if(h){cur=+h[1];render()}});
+window.addEventListener('hashchange',()=>{const h=location.hash.match(/^#p(\d+)$/);if(h){cur=+h[1];render()}const g=location.hash.match(/^#plan([0-3])$/);if(g){cur='plan'+g[1];render()}});
 render();
 </script>

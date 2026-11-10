@@ -10,6 +10,8 @@ def main(pack):
     atoms = [json.loads(l) for l in open(os.path.join(pack, 'atoms.jsonl'), encoding='utf-8')]
     tspec = importlib.util.spec_from_file_location('tt', os.path.join(HERE, 'data', 'typo_tokens.py'))
     tm = importlib.util.module_from_spec(tspec); tspec.loader.exec_module(tm)
+    cspec = importlib.util.spec_from_file_location('tc', os.path.join(HERE, 'data', 'typo_class.py'))
+    cm = importlib.util.module_from_spec(cspec); cspec.loader.exec_module(cm)
     dp = os.path.join(pack, 'errata_decisions.json')          # the author's decisions (check.py --apply-review)
     dec = json.load(open(dp, encoding='utf-8')) if os.path.exists(dp) else {}
     old = {e['id']: e for e in json.load(open(os.path.join(pack, 'errata.json'), encoding='utf-8'))} if os.path.exists(os.path.join(pack, 'errata.json')) else {}
@@ -28,7 +30,13 @@ def main(pack):
                     'policy': 'taught as printed; items that rest on it carry flags ["needs_review"] and a one-line note'})
         if kind == 'typo':
             out[-1]['typo_tokens'] = [list(x) for x in tm.T.get(out[-1]['id'], [])]
-            out[-1]['policy'] = 'typo: shown in the stem / explanation with this note, never tested (no gap, keyed answer, pair member or sort label holds a printed token)'
+            cls = 'A' if eid in cm.A else 'B'
+            out[-1]['class'] = cls
+            out[-1]['intended'] = ' | '.join(c for _, c in out[-1]['typo_tokens']) or cm.PUNCT.get(eid, '')
+            out[-1]['use_intended'] = dec.get(eid, {}).get('use_intended', cls == 'A')
+            out[-1]['policy'] = ('typo: shown with this note, never the test; '
+                                 + ('class A (spelling only): answers may use the intended form' if cls == 'A' else
+                                    'class B: answers keep the printed wording') + ('' if out[-1]['use_intended'] else ' (printed wording, no intended form)'))
         d = dec.get(eid)
         if d and d.get('decision') == 'not_an_error':
             out[-1]['withdrawn'] = True

@@ -27,3 +27,6 @@ typo_only_facts.json
 typo_changes.json
 placement_moves.json
 pack_measure.json
+plan/
+round3.json
+institute_original.map

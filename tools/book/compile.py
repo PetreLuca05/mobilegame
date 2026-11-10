@@ -78,6 +78,7 @@ def merge(pack):
     lines = [src, '', MAP_MARK,
              '# iprop <floor> <room> <id> <kind> <x> <z> <yaw> "<label>"    an interactable prop (instanced per kind); yaw 0 faces +z / south',
              '# islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand / seat) used by scripts',
+             '# a trailing on_model = the institute model already has this piece of furniture there (its podium, shelf, poster, chair): no new mesh',
              '# prop kinds (prop_kinds.json; w x d metres across x along the facing direction; wall = flush against a wall):']
     PK = json.load(open(os.path.join(pack, 'prop_kinds.json'), encoding='utf-8'))
     for k, v in PK['kinds'].items():
@@ -96,9 +97,9 @@ def merge(pack):
         tops = sorted(set(p['topic'] for p in P + S))
         lines.append(f'# room {r} ({", ".join(tops)}): {len(P)} props, {len(S)} slots')
         for p in P:
-            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"')
+            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"' + (' on_model' if p.get('on_model') else ''))
         for p in S:
-            lines.append(f'islot {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]}')
+            lines.append(f'islot {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]}' + (' on_model' if p.get('on_model') else ''))
     open(os.path.join(pack, 'institute.map'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
     json.dump(exempt, open(os.path.join(pack, 'exam_exempt.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     # lock: the atom text every fact / item was written against (check.py lists what changed since)

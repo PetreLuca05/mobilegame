@@ -47,6 +47,22 @@ with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
   On Linux the build needs `-D_DEFAULT_SOURCE` for `M_PI` in `engine/audio/audio_sdl.c` (not changed by BOOK-1).
 - §7 `ENGINE_PROMPT.md` regenerated (order, prop kinds, binary layout, reference reader, measured sizes, perf audit).
 
+## Corrections round (author's message 4)
+
+- §1 typo errata in two classes: 74 typo errata, class A (spelling only) 16, class B 58. 59 items reverted to the printed
+  wording; 2 tests moved by hand; 4 items kept as printed with the misprint as their test (needs_review); 2 facts whose only
+  testable token is a misprint. `review_errata.csv` has `printed`, `intended`, `class`, `use_intended` (yes for A, no for B);
+  `--apply-review` honours it.
+- §2 short keyed answers: every word printed in its source sentence or an inflection of one (check.py, `wordrule.py`);
+  reworded 39 before, 5 after (3 items kept on purpose, needs_review). The previous 77: 62 shortened (61 verbatim spans), 9
+  inflections, 6 reworded.
+- §3 props against the institute model (the "Gastro Institute 3D" page): its own furniture is rasterised
+  (`model_occupancy.json`, from `content/src/institute_model_page.html`); 234 props / NPC points, 0 placement failures,
+  9 anchored to furniture the model already has (`on_model`). 183 moved from their authored position, 53 by more than
+  1.0 m (report.md §3; `plan/0–3.png`, the reviewer's Plan tabs). The book plays inside the model page.
+- §4 `ENGINE_PROMPT.md`: measured text lengths (stem 287, option / answer 621, explanation 1,681 characters); text
+  scrolls, never cut; the Linux `M_PI` error in `engine/audio/audio_sdl.c` noted for the engine step (file untouched).
+
 ## Topics done (all 50; per-topic counts in report.md)
 
 ## Next

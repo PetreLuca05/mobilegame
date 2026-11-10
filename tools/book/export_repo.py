@@ -8,8 +8,8 @@ import json, os, re, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACK_FILES = ['README.md', 'STATE.md', 'QUESTIONS.md', 'LAYOUT_GUIDE.md', 'AUTHORING_GUIDE.md', 'check.py', 'institute.map',
               'rules.json', 'topic_rules.json', 'leakguard.txt', 'ENGINE_PROMPT.md', 'prop_kinds.json', 'mgpack_read.c',
-              'gastro.mgpack.h']
-TOOL_EXT = ('.py', '.sh', '.html', '.md')
+              'gastro.mgpack.h', 'wordrule.py', 'model_occupancy.json']
+TOOL_EXT = ('.py', '.sh', '.html', '.md', '.js', '.css')
 
 
 def main(pack, repo):

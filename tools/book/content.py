@@ -183,32 +183,48 @@ class Topic:
         it = {'id': iid, 'topic': self.topic, 'type': itype, 'fact_ids': list(dict.fromkeys(tested)), 'stem': stem,
               'explanation': expl, 'source': source, 'difficulty': difficulty, 'flags': fl}
         it.update(kw)
+        if kw.get('kept_reworded') and 'needs_review' not in it['flags']:   # §2: words the book does not print, kept on purpose
+            it['flags'].append('needs_review')
+            it.setdefault('review_note', 'answer not in the printed words: ' + kw['kept_reworded'])
         self._typo_guard(it)
         self.items.append(it)
         return iid
 
     def _typo_guard(self, it):
-        """Typos are shown, not tested: a printed typo token in an answer field (keyed option, card answer, pair, sort
-        entry / group, order step) is replaced by its intended form, and the explanation shows the printed wording with the
-        erratum note. Cloze gaps cannot be rewritten (they must be exact substrings): check.py fails them instead."""
+        """Typos are shown, never the test. A printed misprint in an answer field (keyed option, card answer, pair, sort
+        entry / group, order step): class A errata (spelling only, use_intended yes) put the intended form in the answer;
+        class B errata keep the printed wording. Either way the explanation names the printed wording and the erratum, and
+        the item is flagged needs_review. Cloze gaps and labels are never rewritten (exact substrings: check.py fails them).
+        check.py also fails an answer whose test is the misprint itself (the misprint is at least half of its words)."""
         import typoguard
         if not hasattr(self, '_typos'):
             off = {e['id'] for e in self.errata if e.get('withdrawn') or e.get('resolved')}
             self._typos = {k: v for k, v in typoguard.load_tokens().items() if k not in off}
             self._eissue = {e['id']: e['issue'] for e in self.errata}
+            self._use = {e['id']: bool(e.get('use_intended')) for e in self.errata}
         shown = []
+        ftext = ' '.join(f['text'] for f in self.facts if f['id'] in it['fact_ids'])
         for path, txt in typoguard.answer_fields(it):
             if path[0] in ('answers', 'labels'):
                 continue
             new = txt
             for eid, toks in self._typos.items():
                 for tok, cor in toks:
+                    # class B: an answer written with the intended form goes back to the printed wording
+                    if not self._use.get(eid, False) and tok in ftext and cor not in ftext:
+                        mc = re.search(r'(?<!\w)' + re.escape(cor) + r'(?!\w)', new)
+                        while mc:
+                            new = new[:mc.start()] + tok + new[mc.end():]
+                            mc = re.search(r'(?<!\w)' + re.escape(cor) + r'(?!\w)', new)
                     m = typoguard.find(tok, new)
                     while m:
+                        use = self._use.get(eid, False)
+                        if (eid, tok) not in [(x['erratum'], x['printed']) for x in shown]:
+                            shown.append({'erratum': eid, 'printed': tok, 'used': cor if use else tok})
+                        if not use:
+                            break
                         rep = cor[0].upper() + cor[1:] if m.group(0)[:1].isupper() and cor[:1].islower() else cor
                         new = new[:m.start()] + rep + new[m.end():]
-                        if (eid, tok) not in [(x['erratum'], x['printed']) for x in shown]:
-                            shown.append({'erratum': eid, 'printed': tok, 'used': cor})
                         m = typoguard.find(tok, new)
             if new != txt:
                 obj = it
@@ -222,11 +238,13 @@ class Topic:
                             f['qa'].append([it['q'], new])
         if shown:
             it['typo_shown'] = shown
-            notes = ' '.join(f'Textul tipărește „{x["printed"]}” ({x["erratum"]}: {self._eissue.get(x["erratum"], "")}); răspunsul folosește forma „{x["used"]}”.' for x in shown)
+            notes = ' '.join(f'Textul tipărește „{x["printed"]}” ({x["erratum"]}: {self._eissue.get(x["erratum"], "")})'
+                             + (f'; răspunsul folosește forma „{x["used"]}”.' if x['used'] != x['printed'] else '; răspunsul păstrează forma tipărită.')
+                             for x in shown)
             it['explanation'] = notes + ' ' + it['explanation']
             if 'needs_review' not in it['flags']:
                 it['flags'].append('needs_review')
-            it.setdefault('review_note', 'typo shown, not tested: ' + ', '.join(x['erratum'] for x in shown))
+            it.setdefault('review_note', 'misprint shown: ' + ', '.join(x['erratum'] for x in shown))
 
     def _shuffle(self, key, opts):
         h = int(hashlib.sha1(f'{self.topic}/{key}'.encode()).hexdigest(), 16)
@@ -321,12 +339,14 @@ class Topic:
                           labels=[{'t': t, 'fact': self.F(fk)[0]} for t, fk in labels], **kw)
 
     # ------------------------------------------------------------------ world
-    def prop(self, floor, room, pid, model, x, z, yaw, label):
+    def prop(self, floor, room, pid, model, x, z, yaw, label, on_model=False):
+        """on_model: the prop is a piece of furniture the institute model already has at (x, z) (no new mesh)"""
         assert pid.startswith(self.topic + '_') or pid.startswith(self.topic.split('_')[0]), f'prop id {pid} should start with the topic'
-        self.props.append({'floor': floor, 'room': room, 'id': pid, 'model': model, 'x': x, 'z': z, 'yaw': yaw, 'label': label, 'topic': self.topic})
+        self.props.append({'floor': floor, 'room': room, 'id': pid, 'model': model, 'x': x, 'z': z, 'yaw': yaw, 'label': label, 'topic': self.topic,
+                           'on_model': on_model})
 
-    def slot(self, floor, room, sid, kind, x, z, yaw):
-        self.slots.append({'floor': floor, 'room': room, 'id': sid, 'kind': kind, 'x': x, 'z': z, 'yaw': yaw, 'topic': self.topic})
+    def slot(self, floor, room, sid, kind, x, z, yaw, on_model=False):
+        self.slots.append({'floor': floor, 'room': room, 'id': sid, 'kind': kind, 'x': x, 'z': z, 'yaw': yaw, 'topic': self.topic, 'on_model': on_model})
 
     def script(self, sid, kind, room, title, steps, required=True, slot=None, prop=None, trigger='interact', npc=None):
         covers, S = [], []

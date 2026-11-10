@@ -9,7 +9,7 @@ pack that this prompt ships with (`tools/book/packbin.py`), not estimated, unles
 
 1. **MAP-2 — the institute scene.** Run the project prompt `learn1b-quest1-map2-prompt.md` first: it builds the institute
    scene from `content/gastro/institute.map` **as updated by BOOK-1** — rooms, doors, map slots, storeys, lifts, **plus the
-   201 `iprop` props (15 kinds, 2 of them new models: see "Prop kinds" below) and the 34 `islot` NPC
+   201 `iprop` props (15 kinds, 2 of them new models: see "Prop kinds" below) and the 33 `islot` NPC
    points**. MAP-2 owns the meshes, the instancing and the placement on the floor; BOOK-1 only adds the records.
 2. **BOOK-ENGINE — this prompt.** Only after MAP-2 is merged: load `gastro.mgpack`, play the script kinds, keep progress,
    apply the completion rules. If MAP-2 is not merged, stop after S2 and say so; do not fake the rooms in `hospital_v1`.
@@ -27,16 +27,21 @@ You are implementing **BOOK-ENGINE**: the Gastro chapter of the Kumar textbook, 
   same room; a part that starts inside a teach block shows that teach step again, step flag 1). Play the parts in order:
   the prop offers the first unfinished part.
 - 50 topics in 45 rooms of `content/gastro/institute.map` (MAP-2 layout v3), 5 chapters; 201 new interactable props
-  (`iprop`, 15 kinds) and 34 new NPC points (`islot`); per storey: storey 0: 46 props / 12 kinds, storey 1: 67 props / 12 kinds, storey 2: 59 props / 13 kinds, storey 3: 29 props / 10 kinds. Every prop and slot passes the
+  (`iprop`, 15 kinds) and 33 new NPC points (`islot`); per storey: storey 0: 46 props / 12 kinds, storey 1: 67 props / 12 kinds, storey 2: 59 props / 13 kinds, storey 3: 29 props / 10 kinds. Every prop and slot passes the
   placement check in `check.py` (inside its room, 0.3 m from walls unless wall-mounted, wall-mounted kinds flush on a wall,
   clear of doors and their 1.0 m approach, no overlap with props or map furniture, a free 0.6 m standing cell beside it
   that connects to the door). Interactables per room: min 1, median 6, max 9; none above 12.
 - 18 figures (`fig/<id>.png`, 200 dpi crops; `fig/figures.json` gives each label's box for `label` items).
-- Compiled: `gastro.mgpack` = **2,355,308 bytes** (2.25 MB): fixed-size little-endian records, one UTF-8 string
+- Compiled: `gastro.mgpack` = **2,356,892 bytes** (2.25 MB): fixed-size little-endian records, one UTF-8 string
   table, u32 offsets (`gastro.mgpack.h` holds the structs). Per-account progress = one bit per fact = **419 bytes**.
-- Measured by the reference reader: string table **1,818,519 bytes** (25,280 strings), longest string
+- Measured by the reference reader: string table **1,820,125 bytes** (25,275 strings), longest string
   **1,776 bytes**, largest single script **`s-barrett_dx-praga-p1`** (12 steps, 25,117 bytes of strings it pulls in:
   title, teach text, stems, options, explanations).
+
+- Text lengths, measured in characters (Unicode code points): stem max **287**, option / answer / entry max
+  **621**, explanation max **1,681**, teach text (one atom) max **1,636**. The longest string in the pack is
+  1,776 bytes. **Explanations, stems and teach text scroll inside the card; no text is ever cut, shortened or
+  ellipsised to fit.** Options wrap onto as many lines as they need.
 
 ## Prop kinds (`content/gastro/prop_kinds.json`)
 
@@ -50,11 +55,11 @@ a wall, `free` = stands in the room. yaw 0 faces +z (south), 90 east, 180 north,
 | plaque | existing | wall | 0.40 × 0.04 | 19 | small wall plaque, like the coloured door signs |
 | board | existing | wall | 1.60 × 0.10 | 26 | whiteboard (MAP-2 PROP board) |
 | lightbox | existing | wall | 0.90 × 0.10 | 17 | X-ray / figure viewer on the wall (MAP-2 PROP lightbox) |
-| shelf | existing | wall | 1.20 × 0.40 | 29 | shelf unit against a wall: books, drugs, specimens (MAP-2 shelf) |
-| cabinet | existing | wall | 0.80 × 0.50 | 6 | filing / storage cabinet (MAP-2 cabinet) |
+| shelf | existing | wall | 1.20 × 0.40 | 30 | shelf unit against a wall: books, drugs, specimens (MAP-2 shelf) |
+| cabinet | existing | wall | 0.80 × 0.50 | 5 | filing / storage cabinet (MAP-2 cabinet) |
 | counter | existing | wall | 1.60 × 0.60 | 2 | dispensing counter (map slot kind counter) |
-| bench | existing | wall | 1.80 × 0.70 | 6 | lab bench (map slot kind bench) |
-| cart | existing | free | 0.70 × 0.50 | 14 | trolley; used as the bedside chart trolley (MAP-2 PROP cart) |
+| bench | existing | wall | 1.80 × 0.70 | 5 | lab bench (map slot kind bench) |
+| cart | existing | free | 0.70 × 0.50 | 15 | trolley; used as the bedside chart trolley (MAP-2 PROP cart) |
 | monitor | existing | free | 0.50 × 0.50 | 19 | monitor on a stand; also OR screen and breath analyser (MAP-2 monitor) |
 | scope_tower | existing | free | 0.70 × 0.60 | 9 | endoscopy tower (MAP-2 trolleyTower) |
 | model | existing | free | 0.50 × 0.50 | 4 | anatomical model on a stand (MAP-2 PROP model) |
@@ -76,19 +81,19 @@ storey -1: 4, storey 0: 18, storey 1: 16, storey 2: 17, storey 3: 16, storey 4: 
 
 | # | table | record bytes | count | offset | holds |
 |---:|---|---:|---:|---:|---|
-| 0 | strings | 1 | 1,818,519 | 208 | NUL-terminated UTF-8, addressed by u32 offsets |
-| 1 | rooms | 28 | 85 | 1,818,728 | map room id, name, storey, rectangle |
-| 2 | topics | 40 | 50 | 1,821,112 | id, title, room, chapter, step; fact / item / script ranges |
-| 3 | atoms | 20 | 657 | 1,823,112 | printed text unit: page, topic, kind, layer |
-| 4 | facts | 20 | 3,349 | 1,836,256 | claim, atom, topic, page, type, flags (needs_review, unverified_ocr) |
-| 5 | items | 40 | 3,478 | 1,903,240 | stem, explanation, review note, type, flags, option / fact-ref ranges, correct mask |
-| 6 | opts | 20 | 10,301 | 2,042,360 | options, gaps, card answers, sort / match / order / label entries |
-| 7 | refs | 4 | 9,152 | 2,248,384 | u32: item → facts, teach step → atoms |
-| 8 | scripts | 36 | 382 | 2,284,992 | id, title, topic, room, kind, required, part / parts, prop / slot / npc, step range |
-| 9 | steps | 12 | 3,870 | 2,298,744 | stage (predict / teach / check), flags, item or atom-ref range |
-| 10 | props | 28 | 201 | 2,345,184 | iprop: id, kind, label, room, storey, yaw, x, z |
-| 11 | slots | 28 | 34 | 2,350,816 | islot: id, kind, room, storey, yaw, x, z |
-| 12 | figlabels | 20 | 177 | 2,351,768 | figure label text + box on the 200-dpi crop |
+| 0 | strings | 1 | 1,820,125 | 208 | NUL-terminated UTF-8, addressed by u32 offsets |
+| 1 | rooms | 28 | 85 | 1,820,336 | map room id, name, storey, rectangle |
+| 2 | topics | 40 | 50 | 1,822,720 | id, title, room, chapter, step; fact / item / script ranges |
+| 3 | atoms | 20 | 657 | 1,824,720 | printed text unit: page, topic, kind, layer |
+| 4 | facts | 20 | 3,349 | 1,837,864 | claim, atom, topic, page, type, flags (needs_review, unverified_ocr) |
+| 5 | items | 40 | 3,478 | 1,904,848 | stem, explanation, review note, type, flags, option / fact-ref ranges, correct mask |
+| 6 | opts | 20 | 10,301 | 2,043,968 | options, gaps, card answers, sort / match / order / label entries |
+| 7 | refs | 4 | 9,152 | 2,249,992 | u32: item → facts, teach step → atoms |
+| 8 | scripts | 36 | 382 | 2,286,600 | id, title, topic, room, kind, required, part / parts, prop / slot / npc, step range |
+| 9 | steps | 12 | 3,870 | 2,300,352 | stage (predict / teach / check), flags, item or atom-ref range |
+| 10 | props | 28 | 201 | 2,346,792 | iprop: id, kind, label, room, storey, yaw, x, z |
+| 11 | slots | 28 | 33 | 2,352,424 | islot: id, kind, room, storey, yaw, x, z |
+| 12 | figlabels | 20 | 177 | 2,353,352 | figure label text + box on the 200-dpi crop |
 
 - Reference reader: `content/gastro/mgpack_read.c` (C11, ~200 lines, no allocation after load) checks the header, every
   table bound and record size, every string offset and cross-reference, and prints counts and sizes. `check.py` compiles it
@@ -114,6 +119,10 @@ The institute scene exists (step 1 of "Order of work") and loads `iprop` / `islo
 `scene` at it. Check that every `iprop` id, room and storey of `institute.map` is reachable from game code by id.
 
 ### S1. Build: a private content location, compiled at build time
+
+- Known before you start: on Linux the desktop build fails in `engine/audio/audio_sdl.c` (`M_PI` is undeclared under
+  `-std=c11`; glibc defines it only with `_DEFAULT_SOURCE` / `_GNU_SOURCE`). BOOK-1 did not touch that file; fix it in the
+  engine step.
 
 - **Open question for the author (propose, do not decide):** where the pack lives. Proposal: a private repository (or
   private bucket) holding `gastro-pack.zip`, pinned in `content/CONTENT.lock` (path | sha256 | source, same format and
@@ -141,7 +150,7 @@ storey). BOOK-ENGINE only needs the prop / slot index → world position and sto
 
 - Each **anchor** (a prop, an NPC point or a map slot that scripts use) becomes one interactable (`ia_add`, a new kind
   `IA_SCRIPT` with the anchor's script list), label = the next unfinished script's title (parts in order), `on_interact`
-  opens the script player. Register only the anchors of the **current storey** (most on one storey: 89),
+  opens the script player. Register only the anchors of the **current storey** (most on one storey: 88),
   re-registered on storey change; this keeps the registry under `IA_MAX` (320) with NPCs and markers. The scan, ranges
   (2.0 / 2.5 m) and the panel are unchanged.
 - A room's station shows a marker until the room is complete (existing `markers.c`).
@@ -199,7 +208,7 @@ storey). BOOK-ENGINE only needs the prop / slot index → world position and sto
 | Area | Budget | BOOK-1 estimate | How |
 |---|---|---|---|
 | Draw calls per frame | 150 | +13 at most on one storey (one per prop kind, MAP-2), +≤3 UI while a card is open | instancing, one UI batch |
-| CPU tick | 5.0 ms | < 0.02 ms: ≤ 89 more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
+| CPU tick | 5.0 ms | < 0.02 ms: ≤ 88 more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
 | CPU render submission | 2.0 ms | + instance building for ≤ 201 props (< 0.05 ms) | estimate, measure |
 | Memory | 300 MB | pack 2.25 MB (embedded, read in place) + figure atlas ≤ 36 MB RGBA8 (2048² pages; ASTC 4×4 would be a quarter) + derived tables < 0.1 MB | measured / estimate |
 | Heap allocations in the frame loop | 0 | 0: fixed-size player state, arena tables built at load | |

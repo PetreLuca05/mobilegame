@@ -34,6 +34,7 @@ def main(pack):
         w(open(q, encoding='utf-8').read().strip() + '\n')
     w('## Checker output\n')
     w('```\n' + chk.strip() + '\n```\n')
+    corrections(pack, w, facts, items)
     closeout(pack, w, facts, items, scripts, quests)
     # totals
     nonws = sum(1 for c in cleaned if not c.isspace())
@@ -143,17 +144,58 @@ def main(pack):
     infl = os.path.join(pack, 'inflections.json')
     if os.path.exists(infl):
         R = json.load(open(infl, encoding='utf-8'))
-        w('\n## Appendix §2 — answers not verbatim in the book (non-cloze items)\n')
+        w('\n## Appendix §2 — short keyed answers that are not a verbatim span of their source\n')
         w(f'{len(R)} answers: ' + ', '.join(f'{k} {v}' for k, v in sorted(collections.Counter(r["kind"] for r in R).items())) + '. '
-          'Cloze gaps and label answers are exact substrings of the source sentence (check.py fails otherwise), so they are '
-          'not listed. kind = inflection (same words, changed form to fit the stem) or reworded (the item states it in other '
-          'words; the source sentence is quoted in its explanation).\n')
-        w('| item | type | printed form | used form | kind |')
+          'shortened = printed words in the printed order, one run; inflection = printed words, some inflected (only where the '
+          'stem\'s grammar needs it) or reordered; reworded = a word the source sentence does not print (kept on purpose, '
+          'needs_review). Cloze gaps and label answers are exact substrings (check.py), so they are not listed.\n')
+        w('| item | type | answer | kind | words not printed |')
         w('|---|---|---|---|---|')
         for r in R:
-            w(f'| {r["item"]} | {r["type"]} | {r["printed_form"].replace("|", "/")} | {r["used_form"].replace("|", "/")} | {r["kind"]} |')
+            w(f'| {r["item"]} | {r["type"]} | {r["used_form"].replace("|", "/")} | {r["kind"]} | {", ".join(r.get("not_printed", []))} |')
     open(os.path.join(pack, 'report.md'), 'w', encoding='utf-8').write('\n'.join(L) + '\n')
     print('report.md written')
+
+
+def corrections(pack, w, facts, items):
+    """the author's corrections round: typo classes, answers in printed words, props after relocation"""
+    P = lambda n: json.load(open(os.path.join(pack, n), encoding='utf-8')) if os.path.exists(os.path.join(pack, n)) else None
+    E = P('errata.json') or []
+    R3 = P('round3.json') or {}
+    w('## Corrections round (typo classes, printed words, props)\n')
+    T = [e for e in E if e['kind'] == 'typo']
+    A = [e for e in T if e.get('class') == 'A']
+    use = collections.Counter()
+    for it in items:
+        for x in it.get('typo_shown', []):
+            use[x['erratum']] += 1
+    w(f'- §1 typo errata: {len(T)} (class A spelling only: {len(A)}; class B: {len(T) - len(A)}). Items reverted to the printed '
+      f'wording: {len(R3.get("items_reverted_to_printed", []))}; tests moved by hand: {len(R3.get("items_test_moved_by_hand", []))}; '
+      f'items kept as printed with the misprint as their test (needs_review): {", ".join(i["id"] for i in items if i.get("typo_kept")) or "none"}.')
+    tf = P('typo_only_facts.json') or []
+    w('- facts whose only testable token is a misprint: ' + ('; '.join(f'{x["fact"]} ({", ".join(x["errata"])})' for x in tf) or 'none') + '\n')
+    w('| erratum | class | printed | intended | use_intended | items showing it |')
+    w('|---|---|---|---|---|---:|')
+    for e in T:
+        w(f'| {e["id"]} | {e.get("class", "")} | {e["printed"]} | {e.get("intended", "")} | {"yes" if e.get("use_intended") else "no"} | {use.get(e["id"], 0)} |')
+    inf = P('inflections.json') or []
+    c = collections.Counter(r['kind'] for r in inf)
+    sp = R3.get('previous_77_split', {})
+    w(f'\n- §2 short keyed answers not verbatim: {len(inf)} (shortened {c.get("shortened", 0)}, inflection {c.get("inflection", 0)}, '
+      f'reworded {c.get("reworded", 0)}). The previous report\'s 77 split: ' + ', '.join(f'{k} {v}' for k, v in sp.items()) +
+      f'. Reworded answers (words not printed in the source sentence): {R3.get("reworded_before", "?")} before, {c.get("reworded", 0)} after; '
+      'the ones left are kept on purpose, flagged needs_review: ' + ', '.join(sorted({r['item'] for r in inf if r['kind'] == 'reworded'})) + '.\n')
+    mv = P('plan/moves.json') or []
+    big = [m for m in mv if m['m'] > 1.0]
+    w(f'- §3 props and NPC points moved from their authored position (commit 33e4990): {len(mv)}; by more than 1.0 m: {len(big)}. '
+      'Plans: plan/0–3.png (and the reviewer\'s Plan tabs). Every move stays in its room, passes the placement check against the '
+      'institute model\'s own furniture (no overlap with beds, desks, shelves, posters; wall-mounted kinds flush on a free wall; clear of '
+      'doors and their approach; a reachable standing cell); 9 use furniture the model already has (on_model).\n')
+    w('| prop / point | room | kind | from (x, z) | to (x, z) | moved m | on the model |')
+    w('|---|---|---|---|---|---:|---|')
+    for m in big:
+        w(f'| {m["id"]} | {m["room"]} | {m["kind"]} | {m["from"][0]:.2f}, {m["from"][1]:.2f} | {m["to"][0]:.2f}, {m["to"][1]:.2f} | {m["m"]:.2f} | {"yes" if m["on_model"] else ""} |')
+    w('')
 
 
 def closeout(pack, w, facts, items, scripts, quests):

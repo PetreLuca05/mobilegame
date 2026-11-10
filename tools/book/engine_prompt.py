@@ -94,6 +94,10 @@ def main(pack, mgpack):
         'STRING_BYTES': f'{int(kv["string_table_bytes"]):,}', 'NSTRINGS': f'{int(kv["strings"]):,}',
         'LONGEST': f'{int(kv["longest_string_bytes"]):,}', 'BIG_SCRIPT': f'`{kv["largest_script"]}`',
         'BIG_STEPS': kv['largest_script_steps'], 'BIG_BYTES': f'{int(kv["largest_script_string_bytes"]):,}',
+        'MAX_STEM': f'{max(len(i["stem"]) for i in items):,}',
+        'MAX_OPT': f'{max([len(o["t"]) for i in items for o in i.get("options", [])] + [len(a) for i in items for a in i.get("answers", [])] + [len(i.get("answer", "")) for i in items] + [len(e["t"]) for i in items for e in i.get("entries", [])] + [len(x) for i in items for p in i.get("pairs", []) for x in (p["left"], p["right"])] + [len(x) for i in items for x in i.get("sequence", [])]):,}',
+        'MAX_EXPL': f'{max(len(i["explanation"]) for i in items):,}',
+        'MAX_ATOM': f'{max(len(a["text"]) for a in J("atoms.jsonl")):,}',
         'BITSET': f'{(len(facts) + 7) // 8}', 'FIGS': str(len(figs)),
         'FIG_MB': f'{len(figs) * 1024 * 1024 * 4 / 1048576 / 2:.0f}',
     }

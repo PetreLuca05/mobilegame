@@ -8,6 +8,12 @@ PAGES = 22
 
 def main(pack, outdir):
     os.makedirs(os.path.join(outdir, 'pages'), exist_ok=True)
+    os.makedirs(os.path.join(outdir, 'plans'), exist_ok=True)
+    import shutil
+    for f in range(4):                             # §3 storey plans (tools/book/plans.py)
+        src = os.path.join(pack, 'plan', f'{f}.png')
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(outdir, 'plans', f'{f}.png'))
     pdf = os.path.join(pack, '..', 'src', 'Gastro.pdf')
     for p in range(1, PAGES + 1):
         dst = os.path.join(outdir, 'pages', f'p{p:02d}')

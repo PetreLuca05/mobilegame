@@ -25,13 +25,15 @@ def main(pack, dry=False):
     for p in iprops:
         p[3] = K['model_to_kind'].get(p[3], p[3])
     moved = {}
+    occ = c.load_occupancy(pack)
+    onm = c.on_model_ids(open(os.path.join(pack, 'institute.map'), encoding='utf-8').read())
 
     def tup():
         return [tuple(p) for p in iprops], [tuple(p) for p in islots]
 
     for _round in range(6):
         ip, isl = tup()
-        fails = c.placement_check(rooms, ip, isl, K)
+        fails = c.placement_check(rooms, ip, isl, K, occ=occ, onm=onm)
         if not fails:
             break
         names = []
@@ -39,6 +41,9 @@ def main(pack, dry=False):
             if name not in names:
                 names.append(name)
         for name in names:
+            if name in onm:
+                print(f'  {name} is on the model furniture: fix it by hand')
+                continue
             rec = next((p for p in iprops if p[2] == name), None) or next((p for p in islots if p[2] == name), None)
             is_prop = rec in iprops
             room = rooms[rec[1]]
@@ -91,16 +96,18 @@ def main(pack, dry=False):
                     return False
                 if any(c.overlap(rc, a) for a in appr):
                     return False
+                if c.occ_hits(occ, room['floor'], rc):
+                    return False
                 return not any(c.overlap(rc, o[1]) for o in others)
             done = False
             room_names = {o[2] for o in iprops + islots if o[1] == rec[1]} - {name}
-            base = set(c.placement_check(rooms, ip, isl, K, only=room_names)) if room_names else set()
+            base = set(c.placement_check(rooms, ip, isl, K, only=room_names, occ=occ, onm=onm)) if room_names else set()
             for cost, x, z, yaw in [t for t in cands if cheap(t[1], t[2], t[3])][:60]:
                 rec[4], rec[5], rec[6] = x, z, yaw
                 ip, isl = tup()
-                if not c.placement_check(rooms, ip, isl, K, only={name}):
+                if not c.placement_check(rooms, ip, isl, K, only={name}, occ=occ, onm=onm):
                     # must not break the room's other objects
-                    if not room_names or set(c.placement_check(rooms, ip, isl, K, only=room_names)) <= base:
+                    if not room_names or set(c.placement_check(rooms, ip, isl, K, only=room_names, occ=occ, onm=onm)) <= base:
                         done = True
                         break
             if done:
@@ -109,7 +116,7 @@ def main(pack, dry=False):
                 rec[4], rec[5], rec[6] = ox, oz, oyaw
                 print(f'  could not place {name} in {rec[1]}')
     ip, isl = tup()
-    left = c.placement_check(rooms, ip, isl, K)
+    left = c.placement_check(rooms, ip, isl, K, occ=occ, onm=onm)
     print(f'moved {len(moved)}; failures left {len(left)}')
     for f in left:
         print('  ', f)
@@ -127,8 +134,11 @@ def main(pack, dry=False):
                 hit += n
         if hit != 1:
             print(f'  {name}: {hit} source lines rewritten (expected 1)')
-    json.dump({n: {'room': v[0], 'from': v[1:4], 'to': v[4:7]} for n, v in moved.items()},
-              open(os.path.join(pack, 'placement_moves.json'), 'w', encoding='utf-8'), indent=1)
+    mp = os.path.join(pack, 'placement_moves.json')
+    prev = json.load(open(mp, encoding='utf-8')) if os.path.exists(mp) else {}
+    for n, v in moved.items():                 # keep the first position as 'from' across rounds
+        prev[n] = {'room': v[0], 'from': prev.get(n, {}).get('from', list(v[1:4])), 'to': list(v[4:7])}
+    json.dump(prev, open(mp, 'w', encoding='utf-8'), indent=1)
     return moved, left
 
 

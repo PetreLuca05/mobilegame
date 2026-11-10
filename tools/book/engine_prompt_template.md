@@ -38,6 +38,11 @@ You are implementing **BOOK-ENGINE**: the Gastro chapter of the Kumar textbook, 
   **{LONGEST} bytes**, largest single script **{BIG_SCRIPT}** ({BIG_STEPS} steps, {BIG_BYTES} bytes of strings it pulls in:
   title, teach text, stems, options, explanations).
 
+- Text lengths, measured in characters (Unicode code points): stem max **{MAX_STEM}**, option / answer / entry max
+  **{MAX_OPT}**, explanation max **{MAX_EXPL}**, teach text (one atom) max **{MAX_ATOM}**. The longest string in the pack is
+  {LONGEST} bytes. **Explanations, stems and teach text scroll inside the card; no text is ever cut, shortened or
+  ellipsised to fit.** Options wrap onto as many lines as they need.
+
 ## Prop kinds (`content/gastro/prop_kinds.json`)
 
 `iprop` records name a **kind**, not a model: the same kind is reused with a different label (a poster is a poster whatever
@@ -88,6 +93,10 @@ The institute scene exists (step 1 of "Order of work") and loads `iprop` / `islo
 `scene` at it. Check that every `iprop` id, room and storey of `institute.map` is reachable from game code by id.
 
 ### S1. Build: a private content location, compiled at build time
+
+- Known before you start: on Linux the desktop build fails in `engine/audio/audio_sdl.c` (`M_PI` is undeclared under
+  `-std=c11`; glibc defines it only with `_DEFAULT_SOURCE` / `_GNU_SOURCE`). BOOK-1 did not touch that file; fix it in the
+  engine step.
 
 - **Open question for the author (propose, do not decide):** where the pack lives. Proposal: a private repository (or
   private bucket) holding `gastro-pack.zip`, pinned in `content/CONTENT.lock` (path | sha256 | source, same format and

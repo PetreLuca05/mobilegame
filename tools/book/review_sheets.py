@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """§5 review sheets for the author (book text: they travel in the zip, never in git).
   review_sheets.py PACK -> PACK/review_errata.csv, PACK/review_hidden.csv
-review_errata.csv: id, kind, page, printed, note, items_touching, decision (empty), item_ids
-  decision: keep | not_an_error | correct: <the reading to teach instead>
+review_errata.csv: id, kind, page, printed, intended, class, use_intended, note, items_touching, decision (empty), item_ids
+  class (typo errata): A spelling only / B everything else; use_intended: yes (A by default) puts the intended form in
+  answers, no (B by default) keeps the printed wording; decision: keep | not_an_error | correct: <the reading to teach instead>
 review_hidden.csv: pdf_page, page, token, sentence, best_reading, items_touching, ok (empty), source, item_ids
   ok: y (the best reading is right) | <the right reading>
 Both sorted by items touched, most first. `check.py PACK --apply-review` applies a filled sheet."""
@@ -43,7 +44,10 @@ def errata_rows(atoms, facts, items, errata):
             if any(x['erratum'] == e['id'] for x in it.get('typo_shown', [])) or e['id'] + ':' in (it.get('review_note') or '') \
                     or re.search(r'\b' + e['id'] + r'\b', it.get('review_note') or ''):
                 touch.add(it['id'])
-        rows.append({'id': e['id'], 'kind': e['kind'], 'page': e['page'], 'printed': e['printed'], 'note': e['issue'],
+        typo = e['kind'] == 'typo'
+        rows.append({'id': e['id'], 'kind': e['kind'], 'page': e['page'], 'printed': e['printed'],
+                     'intended': e.get('intended', '') if typo else '', 'class': e.get('class', '') if typo else '',
+                     'use_intended': ('yes' if e.get('use_intended') else 'no') if typo else '', 'note': e['issue'],
                      'items_touching': len(touch), 'decision': '', 'item_ids': ' '.join(sorted(touch))})
     rows.sort(key=lambda r: (-r['items_touching'], r['id']))
     return rows
@@ -111,7 +115,7 @@ def hidden_rows(pack, atoms, facts, items):
     return rows
 
 
-ERR_COLS = ['id', 'kind', 'page', 'printed', 'note', 'items_touching', 'decision', 'item_ids']
+ERR_COLS = ['id', 'kind', 'page', 'printed', 'intended', 'class', 'use_intended', 'note', 'items_touching', 'decision', 'item_ids']
 HID_COLS = ['pdf_page', 'page', 'token', 'sentence', 'best_reading', 'items_touching', 'ok', 'source', 'item_ids', 'atom', 'pos']
 
 
@@ -121,11 +125,13 @@ def main(pack):
     hr = hidden_rows(pack, atoms, facts, items)
     for name, cols, rows in (('review_errata.csv', ERR_COLS, er), ('review_hidden.csv', HID_COLS, hr)):
         p = os.path.join(pack, name)
-        old = {}
+        old, old_use = {}, {}
         if os.path.exists(p):                      # keep decisions already written
             for r in csv.DictReader(open(p, encoding='utf-8-sig')):
                 k = r.get('id') or (r.get('atom'), r.get('pos'))
                 old[k] = r.get('decision') or r.get('ok') or ''
+                if r.get('use_intended'):
+                    old_use[k] = r['use_intended']
         with open(p, 'w', encoding='utf-8-sig', newline='') as f:
             w = csv.DictWriter(f, fieldnames=cols)
             w.writeheader()
@@ -133,6 +139,8 @@ def main(pack):
                 k = r.get('id') or (r.get('atom'), str(r.get('pos')))
                 if old.get(k):
                     r['decision' if 'decision' in r else 'ok'] = old[k]
+                if old_use.get(k) and r.get('use_intended'):
+                    r['use_intended'] = old_use[k]
                 w.writerow(r)
     print(f'review_errata.csv {len(er)} rows ({sum(1 for r in er if r["items_touching"])} touching items); '
           f'review_hidden.csv {len(hr)} rows ({sum(1 for r in hr if r["items_touching"])} touching items)')
