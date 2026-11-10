@@ -253,8 +253,11 @@ typedef struct Game {
     double move_t0;
     bool move_entered;     /* the map's screen is up (t >= 0.9) */
     bool lib_placed;
+    HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
     bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
     double dissolve_t0;    /* Reduced motion: the 300 ms cross-dissolve's start (0 none) */
+    bool force_reduced;    /* --ui-motion reduced (not saved) */
+    bool force_full;       /* perf menu_to_map: the move, whatever the profile says (not saved) */
     int move_demo;         /* --lib-move-demo: Maps at 3 s, Back at 9 s (pictures); 1 armed, 2 out, 3 back; 4 perf menu_to_map (looped) */
     int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
@@ -550,7 +553,7 @@ bool game_init(MgApp *app)
         const char *at = arg_value(app->argc, app->argv, "--autotest");
         g->move_demo = has_flag(app->argc, app->argv, "--lib-move-demo") ? 1 : 0;
         if (arg_value(app->argc, app->argv, "--ui-motion") && SDL_strcmp(arg_value(app->argc, app->argv, "--ui-motion"), "reduced") == 0) {
-            g->settings.ui_motion = 1; /* tests: Animații interfață = Reduse for this run (not saved) */
+            g->force_reduced = true; /* tests: Animații interfață = Reduse for this run, never written to prefs */
         }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
@@ -656,7 +659,7 @@ bool game_init(MgApp *app)
         g->demo_lobby = true;
         if (SDL_strcmp(g->perf.scenario, "menu_to_map") == 0) { /* the move itself, looped (not the Reduse cross-dissolve) */
             g->move_demo = 4;
-            g->settings.ui_motion = 0;
+            g->force_full = true;
         }
     }
     if (arg_value(app->argc, app->argv, "--autotest") && SDL_strcmp(arg_value(app->argc, app->argv, "--autotest"), "lobbylayout") == 0) {
@@ -1719,6 +1722,7 @@ static bool menu_world(Game *g, MgApp *app)
         sp.view = HMM_LookAt_RH(sp.eye, look, HMM_V3(0, 1, 0));
     }
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
+    g->last_eye = sp.eye;
     scene_defaults(&sp, (float)app->time, &g->day_state);
     gfx_set_scene(app->gfx, &sp);
     for (int i = 0; i < LOBBY_MAX_PLAYERS; i++) {
@@ -1785,7 +1789,7 @@ static void map_preload(Game *g, MgApp *app)
 /* Maps / New Game from the menu: the camera leaves the table and lands on the map's camera, no cut. */
 #define DISSOLVE_S 0.3f
 
-static bool motion_reduced(const Game *g) { return g->settings.ui_motion == 1 || g->sys_reduce_motion; }
+static bool motion_reduced(const Game *g) { return !g->force_full && (g->force_reduced || g->settings.ui_motion == 1 || g->sys_reduce_motion); }
 
 static bool begin_map_move(Game *g, MgApp *app, WmState state)
 {
@@ -1873,6 +1877,7 @@ static void move_frame(Game *g, MgApp *app)
         gfx_set_scene(app->gfx, &sp);
     }
     g->view_proj = HMM_MulM4(proj, view);
+    g->last_eye = eye;
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
     const double age = app->time - g->move_t0;
@@ -1918,6 +1923,7 @@ static void map_flow(Game *g, MgApp *app)
         worldmap_voyage(&g->wm, (g->wm.cur + 1) % g->wm.count);
     }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    g->last_eye = g->wm.eye;
     if (g->lib_placed) { /* the library stands on the island played last: the closed building */
         g->lib.shell_k = 1.0f;
         menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
@@ -2074,7 +2080,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     ctx.maps_tag = g->maps_tag;
     ctx.maps_ready = g->wm.loaded || g->wm_tried; /* LIB-1: preloaded (or failed: Maps says so) */
     ctx.lobby_visible = g->lobby_visible;
-    ctx.lobby_host = g->demo_lobby || lobby_is_host(&g->lobby);
+    ctx.lobby_host = g->demo_lobby || g->lib_demo_join || lobby_is_host(&g->lobby); /* the demo lobbies: I host */
     ctx.lobby_open = g->lobby.open;
     ctx.rows = g->menu_rows;
     ctx.row_count = g->menu_row_count;
@@ -3182,6 +3188,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.net_ready = g->net && net_socket_ready(g->net);
     probe.avatar_meshes = &g->avatar_meshes;
     probe.library = &g->lib;
+    probe.move_state = g->move_state;
+    probe.move_t = g->move.t;
+    probe.cam_eye = g->last_eye;
+    probe.islands_drawn = g->wm.islands_drawn;
+    probe.frame_dt = (float)app->frame_dt;
+    probe.dissolve = g->dissolve_t0 > 0.0 ? 1.0f - (float)((app->time - g->dissolve_t0) / DISSOLVE_S) : 0.0f;
     probe.text_center_err = g->text_test ? g->text_center_err : -1.0f;
     for (int i = 0; i < 3; i++) {
         probe.text_center_each[i] = g->text_center_each[i];
@@ -3419,7 +3431,7 @@ static void game_frame_inner(MgApp *app, float alpha)
             g->sys_reduce_motion = sys_reduce, g->sys_reduce_logged = true;
             mg_log_info("ui: system Reduce Motion %s", sys_reduce ? "on" : "off");
         }
-        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || sys_reduce || g->uitest.reduced);
+        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || sys_reduce || g->uitest.reduced || g->force_reduced);
     }
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
     { /* screen changes enter; the UI shake moves UI only, never the camera */

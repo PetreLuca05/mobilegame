@@ -1,4 +1,5 @@
 #include "autotest_friends.h"
+#include "menu_library.h"
 
 #include <SDL3/SDL.h>
 #include <string.h>
@@ -21,7 +22,7 @@ typedef enum FtOpKind {
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
     OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED, OP_STATS_FLUSH,
-    OP_ROWS, OP_AVATARS, OP_INVITE_OVER,
+    OP_ROWS, OP_AVATARS, OP_INVITE_OVER, OP_LIB_SEATED, OP_LIB_LEFT,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -117,10 +118,10 @@ static const FtOp k_ma[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_a", 0}, SIG("a_ready"), WAIT("b_req"), WAIT("c_req"), WAIT("d_req"), {OP_BADGE, NULL, 3},
     TAP("account_chip"), TAP("ftab1"), SLEEP(1.0), {OP_ACCEPT_ALL, NULL, 0}, {OP_FRIENDS, NULL, 3}, BACK, SIG("a_accepted"),
     ROWS(1), SLEEP(0.5), SHOT("lobby_solo"), {OP_OPEN_IS, NULL, 1},
-    WAIT("b_menu"), INVITE("code_b"), SHOT("invite_mode"), BACK, NOTICE_K(NOTICE_INFO), SHOT("joined_panel"), ROWS(2), SIG("a_b_in"), WAIT("b_checked"),
+    WAIT("b_menu"), INVITE("code_b"), SHOT("invite_mode"), BACK, NOTICE_K(NOTICE_INFO), SHOT("joined_panel"), ROWS(2), {OP_LIB_SEATED, NULL, 0}, SHOT("library_friend_in"), SIG("a_b_in"), WAIT("b_checked"),
     TAP("lobby_switch"), {OP_OPEN_IS, NULL, 0}, SLEEP(1.5), SIG("a_locked"), WAIT("c_menu"), INVITE("code_c"), BACK, ROWS(3), SIG("a_c_in"), WAIT("c_checked"),
     WAIT("d_refused"), WAIT("d_menu"), INVITE("code_d"), BACK, ROWS(4), SLEEP(0.5), SHOT("lobby_host_4p"), SIG("a_four"), WAIT("b4"), WAIT("c4"), WAIT("d4"),
-    TAP("lobby_kick3"), ROWS(3), SIG("a_kicked_d"), WAIT("d_solo"), WAIT("c_left"), ROWS(2),
+    TAP("lobby_kick3"), ROWS(3), {OP_LIB_LEFT, NULL, 0}, SIG("a_kicked_d"), WAIT("d_solo"), WAIT("c_left"), ROWS(2),
     TAP("lobby_kick1"), ROWS(1), SIG("a_kicked_b"), WAIT("b_solo"), SLEEP(11.0), INVITE("code_b"), BACK, ROWS(2), SIG("a_b_again"),
     TAP("lobby_switch"), {OP_OPEN_IS, NULL, 1},
     NEW_GAME, PLAYERS(2), SIG("a_started"), WAIT("b_in_game"), {OP_NPC, NULL, 0}, SIG("a_npc"), WAIT("b_played"), BACK_TO_MENU, ROWS(2), SIG("a_back"), WAIT("b_left"), ROWS(1),
@@ -617,12 +618,49 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         done = lobby_in_menu(l) && n == (int)o->n && rows[0].host;
         break;
     }
-    case OP_AVATARS: { /* in the scene, and so with a name tag: as many as the list */
+    case OP_AVATARS: { /* LIB-1: in the library, me included: as many as the list (arriving or seated) */
         int n = 0;
-        for (int k = 0; k < (int)MG_ARRAY_COUNT(p->fe->avatars); k++) {
-            n += p->fe->avatars[k].active && p->fe->avatars[k].listed && p->fe->avatars[k].fade >= 1.0f ? 1 : 0;
+        for (int k = 0; k < LIB_SEATS && p->library; k++) {
+            const int st = p->library->seat[k].state;
+            n += st == LM_WALK_IN || st == LM_SIT || st == LM_STUDY ? 1 : 0;
         }
         done = n == (int)o->n;
+        break;
+    }
+    case OP_LIB_SEATED: /* LIB-1: everyone listed is studying; whoever walked in did it by the book */
+        for (int k = 1; k < LIB_SEATS && p->library; k++) {
+            const LibMember *mb = &p->library->seat[k];
+            if (mb->state == LM_EMPTY) {
+                continue;
+            }
+            if (mb->state != LM_STUDY) {
+                if (mb->t_join > 0.0 && p->library->clock - mb->t_join > 6.0) {
+                    return fail_now(t, "library: a friend is not seated 6 s after joining");
+                }
+                return 0;
+            }
+            if (mb->t_join > 0.0 && (!mb->outside_first || mb->door_max <= 1.5f || mb->t_seated - mb->t_join > 6.0 || mb->blend_seated <= 0.9f)) {
+                SDL_snprintf(t->why, sizeof(t->why), "library: seat %d outside first %d, door %.2f rad, seated in %.2f s, sit blend %.2f", k, mb->outside_first,
+                             (double)mb->door_max, mb->t_seated - mb->t_join, (double)mb->blend_seated);
+                return -1;
+            }
+            if (mb->t_join > 0.0) {
+                mg_log_info("autotest friends: library seat %d: in through the door (%.2f rad), seated in %.2f s, book open", k, (double)mb->door_max,
+                            mb->t_seated - mb->t_join);
+            }
+        }
+        done = true;
+        break;
+    case OP_LIB_LEFT: { /* LIB-1: the kicked one walked out and the door shut within 2 s */
+        const LibMember *g = p->library ? &p->library->gone : NULL;
+        if (!g || g->t_gone <= 0.0 || g->t_shut <= 0.0) {
+            return 0;
+        }
+        if (g->t_shut - g->t_gone > 2.0) {
+            return fail_now(t, "library: the door did not shut within 2 s of the walk out");
+        }
+        mg_log_info("autotest friends: library: the kicked friend walked out in %.2f s, the door shut %.2f s after", g->t_gone - g->t_left, g->t_shut - g->t_gone);
+        done = true;
         break;
     }
     case OP_INVITE_OVER:

@@ -10,6 +10,15 @@
  *      passes, seated within 6 s with its book open; screenshot library_joined
  *   5  it leaves (at 10 s): stands, walks out, despawns, the door is shut (< 0.05 rad) within 2 s after
  *   6  the menu opening with three friends already in the lobby: all seated on that frame (a scratch copy)
+ *   7  Maps (a tap on the row), twice: the first takes the pictures, the second (none: a capture stalls a frame) is
+ *      timed; the move ends on the map camera at duration_s +- 1 frame, the camera never
+ *      jumps (a frame's step per second of the move's own clock <= 1.5 x the previous + 0.6 m/s: so a
+ *      screenshot's stalled frame does not count), every frame draws the world; screenshots library_move_000 .. _100 at t 0, .25, .5, .75, 1
+ *   8  Back: the reverse ends on the menu camera, the hero studying, the lobby's rows unchanged
+ *   9  Locker: the creator pose (sitting up, study blend 0.15) within 1.5 s, and back
+ *      with --ui-motion reduced: no move; the map at once under a 300 ms cross-dissolve (the run ends there)
+ *  10  run with --frontend welcome (tools/library_test.sh): the library behind onboarding, the hero walks in once
+ *  11  the table and its seats inside the free rect (checked in 1; tools/library_test.sh: iPhone both ways, iPad)
  * The two-instance version of 4 and 5 (a real friend, a real kick) runs in tools/friends2_test.sh. */
 #ifndef MG_AUTOTEST_LIBRARY_H
 #define MG_AUTOTEST_LIBRARY_H
@@ -29,6 +38,14 @@ typedef struct LibraryTest {
     float door_max, open_at_seat;
     bool outside_first, seen;
     int prev_state;
+    /* the move */
+    HMM_Vec3 prev_eye;
+    float prev_speed, prev_t, worst_jump;
+    int frames, empty_frames, shots, rows_before;
+    double move_start, finger_up, back_took;
+    bool finger_down, fresh, second; /* second: the timed Maps / Back, no pictures */
+    bool dissolve_seen;
+    float dissolve_first;
     char why[200];
 } LibraryTest;
 

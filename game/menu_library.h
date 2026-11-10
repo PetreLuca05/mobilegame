@@ -113,6 +113,11 @@ typedef struct LibMember {
     float yaw_deg;
     AvatarAnim anim;
     LibStudy study;
+    /* what tests check (the library's clock, s): the walk in and the walk out */
+    double t_join, t_seated, t_left, t_gone, t_shut;
+    float door_max;      /* the door's angle while this walker passed it */
+    float blend_seated;  /* its sit blend when it started studying (> 0.9: the book is open) */
+    bool outside_first;  /* it appeared at door.outside */
 } LibMember;
 
 typedef struct MenuLibrary {
@@ -135,6 +140,8 @@ typedef struct MenuLibrary {
     float creator_l;   /* pt: the creator panel's right edge */
     float creator_shift;
     float shell_k; /* 0 the cutaway .. 1 the shell closed: nothing inside is drawn or simulated (the map) */
+    double clock;  /* seconds the room has been drawn (tests' timestamps) */
+    LibMember gone; /* the last walker to leave, for tests (its seat may already be taken again) */
     bool debug_turns; /* --debug turn-page: a page every 2.5 s */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
 } MenuLibrary;

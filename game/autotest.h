@@ -122,6 +122,12 @@ typedef struct AutotestProbe {
     bool net_ready;            /* the socket is up with a channel joined (user:<uid> or a room) */
     const struct AvatarMeshes *avatar_meshes; /* --autotest avatar */
     const struct MenuLibrary *library;        /* --autotest library */
+    int move_state;            /* LIB-1: 0 none, 1 to the map, 2 back */
+    float move_t;              /* its t (0..1) */
+    HMM_Vec3 cam_eye;          /* this frame's camera (menu, move or map) */
+    int islands_drawn;         /* the map's islands drawn this frame */
+    float frame_dt;
+    float dissolve;            /* LIB-1 Reduse: the captured frame's weight (0 none) */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */

@@ -508,6 +508,7 @@ static void member_start(MenuLibrary *L, int i, const LobbyRow *r, bool seated)
     mb->host = r->host;
     mb->listed = true;
     lib_study_init(&mb->study, &L->sc, id_hash(r->id) + (uint32_t)i);
+    mb->t_join = seated ? 0.0 : L->clock; /* seated at once: no walk to check */
     if (seated) {
         mb->state = LM_STUDY;
         mb->blend = mb->study_w = 1.0f;
@@ -517,6 +518,7 @@ static void member_start(MenuLibrary *L, int i, const LobbyRow *r, bool seated)
         mb->state = LM_WALK_IN;
         mb->pos = path_at(seat, 0.0f, &dir);
         mb->yaw_deg = yaw_of(dir);
+        mb->outside_first = HMM_LenV2(HMM_SubV2(mb->pos, L->sc.door.outside)) < 0.15f;
     }
 }
 
@@ -545,8 +547,10 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
             mb->host = rows[r].host;
             if (mb->state == LM_WALK_OUT) {
                 mb->state = LM_WALK_IN;
+                mb->t_left = 0.0;
             } else if (mb->state == LM_STAND) {
                 mb->state = LM_SIT;
+                mb->t_left = 0.0; /* back before it got up: the next leave is timed afresh */
             }
         } else if (free_at >= 0) {
             member_start(L, free_at, &rows[r], snap);
@@ -601,10 +605,16 @@ static void member_step(MenuLibrary *L, int i, float dt)
         mb->yaw_deg = yaw_of(dir);
         const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
         mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
+        if (HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < 0.5f) {
+            mb->door_max = fmaxf(mb->door_max, L->door_angle);
+        }
         if (in && mb->s >= total) {
             mb->state = LM_SIT;
         } else if (!in && mb->s <= 0.0f) {
             mb->state = LM_EMPTY;
+            mb->t_gone = L->clock;
+            L->gone = *mb;
+            L->gone.t_shut = 0.0;
         }
         break;
     }
@@ -615,6 +625,8 @@ static void member_step(MenuLibrary *L, int i, float dt)
         mb->yaw_deg = seat->yaw_deg;
         if (mb->blend >= 1.0f) {
             mb->state = LM_STUDY;
+            mb->t_seated = L->clock;
+            mb->blend_seated = mb->blend;
         }
         break;
     case LM_STUDY:
@@ -631,6 +643,9 @@ static void member_step(MenuLibrary *L, int i, float dt)
         break;
     case LM_STAND: /* up out of the seat: the chair slides back as the body rises */
         mb->study_w = approach(mb->study_w, 0.0f, STUDY_OUT_RATE, dt);
+        if (mb->t_left <= 0.0) {
+            mb->t_left = L->clock;
+        }
         mb->blend = fmaxf(mb->blend - dt / s->study.stand_s, 0.0f);
         mb->chair = 1.0f - mb->blend;
         mb->pos = HMM_LerpV2(seat->stand, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
@@ -793,6 +808,10 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         }
     }
     L->door_angle = approach(L->door_angle, walker_at_door ? s->door.open_rad : 0.0f, s->door.rate, dt);
+    L->clock += dt;
+    if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && L->door_angle < 0.05f) {
+        L->gone.t_shut = L->clock;
+    }
     const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
     gfx_draw(g, L->room, &L->xf, &room, 0);
     const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));

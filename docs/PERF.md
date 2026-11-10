@@ -380,3 +380,25 @@ Instruments drop-out, part 2: on USB the iPad still fell out of `xctrace list de
 ## TILT-1 + A1 (6686bab, Mac only)
 
 No device runs until after LIB-1 (standing rule). Release desktop build, `--autotest perf` on all 14 scenarios with `--tilt-sine` (1 Hz, full strength); data in `docs/perf/tilt1/mac_*.json`. Every scenario: 1 pass, 1 UI draw, 0 heap allocations, draws unchanged against the UI-1 / UI-1b Mac runs (e.g. yard 68.0, lobby4 98.2, menu 74.5, ui_juice 74.5, worldmap_voyage 23.0). CPU tick within the Mac's run-to-run noise (under the 0.1 ms floor). The tilt is one uniform and a float4 per UI instance (96 -> 112 bytes; ~300 instances = +5 KB per frame upload). iPad CPU + GPU: in the combined gate after LIB-1.
+
+## LIB-1 + A1 (Mac only; the iPad gate comes after LIB-1)
+
+Mac Release, `--autotest perf SCENARIO 60`, `docs/perf/lib1a1/` (A1) and `docs/perf/lib1/` (the library steps). Per step against the
+step before; 1 pass and 0 heap allocations everywhere unless noted.
+
+| Step | Scenario | Draws avg (max) | Triangles avg | Frame / render ms avg | Note |
+|---|---|---|---|---|---|
+| A1 | stress200 | 89.5 -> 71.7 | 372 k -> 87 k | | the new avatar (TILT-1 numbers before) |
+| A1 | lobby4 | 98.2 -> 75.3 | 362 k -> 80 k | | |
+| A1 | interact_npc | 97 -> 74.9 | 212 k -> 59 k | | |
+| 1-2 | menu | 74.5 -> 17.3 (19) | 257 k -> 10 k | 0.111 -> 0.079 / 0.235 -> 0.19 | the hospital backdrop -> the library, the hero studying |
+| 3 | menu | 17.3 -> 23.0 (24) | 10 k -> 14.7 k | 0.079 -> 0.085 / 0.19 -> 0.195 | the 4-player demo lobby seated |
+| 4 | menu | 23.0 -> 23.6 (24) | 14.7 k -> 22.6 k | 0.085 -> 0.084 / 0.195 -> 0.18 | six NPCs, the cart |
+| 5 | menu | 23.6 (24) | 22.6 k | 0.084 -> 0.094 / 0.18 -> 0.205 | the Locker only (run-to-run noise) |
+| 6 | menu | 23.6 (24) | 22.6 k | 0.098 / 0.208 | resident 180 -> 191 MB: the map preloaded |
+| 6 | menu_to_map | 26.1 (40) | 27.8 k (36.9 k) | 0.058 / 0.175 | new: the move looped; the estimate was <= 45 draws |
+
+Estimates (LIB-1 section 7): menu <= 22 draws / ~18 k triangles: 23.6 / 22.6 k (1.07x / 1.25x, under the 2x stop rule); the move
+<= 45 draws: 40 at most. `menu_to_map` first showed 7 allocations in 2 frames (SDL's per-command-buffer uniform-buffer lists growing
+on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled command buffer; one `prefs.json` write per Back
+(cJSON) is exempt like the map's one load. GPU numbers come from the combined iPad gate.

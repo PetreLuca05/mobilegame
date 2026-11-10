@@ -1,4 +1,4 @@
-# Mobilegame — engine, hospital, lighting, onboarding (M1-M4), world map (WORLD-1)
+# Mobilegame — engine, hospital, lighting, onboarding (M1-M4), world map (WORLD-1), library menu (LIB-1)
 
 C11 engine for iOS / Android phones and iPad on SDL3 + SDL3 GPU, with a desktop
 target for fast iteration. Current focus: desktop + iOS (Android code still
@@ -281,10 +281,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 
 - `game/frontend.c`: WELCOME -> USERNAME -> CREATOR -> MAIN_MENU (first
   launch; later boots go straight to the menu), SETTINGS,
-  LOADING, PLAY. Welcome, Username, Creator, Main menu, Settings and Friends draw the real hospital from outside
-  behind the hero (`menu_world` in `game/game.c`, `MENU_*` camera, NPCs on `MENU_NPC_SEED`); controls in the left
-  column; the Creator opened from the game keeps the locker room. `npc_world_start` is a clean start (slots, ids, nav queue), so the
-  menu's NPCs cannot change a game's deterministic sim. Back = Android
+  LOADING, PLAY. Welcome, Username, Creator, Main menu, Settings and Friends draw the library (LIB-1, below)
+  behind the menu (`menu_world` in `game/game.c`); controls in the left column; the Creator opened from the game
+  keeps the locker room. The hospital is no longer built for the menu: a game builds it while loading. Back = Android
   back / Escape (exits from the welcome screen). Desktop: `--frontend
   welcome|username|creator|menu|settings`, `--play new|continue`.
 - Text lives in `assets/strings.json` (`str("key")`), never in C.
@@ -335,7 +334,7 @@ The main menu is the lobby. `player_status.state`: 0 none, 1 menu lobby, 2 in ga
 - Room events: `m` (members, host first, the order of the list), `c` = `net_send_room_cmd` (`NET_ROOM_START {map, seed, tick, save_hash}`, `NET_ROOM_TO_MENU`). The host's New Game / Continue takes everyone in; "Save & back to menu" brings everyone back (`lobby_return_to_menu`). Quitting, signing out or losing the connection still ends the session. A guest's "Ieși" = `lobby_stop`, back to their own solo lobby.
 - Invites: `lobby_invites` (60 s, RLS, no policies; named in `merge_ticket_redeem`). `lobby_invite(guest)` returns `ok` / `full` / `busy` / `offline` / `rate_limited` (one per guest per 10 s) and only reaches a friend alone in their own menu. `invite_respond(host, accept)`; accepting is the invited path of `lobby_join_request`, which skips the lock and the host's panel, deletes the invite and pushes `member_joined`. `invite_declined` tells the host. The invitee's panel (`NOTICE_INVITE`) declines itself after 30 s. The host's button says "Trimisă" until it resolves or expires (`lobby_invite_sent`).
 - `lobby_return_to_menu()` host only. `friends_list` gains `in_menu`; `open` / `locked` / `full` / `in_other_lobby` cover states 1 and 2.
-- Menu (`frontend.c` `lobby_panel`, `game.c` `menu_layout`): header + rows under the account chip (40 pt heads, procedural crown and x in the UI batch), host-only switch, Invită and kick. Every player stands in the scene on `FeAvatar` slots, 0.9 m apart, name-tagged; the camera backs off as the line grows, so it fits between the menu column and the panel. Guests get a disabled "Gazda pornește jocul…" row. Offline: hero alone, chip says Offline.
+- Menu (`frontend.c` `lobby_panel`, `game.c` `menu_layout`): header + rows under the account chip (40 pt heads, procedural crown and x in the UI batch), host-only switch, Invită and kick. Every player sits at the library's table (LIB-1: seat 0 me, 1-3 the others in list order), name chips over the others; the camera backs off until the table and its seats fit between the menu column and the panel. Guests get a disabled "Gazda pornește jocul…" row. Offline: hero alone, chip says Offline.
 - Friends page: Join when their lobby is open, Invite when they are online and not in your lobby, side by side. `invite_mode` (from the lobby's Invită): invitable friends first, reasons for the rest. Adaugă: your friend code with copy, one search bar (a typed code gets its own + row). Block and report are tagged "Curând".
 - Tests: `tools/friends2_test.sh OUT` (roles ma, mb, mc, md, four instances), `tools/friends2_two_device.sh OUT` (d2h on the iPad, d2g on the Mac), `--autotest lobbylayout` (full lobby: iPhone, iphone-flip, iPad), `--autotest perf menu` (a demo 4-player lobby without the network).
 
@@ -556,3 +555,36 @@ Android counterpart **Samsung Galaxy S20 (Snapdragon 865 / Adreno 650,
 Android 10+)**. Budget: 60 fps with < 4 ms GPU per frame. SDL GPU has no GPU
 timestamp queries, so measure GPU time with Xcode's Metal frame capture /
 Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
+
+## Avatar (LIB-1 A1)
+
+- `game/avatar.c`: the library avatar for every player and NPC: parts from `assets/avatar/avatar.mgmesh` (+ `avatar_options.mgmesh`
+  from `tools/gen_avatar_options.py`: the other hair styles, suit details, extras), sizes and motion from `assets/avatar/avatar.json`.
+  Smooth + cel shaded (smooth normals, 70 deg crease; the suit body takes its lathe profile's normals), black outlines from
+  smooth-normal hulls. One pose function, `avatar_solve`; `avatar_animate(meshes, anim, pose, dt)` eases move (12 /s, full from 1 m/s),
+  heading (10 /s), browse / push / look. Hair style 0 stays "None" (the exported cap is style 1, Short): saved skins keep their meaning.
+- Suits are zones of one body mesh (vertex alpha = 255 - zone): `GfxMaterial.extra` = outfit, trim, accent, zone mask (+ `GFX_ZONE_BODY1`),
+  coloured / collapsed in the vertex shader (`common.hlsli` `zone_apply`), so no extra draw per suit.
+- Seats: the body base goes to the seat's top + the library's clearance (`AvatarRig.seat_clearance`, measured from `library.mgmesh`):
+  `HOSP_CHAIR_TOP` 0.48, `HOSP_BENCH_TOP` 0.47. Canes walk in steps (drawn only: the sim's position moves evenly).
+- The states that did not map cleanly and their substitutes: `docs/AVATAR.md` section 8, pictures in `docs/autotest/avatar/substitutes/`.
+- Tests: `--autotest avatar` (assembly, walk, turn, cane, the remote path through replication, 200 option samples, old skins);
+  `tools/avatar_test.sh` (also the pictures: option sheet, ages, poses, seats, bed, x-ray); `--avatar-gallery NAME`, `--log-npc-poses TICK`.
+
+## Library menu (LIB-1)
+
+- `game/menu_library.c`: `assets/menu/library.mgmesh` + `library.scene.json` (mg-library 1; every position, angle and duration comes
+  from it). A cutaway (the shell is not drawn in the menu); the camera from `camera.menu`, backed off and re-centred until the table and
+  its four seats fit the free rect. `game/lib_study.c` = STUDY (read / page turn, the right hand rides the leaf tip). Seats: walk in
+  through the door along the seat's path, sit (`sit_s`, the chair slides), study; leavers stand and walk out; already-listed members
+  are seated on the frame the menu opens; the door eases while a walker is near it. Six NPCs on a small route runner (+ the cart and the
+  seated reader). The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
+- The library stands on the island played last (island JSON `library`, `library_pad`, `library_path`; `tools/place_library.py`: the spot
+  nearest `start` >= 30 from every hospital plot, >= 8 from the road, on the plateau, facing the road, and (added) the 13 x 10.5 pad on bare
+  grass, no scenery triangle under it; props within 10.5 removed; the pad and the path are part of the island's road mesh) at `lib_scale`.
+- The map preloads behind the menu (`worldmap_load_step`, one island per frame; the Maps row waits). Maps / Back / New Game are one camera
+  move (`game/lib_move.c`: log-distance + hump, target along the cumulative distance, the shell dithers in, the map UI enters at t 0.9);
+  Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch.
+- Desktop: `--debug turn-page`, `--lib-closeup [side]`, `--lib-demo-join`, `--lib-move-demo`, `--ui-motion reduced`. Tests:
+  `--autotest library` (`tools/library_test.sh`: + Reduse, a fresh install, the free rect on the iPhone presets and the iPad), the
+  two-instance join / kick in `tools/friends2_test.sh` (role ma), perf scenario `menu_to_map` (the move looped).

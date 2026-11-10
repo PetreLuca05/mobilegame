@@ -143,9 +143,59 @@ static void watch(LibraryTest *t, const MenuLibrary *L, double now)
     t->prev_state = mb->state;
 }
 
+/* a tap on a widget: down now, up 80 ms later; true once it is up */
+static bool tap(LibraryTest *t, MgApp *app, const AutotestProbe *p, const char *id, double now)
+{
+    float x, y;
+    if (t->finger_down) {
+        if (now >= t->finger_up) {
+            ui_find(p->ui, id, &x, &y);
+            autotest_finger(app, SDL_EVENT_FINGER_UP, 902, x, y);
+            t->finger_down = false;
+            return true;
+        }
+        return false;
+    }
+    if (ui_find(p->ui, id, &x, &y)) {
+        autotest_finger(app, SDL_EVENT_FINGER_DOWN, 902, x, y);
+        t->finger_down = true;
+        t->finger_up = now + 0.08;
+    }
+    return false;
+}
+
+/* one frame of a move: continuity and the world on screen. A frame's camera step is measured per second of
+ * the move's own clock (its t x duration), so a screenshot's stalled frame does not look like a jump. */
+static int move_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out)
+{
+    const float dt = (p->move_t - t->prev_t) * L->sc.transition.duration_s;
+    if (t->frames > 0 && dt > 1e-5f) {
+        const float speed = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)) / dt;
+        if (t->frames > 1 && speed > 1.5f * t->prev_speed + 0.6f) {
+            t->worst_jump = fmaxf(t->worst_jump, speed - 1.5f * t->prev_speed);
+            mg_log_info("autotest library: jump at frame %d (t %.3f): %.4f m in %.4f s, %.2f m/s after %.2f", t->frames, (double)p->move_t,
+                        (double)HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)), (double)dt, (double)speed, (double)t->prev_speed);
+        }
+        t->prev_speed = speed;
+    }
+    if (dt > 1e-5f || t->frames == 0) {
+        t->prev_eye = p->cam_eye;
+        t->prev_t = p->move_t;
+    }
+    t->frames++;
+    if (p->islands_drawn <= 0 && p->move_t > 0.15f) { /* past the library's own frames the island must be there */
+        t->empty_frames++;
+    }
+    static const float marks[5] = {0.0f, 0.25f, 0.5f, 0.75f, 0.999f};
+    if (t->shots < 5 && p->move_t >= marks[t->shots] && p->move_state == 1) {
+        SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_move_%03d", (int)(marks[t->shots] * 100.0f + 0.5f));
+        t->shots++;
+    }
+    return 0;
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
-    (void)app;
     const MenuLibrary *L = p->library;
     if (!L || !L->ok) {
         return failf(t, "no library");
@@ -155,6 +205,26 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     }
     switch (t->stage) {
     case 0:
+        if (p->fe_state == FE_WELCOME && !t->fresh) { /* 10: a fresh install */
+            t->fresh = true;
+            t->at = now;
+        }
+        if (t->fresh) {
+            const LibMember *h = &L->seat[0];
+            if (h->state == LM_WALK_IN && !t->seen) {
+                t->seen = true;
+                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_welcome_walk");
+            }
+            if (t->seen && h->state == LM_STUDY) {
+                mg_log_info("autotest library: 10 onboarding shows the library, the hero walked in (outside the door first %s) and sat (ok)",
+                            HMM_LenV2(HMM_SubV2(L->sc.seats[0].path[0], L->sc.door.outside)) < 0.15f ? "yes" : "no");
+                return 1;
+            }
+            if (now - t->at > 12.0) {
+                return failf(t, "onboarding: the hero did not walk in and sit (state %d)", (int)h->state);
+            }
+            return 0;
+        }
         if (p->fe_state != FE_MAIN_MENU) {
             return 0;
         }
@@ -213,6 +283,149 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             return 0;
         }
         mg_log_info("autotest library: 5 the friend left: walked out in %.2f s, the door shut %.2f s after (ok)", t->gone - t->left, t->shut - t->gone);
+        t->stage = 5;
+        return 0;
+    case 5: /* 7: Maps */
+        if (t->second && now - t->at < 0.8) {
+            return 0;
+        }
+        if (!tap(t, app, p, "menurow4", now)) {
+            return now - (t->second ? t->at : t->shut) > 10.0 ? failf(t, "maps: the row did not take the tap (preloaded? %d)", p->wm != NULL) : 0;
+        }
+        t->rows_before = p->ui ? 1 : 0;
+        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f;
+        t->shots = t->second ? 5 : 0; /* the second Maps takes no pictures: its wall-clock time is measured */
+        t->back_took = 0.0;
+        t->stage = 6;
+        return 0;
+    case 6:
+        if (p->dissolve > 0.0f || t->dissolve_seen) { /* Animații interfață = Reduse: a 300 ms cross-dissolve, no move */
+            if (!t->dissolve_seen) {
+                t->dissolve_seen = true;
+                t->move_start = now;
+                t->dissolve_first = p->dissolve;
+            }
+            if (p->move_state != 0) {
+                return failf(t, "reduced: the camera move ran under Reduse");
+            }
+            if (p->dissolve > 0.0f) {
+                return now - t->move_start > 0.5 ? failf(t, "reduced: the dissolve still on after 0.5 s") : 0;
+            }
+            mg_log_info("autotest library: 7 Reduse: no move, the map at once, the captured frame from %.2f to 0 in %.3f s (want 0.3), screen %d",
+                        (double)t->dissolve_first, now - t->move_start, p->fe_state);
+            if (p->fe_state != FE_MAP || now - t->move_start > 0.3 + 2.5 / 60.0) {
+                return failf(t, "reduced: screen %d, dissolve %.3f s", p->fe_state, now - t->move_start);
+            }
+            return 1; /* the rest needs the move: this run checks the dissolve only */
+        }
+        if (p->move_state == 1) {
+            if (t->frames == 0) {
+                t->move_start = now; /* from the move's first frame */
+            }
+            return move_watch(t, p, L, out);
+        }
+        if (t->frames == 0) {
+            return now - t->move_start > 2.0 ? failf(t, "maps: no move started") : 0;
+        }
+        { /* the frame after: the map's own camera */
+            const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
+            const double took = now - t->move_start;
+            mg_log_info("autotest library: 7 Maps%s: %d frames in %.3f s%s, landing step %.4f, worst jump %.3f m/s, %d frames without the island",
+                        t->second ? " (timed)" : " (pictures)", t->frames, took, t->second ? " (want 3.0 +- 1 frame)" : "", (double)land, (double)t->worst_jump,
+                        t->empty_frames);
+            if ((t->second && fabs(took - L->sc.transition.duration_s) > 1.5 / 60.0) || t->worst_jump > 0.0f || t->empty_frames > 0 || land > 0.05f ||
+                p->fe_state != FE_MAP) {
+                return failf(t, "maps: %.3f s, jump %.3f, %d empty frames, landing %.4f, state %d", took, (double)t->worst_jump, t->empty_frames,
+                             (double)land, p->fe_state);
+            }
+        }
+        t->at = now;
+        t->stage = 7;
+        return 0;
+    case 7: /* 8: Back */
+        if (now - t->at < 1.0) {
+            return 0;
+        }
+        if (!tap(t, app, p, "wm_back", now)) {
+            return now - t->at > 6.0 ? failf(t, "back: the map's Back did not take the tap") : 0;
+        }
+        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f;
+        t->stage = 8;
+        return 0;
+    case 8:
+        if (p->move_state == 2) {
+            if (t->frames == 0) {
+                t->move_start = now;
+            }
+            return move_watch(t, p, L, out);
+        }
+        if (t->frames == 0) {
+            return now - t->move_start > 2.0 ? failf(t, "back: no move started") : 0;
+        }
+        if (t->back_took <= 0.0) {
+            t->back_took = now - t->move_start; /* the first frame after it (the probe is one frame behind at both ends) */
+        }
+        if (now - t->move_start < (double)L->sc.transition.duration_s + 0.3) {
+            return 0; /* a few menu frames: the camera settles where the move left it */
+        }
+        {
+            const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
+            const double took = t->back_took;
+            mg_log_info("autotest library: 8 Back: %d frames in %.3f s (want %.1f +- 1 frame), worst jump %.3f m/s, the menu camera %.4f from where the move ended, hero %s, %d friends seated",
+                        t->frames, took, (double)L->sc.transition.duration_s, (double)t->worst_jump, (double)land, L->seat[0].state == LM_STUDY ? "studying" : "NOT studying",
+                        (L->seat[1].state == LM_STUDY) + (L->seat[2].state == LM_STUDY) + (L->seat[3].state == LM_STUDY));
+            if (fabs(took - L->sc.transition.duration_s) > 1.5 / 60.0 || t->worst_jump > 0.0f || land > 0.05f || L->seat[0].state != LM_STUDY ||
+                p->fe_state != FE_MAIN_MENU) {
+                return failf(t, "back: jump %.3f, the menu camera %.4f away, hero state %d, screen %d", (double)t->worst_jump, (double)land,
+                             (int)L->seat[0].state, p->fe_state);
+            }
+        }
+        t->at = now;
+        if (!t->second) { /* Maps once more, without pictures: timed */
+            t->second = true;
+            t->stage = 5;
+            return 0;
+        }
+        t->stage = 9;
+        return 0;
+    case 9: /* 9: Locker */
+        if (now - t->at < 0.8) {
+            return 0;
+        }
+        if (!tap(t, app, p, "menurow31", now)) {
+            return now - t->at > 5.0 ? failf(t, "locker: the row did not take the tap") : 0;
+        }
+        t->at = now;
+        t->stage = 10;
+        return 0;
+    case 10:
+        if (now - t->at < 1.5) {
+            return 0;
+        }
+        if (L->creator_t < 0.95f || fabsf(L->seat[0].study_w - 0.15f) > 0.03f) {
+            return failf(t, "locker: creator blend %.2f, study blend %.2f (want 1, 0.15)", (double)L->creator_t, (double)L->seat[0].study_w);
+        }
+        mg_log_info("autotest library: 9 Locker: the camera on camera.creator (%.2f), the hero sits up (study blend %.2f) (ok)", (double)L->creator_t,
+                    (double)L->seat[0].study_w);
+        SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_locker");
+        t->at = now;
+        t->stage = 11;
+        return 0;
+    case 11:
+        if (now - t->at < 0.5) {
+            return 0;
+        }
+        if (!tap(t, app, p, "creator", now)) {
+            return now - t->at > 5.0 ? failf(t, "locker: Done did not take the tap") : 0;
+        }
+        t->at = now;
+        t->stage = 12;
+        return 0;
+    case 12:
+        if (L->creator_t > 0.01f || L->seat[0].study_w < 0.9f) {
+            return now - t->at > 3.0 ? failf(t, "locker: not back (creator %.2f, study %.2f)", (double)L->creator_t, (double)L->seat[0].study_w) : 0;
+        }
+        mg_log_info("autotest library: 9 Locker closed: back on the menu camera, bent over the book again (ok)");
         return 1;
     default:
         return 1;

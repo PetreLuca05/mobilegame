@@ -418,6 +418,10 @@ int ht_run(HapticTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
                 }
                 return now - t->at > 4.0 ? failf(t, "%s never opened", screens[t->screen_i].name) : 0;
             }
+            if (p->move_state != 0) { /* LIB-1: the map's camera move takes no input; 2 s from its end */
+                t->at = now;
+                return 0;
+            }
             if (now - t->at > 2.0) {
                 t->item = 0, t->pressed = t->recorded = t->skipped = 0;
                 t->sub = 3;

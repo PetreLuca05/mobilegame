@@ -345,9 +345,9 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
         }
         return 0;
     }
-    case 15: { /* the menu: four rows and Continue, none scrolled away */
+    case 15: { /* the menu: four rows and Continue, none scrolled away (LIB-1: after Back's 3 s camera move) */
         tap_busy(&w->tap, app, now);
-        if (p->fe_state != FE_MAIN_MENU || in < 1.0) {
+        if (p->fe_state != FE_MAIN_MENU || p->move_state != 0 || in < 4.2) {
             return 0;
         }
         static const char *const rows[] = {"menurow0", "menurow4", "menurow31", "menurow2"};
