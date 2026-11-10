@@ -68,7 +68,7 @@ Fonts: Baloo 2 ExtraBold (display: titles, buttons, numbers), Nunito Bold (body)
 
 ### Rendering
 
-The whole UI is one instanced draw (`GfxUiInst`, 96 bytes, up to 8192 per frame) inside the existing pass; particles, rings, tokens and the banner are instances in the same draw. No blur anywhere: modals use the flat `scrim`. `gfx_ui_group` squashes a widget about its origin (press, pop, breathe); `gfx_ui_screen` moves the whole layer (screen enter, stagger, UI shake). The 3D lift panel and the preview card stay 3D insets; only their colours changed (surface body, primary keys with the press scale on the key mesh; the preview card is surface on a lip).
+The whole UI is one instanced draw (`GfxUiInst`, 96 bytes, up to 8192 per frame) inside the existing pass; particles, rings, tokens and the banner are instances in the same draw. No blur anywhere: modals use the flat `scrim`. Scroll areas never clip across their axis; along it only an end that content extends past is clipped, and there content dissolves over the last 12 pt (`gfx_ui_clip_fade`, a per-instance value in the same draw). Touches use the exact area. `gfx_ui_group` squashes a widget about its origin (press, pop, breathe); `gfx_ui_screen` moves the whole layer (screen enter, stagger, UI shake). The 3D lift panel and the preview card stay 3D insets; only their colours changed (surface body, primary keys with the press scale on the key mesh; the preview card is surface on a lip).
 
 ### Motion
 
