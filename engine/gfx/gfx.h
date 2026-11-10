@@ -43,7 +43,7 @@ typedef struct GfxUiInst {
     float clip[4];  /* x0, y0, x1, y1; set by gfx from gfx_ui_clip */
     float shape[4];
     uint8_t color[4], color2[4]; /* rgba */
-    float kind, pad;
+    float kind, fade; /* fade: set by gfx from gfx_ui_clip_fade */
 } GfxUiInst; /* 96 bytes */
 
 typedef enum GfxMaterialKind {
@@ -212,6 +212,8 @@ void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM
 /* Clip the UI instances that follow to a rect (pt) until gfx_ui_clip_off (in the shader: no extra draw). */
 void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);
+/* With a clip on: dissolve the instances over the last `pt` inside its edges (0 = hard edge); cleared by clip_off. */
+void gfx_ui_clip_fade(GfxContext *g, float pt);
 /* Render this frame's GFX_DRAW_PREVIEW draws with a second camera into an
  * offscreen square, shown at (x, y) `size` pt wide with rounded corners,
  * over the UI quads (keep other UI out of that square). Lighting comes from

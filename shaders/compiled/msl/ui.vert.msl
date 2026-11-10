@@ -49,7 +49,7 @@ struct UiVS
     float4 u_screen;
 };
 
-constant spvUnsafeArray<float2, 6> _28 = spvUnsafeArray<float2, 6>({ float2(0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0), float2(1.0), float2(0.0, 1.0) });
+constant spvUnsafeArray<float2, 6> _27 = spvUnsafeArray<float2, 6>({ float2(0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0), float2(1.0), float2(0.0, 1.0) });
 
 struct VSMain_out
 {
@@ -60,7 +60,7 @@ struct VSMain_out
     float4 _entryPointOutput_col [[user(locn4)]];
     float4 _entryPointOutput_col2 [[user(locn5)]];
     float4 _entryPointOutput_clip [[user(locn6)]];
-    float3 _entryPointOutput_ptk [[user(locn7)]];
+    float4 _entryPointOutput_ptk [[user(locn7)]];
     float4 gl_Position [[position]];
 };
 
@@ -76,24 +76,24 @@ struct VSMain_in
     float2 i_kind [[attribute(7)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _116 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _115 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
 {
     VSMain_out out = {};
-    uint _248 = gl_VertexIndex % 6u;
-    float2 _254 = in.i_rect.zw * 0.5;
-    float2 _273 = (_28[_248] - float2(0.5)) * (in.i_rect.zw + float2(((in.i_kind.x > 0.5) && (in.i_kind.x < 1.5)) ? 3.0 : 0.0));
-    float2 _240 = _273;
-    float2 _303 = (in.i_rect.xy + _254) + float2((in.i_xf.x * _240.x) + (in.i_xf.z * _240.y), (in.i_xf.y * _240.x) + (in.i_xf.w * _240.y));
-    float2 _242 = _303;
-    out.gl_Position = float4((_242.x * _116.u_screen.x) - 1.0, 1.0 - (_242.y * _116.u_screen.y), 0.0, 1.0);
-    out._entryPointOutput_uv = mix(in.i_uv.xy, in.i_uv.zw, _28[_248]);
-    out._entryPointOutput_local = _273;
-    out._entryPointOutput_half_size = _254;
+    uint _247 = gl_VertexIndex % 6u;
+    float2 _253 = in.i_rect.zw * 0.5;
+    float2 _272 = (_27[_247] - float2(0.5)) * (in.i_rect.zw + float2(((in.i_kind.x > 0.5) && (in.i_kind.x < 1.5)) ? 3.0 : 0.0));
+    float2 _239 = _272;
+    float2 _302 = (in.i_rect.xy + _253) + float2((in.i_xf.x * _239.x) + (in.i_xf.z * _239.y), (in.i_xf.y * _239.x) + (in.i_xf.w * _239.y));
+    float2 _241 = _302;
+    out.gl_Position = float4((_241.x * _115.u_screen.x) - 1.0, 1.0 - (_241.y * _115.u_screen.y), 0.0, 1.0);
+    out._entryPointOutput_uv = mix(in.i_uv.xy, in.i_uv.zw, _27[_247]);
+    out._entryPointOutput_local = _272;
+    out._entryPointOutput_half_size = _253;
     out._entryPointOutput_shape = in.i_shape;
     out._entryPointOutput_col = in.i_col;
     out._entryPointOutput_col2 = in.i_col2;
     out._entryPointOutput_clip = in.i_clip;
-    out._entryPointOutput_ptk = float3(_303, in.i_kind.x);
+    out._entryPointOutput_ptk = float4(_302, in.i_kind.x, in.i_kind.y);
     return out;
 }
 

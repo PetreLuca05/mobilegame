@@ -302,7 +302,7 @@ float ui_letter_keypad(Ui *ui, const char *id, float x, float y, float w, float 
     return 3.0f * (key_h + gap);
 }
 
-#define UI_SCROLL_OVERDRAW 12.0f /* pt drawn past a scroll viewport's ends: the release stretch (1.12 from the bottom) is ~7 pt */
+#define UI_SCROLL_FADE 12.0f /* pt over which content dissolves at a scroll area's ends */
 
 float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, bool horizontal)
 {
@@ -332,14 +332,18 @@ float ui_scroll_begin(Ui *ui, UiScroll *s, float x, float y, float w, float h, b
     }
     float max_off = mg_maxf(s->content - (horizontal ? w : h), 0.0f);
     s->offset = mg_clampf(s->offset, 0.0f, max_off);
-    /* What is drawn: no clip across the scroll axis (nothing scrolls out that way) and a margin along it,
-     * so press squash, lips, breathe, enter and stagger never cut a widget. Touches keep the exact viewport. */
-    const float big = 1e5f, pad = UI_SCROLL_OVERDRAW;
+    /* What is drawn: no clip across the scroll axis (nothing scrolls out that way), so press squash, lips,
+     * breathe, enter and stagger never cut a widget; along it only an end that content extends past is
+     * clipped, and there it dissolves over the last 12 pt instead of a hard cut. Touches keep the exact viewport. */
+    const float big = 1e5f, view = horizontal ? w : h, start = horizontal ? x : y;
+    const float lo = s->offset > 0.5f ? start : -big;                          /* scrolled: content hides past the start */
+    const float hi = s->offset < max_off - 0.5f ? start + view : big;           /* more below: content hides past the end */
     if (horizontal) {
-        gfx_ui_clip(ui->gfx, x - pad, -big, w + 2.0f * pad, 2.0f * big);
+        gfx_ui_clip(ui->gfx, lo, -big, hi - lo, 2.0f * big);
     } else {
-        gfx_ui_clip(ui->gfx, -big, y - pad, 2.0f * big, h + 2.0f * pad);
+        gfx_ui_clip(ui->gfx, -big, lo, 2.0f * big, hi - lo);
     }
+    gfx_ui_clip_fade(ui->gfx, UI_SCROLL_FADE);
     ui->clip_on = true;
     ui->clip[0] = x;
     ui->clip[1] = y;

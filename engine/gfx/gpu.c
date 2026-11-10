@@ -178,6 +178,7 @@ struct GfxContext {
     SDL_GPUGraphicsPipeline *panel_pipe;     /* the settings preview composite (rounded, on the swapchain) */
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
     float ui_clip[4];     /* x0, y0, x1, y1 for the instances that follow; x1 < x0 = none */
+    float ui_clip_fade;   /* pt dissolved inside the clip's edges */
     float ui_group[6];    /* a, b, c, d, ox, oy */
     bool ui_group_on;
     float ui_screen[3];   /* dx, dy, alpha */
@@ -1149,6 +1150,7 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_count = 0;
     g->ui_clip[0] = g->ui_clip[1] = 0.0f;
     g->ui_clip[2] = g->ui_clip[3] = -1.0f;
+    g->ui_clip_fade = 0.0f;
     g->ui_group_on = false;
     g->ui_screen[0] = g->ui_screen[1] = 0.0f;
     g->ui_screen[2] = 1.0f;
@@ -1220,6 +1222,7 @@ bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst)
     GfxUiInst *o = &g->ui_insts[g->ui_count++];
     *o = *inst;
     memcpy(o->clip, g->ui_clip, sizeof(o->clip));
+    o->fade = g->ui_clip_fade;
     if (g->ui_group_on) { /* move the centre about the origin, compose the 2 x 2 */
         const float *m = g->ui_group;
         const float cx = o->rect[0] + o->rect[2] * 0.5f - m[4], cy = o->rect[1] + o->rect[3] * 0.5f - m[5];
@@ -1261,8 +1264,11 @@ void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h)
     g->ui_clip[0] = x, g->ui_clip[1] = y, g->ui_clip[2] = x + w, g->ui_clip[3] = y + h;
 }
 
+void gfx_ui_clip_fade(GfxContext *g, float pt) { g->ui_clip_fade = pt > 0.0f ? pt : 0.0f; }
+
 void gfx_ui_clip_off(GfxContext *g)
 {
+    g->ui_clip_fade = 0.0f;
     g->ui_clip[0] = g->ui_clip[1] = 0.0f;
     g->ui_clip[2] = g->ui_clip[3] = -1.0f;
 }

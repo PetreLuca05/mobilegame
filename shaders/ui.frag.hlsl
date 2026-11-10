@@ -14,7 +14,7 @@ struct UiOut
     [[vk::location(4)]] float4 col : TEXCOORD4;
     [[vk::location(5)]] float4 col2 : TEXCOORD5;
     [[vk::location(6)]] float4 clip : TEXCOORD6;
-    [[vk::location(7)]] float3 ptk : TEXCOORD7;
+    [[vk::location(7)]] float4 ptk : TEXCOORD7; // screen pt, kind, clip fade (pt)
 };
 
 // signed distance to a rounded box centred on the origin (negative inside)
@@ -25,12 +25,28 @@ float rounded_box(float2 p, float2 half_size, float r)
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
+float4 shade(UiOut i);
+
 float4 PSMain(UiOut i) : SV_Target0
 {
-    if (i.clip.z >= i.clip.x && (i.ptk.x < i.clip.x || i.ptk.y < i.clip.y || i.ptk.x > i.clip.z || i.ptk.y > i.clip.w))
+    float fade = 1.0;
+    if (i.clip.z >= i.clip.x)
     {
-        discard;
+        float edge = min(min(i.ptk.x - i.clip.x, i.clip.z - i.ptk.x), min(i.ptk.y - i.clip.y, i.clip.w - i.ptk.y));
+        if (edge < 0.0)
+        {
+            discard;
+        }
+        if (i.ptk.w > 0.0) // a scroll area's ends: dissolve over the last ptk.w pt
+        {
+            fade = saturate(edge / i.ptk.w);
+        }
     }
+    return shade(i) * fade; // premultiplied: rgb and alpha together
+}
+
+float4 shade(UiOut i)
+{
     float kind = i.ptk.z;
     if (kind > 1.5) // head icon: 8 x 8 cells, a circle with a ring of the colour
     {

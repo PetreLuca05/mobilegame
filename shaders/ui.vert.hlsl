@@ -13,7 +13,7 @@ struct UiIn
     [[vk::location(4)]] float4 shape : TEXCOORD4;  // radius, stroke, highlight band, dashes
     [[vk::location(5)]] float4 col : TEXCOORD5;
     [[vk::location(6)]] float4 col2 : TEXCOORD6;
-    [[vk::location(7)]] float2 kind : TEXCOORD7;   // x: 0 glyph, 1 shape, 2 head
+    [[vk::location(7)]] float2 kind : TEXCOORD7;   // x: 0 glyph, 1 shape, 2 head; y: clip fade width (pt, 0 = hard edge)
     uint vid : SV_VertexID;
 };
 
@@ -27,7 +27,7 @@ struct UiOut
     [[vk::location(4)]] float4 col : TEXCOORD4;
     [[vk::location(5)]] float4 col2 : TEXCOORD5;
     [[vk::location(6)]] float4 clip : TEXCOORD6;
-    [[vk::location(7)]] float3 ptk : TEXCOORD7;    // screen pt (for the clip), kind
+    [[vk::location(7)]] float4 ptk : TEXCOORD7;    // screen pt (for the clip), kind, clip fade
 };
 
 UiOut VSMain(UiIn i)
@@ -48,6 +48,6 @@ UiOut VSMain(UiIn i)
     o.col = i.col;
     o.col2 = i.col2;
     o.clip = i.clip;
-    o.ptk = float3(p, i.kind.x);
+    o.ptk = float4(p, i.kind.x, i.kind.y);
     return o;
 }
