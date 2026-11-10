@@ -135,6 +135,9 @@ typedef struct Game {
     AvatarMeshes avatar_meshes;
     AvatarGallery gallery; /* --avatar-gallery NAME */
     MenuLibrary lib;       /* LIB-1: the menu's backdrop */
+    bool lib_hero_walked;  /* the first onboarding screen's walk-in happened */
+    bool lib_demo_join;    /* --lib-demo-join: a friend joins at 1 s and leaves at 10 s (no network) */
+    double lib_demo_t0;
     AvatarAnim local_anim;
     AvatarLook local_look;
     NetTransport *net;
@@ -534,6 +537,8 @@ bool game_init(MgApp *app)
     }
     {
         const char *cu = arg_value(app->argc, app->argv, "--lib-closeup");
+        const char *at = arg_value(app->argc, app->argv, "--autotest");
+        g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
     }
     g->local_look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
@@ -1671,7 +1676,13 @@ static bool menu_world(Game *g, MgApp *app)
         g->menu_world_on = false;
         return false;
     }
+    const bool opened = !g->menu_world_on; /* members already in the lobby are seated on this frame */
     g->menu_world_on = true;
+    menu_library_roster(&g->lib, g->menu_rows, g->lobby_visible ? g->menu_row_count : 0, opened);
+    if (st == FE_WELCOME && !g->lib_hero_walked) { /* a fresh install: the hero comes in once */
+        g->lib_hero_walked = true;
+        menu_library_hero_walk_in(&g->lib);
+    }
     const bool panel = st == FE_MAIN_MENU && g->lobby_visible;
     const float free_l = frontend_menu_right(app, (FeState)st) + 8.0f, free_r = frontend_menu_free_right(app, panel) - 8.0f;
     GfxSceneParams sp = {0};
@@ -1807,6 +1818,23 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = i == 0;
         }
     }
+    if (g->lib_demo_join && f->state == FE_MAIN_MENU) { /* LIB-1 tests: a friend walks in, studies, walks out */
+        if (g->lib_demo_t0 <= 0.0) {
+            g->lib_demo_t0 = app->time;
+        }
+        const double t = app->time - g->lib_demo_t0;
+        g->lobby_visible = true;
+        g->menu_row_count = t > 1.0 && t < 10.0 ? 2 : 1;
+        for (int i = 0; i < 2; i++) {
+            LobbyRow *r = &g->menu_rows[i];
+            SDL_zerop(r);
+            SDL_snprintf(r->id, sizeof(r->id), i == 0 ? "me" : "friend");
+            SDL_snprintf(r->name, sizeof(r->name), i == 0 ? "Petre" : "Ana");
+            r->skin = AVATAR_DEFAULT_SKIN;
+            r->skin.suit = (uint8_t)(i * 5), r->skin.hair = (uint8_t)(2 + i), r->skin.accessory = 0;
+            r->host = r->me = i == 0;
+        }
+    }
     if (f->state == FE_MAP) {
         map_flow(g, app);
         return;
@@ -1846,20 +1874,28 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         lobby_layout_check(g, app, &ctx);
     }
     gfx_ui_depth(app->gfx, 0.0f, 0); /* TILT-1: the lobby players' tags are world-anchored */
-    if (f->state == FE_MAIN_MENU && world_behind && g->lobby_visible) { /* the players' name tags, the same style as in play */
-        const float head = avatar_name_tag_y(&g->avatar_meshes, NULL, 0.0f);
-        for (int e = 0; e < (int)MG_ARRAY_COUNT(f->avatars); e++) {
-            const FeAvatar *av = &f->avatars[e];
-            if (!av->active || av->fade < 0.5f) {
+    if (f->state == FE_MAIN_MENU && world_behind) { /* LIB-1: a chip over each friend at the table, none over me */
+        for (int i = 1; i < LIB_SEATS; i++) {
+            HMM_Vec3 top;
+            const char *name;
+            bool host;
+            if (!menu_library_chip(&g->lib, &g->avatar_meshes, i, &top, &name, &host)) {
                 continue;
             }
-            const HMM_Vec3 top = HMM_AddV3(ctx.slots[av->at], HMM_V3(0, head, 0));
-            HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(top, 1.0f));
-            if (av->host && c.W > 0.01f) {
-                const float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt, y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
-                frontend_draw_crown(app->gfx, &app->font, x - text_width(&app->font, av->name, 12.0f) * 0.5f - 16.0f, y - 6.0f, 12.0f);
+            const HMM_Vec4 c = HMM_MulM4V4(g->view_proj, HMM_V4V(top, 1.0f));
+            if (c.W <= 0.01f) {
+                continue;
             }
-            name_tag(g, app, top, av->name);
+            const float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt, y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
+            const float half = text_width(&app->font, name, 12.0f) * 0.5f + 18.0f;
+            const bool on_panel = g->lobby_visible && x + half > g->fe.lobby_x && y > g->fe.lobby_y - 12.0f && y < g->fe.lobby_y + g->fe.lobby_h + 12.0f;
+            if (on_panel || x - half < frontend_menu_right(app, FE_MAIN_MENU)) {
+                continue; /* walking behind the lobby panel or the menu column: no chip over the UI */
+            }
+            if (host) {
+                frontend_draw_crown(app->gfx, &app->font, x - half + 2.0f, y - 6.0f, 12.0f);
+            }
+            name_tag(g, app, top, name);
         }
     }
     gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);

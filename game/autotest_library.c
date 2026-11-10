@@ -7,6 +7,7 @@
 #include "frontend.h"
 #include "menu_library.h"
 #include "avatar.h"
+#include "lobby.h"
 
 static int failf(LibraryTest *t, const char *fmt, ...)
 {
@@ -88,12 +89,69 @@ static int reads(LibraryTest *t, const LibScene *sc)
     return turns >= 21 ? 0 : failf(t, "reads: only %d turns", turns);
 }
 
+static int snap_three(LibraryTest *t, const MenuLibrary *L)
+{
+    static MenuLibrary copy; /* a scratch copy: the real one keeps its people */
+    copy = *L;
+    LobbyRow rows[4];
+    SDL_zeroa(rows);
+    for (int i = 0; i < 4; i++) {
+        SDL_snprintf(rows[i].id, sizeof(rows[i].id), "snap%d", i);
+        SDL_snprintf(rows[i].name, sizeof(rows[i].name), "P%d", i);
+        rows[i].me = i == 0;
+    }
+    for (int i = 1; i < LIB_SEATS; i++) {
+        copy.seat[i].state = LM_EMPTY;
+    }
+    menu_library_roster(&copy, rows, 4, true);
+    for (int i = 1; i < LIB_SEATS; i++) {
+        if (copy.seat[i].state != LM_STUDY || copy.seat[i].blend < 1.0f) {
+            return failf(t, "snap: seat %d is not seated on the frame the menu opens", i);
+        }
+    }
+    mg_log_info("autotest library: 6 three friends already in the lobby: all seated on the first frame (ok)");
+    return 0;
+}
+
+/* The demo friend, every frame */
+static void watch(LibraryTest *t, const MenuLibrary *L, double now)
+{
+    const LibMember *mb = &L->seat[1];
+    const LibScene *s = &L->sc;
+    const bool walking = mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT;
+    if (mb->state != LM_EMPTY && !t->seen) {
+        t->seen = true;
+        t->joined = now;
+        t->outside_first = HMM_LenV2(HMM_SubV2(mb->pos, s->door.outside)) < 0.15f;
+    }
+    if (walking && HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < 0.5f) {
+        t->door_max = fmaxf(t->door_max, L->door_angle);
+    }
+    if (mb->state == LM_STUDY && t->seated <= 0.0) {
+        t->seated = now;
+        t->open_at_seat = mb->blend;
+    }
+    if (t->seated > 0.0 && t->left <= 0.0 && (mb->state == LM_STAND || mb->state == LM_WALK_OUT)) {
+        t->left = now;
+    }
+    if (t->left > 0.0 && t->gone <= 0.0 && mb->state == LM_EMPTY) {
+        t->gone = now;
+    }
+    if (t->gone > 0.0 && t->shut <= 0.0 && L->door_angle < 0.05f) {
+        t->shut = now;
+    }
+    t->prev_state = mb->state;
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     (void)app;
     const MenuLibrary *L = p->library;
     if (!L || !L->ok) {
         return failf(t, "no library");
+    }
+    if (p->fe_state == FE_MAIN_MENU) {
+        watch(t, L, now);
     }
     switch (t->stage) {
     case 0:
@@ -106,7 +164,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (now - t->at < 2.0) {
             return 0;
         }
-        if (L->hero_anim.t <= 0.0f || L->sc.seats[0].path_n == 0) {
+        if (L->seat[0].anim.t <= 0.0f || L->seat[0].state != LM_STUDY) {
             return failf(t, "menu: the hero is not drawn in seat 0");
         }
         mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0 (ok)");
@@ -115,11 +173,40 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         return 0;
     case 2: {
         int r;
-        if ((r = turn(t, L, p->avatar_meshes, 0)) || (r = turn(t, L, p->avatar_meshes, 2)) || (r = reads(t, &L->sc))) {
+        if ((r = turn(t, L, p->avatar_meshes, 0)) || (r = turn(t, L, p->avatar_meshes, 2)) || (r = reads(t, &L->sc)) || (r = snap_three(t, L))) {
             return r;
         }
-        return 1;
+        t->stage = 3;
+        return 0;
     }
+    case 3: /* the friend comes in */
+        if (t->seated <= 0.0) {
+            if (t->seen && now - t->joined > 6.0) {
+                return failf(t, "join: not seated 6 s after joining");
+            }
+            return 0;
+        }
+        mg_log_info("autotest library: 4 a friend joined: outside the door first %s, the door opened to %.2f rad as it passed, seated in %.2f s, sit "
+                    "blend %.2f there (book open)",
+                    t->outside_first ? "yes" : "NO", (double)t->door_max, t->seated - t->joined, (double)t->open_at_seat);
+        if (!t->outside_first || t->door_max <= 1.5f || t->open_at_seat <= 0.9f) {
+            return failf(t, "join: outside first %d, door %.2f rad (want > 1.5), sit blend %.2f", t->outside_first, (double)t->door_max, (double)t->open_at_seat);
+        }
+        SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_joined");
+        t->stage = 4;
+        return 0;
+    case 4: /* ... and leaves */
+        if (t->shut <= 0.0) {
+            if (t->gone > 0.0 && now - t->gone > 2.0) {
+                return failf(t, "leave: the door still open (%.2f rad) 2 s after the friend left", (double)L->door_angle);
+            }
+            if (t->left > 0.0 && now - t->left > 15.0) {
+                return failf(t, "leave: not gone 15 s after leaving");
+            }
+            return 0;
+        }
+        mg_log_info("autotest library: 5 the friend left: walked out in %.2f s, the door shut %.2f s after (ok)", t->gone - t->left, t->shut - t->gone);
+        return 1;
     default:
         return 1;
     }

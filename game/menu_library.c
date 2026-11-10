@@ -159,7 +159,10 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->ok = L->room != GFX_MESH_NONE && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
             L->leaf_b != GFX_MESH_NONE;
-    lib_study_init(&L->hero_study, &L->sc, 1u);
+    L->seat[0].state = LM_STUDY; /* the hero: always at seat 0 */
+    L->seat[0].blend = L->seat[0].study_w = 1.0f;
+    L->seat[0].pos = L->sc.seats[0].pos, L->seat[0].yaw_deg = L->sc.seats[0].yaw_deg;
+    lib_study_init(&L->seat[0].study, &L->sc, 1u);
     mg_log_info("library: %s (%d seats, %d extra chairs)", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n);
     return L->ok;
 }
@@ -296,7 +299,7 @@ static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, 
         const HMM_Mat4 outer = HMM_MulM4(HMM_MulM4(inner, HMM_Translate(HMM_V3(-0.5f * s->book.leaf_len, 0.0f, 0.0f))),
                                          HMM_Rotate_RH(-(st->theta_b - st->theta), HMM_V3(0, 0, 1)));
         gfx_draw(g, L->leaf_a, &inner, &mat, 0);
-        gfx_draw(g, L->leaf_b, &outer, &mat, 0);
+        gfx_draw(g, L->leaf_a, &outer, &mat, 0); /* book_leaf_b is the same quad: one instanced draw for both halves */
     }
 }
 
@@ -319,37 +322,258 @@ void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, fl
     p->hand_r = st->hand_r;
 }
 
+/* ------------------------------------------------------------------ the seats' people */
+
+#define CHAIR_NEAR_M 1.6f  /* a walker this close to its seat: the chair slides back */
+#define CHAIR_RATE 6.0f
+#define STUDY_IN_RATE 3.0f /* sits, then bends over the book */
+#define STUDY_OUT_RATE 8.0f
+
+static float path_len(const LibSeat *seat)
+{
+    float len = 0.0f;
+    for (int k = 1; k < seat->path_n; k++) {
+        len += HMM_LenV2(HMM_SubV2(seat->path[k], seat->path[k - 1]));
+    }
+    return len;
+}
+
+/* Position `d` metres along the path, and the travel direction there */
+static HMM_Vec2 path_at(const LibSeat *seat, float d, HMM_Vec2 *dir)
+{
+    for (int k = 1; k < seat->path_n; k++) {
+        const HMM_Vec2 a = seat->path[k - 1], b = seat->path[k];
+        const float len = HMM_LenV2(HMM_SubV2(b, a));
+        if (d <= len || k == seat->path_n - 1) {
+            *dir = len > 1e-5f ? HMM_DivV2F(HMM_SubV2(b, a), len) : HMM_V2(0, 1);
+            return HMM_LerpV2(a, mg_saturate(len > 1e-5f ? d / len : 1.0f), b);
+        }
+        d -= len;
+    }
+    *dir = HMM_V2(0, 1);
+    return seat->path_n ? seat->path[0] : HMM_V2(0, 0);
+}
+
+static float yaw_of(HMM_Vec2 dir) { return atan2f(dir.X, dir.Y) * 57.29578f; } /* library yaw: 0 faces +z, 90 +x */
+
+static float approach(float v, float target, float rate, float dt) { return target + (v - target) * expf(-rate * dt); }
+
+static uint32_t id_hash(const char *id)
+{
+    uint32_t h = 2166136261u;
+    for (; *id; id++) {
+        h = (h ^ (uint8_t)*id) * 16777619u;
+    }
+    return h;
+}
+
+static void member_start(MenuLibrary *L, int i, const LobbyRow *r, bool seated)
+{
+    LibMember *mb = &L->seat[i];
+    const LibSeat *seat = &L->sc.seats[i];
+    SDL_zerop(mb);
+    SDL_snprintf(mb->id, sizeof(mb->id), "%s", r->id);
+    SDL_snprintf(mb->name, sizeof(mb->name), "%s", r->name);
+    mb->skin = r->skin;
+    mb->host = r->host;
+    mb->listed = true;
+    lib_study_init(&mb->study, &L->sc, id_hash(r->id) + (uint32_t)i);
+    if (seated) {
+        mb->state = LM_STUDY;
+        mb->blend = mb->study_w = 1.0f;
+        mb->pos = seat->pos, mb->yaw_deg = seat->yaw_deg;
+    } else {
+        HMM_Vec2 dir;
+        mb->state = LM_WALK_IN;
+        mb->pos = path_at(seat, 0.0f, &dir);
+        mb->yaw_deg = yaw_of(dir);
+    }
+}
+
+void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
+{
+    for (int i = 1; i < LIB_SEATS; i++) {
+        L->seat[i].listed = false;
+    }
+    for (int r = 0; r < n; r++) {
+        if (rows[r].me) {
+            continue;
+        }
+        int at = -1, free_at = -1;
+        for (int i = 1; i < LIB_SEATS; i++) {
+            if (L->seat[i].state != LM_EMPTY && SDL_strcmp(L->seat[i].id, rows[r].id) == 0) {
+                at = i;
+            } else if (L->seat[i].state == LM_EMPTY && free_at < 0) {
+                free_at = i;
+            }
+        }
+        if (at >= 0) { /* still here: new name / look / host; back in if it was leaving */
+            LibMember *mb = &L->seat[at];
+            mb->listed = true;
+            SDL_snprintf(mb->name, sizeof(mb->name), "%s", rows[r].name);
+            mb->skin = rows[r].skin;
+            mb->host = rows[r].host;
+            if (mb->state == LM_WALK_OUT) {
+                mb->state = LM_WALK_IN;
+            } else if (mb->state == LM_STAND) {
+                mb->state = LM_SIT;
+            }
+        } else if (free_at >= 0) {
+            member_start(L, free_at, &rows[r], snap);
+        }
+    }
+    for (int i = 1; i < LIB_SEATS; i++) {
+        LibMember *mb = &L->seat[i];
+        if (mb->listed || mb->state == LM_EMPTY) {
+            continue;
+        }
+        if (snap) {
+            mb->state = LM_EMPTY;
+        } else if (mb->state == LM_WALK_IN) {
+            mb->state = LM_WALK_OUT; /* turns round where it is */
+        } else if (mb->state == LM_SIT || mb->state == LM_STUDY) {
+            mb->state = LM_STAND;
+        }
+    }
+}
+
+void menu_library_hero_walk_in(MenuLibrary *L)
+{
+    LibMember *mb = &L->seat[0];
+    HMM_Vec2 dir;
+    mb->state = LM_WALK_IN;
+    mb->s = mb->blend = mb->study_w = mb->chair = 0.0f;
+    mb->pos = path_at(&L->sc.seats[0], 0.0f, &dir);
+    mb->yaw_deg = yaw_of(dir);
+    SDL_zero(mb->anim);
+}
+
+static void member_step(MenuLibrary *L, int i, float dt)
+{
+    LibMember *mb = &L->seat[i];
+    const LibSeat *seat = &L->sc.seats[i];
+    const LibScene *s = &L->sc;
+    const float total = path_len(seat), speed = s->study.walk_speed;
+    const HMM_Vec2 fwd = HMM_V2(HMM_SinF(HMM_AngleDeg(seat->yaw_deg)), HMM_CosF(HMM_AngleDeg(seat->yaw_deg)));
+    const HMM_Vec2 chair_at = HMM_SubV2(seat->pos, HMM_MulV2F(fwd, s->study.chair_slide * mb->chair));
+    HMM_Vec2 dir;
+    mb->vel = HMM_V2(0, 0);
+    switch (mb->state) {
+    case LM_WALK_IN:
+    case LM_WALK_OUT: {
+        const bool in = mb->state == LM_WALK_IN;
+        mb->s = in ? fminf(mb->s + speed * dt, total) : fmaxf(mb->s - speed * dt, 0.0f);
+        mb->pos = path_at(seat, mb->s, &dir);
+        if (!in) {
+            dir = HMM_MulV2F(dir, -1.0f);
+        }
+        mb->vel = HMM_MulV2F(dir, speed);
+        mb->yaw_deg = yaw_of(dir);
+        const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
+        mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
+        if (in && mb->s >= total) {
+            mb->state = LM_SIT;
+        } else if (!in && mb->s <= 0.0f) {
+            mb->state = LM_EMPTY;
+        }
+        break;
+    }
+    case LM_SIT: /* into the seat: position, facing and the seated pose together; the chair slides in */
+        mb->blend = fminf(mb->blend + dt / s->study.sit_s, 1.0f);
+        mb->chair = 1.0f - mb->blend;
+        mb->pos = HMM_LerpV2(seat->stand, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
+        mb->yaw_deg = seat->yaw_deg;
+        if (mb->blend >= 1.0f) {
+            mb->state = LM_STUDY;
+        }
+        break;
+    case LM_STUDY:
+        mb->pos = seat->pos;
+        mb->study_w = approach(mb->study_w, 1.0f, STUDY_IN_RATE, dt);
+        if (L->debug_turns && i == 0 && !mb->study.turning && mb->study.t >= 2.5f - s->study.turn_s) {
+            lib_study_force_turn(&mb->study);
+        }
+        lib_study_step(&mb->study, s, dt);
+        break;
+    case LM_STAND: /* up out of the seat: the chair slides back as the body rises */
+        mb->study_w = approach(mb->study_w, 0.0f, STUDY_OUT_RATE, dt);
+        mb->blend = fmaxf(mb->blend - dt / s->study.stand_s, 0.0f);
+        mb->chair = 1.0f - mb->blend;
+        mb->pos = HMM_LerpV2(seat->stand, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
+        if (mb->blend <= 0.0f) {
+            mb->state = LM_WALK_OUT;
+            mb->s = total;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
+{
+    const LibMember *mb = &L->seat[i];
+    menu_library_study_pose(L, i, &mb->study, mb->study_w, p);
+    p->feet = lib_point(L, HMM_V3(mb->pos.X, 0.0f, mb->pos.Y));
+    p->yaw = HMM_AngleDeg(mb->yaw_deg) + HMM_PI32;
+    const HMM_Vec3 v = HMM_MulM4V4(L->xf, HMM_V4(mb->vel.X, 0.0f, mb->vel.Y, 0.0f)).XYZ;
+    p->vel = v;
+    p->sit = mb->blend;
+}
+
+bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_Vec3 *top, const char **name, bool *host)
+{
+    if (i <= 0 || i >= LIB_SEATS || L->seat[i].state == LM_EMPTY) {
+        return false;
+    }
+    const LibMember *mb = &L->seat[i];
+    *top = lib_point(L, HMM_V3(mb->pos.X, avatar_name_tag_y(m, NULL, mb->blend), mb->pos.Y));
+    *name = mb->name;
+    *host = mb->host;
+    return true;
+}
+
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     if (!L->ok) {
         return;
     }
     const LibScene *s = &L->sc;
+    bool walker_at_door = false;
+    for (int i = 0; i < LIB_SEATS; i++) {
+        member_step(L, i, dt);
+        const LibMember *mb = &L->seat[i];
+        if ((mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < s->door.open_radius) {
+            walker_at_door = true;
+        }
+    }
+    L->door_angle = approach(L->door_angle, walker_at_door ? s->door.open_rad : 0.0f, s->door.rate, dt);
     const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
     gfx_draw(g, L->room, &L->xf, &room, 0);
     const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
     gfx_draw(g, L->door, &door, &room, 0);
-    for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs, the extra chairs */
-        const HMM_Mat4 cm = placed(L, s->seats[i].pos.X, s->seats[i].pos.Y, s->seats[i].yaw_deg);
+    for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */
+        const LibSeat *seat = &s->seats[i];
+        const float yw = HMM_AngleDeg(seat->yaw_deg), back = s->study.chair_slide * L->seat[i].chair;
+        const HMM_Mat4 cm = placed(L, seat->pos.X - HMM_SinF(yw) * back, seat->pos.Y - HMM_CosF(yw) * back, seat->yaw_deg);
         gfx_draw(g, L->chair, &cm, &room, 0);
     }
     for (int i = 0; i < s->extra_n; i++) {
         const HMM_Mat4 cm = placed(L, s->extra_chairs[i][0], s->extra_chairs[i][1], s->extra_chairs[i][2]);
         gfx_draw(g, L->chair, &cm, &room, 0);
     }
-    for (int i = 1; i < LIB_SEATS; i++) { /* the empty seats: a closed book in front of each */
-        draw_book(L, g, &s->seats[i], false, NULL);
-    }
-    { /* the hero: seat 0, studying */
-        LibStudy *st = &L->hero_study;
-        if (L->debug_turns && !st->turning && st->t >= 2.5f - s->study.turn_s) {
-            lib_study_force_turn(st);
+    for (int i = 0; i < LIB_SEATS; i++) {
+        LibMember *mb = &L->seat[i];
+        /* the book: closed until its reader's sit blend passes 0.9 */
+        const bool open = mb->state != LM_EMPTY && mb->blend > 0.9f;
+        draw_book(L, g, &s->seats[i], open, open && mb->state == LM_STUDY ? &mb->study : NULL);
+        if (mb->state == LM_EMPTY) {
+            continue;
         }
-        lib_study_step(st, s, dt);
-        draw_book(L, g, &s->seats[0], true, st);
         AvatarPose p;
-        menu_library_study_pose(L, 0, st, 1.0f, &p);
-        avatar_animate(m, &L->hero_anim, &p, dt);
-        avatar_draw(g, m, hero, &p, &L->hero_anim, NULL);
+        member_pose(L, i, &p);
+        const AvatarLook look = i == 0 ? *hero : avatar_look_from_skin(mb->skin);
+        avatar_animate(m, &mb->anim, &p, dt);
+        avatar_draw(g, m, &look, &p, &mb->anim, NULL);
     }
 }
