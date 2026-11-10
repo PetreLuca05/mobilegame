@@ -25,6 +25,7 @@
 #define WM_TOP_BAR 60.0f /* back button, island pill, Whole island, Islands */
 #define WM_EDGE 12.0f
 #define WM_CARD_W 280.0f
+#define WM_SKIP_AFTER_S 1.5f
 #define WM_LABEL_LIFT 9.0f /* label anchor above the cube top: clear of an ambulance parked behind it */
 
 /* plane, helicopter, boat, submarine: scale, seconds, follow distance, the parts that spin */
@@ -552,6 +553,20 @@ static void voyage_tick(WorldMap *m, float dt)
     }
 }
 
+bool worldmap_skip_voyage(WorldMap *m)
+{
+    if (m->state != WM_VOYAGE || m->voy.elapsed < WM_SKIP_AFTER_S) {
+        return false;
+    }
+    m->cur = m->voy.to; /* straight to the arrival: the destination's title, the camera on it */
+    m->state = WM_BOOKS;
+    m->voyages++;
+    m->skips++;
+    m->cam_snap = true;
+    mg_log_info("world: voyage skipped at %.1f s", (double)m->voy.elapsed);
+    return true;
+}
+
 static HMM_Vec3 arrive_target(const WorldMap *m);
 
 static WmCam overview_of(const WmIsland *is)
@@ -1050,7 +1065,7 @@ static WmAction draw_card(WorldMap *m, Ui *ui, const float safe[4])
     const float top = safe[1] + WM_TOP_BAR, bottom = m->view_h - safe[3] - WM_EDGE;
     const float ch = mg_minf(bottom - top, 262.0f), cy = top + (bottom - top - ch) * 0.5f;
     m->card_x = cx, m->card_y = cy, m->card_w = cw, m->card_h = ch;
-    gfx_ui_blur_panel(ui->gfx, cx, cy, cw, ch, 16.0f, HMM_V4(0.06f, 0.08f, 0.12f, 0.55f));
+    ui_round_rect(ui->gfx, ui->font, cx, cy, cw, ch, 16.0f, ui_rgba(0x0F1520D9)); /* flat: a blur panel cost 3 passes, ~1.5 ms on the iPad Air 4 */
     ui_block(ui, cx, cy, cw, ch);
     float y = cy + pad;
     char line[96];
@@ -1200,10 +1215,21 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         char key[24];
         SDL_snprintf(key, sizeof(key), "wm_by_%s", world_ride_name(v->ride));
         SDL_snprintf(label, sizeof(label), str(key), m->isles[v->to].book->name);
-        const float pw = text_width(ui->font, label, 16.0f) + 40.0f, px = (m->view_w - pw) * 0.5f, py = m->view_h - safe[3] - WM_EDGE - 44.0f;
-        ui_block(ui, 0, 0, m->view_w, m->view_h);
-        ui_round_rect(ui->gfx, ui->font, px, py, pw, 44.0f, 22.0f, ui_rgba(0x101318D0));
-        text_draw_centered(ui->gfx, ui->font, px + pw * 0.5f, py + 22.0f, 16.0f, ui_rgba(0xFFFFFFFF), label);
+        const bool can_skip = v->elapsed >= WM_SKIP_AFTER_S;
+        const char *skip = str("wm_tap_skip");
+        const float pw = mg_maxf(text_width(ui->font, label, 16.0f), can_skip ? text_width(ui->font, skip, 12.0f) : 0.0f) + 40.0f;
+        const float ph = can_skip ? 54.0f : 44.0f, px = (m->view_w - pw) * 0.5f, py = m->view_h - safe[3] - WM_EDGE - ph;
+        ui_block(ui, 0, 0, m->view_w, m->view_h); /* the voyage takes no other input */
+        ui_round_rect(ui->gfx, ui->font, px, py, pw, ph, 22.0f, ui_rgba(0x101318D0));
+        text_draw_centered(ui->gfx, ui->font, px + pw * 0.5f, py + (can_skip ? 18.0f : 22.0f), 16.0f, ui_rgba(0xFFFFFFFF), label);
+        if (can_skip) {
+            text_draw_centered(ui->gfx, ui->font, px + pw * 0.5f, py + 38.0f, 12.0f, ui_rgba(0xFFFFFFA0), skip);
+        }
+        for (int i = 0; i < MG_MAX_TOUCHES && can_skip; i++) { /* after 1.5 s a tap anywhere jumps to the arrival */
+            if (app->input.touches[i].ended && worldmap_skip_voyage(m)) {
+                break;
+            }
+        }
         return WM_NONE;
     }
     SDL_snprintf(label, sizeof(label), "   %s##wm_back", str("back"));

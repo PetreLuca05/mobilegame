@@ -505,6 +505,7 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
             }
             if (w->ride == 0) {
                 mg_log_info("autotest worldmap2: 1 BOOKS on Lawrance: left button, no right button (ok)");
+                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "worldmap2_lawrance");
             }
             if (++w->ride == RIDE_COUNT) {
                 next_stage(w, now);
@@ -611,7 +612,10 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
             tap_busy(&w->tap, app, now);
         }
         return 0;
-    case 50: { /* relaunch: the stored bag decides the next vehicle */
+    case 50: { /* relaunch: the stored bag decides the next vehicle (after a reinstall: once the account's copy is in) */
+        if (!p->world_rides->stored) {
+            return in > 25.0 ? fail(w, "no ride bag: neither prefs nor the account had one") : 0;
+        }
         char path[640];
         size_t len = 0;
         char *want = expect_path(path, sizeof(path)) ? SDL_LoadFile(path, &len) : NULL;

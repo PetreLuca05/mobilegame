@@ -82,6 +82,8 @@ typedef struct NetProfile {
     NetStats stats;
     int book_count;
     NetBookState books[NET_MAX_BOOKS];
+    char ride_state[256];    /* WORLD-2: the shuffle bag as JSON, "" if the account has none */
+    double ride_updated_ms;
     bool guest;            /* anonymous user, not linked to Google yet */
     char email[64];        /* Google account, "" for guests */
     char google_name[NET_NAME_LEN]; /* name on the Google account ("" for guests) */
@@ -242,6 +244,8 @@ void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *
 void net_save_stats(NetTransport *n, const NetStats *totals);
 /* book_state_set: the last hospital of a book, chosen at at_ms (coalesced; an older choice does not overwrite). */
 void net_save_book_state(NetTransport *n, const char *book, const char *level, double at_ms);
+/* ride_state_set: the shuffle bag (a JSON object, < 256 bytes), changed at at_ms (coalesced; the newer wins). */
+void net_save_ride_state(NetTransport *n, const char *state_json, double at_ms);
 /* Link the guest to Google or Apple ("google" / "apple") with a
  * native-sign-in ID token (+ raw nonce).
  * Success arrives as NET_EV_PROFILE (guest = false), failure as

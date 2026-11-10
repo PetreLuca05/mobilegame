@@ -9,6 +9,7 @@
  *   TRAVEL    the ambulance drives along the road, the camera follows; re-routes on a new target
  *   ARRIVED   the hospital's card: Join, Previous / Next (wrapping), Whole island, Islands
  *   VOYAGE    plane / helicopter / boat / submarine from one island to the next; ends in BOOKS
+ *             (after 1.5 s a tap skips to the arrival)
  *
  * Every island has its own ambulance, selection and completion; layout coordinates are local
  * to the island and placed at its world_pos. An island is drawn only when its bounds are in
@@ -112,7 +113,7 @@ typedef struct WorldMap {
     WmCam cam, cam_prev;
     bool cam_snap;
     double time;
-    int arrivals, voyages;
+    int arrivals, voyages, skips;
     /* this frame */
     HMM_Mat4 view_proj;
     HMM_Vec3 eye;
@@ -136,6 +137,8 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
 void worldmap_go(WorldMap *m, int level);
 /* From BOOKS: sail or fly to island `to` (the vehicle from the shuffle). False if not possible now. */
 bool worldmap_voyage(WorldMap *m, int to);
+/* A tap during a voyage, after 1.5 s: straight to the arrival. False if too early or none running. */
+bool worldmap_skip_voyage(WorldMap *m);
 float worldmap_stop_s(const WmIsland *is, int level);
 /* Screen points (pt), false if off screen: a hospital's cube top; a spot on an island away from its hospitals. */
 bool worldmap_hospital_point(const WorldMap *m, int level, float *x, float *y);

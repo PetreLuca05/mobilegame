@@ -213,6 +213,7 @@ WorldRide world_next_ride(WorldRides *r)
     const WorldRide v = (WorldRide)r->bag[RIDE_COUNT - r->bag_left];
     r->bag_left--;
     r->last = (int)v;
+    r->unsynced = true;
     return v;
 }
 
@@ -223,7 +224,10 @@ void world_rides_read(WorldRides *r, const cJSON *o)
     }
     const cJSON *rng = cJSON_GetObjectItemCaseSensitive(o, "rng"), *bag = cJSON_GetObjectItemCaseSensitive(o, "bag");
     const cJSON *last = cJSON_GetObjectItemCaseSensitive(o, "last"), *prev = cJSON_GetObjectItemCaseSensitive(o, "prev");
+    const cJSON *at = cJSON_GetObjectItemCaseSensitive(o, "updated_ms");
     r->stored = true;
+    r->updated_ms = cJSON_IsNumber(at) ? at->valuedouble : 0.0;
+    r->unsynced = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "unsynced"));
     r->rng = cJSON_IsNumber(rng) ? (uint32_t)rng->valuedouble : r->rng;
     r->last = cJSON_IsNumber(last) ? (int)last->valuedouble : -1;
     r->bag_left = 0;
@@ -252,6 +256,8 @@ void world_rides_write(const WorldRides *r, cJSON *parent, const char *key)
 {
     cJSON *o = cJSON_AddObjectToObject(parent, key);
     cJSON_AddNumberToObject(o, "rng", (double)r->rng);
+    cJSON_AddNumberToObject(o, "updated_ms", r->updated_ms);
+    cJSON_AddBoolToObject(o, "unsynced", r->unsynced);
     cJSON_AddNumberToObject(o, "last", r->last);
     cJSON *bag = cJSON_AddArrayToObject(o, "bag");
     for (int i = RIDE_COUNT - r->bag_left; i < RIDE_COUNT; i++) {
@@ -265,4 +271,29 @@ void world_rides_write(const WorldRides *r, cJSON *parent, const char *key)
         }
         cJSON_AddItemToArray(prev, a);
     }
+}
+
+int world_rides_json(const WorldRides *r, char *out, size_t cap)
+{
+    int n = SDL_snprintf(out, cap, "{\"rng\":%u,\"last\":%d,\"bag\":[", r->rng, r->last);
+    for (int i = RIDE_COUNT - r->bag_left; i < RIDE_COUNT; i++) {
+        n += SDL_snprintf(out + n, cap - (size_t)SDL_min(n, (int)cap), "%s%d", i > RIDE_COUNT - r->bag_left ? "," : "", r->bag[i]);
+    }
+    n += SDL_snprintf(out + n, cap - (size_t)SDL_min(n, (int)cap), "],\"prev\":[");
+    for (int p = 0; p < r->prev_count; p++) {
+        n += SDL_snprintf(out + n, cap - (size_t)SDL_min(n, (int)cap), "%s[%d,%d,%d,%d]", p ? "," : "", r->prev[p][0], r->prev[p][1], r->prev[p][2], r->prev[p][3]);
+    }
+    n += SDL_snprintf(out + n, cap - (size_t)SDL_min(n, (int)cap), "]}");
+    return n;
+}
+
+void world_rides_from_json(WorldRides *r, const char *json)
+{
+    cJSON *o = cJSON_Parse(json);
+    const int forced = r->forced;
+    const double at = r->updated_ms;
+    world_rides_read(r, o);
+    r->forced = forced;
+    r->updated_ms = at; /* the caller sets the account's time */
+    cJSON_Delete(o);
 }

@@ -42,6 +42,8 @@ typedef struct WorldRides {
     int prev_count;
     int forced;         /* --debug ride: the next one, -1 none (not stored) */
     bool stored;        /* read from prefs (else a fresh seed) */
+    double updated_ms;  /* the last draw (unix ms): the account's ride_state keeps the newer bag */
+    bool unsynced;      /* drawn since ride_state last heard of it */
 } WorldRides;
 
 typedef struct WorldProgress {
@@ -81,5 +83,9 @@ const char *world_ride_name(WorldRide v);             /* "plane", "helicopter", 
 int world_ride_from_name(const char *name);           /* -1 if unknown */
 void world_rides_read(WorldRides *r, const struct cJSON *o);
 void world_rides_write(const WorldRides *r, struct cJSON *parent, const char *key);
+/* The same object as JSON text into a fixed buffer (no allocation: called from the frame). */
+int world_rides_json(const WorldRides *r, char *out, size_t cap);
+/* The account's copy (ride_state.state); keeps a forced next ride. */
+void world_rides_from_json(WorldRides *r, const char *json);
 
 #endif

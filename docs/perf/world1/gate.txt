@@ -1,0 +1,127 @@
+ipad yard: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_yard.json)
+{"device": "ipad", "scenario": "yard", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.37, "busy_pct": 32, "effective_ms": 1.74, "clock": "Minimum", "clock_share_pct": 98}
+ipad lobby: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_lobby.json)
+{"device": "ipad", "scenario": "lobby", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.15, "busy_pct": 31, "effective_ms": 1.6, "clock": "Minimum", "clock_share_pct": 98}
+ipad corridor_f2: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_corridor_f2.json)
+{"device": "ipad", "scenario": "corridor_f2", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.44, "busy_pct": 33, "effective_ms": 1.78, "clock": "Minimum", "clock_share_pct": 99}
+ipad stress200: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_stress200.json)
+{"device": "ipad", "scenario": "stress200", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.54, "busy_pct": 33, "effective_ms": 1.85, "clock": "Minimum", "clock_share_pct": 98}
+ipad npcs: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_npcs.json)
+{"device": "ipad", "scenario": "npcs", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.58, "busy_pct": 34, "effective_ms": 1.87, "clock": "Minimum", "clock_share_pct": 97}
+ipad lift_panel: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_lift_panel.json)
+{"device": "ipad", "scenario": "lift_panel", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.44, "busy_pct": 33, "effective_ms": 1.78, "clock": "Minimum", "clock_share_pct": 97}
+ipad interact_npc: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_interact_npc.json)
+{"device": "ipad", "scenario": "interact_npc", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.56, "busy_pct": 33, "effective_ms": 1.86, "clock": "Minimum", "clock_share_pct": 98}
+ipad lobby4: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_lobby4.json)
+{"device": "ipad", "scenario": "lobby4", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 5.74, "busy_pct": 34, "effective_ms": 1.98, "clock": "Minimum", "clock_share_pct": 97}
+ipad menu: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_menu.json)
+{"device": "ipad", "scenario": "menu", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 6.21, "busy_pct": 37, "effective_ms": 2.32, "clock": "Minimum", "clock_share_pct": 96}
+ipad worldmap: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_worldmap.json)
+{"device": "ipad", "scenario": "worldmap", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 4.17, "busy_pct": 25, "effective_ms": 1.05, "clock": "Minimum", "clock_share_pct": 100}
+ipad worldmap_travel: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_worldmap_travel.json)
+{"device": "ipad", "scenario": "worldmap_travel", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 6.42, "busy_pct": 39, "effective_ms": 2.48, "clock": "Minimum", "clock_share_pct": 91}
+ipad island: ok (/private/tmp/claude-501/-Users-petreluca-Documents-mobilegame/d74ce20b-23ae-4654-a0f7-483c7586ec51/scratchpad/gate_w1f/ipad_island.json)
+{"device": "ipad", "scenario": "island", "commit": "e08177f", "fps": 60, "gpu_frame_ms": 6.7, "busy_pct": 40, "effective_ms": 2.71, "clock": "Minimum", "clock_share_pct": 91}
+PASS ipad   yard         cpu_tick_ms             0.18 budget 5.0
+PASS ipad   yard         render_ms               1.31 budget 2.0
+PASS ipad   yard         gpu_effective_ms        1.74 budget 8.0
+PASS ipad   yard         draws                  64.00 budget 150
+PASS ipad   yard         heap_allocs             0.00 budget 0
+PASS ipad   yard         memory_mb             158.00 budget 300
+PASS ipad   yard         dropped                 0.00 budget 0
+PASS ipad   lobby        cpu_tick_ms             0.18 budget 5.0
+PASS ipad   lobby        render_ms               1.24 budget 2.0
+PASS ipad   lobby        gpu_effective_ms        1.60 budget 8.0
+PASS ipad   lobby        draws                  63.49 budget 150
+PASS ipad   lobby        heap_allocs             0.00 budget 0
+PASS ipad   lobby        memory_mb             160.00 budget 300
+PASS ipad   lobby        dropped                 0.00 budget 0
+PASS ipad   corridor_f2  cpu_tick_ms             0.18 budget 5.0
+PASS ipad   corridor_f2  render_ms               1.33 budget 2.0
+PASS ipad   corridor_f2  gpu_effective_ms        1.78 budget 8.0
+PASS ipad   corridor_f2  draws                  83.09 budget 150
+PASS ipad   corridor_f2  heap_allocs             0.00 budget 0
+PASS ipad   corridor_f2  memory_mb             157.00 budget 300
+PASS ipad   corridor_f2  dropped                 0.00 budget 0
+PASS ipad   stress200    cpu_tick_ms             0.43 budget 5.0
+PASS ipad   stress200    npc_ms                  0.20 budget 2.0
+PASS ipad   stress200    render_ms               1.30 budget 2.0
+PASS ipad   stress200    gpu_effective_ms        1.85 budget 8.0
+PASS ipad   stress200    draws                  86.59 budget 150
+PASS ipad   stress200    heap_allocs             0.00 budget 0
+PASS ipad   stress200    memory_mb             170.00 budget 300
+PASS ipad   stress200    dropped                 0.00 budget 0
+PASS ipad   npcs         cpu_tick_ms             0.27 budget 5.0
+PASS ipad   npcs         render_ms               1.30 budget 2.0
+PASS ipad   npcs         gpu_effective_ms        1.87 budget 8.0
+PASS ipad   npcs         draws                  89.27 budget 150
+PASS ipad   npcs         heap_allocs             0.00 budget 0
+PASS ipad   npcs         memory_mb             162.00 budget 300
+PASS ipad   npcs         dropped                 0.00 budget 0
+PASS ipad   lift_panel   cpu_tick_ms             0.18 budget 5.0
+PASS ipad   lift_panel   render_ms               1.34 budget 2.0
+PASS ipad   lift_panel   gpu_effective_ms        1.78 budget 8.0
+PASS ipad   lift_panel   draws                  72.00 budget 150
+PASS ipad   lift_panel   heap_allocs             0.00 budget 0
+PASS ipad   lift_panel   memory_mb             157.00 budget 300
+PASS ipad   lift_panel   dropped                 0.00 budget 0
+PASS ipad   interact_npc cpu_tick_ms             0.30 budget 5.0
+PASS ipad   interact_npc render_ms               1.41 budget 2.0
+PASS ipad   interact_npc gpu_effective_ms        1.86 budget 8.0
+PASS ipad   interact_npc draws                  96.03 budget 150
+PASS ipad   interact_npc heap_allocs             0.00 budget 0
+PASS ipad   interact_npc memory_mb             163.00 budget 300
+PASS ipad   interact_npc dropped                 0.00 budget 0
+PASS ipad   lobby4       cpu_tick_ms             0.47 budget 5.0
+PASS ipad   lobby4       render_ms               1.30 budget 2.0
+PASS ipad   lobby4       gpu_effective_ms        1.98 budget 8.0
+PASS ipad   lobby4       draws                  95.39 budget 150
+PASS ipad   lobby4       heap_allocs             0.00 budget 0
+PASS ipad   lobby4       memory_mb             164.00 budget 300
+PASS ipad   lobby4       dropped                 0.00 budget 0
+PASS ipad   menu         cpu_tick_ms             0.30 budget 5.0
+PASS ipad   menu         render_ms               0.83 budget 2.0
+PASS ipad   menu         gpu_effective_ms        2.32 budget 8.0
+PASS ipad   menu         draws                  76.50 budget 150
+PASS ipad   menu         heap_allocs             0.00 budget 0
+PASS ipad   menu         memory_mb             171.00 budget 300
+PASS ipad   menu         dropped                 0.00 budget 0
+PASS ipad   worldmap     cpu_tick_ms             0.16 budget 5.0
+PASS ipad   worldmap     render_ms               0.67 budget 2.0
+PASS ipad   worldmap     gpu_effective_ms        1.05 budget 8.0
+PASS ipad   worldmap     draws                  17.00 budget 150
+PASS ipad   worldmap     heap_allocs             0.00 budget 0
+PASS ipad   worldmap     memory_mb             153.00 budget 300
+PASS ipad   worldmap     dropped                 0.00 budget 0
+PASS ipad   worldmap     gpu_effective_ms        1.05 estimate 1.5 (fails over 2x)
+FAIL ipad   worldmap     render_ms               0.67 estimate 0.15 (fails over 2x)
+FAIL ipad   worldmap     cpu_tick_ms             0.16 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap_travel cpu_tick_ms             0.15 budget 5.0
+PASS ipad   worldmap_travel render_ms               1.18 budget 2.0
+PASS ipad   worldmap_travel gpu_effective_ms        2.48 budget 8.0
+PASS ipad   worldmap_travel draws                  16.73 budget 150
+PASS ipad   worldmap_travel heap_allocs             0.00 budget 0
+PASS ipad   worldmap_travel memory_mb             175.00 budget 300
+PASS ipad   worldmap_travel dropped                 0.00 budget 0
+FAIL ipad   worldmap_travel gpu_effective_ms        2.48 estimate 1.0 (fails over 2x)
+FAIL ipad   worldmap_travel render_ms               1.18 estimate 0.15 (fails over 2x)
+FAIL ipad   worldmap_travel cpu_tick_ms             0.15 estimate 0.05 (fails over 2x)
+PASS ipad   island       cpu_tick_ms             0.17 budget 5.0
+PASS ipad   island       render_ms               1.20 budget 2.0
+PASS ipad   island       gpu_effective_ms        2.71 budget 8.0
+PASS ipad   island       draws                  18.00 budget 150
+PASS ipad   island       heap_allocs             0.00 budget 0
+PASS ipad   island       memory_mb             173.00 budget 300
+PASS ipad   island       dropped                 0.00 budget 0
+FAIL ipad   island       gpu_effective_ms        2.71 estimate 1.0 (fails over 2x)
+FAIL ipad   island       render_ms               1.20 estimate 0.15 (fails over 2x)
+FAIL ipad   island       cpu_tick_ms             0.17 estimate 0.05 (fails over 2x)
+FAIL ipad worldmap: render_ms 0.67 is over 2x the estimate 0.15
+FAIL ipad worldmap: cpu_tick_ms 0.16 is over 2x the estimate 0.05
+FAIL ipad worldmap_travel: gpu_effective_ms 2.48 is over 2x the estimate 1.0
+FAIL ipad worldmap_travel: render_ms 1.18 is over 2x the estimate 0.15
+FAIL ipad worldmap_travel: cpu_tick_ms 0.15 is over 2x the estimate 0.05
+FAIL ipad island: gpu_effective_ms 2.71 is over 2x the estimate 1.0
+FAIL ipad island: render_ms 1.20 is over 2x the estimate 0.15
+FAIL ipad island: cpu_tick_ms 0.17 is over 2x the estimate 0.05
+PERF GATE FAILED

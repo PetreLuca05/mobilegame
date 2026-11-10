@@ -892,6 +892,20 @@ static void push_book_state(Game *g)
     }
 }
 
+/* ride_state: the account keeps the shuffle bag, so a reinstall does not reset the no-repeat rule */
+static void push_rides(Game *g)
+{
+    WorldRides *r = &g->prefs.world.rides;
+    if (!r->unsynced || !g->net || !g->profile_loaded) {
+        return;
+    }
+    char json[256];
+    if (world_rides_json(r, json, sizeof(json)) < (int)sizeof(json)) {
+        net_save_ride_state(g->net, json, r->updated_ms);
+        r->unsynced = false;
+    }
+}
+
 static int level_index(const Game *g, const char *id)
 {
     const int i = world_level_find(cur_book(g), id);
@@ -1278,6 +1292,15 @@ static void account_loaded(Game *g, MgApp *app)
         world_progress_merge_remote(&g->prefs.world, b->book, b->level, b->updated_ms);
     }
     push_book_state(g);
+    if (g->profile.ride_state[0] && g->profile.ride_updated_ms > g->prefs.world.rides.updated_ms) { /* the account's bag is newer (a reinstall) */
+        world_rides_from_json(&g->prefs.world.rides, g->profile.ride_state);
+        g->prefs.world.rides.updated_ms = g->profile.ride_updated_ms;
+        g->prefs.world.rides.unsynced = false;
+        mg_log_info("world: ride bag from the account (%d left, last %s)", g->prefs.world.rides.bag_left, world_ride_name((WorldRide)g->prefs.world.rides.last));
+    } else if (g->prefs.world.rides.updated_ms > g->profile.ride_updated_ms && g->prefs.world.rides.updated_ms > 0.0) {
+        g->prefs.world.rides.unsynced = true; /* ours is newer */
+        push_rides(g);
+    }
     g->prefs.has_profile_cache = true;
     SDL_snprintf(g->prefs.cache_name, sizeof(g->prefs.cache_name), "%s", g->profile.display_name);
     g->prefs.cache_skin = g->profile.skin;
@@ -1644,6 +1667,10 @@ static void map_flow(Game *g, MgApp *app)
         worldmap_voyage(&g->wm, (g->wm.cur + 1) % g->wm.count);
     }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    if (g->prefs.world.rides.unsynced) { /* a trip drew a vehicle: the account's copy follows */
+        g->prefs.world.rides.updated_ms = wall_clock_ms();
+        push_rides(g);
+    }
     for (int i = 0; i < g->wm.count; i++) { /* every island keeps its ambulance where it is */
         world_book_state(&g->prefs.world, g->wm.isles[i].book->id)->ambulance_s = g->wm.isles[i].amb_s;
     }

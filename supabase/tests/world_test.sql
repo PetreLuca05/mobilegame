@@ -68,6 +68,22 @@ begin
   perform pg_temp.rejects(format('select public.book_state_set(%L, %L, 0)', 'kumar', 'gastro'), 'permission denied');
   reset role;
 
+  -- ride_state: owner only, the newer bag wins, writes only through the RPC
+  perform pg_temp.as_user(a);
+  v := public.ride_state_set('{"bag":[1,2],"last":0}', (extract(epoch from now()) * 1000)::bigint - 60000);
+  if v <> 'ok' then raise exception 'TEST FAIL: ride first set %', v; end if;
+  v := public.ride_state_set('{"bag":[3],"last":1}', (extract(epoch from now()) * 1000)::bigint - 120000);
+  if v <> 'older' then raise exception 'TEST FAIL: ride older set %', v; end if;
+  v := public.ride_state_set('{"bag":[],"last":2}', (extract(epoch from now()) * 1000)::bigint - 1000);
+  if v <> 'ok' then raise exception 'TEST FAIL: ride newer set %', v; end if;
+  if (select state->>'last' from public.ride_state where user_id = a) <> '2' then raise exception 'TEST FAIL: ride not the newest'; end if;
+  perform pg_temp.rejects(format('insert into public.ride_state (user_id, state) values (%L, %L)', a, '{}'), 'permission denied');
+  perform pg_temp.rejects(format('select public.ride_state_set(%L, 0)', '[1,2]'), 'bad_value');
+  perform pg_temp.as_user(b);
+  select count(*) into n from public.ride_state;
+  if n <> 0 then raise exception 'TEST FAIL: B sees % ride rows', n; end if;
+  reset role;
+
   raise exception 'ALL WORLD SQL TESTS PASSED';
 end;
 $test$;

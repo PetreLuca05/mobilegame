@@ -58,6 +58,8 @@ begin
     (e, 'kumar', 'hepato', now() - interval '1 hour'), (g, 'kumar', 'cardio', now()),  -- G chose later: wins
     (e, 'b2', 'one', now()), (g, 'b2', 'two', now() - interval '1 hour'),             -- E chose later: stays
     (g, 'b3', 'three', now());                                                         -- only G: moves
+  insert into public.ride_state (user_id, state, updated_at) values
+    (e, '{"last":0}', now() - interval '1 hour'), (g, '{"last":3}', now());           -- G's bag is newer: wins
 
   -- tickets: guests only, redeemed by permanent accounts only
   perform pg_temp.as_user(e, false);
@@ -116,6 +118,9 @@ begin
   if exists (select 1 from public.lobby_members m where g in (m.host_id, m.user_id)) then raise exception 'TEST FAIL: lobby rows remain'; end if;
   if exists (select 1 from public.lobby_join_attempts a where g in (a.user_id, a.host_id)) then raise exception 'TEST FAIL: attempts remain'; end if;
   if (select host_id from public.player_status where user_id = h) is not null then raise exception 'TEST FAIL: host_id not cleared'; end if;
+  if (select state->>'last' from public.ride_state where user_id = e) <> '3' or exists (select 1 from public.ride_state where user_id = g) then
+    raise exception 'TEST FAIL: ride_state merge';
+  end if;
   if (select string_agg(book_id || '=' || last_level, ',' order by book_id) from public.book_state where user_id = e) <> 'b2=one,b3=three,kumar=cardio' then
     raise exception 'TEST FAIL: book_state %', (select string_agg(book_id || '=' || last_level, ',' order by book_id) from public.book_state where user_id = e);
   end if;

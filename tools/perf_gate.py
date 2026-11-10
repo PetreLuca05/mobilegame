@@ -67,7 +67,9 @@ def main():
                 print(f"{'PASS' if ok else 'FAIL'} {dev:6} {sc:12} {name:18} {m[name]:9.2f} budget {budget}")
                 if not ok:
                     problems.append(f"{dev} {sc}: {name} {m[name]:.2f} over budget {budget}")
-            if sc in WORLD_LIMITS:
+            if sc in WORLD_LIMITS: # the estimates are the map's own tick and the submit (encode + sort), not the whole frame
+                scope = {x["name"]: x["avg"] for x in d["scopes"]}
+                m = dict(m, cpu_tick_ms=scope.get("tick", 0.0), render_ms=scope.get("render.encode", 0.0) + scope.get("render.sort", 0.0))
                 if d["counters"]["draws"]["max"] > WORLD_MAX_DRAWS:
                     problems.append(f"{dev} {sc}: {d['counters']['draws']['max']:.0f} draws, the design allows {WORLD_MAX_DRAWS} (16 world + x-ray + HUD)")
                 for name, est in WORLD_LIMITS[sc].items():

@@ -179,5 +179,6 @@
   "wm_by_plane": "By plane to %s",
   "wm_by_helicopter": "By helicopter to %s",
   "wm_by_boat": "By boat to %s",
-  "wm_by_submarine": "By submarine to %s"
+  "wm_by_submarine": "By submarine to %s",
+  "wm_tap_skip": "Tap to skip"
 }

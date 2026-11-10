@@ -44,6 +44,7 @@ typedef enum NetCmdType {
     CMD_PROFILE_SAVE,
     CMD_STATS_SAVE,
     CMD_BOOK_SAVE,
+    CMD_RIDE_SAVE, /* state in NetTransport.ride_save (too big for a command) */
     CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
     CMD_SIGN_OUT,
     CMD_QUIET,
@@ -173,6 +174,9 @@ struct NetTransport {
     NetStats stats_save;
     bool book_pending;
     NetBookState book_save;
+    bool ride_pending;
+    char ride_save[256];
+    double ride_save_ms;
     char rest_body[1024];
     /* Google link handoff (under lock) */
     char link_token[2048];
@@ -996,6 +1000,9 @@ static void process_commands(NetTransport *n)
             n->book_save = c.book;
             n->book_pending = true;
             break;
+        case CMD_RIDE_SAVE:
+            n->ride_pending = true; /* ride_save was set under the lock */
+            break;
         case CMD_LINK_GOOGLE:
             n->link_pending = true;
             n->want_account = true;
@@ -1115,6 +1122,19 @@ static void profile_loaded(void *user, int status, const char *body, size_t len)
                 b->updated_ms = cJSON_IsString(at) ? iso_to_unix_ms(at->valuestring) : 0.0;
             }
         }
+        const cJSON *rs = cJSON_GetObjectItemCaseSensitive(row, "ride_state");
+        if (cJSON_IsArray(rs)) { /* one-to-one: an object, or a list of one */
+            rs = cJSON_GetArrayItem(rs, 0);
+        }
+        if (cJSON_IsObject(rs)) {
+            const cJSON *state = cJSON_GetObjectItemCaseSensitive(rs, "state"), *at = cJSON_GetObjectItemCaseSensitive(rs, "updated_at");
+            char *txt = cJSON_IsObject(state) ? cJSON_PrintUnformatted(state) : NULL;
+            if (txt && strlen(txt) < sizeof(p->ride_state)) {
+                snprintf(p->ride_state, sizeof(p->ride_state), "%s", txt);
+                p->ride_updated_ms = cJSON_IsString(at) ? iso_to_unix_ms(at->valuestring) : 0.0;
+            }
+            cJSON_free(txt);
+        }
         if (cJSON_IsObject(st)) {
 #define NUM(field, key) do { const cJSON *v = cJSON_GetObjectItemCaseSensitive(st, key); \
             if (cJSON_IsNumber(v)) { p->stats.field = (__typeof__(p->stats.field))v->valuedouble; } } while (0)
@@ -1187,7 +1207,7 @@ static void drive_account(NetTransport *n)
     char path[160];
     if (strcmp(n->loaded_uid, n->auth.user_id) != 0) {
         snprintf(n->loaded_uid, sizeof(n->loaded_uid), "%s", n->auth.user_id);
-        snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*),book_state(book_id,last_level,updated_at)",
+        snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*),book_state(book_id,last_level,updated_at),ride_state(state,updated_at)",
                  n->auth.user_id);
         rest_call(&n->rest, &n->mgr, n->auth.access_token, "GET", path, NULL, profile_loaded, n);
     } else if (n->profile_pending) {
@@ -1213,6 +1233,11 @@ static void drive_account(NetTransport *n)
         snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_book\":\"%s\",\"p_level\":\"%s\",\"p_at_ms\":%.0f}", b->book, b->level,
                  b->updated_ms);
         n->book_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "POST", "rpc/book_state_set", n->rest_body, book_saved, n);
+    } else if (n->ride_pending) {
+        SDL_LockMutex(n->lock);
+        snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_state\":%s,\"p_at_ms\":%.0f}", n->ride_save, n->ride_save_ms);
+        SDL_UnlockMutex(n->lock);
+        n->ride_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "POST", "rpc/ride_state_set", n->rest_body, book_saved, n);
     }
 }
 
@@ -1397,7 +1422,7 @@ static void link_abort(NetTransport *n, bool signed_in, const char *why)
 static void link_merged(NetTransport *n)
 {
     supa_auth_link_commit(&n->auth);
-    n->stats_pending = n->profile_pending = n->book_pending = false; /* the guest's numbers must not land on this account */
+    n->stats_pending = n->profile_pending = n->book_pending = n->ride_pending = false; /* the guest's numbers must not land on this account */
     SDL_LockMutex(n->lock);
     n->friend_count = 0;
     n->search_count = 0;
@@ -1601,7 +1626,7 @@ static int net_thread(void *arg)
     }
     /* last profile/stats writes before closing (bounded) */
     for (int i = 0; i < 300 && n->want_account && supa_auth_ready(&n->auth) &&
-                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending || n->book_pending);
+                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending || n->book_pending || n->ride_pending);
          i++) {
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         drive_account(n);
@@ -1816,6 +1841,21 @@ void net_save_book_state(NetTransport *n, const char *book, const char *level, d
     snprintf(c.book.book, sizeof(c.book.book), "%s", book);
     snprintf(c.book.level, sizeof(c.book.level), "%s", level);
     c.book.updated_ms = at_ms;
+    push_cmd(n, &c);
+}
+
+void net_save_ride_state(NetTransport *n, const char *state_json, double at_ms)
+{
+    if (!n || strlen(state_json) >= sizeof(n->ride_save)) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    snprintf(n->ride_save, sizeof(n->ride_save), "%s", state_json);
+    n->ride_save_ms = at_ms;
+    SDL_UnlockMutex(n->lock);
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_RIDE_SAVE;
     push_cmd(n, &c);
 }
 
