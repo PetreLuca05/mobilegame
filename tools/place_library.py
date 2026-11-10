@@ -3,33 +3,61 @@
 
 usage: python3 -I tools/place_library.py [--dry-run]
 
+Rule (product owner, LIB-1): "The library stands on the island at lib_scale (0.35 map units
+per metre). Add library {x, z, yaw_deg} to each island JSON by rule and commit it: the point
+nearest start whose pad is >= 30 units from every hospital plot centre, >= 8 from the road, on
+the grass plateau, front facing the road; remove props under the pad; add a 3.4-wide path to
+the road." Re-done for the square hall: a 2 x 2 hall of 16 x 16 m rooms = 32 x 32 m in
+library space, x -24 .. 8, z -21.5 .. 10.5 around the library's origin, open / front side at
+local +z (the camera side). At lib_scale 0.35 that is 11.2 x 11.2 units, centred at local
+(BLD_X, BLD_Z) * 0.35 = (-2.8, -1.925) units. The pad is a PAD_W x PAD_D = 15 x 15 square
+centred on the building (1.9 units of pad round it on every side): pad centre = library point
++ local (PAD_OFF_X, PAD_OFF_Z). The path leaves the middle of the pad's front edge.
+
 For each book in assets/world/books.json, reads <book>.island.json (mg-island 2) and the
-island's terrain mesh (<book>_island.mgmesh, group "terrain"), then picks
+island's terrain mesh (<book>_island.mgmesh, groups "terrain", "scenery" and the prop groups).
+Candidates are pad centres C on a 0.5-unit grid over the terrain bounds. For each,
+    yaw  = facing the nearest road point R from C (yaw_deg 0 faces +z, 90 faces +x, i.e.
+           front = (sin yaw, cos yaw)),
+    library point L = C - local (PAD_OFF_X, PAD_OFF_Z),
+and the spot is the valid candidate whose L is nearest the island's `start` (ties: smaller
+x, then smaller z of C). Valid means
+  - the pad rectangle (15 x 15, oriented with the library) is >= 30 units from every hospital
+    plot centre (levels[].hospital {x, z}) and >= 8 units from the road polyline (`road`,
+    the centre line), measured from the rectangle, not its centre;
+  - on the grass plateau: at every pad sample (0.5-unit grid + corners) the highest terrain
+    surface is a flat triangle at the plateau level (ground_y .. ground_y + 0.06: the 2.2
+    grass cap and the 2.25 meadow patches on it); beach (1.15 / 1.2), slopes and water fail,
+    and so does anything standing on the terrain (lighthouse, boats);
+  - the pad sits on bare grass (owner's decision, kept from the first placement): no triangle
+    of the "scenery" group (road, ambulance start pad, ponds, fields, mounds, hedges, the
+    hospital plots, the ambulance station) overlaps the pad rectangle in plan view (exact
+    triangle / rectangle test; SCENERY_MARGIN = 0 grows the rectangle for it: 1.0 would
+    push the old 26 x 8 Lawrance pad from 43 to 101 units from start, so it stays off);
+  - the 3.4-wide path from the middle of the pad's front edge to R crosses no water (terrain
+    colours 0 / 1, scenery colour 21 ponds, or a surface below the plateau's foot at 1.0)
+    no hospital plot (plot_size square around each hospital, turned by its yaw) and nothing
+    rising above the grass (the highest terrain or scenery surface at every sample is at most
+    ground_y + 0.08: grass, meadow patches, road, the start pad (2.27); not the ambulance
+    station next to the start pad, hedges or the 2.47 mounds the strip would sink into) and
+    no scenery but what lies under the road point R itself (the start pad, the road): the
+    path does not clip fields, mounds or hedges (exact triangle / rectangle test); the rest
+    sampled on a 0.25-unit grid.
+The point the rule gives without the bare-grass check is printed too.
 
-    library {x, z, yaw_deg} = the grid point (0.5-unit steps over the terrain bounds)
-    nearest the island's `start` (ties: smaller x, then smaller z) that is
-      - >= 30 units from every hospital plot centre (levels[].hospital {x, z}),
-      - >= 8 units from the road polyline (`road`),
-      - on the grass plateau: at the point and at every sample of the 13 x 10.5 pad
-        (1-unit grid + corners, oriented with the library) the highest terrain surface is
-        a flat triangle at the plateau level (ground_y .. ground_y + 0.06: the 2.2 grass cap
-        and the 2.25 meadow patches on it); beach (1.15 / 1.2), slopes and water fail,
-        and so does anything standing on the terrain (lighthouse, boats),
-      - (added to the rule) the pad sits on bare grass: no triangle of the "scenery" group
-        (road, ambulance start pad, ponds, fields, mounds, hedges, the hospital plots)
-        covers any pad sample in plan view; the point the literal rule alone would give is
-        printed too,
-    facing (+z of the building) the nearest point of the road polyline:
-    yaw_deg 0 faces +z, 90 faces +x, i.e. front = (sin yaw, cos yaw).
+Props: every prop instance (props.<group>[] = [x, y, z, scale, yaw]) whose footprint (the
+group's mesh radius in x/z times scale) comes within PROP_MARGIN (1.0) of the pad rectangle
+or within PATH_MARGIN (0.5) of the path strip is removed, so nothing stands on the pad, leans
+over its edge or blocks the path.
 
-Then it removes every prop instance (props.<group>[] = [x, y, z, scale, yaw]) within 10.5 units
-(x/z distance) of the point and writes, after "levels":
+Writes, after "levels":
 
-    "library":      {"x", "z", "yaw_deg"}
-    "library_pad":  {"x", "z", "yaw_deg", "w": 13, "d": 10.5, "y", "corners": [[x, z] x 4]}
-                    w along the library's local x, d along its local z (the front edge is
-                    local z = +d/2); y = highest plateau surface under it; corners in world x/z,
-                    in local terms (-w/2, +d/2) (-w/2, -d/2) (+w/2, -d/2) (+w/2, +d/2);
+    "library":      {"x", "z", "yaw_deg"}  (the building's origin, as the game places it)
+    "library_pad":  {"x", "z", "yaw_deg", "w": 15, "d": 15, "y", "corners": [[x, z] x 4]}
+                    x, z = the pad centre (library + local (-2.8, -1.925)); w along the library's
+                    local x, d along its local z (the front edge is local z = +d/2 from the
+                    pad centre); y = highest plateau surface under it; corners in world x/z,
+                    in pad-local terms (-w/2, +d/2) (-w/2, -d/2) (+w/2, -d/2) (+w/2, +d/2);
                     local -> world: x' = x + lx cos(yaw) + lz sin(yaw),
                                     z' = z - lx sin(yaw) + lz cos(yaw)
     "library_path": {"from": [x, z], "to": [x, z], "width": 3.4, "y"} (y = the pad's y)
@@ -50,12 +78,25 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STEP = 0.5
 MIN_HOSPITAL = 30.0
 MIN_ROAD = 8.0
-PROP_CLEAR = 10.5  # LIB-1 asked for 9; 10.5 clears two pines whose canopies touched the Kumar pad
-PAD_W = 13.0
-PAD_D = 10.5
+LIB_SCALE = 0.35     # map units per library metre
+BLD_X = -8.0         # building centre in library metres: x -24 .. 8
+BLD_Z = -5.5         #                                     z -21.5 .. 10.5
+PAD_OFF_X = BLD_X * LIB_SCALE
+PAD_OFF_Z = BLD_Z * LIB_SCALE
+PAD_W = 15.0         # the 11.2 x 11.2 building + ~3.8
+PAD_D = 15.0
+PAD_SAMPLE = 0.5
+SCENERY_MARGIN = 0.0  # extra bare grass around the pad (off, see the docstring)
 PATH_W = 3.4
+PATH_SAMPLE = 0.25
+PROP_MARGIN = 1.0    # footprint clearance to the pad edge
+PATH_MARGIN = 0.5    # footprint clearance to the path edge
 PLATEAU_TOL = 0.06   # accepted plateau surfaces: ground_y - 0.01 .. ground_y + PLATEAU_TOL
 FLAT_NY = 0.995      # a flat triangle's normal y
+WATER_T = {0, 1}     # terrain colours: sea, shallows
+WATER_S = {21}       # scenery colour: ponds
+LOW_Y = 1.0          # anything below is under the plateau's foot (sea level)
+PATH_RISE = 0.08     # the path's ground: nothing higher than ground_y + PATH_RISE
 CELL = 8.0           # spatial hash cell for triangles
 
 
@@ -152,15 +193,56 @@ def to_world(x, z, yaw, lx, lz):
     return x + lx * c + lz * s, z - lx * s + lz * c
 
 
-def pad_samples(x, z, yaw):
-    pts = []
-    nx, nz = int(math.ceil(PAD_W)), int(math.ceil(PAD_D))
-    for i in range(nx + 1):
-        for j in range(nz + 1):
-            lx = -PAD_W / 2 + PAD_W * i / nx
-            lz = -PAD_D / 2 + PAD_D * j / nz
-            pts.append(to_world(x, z, yaw, lx, lz))
-    return pts
+def rect(cx, cz, yaw, w, d):
+    """Corners (counter-clockwise in local terms) of a w x d rectangle centred on (cx, cz)."""
+    return [to_world(cx, cz, yaw, sx * w / 2, sz * d / 2) for sx, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+
+
+def poly_dist(poly, px, pz):
+    """0 inside the convex polygon, else the distance to its boundary."""
+    inside, sgn, best = True, None, 1e30
+    n = len(poly)
+    for i in range(n):
+        ax, az = poly[i]
+        bx, bz = poly[(i + 1) % n]
+        cr = (bx - ax) * (pz - az) - (bz - az) * (px - ax)
+        if abs(cr) > 1e-9:
+            if sgn is None:
+                sgn = cr > 0
+            elif (cr > 0) != sgn:
+                inside = False
+        cx, cz = seg_closest(px, pz, ax, az, bx, bz)
+        best = min(best, math.hypot(cx - px, cz - pz))
+    return 0.0 if inside else best
+
+
+def seg_seg(a, b, c, d):
+    def cross(o, p, q):
+        return (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0])
+    if (cross(a, b, c) > 0) != (cross(a, b, d) > 0) and (cross(c, d, a) > 0) != (cross(c, d, b) > 0):
+        return 0.0
+    best = 1e30
+    for p, q, r in ((a, c, d), (b, c, d), (c, a, b), (d, a, b)):
+        x, z = seg_closest(p[0], p[1], q[0], q[1], r[0], r[1])
+        best = min(best, math.hypot(x - p[0], z - p[1]))
+    return best
+
+
+def polyline_poly_dist(line, poly):
+    best = min(poly_dist(poly, x, z) for x, z in line)
+    if best == 0.0:
+        return 0.0
+    n = len(poly)
+    for i in range(len(line) - 1):
+        for j in range(n):
+            best = min(best, seg_seg(line[i], line[i + 1], poly[j], poly[(j + 1) % n]))
+    return best
+
+
+def rect_samples(cx, cz, yaw, w, d, step):
+    nx, nz = max(1, int(math.ceil(w / step))), max(1, int(math.ceil(d / step)))
+    return [to_world(cx, cz, yaw, -w / 2 + w * i / nx, -d / 2 + d * j / nz)
+            for i in range(nx + 1) for j in range(nz + 1)]
 
 
 def on_plateau(terrain, ground_y, x, z):
@@ -171,19 +253,76 @@ def on_plateau(terrain, ground_y, x, z):
     return (flat >= FLAT_NY and ground_y - 0.01 <= h <= ground_y + PLATEAU_TOL), h
 
 
-def scenery_blocked(scenery, x, z):
-    for _hit in scenery.hits(x, z):
-        return True
+def convex_overlap(a, b):
+    """Separating-axis test for two convex polygons in x/z (touching counts as overlap)."""
+    for poly in (a, b):
+        n = len(poly)
+        for i in range(n):
+            ex, ez = poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]
+            ax, az = -ez, ex
+            pa = [ax * x + az * z for x, z in a]
+            pb = [ax * x + az * z for x, z in b]
+            if max(pa) < min(pb) - 1e-9 or max(pb) < min(pa) - 1e-9:
+                return False
+    return True
+
+
+def scenery_overlaps(scenery, poly, allowed=()):
+    xs, zs = [p[0] for p in poly], [p[1] for p in poly]
+    seen = set()
+    for cx in range(math.floor(min(xs) / CELL), math.floor(max(xs) / CELL) + 1):
+        for cz in range(math.floor(min(zs) / CELL), math.floor(max(zs) / CELL) + 1):
+            for idx in scenery.cells.get((cx, cz), ()):
+                if idx in seen:
+                    continue
+                seen.add(idx)
+                if scenery.tris[idx][2] in allowed:
+                    continue
+                v = scenery.tris[idx][0]
+                if convex_overlap(poly, [(v[0], v[2]), (v[3], v[5]), (v[6], v[8])]):
+                    return True
     return False
 
 
-def place(isl, mesh, check_scenery=True):
+def wet(terrain, scenery, x, z):
+    hs = [(h[0], h[1], "t") for h in terrain.hits(x, z)] + [(h[0], h[1], "s") for h in scenery.hits(x, z)]
+    if not hs:
+        return True
+    top = max(h[0] for h in hs)
+    if top < LOW_Y:
+        return True
+    return any((tag == "t" and col in WATER_T) or (tag == "s" and col in WATER_S)
+               for h, col, tag in hs if h >= top - 0.3)
+
+
+def raised(terrain, scenery, limit, x, z):
+    for g in (terrain, scenery):
+        for h in g.hits(x, z):
+            if h[0] > limit:
+                return True
+    return False
+
+
+def path_rect(fx, fz, tx, tz):
+    L = math.hypot(tx - fx, tz - fz)
+    yaw = math.atan2(tx - fx, tz - fz)
+    return (fx + tx) / 2, (fz + tz) / 2, yaw, L
+
+
+def plot_rects(isl):
+    ps = isl["plot_size"]
+    return [rect(lv["hospital"]["x"], lv["hospital"]["z"], lv["hospital"]["yaw"], ps, ps) for lv in isl["levels"]]
+
+
+def place(isl, mesh, off_x, check_scenery=True):
     terrain = TriGrid(mesh.get("terrain", []))
     scenery = TriGrid(mesh.get("scenery", []))
     ground_y = float(isl["ground_y"])
     road = isl["road"]
     hosp = [(lv["hospital"]["x"], lv["hospital"]["z"]) for lv in isl["levels"]]
+    plots = plot_rects(isl)
     sx, sz = isl["start"]["x"], isl["start"]["z"]
+    off = math.hypot(off_x, PAD_OFF_Z)
 
     cands = []
     gx0, gx1 = math.ceil(terrain.minx / STEP), math.floor(terrain.maxx / STEP)
@@ -192,39 +331,59 @@ def place(isl, mesh, check_scenery=True):
         x = i * STEP
         for j in range(gz0, gz1 + 1):
             z = j * STEP
-            cands.append(((x - sx) ** 2 + (z - sz) ** 2, x, z))
+            cands.append((math.hypot(x - sx, z - sz), x, z))
     cands.sort()
 
-    stats = {"hospital": 0, "road": 0, "plateau": 0, "pad_plateau": 0, "scenery": 0}
-    for _d2, x, z in cands:
-        dh = min(math.hypot(x - hx, z - hz) for hx, hz in hosp)
+    stats = {"hospital": 0, "road": 0, "plateau": 0, "pad_plateau": 0, "scenery": 0, "path": 0}
+    best = None
+    for dc, x, z in cands:
+        if best is not None and dc > best["dstart"] + off + 1e-9:
+            break  # |L - C| is fixed, so no later C can give a nearer library point
+        if not on_plateau(terrain, ground_y, x, z)[0]:
+            stats["plateau"] += 1
+            continue
+        dr, rx, rz = road_nearest(road, x, z)
+        yaw = math.atan2(rx - x, rz - z)
+        pad = rect(x, z, yaw, PAD_W, PAD_D)
+        dh = min(poly_dist(pad, hx, hz) for hx, hz in hosp)
         if dh < MIN_HOSPITAL:
             stats["hospital"] += 1
             continue
-        dr, rx, rz = road_nearest(road, x, z)
-        if dr < MIN_ROAD:
+        dpr = polyline_poly_dist(road, pad)
+        if dpr < MIN_ROAD:
             stats["road"] += 1
             continue
-        ok, h = on_plateau(terrain, ground_y, x, z)
-        if not ok:
-            stats["plateau"] += 1
-            continue
-        yaw = math.atan2(rx - x, rz - z)
-        pts = pad_samples(x, z, yaw)
-        if not all(on_plateau(terrain, ground_y, px, pz)[0] for px, pz in pts):
+        pts = rect_samples(x, z, yaw, PAD_W, PAD_D, PAD_SAMPLE)
+        tops = [on_plateau(terrain, ground_y, px, pz) for px, pz in pts]
+        if not all(t[0] for t in tops):
             stats["pad_plateau"] += 1
             continue
-        if check_scenery and any(scenery_blocked(scenery, px, pz) for px, pz in pts):
+        if check_scenery and scenery_overlaps(scenery, rect(x, z, yaw, PAD_W + 2 * SCENERY_MARGIN,
+                                                            PAD_D + 2 * SCENERY_MARGIN)):
             stats["scenery"] += 1
             continue
-        hpad = max(on_plateau(terrain, ground_y, px, pz)[1] for px, pz in pts)
-        return {"x": x, "z": z, "yaw": yaw, "h": h, "hpad": hpad, "dh": dh, "dr": dr, "road_pt": (rx, rz),
-                "dstart": math.sqrt(_d2), "rejected": stats}
-    return None
+        fx, fz = to_world(x, z, yaw, 0.0, PAD_D / 2)
+        pcx, pcz, pyaw, plen = path_rect(fx, fz, rx, rz)
+        psamp = rect_samples(pcx, pcz, pyaw, PATH_W, plen, PATH_SAMPLE)
+        allowed = {h[1] for h in scenery.hits(rx, rz)}
+        if scenery_overlaps(scenery, rect(pcx, pcz, pyaw, PATH_W, plen), allowed) or \
+                any(wet(terrain, scenery, px, pz) or raised(terrain, scenery, ground_y + PATH_RISE, px, pz)
+                    for px, pz in psamp) or \
+                any(poly_dist(pl, px, pz) == 0.0 for pl in plots for px, pz in psamp):
+            stats["path"] += 1
+            continue
+        lx, lz = to_world(x, z, yaw, -off_x, -PAD_OFF_Z)
+        dl = math.hypot(lx - sx, lz - sz)
+        if best is None or dl < best["dstart"] - 1e-9:
+            best = {"x": x, "z": z, "lx": lx, "lz": lz, "yaw": yaw, "hpad": max(t[1] for t in tops),
+                    "dh": dh, "dr": dpr, "road_pt": (rx, rz), "front": (fx, fz), "pad": pad,
+                    "dstart": dl, "rejected": dict(stats)}
+    return best
 
 
 def main():
     dry = "--dry-run" in sys.argv[1:]
+    off_x = PAD_OFF_X
     books = json.load(open(os.path.join(ROOT, "assets/world/books.json"), encoding="utf-8"))
     ok = True
     for b in books["books"]:
@@ -233,46 +392,59 @@ def main():
         src = open(jpath, encoding="utf-8").read()
         isl = json.loads(src)
         mesh = load_mesh(mpath)
-        res = place(isl, mesh)
-        lit = place(isl, mesh, check_scenery=False)
-        print(f"{isl['id']}:")
+        res = place(isl, mesh, off_x)
+        lit = place(isl, mesh, off_x, check_scenery=False)
+        print(f"{isl['id']}:  (pad offset from the library point: local x {off_x:g}, z {PAD_OFF_Z:g})")
         if lit is not None:
-            print(f"  literal rule (no scenery check): x {lit['x']} z {lit['z']} "
-                  f"yaw_deg {math.degrees(lit['yaw']):.2f}, hospital {lit['dh']:.2f}, road {lit['dr']:.2f}")
+            print(f"  without the bare-grass check: library x {lit['lx']:.2f} z {lit['lz']:.2f} "
+                  f"yaw_deg {math.degrees(lit['yaw']):.2f}, pad-hospital {lit['dh']:.2f}, pad-road {lit['dr']:.2f}")
         if res is None:
             print("  no spot satisfies the rule")
             ok = False
             continue
         x, z, yaw = res["x"], res["z"], res["yaw"]
+        lx, lz = res["lx"], res["lz"]
         yaw_deg = math.degrees(yaw)
-        print(f"  library x {x} z {z} yaw_deg {yaw_deg:.2f}  ({res['dstart']:.2f} from start "
-              f"{isl['start']['x']}, {isl['start']['z']})")
-        print(f"  nearest hospital {res['dh']:.2f}  nearest road {res['dr']:.2f} at "
-              f"({res['road_pt'][0]:.2f}, {res['road_pt'][1]:.2f})  plateau height {res['h']:.2f} (pad top surface max {res['hpad']:.2f})")
-        print("  closer grid points rejected by: " +
-              ", ".join(f"{k} {v}" for k, v in res["rejected"].items()))
+        print(f"  library x {lx:.2f} z {lz:.2f} yaw_deg {yaw_deg:.2f}  ({res['dstart']:.2f} from start "
+              f"{isl['start']['x']}, {isl['start']['z']}); pad centre {x}, {z}")
+        print(f"  pad to nearest hospital centre {res['dh']:.2f}, to the road {res['dr']:.2f}; nearest road point "
+              f"({res['road_pt'][0]:.2f}, {res['road_pt'][1]:.2f}); pad top surface max {res['hpad']:.2f}")
+        print("  candidates rejected before it: " + ", ".join(f"{k} {v}" for k, v in res["rejected"].items()))
 
+        # footprint radii of the prop groups (mesh x/z extent; instances scale it)
+        radius = {}
+        for g in isl.get("props", {}):
+            r = 0.0
+            for _c, v in mesh.get(g, []):
+                for i in (0, 3, 6):
+                    r = max(r, math.hypot(v[i], v[i + 2]))
+            radius[g] = r
+        fx, fz = res["front"]
+        rx, rz = res["road_pt"]
+        pcx, pcz, pyaw, plen = path_rect(fx, fz, rx, rz)
+        prect = rect(pcx, pcz, pyaw, PATH_W, plen)
         removed = []
         props = isl.get("props", {})
         for name, inst in props.items():
             keep = []
             for it in inst:
-                if math.hypot(it[0] - x, it[2] - z) < PROP_CLEAR:
-                    removed.append((name, it))
+                fr = radius[name] * it[3]
+                dp = poly_dist(res["pad"], it[0], it[2]) - fr
+                dq = poly_dist(prect, it[0], it[2]) - fr
+                if dp < PROP_MARGIN or dq < PATH_MARGIN:
+                    removed.append((name, it, dp, dq))
                 else:
                     keep.append(it)
             props[name] = keep
-        print(f"  props removed within {PROP_CLEAR:g}: {len(removed)}")
-        for name, it in removed:
-            print(f"    {name} {it}  (d {math.hypot(it[0] - x, it[2] - z):.2f})")
+        print(f"  props removed (footprint within {PROP_MARGIN:g} of the pad or {PATH_MARGIN:g} of the path): {len(removed)}")
+        for name, it, dp, dq in removed:
+            print(f"    {name} {it}  (clearance pad {dp:.2f}, path {dq:.2f})")
 
-        corners = [to_world(x, z, yaw, lx, lz) for lx, lz in
+        corners = [to_world(x, z, yaw, cx, cz) for cx, cz in
                    ((-PAD_W / 2, PAD_D / 2), (-PAD_W / 2, -PAD_D / 2),
                     (PAD_W / 2, -PAD_D / 2), (PAD_W / 2, PAD_D / 2))]
-        fx, fz = to_world(x, z, yaw, 0.0, PAD_D / 2)
-        rx, rz = res["road_pt"]
-        print(f"  path from ({fx:.2f}, {fz:.2f}) to ({rx:.2f}, {rz:.2f}), length {math.hypot(rx - fx, rz - fz):.2f}")
-        lib = {"x": r2(x), "z": r2(z), "yaw_deg": r2(yaw_deg)}
+        print(f"  path from ({fx:.2f}, {fz:.2f}) to ({rx:.2f}, {rz:.2f}), length {plen:.2f}")
+        lib = {"x": r2(lx), "z": r2(lz), "yaw_deg": r2(yaw_deg)}
         pad = {"x": r2(x), "z": r2(z), "yaw_deg": r2(yaw_deg), "w": r2(PAD_W), "d": r2(PAD_D),
                "y": r2(res["hpad"]), "corners": [[r2(cx), r2(cz)] for cx, cz in corners]}
         path = {"from": [r2(fx), r2(fz)], "to": [r2(rx), r2(rz)], "width": r2(PATH_W), "y": r2(res["hpad"])}
