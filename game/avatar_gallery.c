@@ -23,9 +23,14 @@ typedef struct Item {
     bool indoors;
 } Item;
 
-GalleryMode avatar_gallery_parse(const char *name)
+GalleryMode avatar_gallery_parse(const char *name, int *row)
 {
     static const char *const names[] = {"", "options", "ages", "seats", "bed", "poses"};
+    *row = 0;
+    if (name && SDL_strncmp(name, "options", 7) == 0 && name[7] >= '1' && name[7] <= '6' && name[8] == 0) {
+        *row = name[7] - '0';
+        return GALLERY_OPTIONS;
+    }
     for (int i = 1; i < (int)SDL_arraysize(names); i++) {
         if (name && SDL_strcmp(name, names[i]) == 0) {
             return (GalleryMode)i;
@@ -38,7 +43,7 @@ static Item lawn(int col, int row, NetSkin s)
 {
     Item it;
     SDL_zero(it);
-    it.feet = HMM_V3(LAWN_X + 0.9f * (float)col, 0.0f, LAWN_Z + 1.4f * (float)row);
+    it.feet = HMM_V3(LAWN_X + 1.05f * (float)col, 0.0f, LAWN_Z + 1.6f * (float)row);
     it.yaw = YAW_FACE_PZ;
     it.skin = s;
     return it;
@@ -85,7 +90,7 @@ static int build(GalleryMode mode, Item *out)
     case GALLERY_AGES: {
         static const uint8_t ages[3] = {AVATAR_CHILD, AVATAR_ADULT, AVATAR_ELDER};
         for (int i = 0; i < 3; i++) {
-            Item it = lawn(i, 0, (NetSkin){.skin = 2, .hair = HAIR_BOB, .hair_color = 3, .suit = 4});
+            Item it = lawn(i + 1, 1, (NetSkin){.skin = 2, .hair = HAIR_BOB, .hair_color = 3, .suit = 4}); /* in front */
             it.look = avatar_look_from_skin(it.skin);
             it.look.age = ages[i];
             if (ages[i] == AVATAR_ELDER) {
@@ -100,7 +105,7 @@ static int build(GalleryMode mode, Item *out)
         /* NPC looks: gown, gardener (hat), orderly (bucket), civilian, nurse with a mask, security */
         static const uint32_t outfits[6] = {0xDDE8F4, 0x6B8E3A, 0x5BB98C, 0xE76F6F, 0x4A7FC9, 0xF2F2F2};
         for (int i = 0; i < 6; i++) {
-            Item it = lawn(i, 1, (NetSkin){.skin = (uint8_t)i, .hair = (uint8_t)(1 + i % 5), .hair_color = (uint8_t)i, .suit = (uint8_t)(i == 4 ? 1 : i == 5 ? 7 : 0),
+            Item it = lawn(i, 0, (NetSkin){.skin = (uint8_t)i, .hair = (uint8_t)(1 + i % 5), .hair_color = (uint8_t)i, .suit = (uint8_t)(i == 4 ? 1 : i == 5 ? 7 : 0),
                                            .accessory = (uint8_t)(i == 4 ? ACC_MASK : i == 5 ? ACC_SUNGLASSES : ACC_NONE)});
             it.look = avatar_look_from_skin(it.skin);
             if (i < 4) {
@@ -178,6 +183,9 @@ void avatar_gallery_draw(AvatarGallery *gal, GfxContext *g, const AvatarMeshes *
     const int n = build(gal->mode, items);
     for (int i = 0; i < n; i++) {
         const Item *it = &items[i];
+        if (gal->mode == GALLERY_OPTIONS && gal->row && it->feet.Z != LAWN_Z + 1.6f * (float)(6 - gal->row)) {
+            continue; /* one row (row 1, the hair styles, stands farthest back) */
+        }
         const AvatarLook look = it->use_look ? it->look : avatar_look_from_skin(it->skin);
         AvatarPose p;
         SDL_zero(p);

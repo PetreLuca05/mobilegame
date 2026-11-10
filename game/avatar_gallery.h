@@ -2,6 +2,7 @@
  * hospital, for screenshots of the LIB-1 avatar (docs/autotest/avatar/). Drawn after the player; nothing is
  * simulated. Pair each with --spawn (the view floor) and --cam (tools/avatar_test.sh has both).
  *   options  every creator option on a lawn in the yard: hair styles, suits, extras, skins, hair colours, bodies
+ *            (optionsN: only row N, 1 hair styles .. 6 bodies, for close-ups)
  *   ages     child, adult, elder side by side, plus the NPC looks
  *   seats    the reception chair and a waiting-area chair (G), the yard bench
  *   bed      a ward bed (storey 1)
@@ -17,10 +18,11 @@ typedef enum { GALLERY_OFF, GALLERY_OPTIONS, GALLERY_AGES, GALLERY_SEATS, GALLER
 
 typedef struct AvatarGallery {
     GalleryMode mode;
+    int row; /* options: 1..6 draws only that row (1 = hair styles .. 6 = bodies), 0 all */
     AvatarAnim anim[GALLERY_MAX];
 } AvatarGallery;
 
-GalleryMode avatar_gallery_parse(const char *name);
+GalleryMode avatar_gallery_parse(const char *name, int *row);
 void avatar_gallery_draw(AvatarGallery *gal, GfxContext *g, const AvatarMeshes *m, float dt);
 
 #endif

@@ -201,6 +201,7 @@ typedef struct Game {
     NpcWorld npcs;
     bool npcs_ok, npcs_on;
     bool npc_catching_up, npc_sync_log;
+    uint32_t npc_pose_log_tick; /* --log-npc-poses TICK: every NPC's pose once at that tick (0 off) */
     double npc_epoch_ms;       /* online: wall clock of tick 0 */
     uint32_t npc_resume_tick;  /* offline Continue: the save's tick */
     int msaa_samples;           /* what the thermal path returns to */
@@ -494,7 +495,7 @@ bool game_init(MgApp *app)
     g->fly.pos = HMM_V3(0.0f, 8.0f, 11.5f);
     g->fly.pitch = HMM_AngleDeg(-32.0f);
     g->fly_mode = parse_cam_arg(app->argc, app->argv, &g->fly);
-    g->gallery.mode = avatar_gallery_parse(arg_value(app->argc, app->argv, "--avatar-gallery"));
+    g->gallery.mode = avatar_gallery_parse(arg_value(app->argc, app->argv, "--avatar-gallery"), &g->gallery.row);
     g->settings.show_colliders = has_flag(app->argc, app->argv, "--colliders");
     g->settings.show_storeys = has_flag(app->argc, app->argv, "--storeys");
     g->settings.show_nav = has_flag(app->argc, app->argv, "--nav");
@@ -652,6 +653,10 @@ bool game_init(MgApp *app)
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
     g->npc_sync_log = has_flag(app->argc, app->argv, "--npc-sync-log") || (atest && SDL_strcmp(atest, "friends") == 0);
+    {
+        const char *pl = arg_value(app->argc, app->argv, "--log-npc-poses");
+        g->npc_pose_log_tick = pl ? (uint32_t)SDL_atoi(pl) : 0u;
+    }
     g->ia_log = has_flag(app->argc, app->argv, "--ia-log");
     if (atest && (SDL_strcmp(atest, "npcs-save") == 0 || SDL_strcmp(atest, "npcs-continue") == 0)) {
         g->offline_play = true;
@@ -2181,6 +2186,18 @@ static void npc_step(Game *g, MgApp *app)
         mg_log_info("npc-sync: tick %u hash %08x alive %d seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.pool.count, g->npcs.seed);
         g->npc_sync_tick = g->npcs.tick;
         g->npc_sync_hash = npc_world_hash(&g->npcs);
+    }
+    if (g->npc_pose_log_tick && g->playing && g->npcs.tick == g->npc_pose_log_tick) { /* finding NPCs in a pose for pictures */
+        static const char *const poses[] = {"stand", "sit", "bed", "mop", "crouch"};
+        const NpcPool *p = &g->npcs.pool;
+        const npc_hot_t *hot = p->hot[p->read];
+        for (int i = 0; i < p->count; i++) {
+            const npc_hot_t *h = &hot[i];
+            const npc_cold_t *c = &p->cold[i];
+            mg_log_info("npc-pose: tick %u id %u %s storey %d at %.2f %.2f %.2f seat %.2f %.2f yaw %.2f sit %.2f age %d %s", g->npcs.tick, c->id,
+                        poses[c->pose < 5 ? c->pose : 0], (int)h->storey, (double)h->x, (double)h->y, (double)h->z, (double)c->seat_x,
+                        (double)c->seat_z, (double)h->yaw, (double)c->sit_t, (int)c->look.age, g->npcs.data.archetypes[c->archetype].name);
+        }
     }
 }
 

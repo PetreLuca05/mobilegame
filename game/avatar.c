@@ -137,24 +137,22 @@ static GfxMeshId upload_group(GfxContext *g, Arena *arena, const Mgmb *mb, const
     return gr ? upload_verts(g, arena, gr->verts, gr->vert_count) : GFX_MESH_NONE;
 }
 
-/* The same triangles with smooth normals (averaged over every corner at one position): the outline hull and
- * the x-ray rim push the mesh out along its normals, and flat normals would split it at every facet edge. */
-static GfxMeshId upload_hull(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
+/* Smooth shading (the avatar is smooth + cel shaded): every corner's normal is the average of the face normals
+ * at its position within `crease_deg` of its own face (360: all of them, the outline hull and the x-ray rim,
+ * which push the mesh out along its normals and would split at every edge otherwise). */
+static void smooth_normals(GfxVertex *v, const GfxVertex *src, uint32_t n, float crease_deg)
 {
-    const MgmbGroup *gr = mb ? mgmb_group(mb, name) : NULL;
-    if (!gr || gr->vert_count == 0) {
-        return GFX_MESH_NONE;
-    }
-    const size_t mark = arena_mark(arena);
-    const uint32_t n = gr->vert_count;
-    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, n);
-    SDL_memcpy(v, gr->verts, sizeof(GfxVertex) * n);
+    const float min_dot = cosf(HMM_AngleDeg(fminf(crease_deg, 180.0f)));
     for (uint32_t i = 0; i < n; i++) {
+        const HMM_Vec3 own = HMM_V3(src[i].nx, src[i].ny, src[i].nz);
         HMM_Vec3 sum = HMM_V3(0, 0, 0);
         for (uint32_t j = 0; j < n; j++) {
-            const GfxVertex *o = &gr->verts[j];
-            if (fabsf(o->px - v[i].px) < 1e-4f && fabsf(o->py - v[i].py) < 1e-4f && fabsf(o->pz - v[i].pz) < 1e-4f) {
-                sum = HMM_AddV3(sum, HMM_V3(o->nx, o->ny, o->nz));
+            const GfxVertex *o = &src[j];
+            if (fabsf(o->px - src[i].px) < 1e-4f && fabsf(o->py - src[i].py) < 1e-4f && fabsf(o->pz - src[i].pz) < 1e-4f) {
+                const HMM_Vec3 on = HMM_V3(o->nx, o->ny, o->nz);
+                if (crease_deg >= 360.0f || HMM_DotV3(on, own) >= min_dot) {
+                    sum = HMM_AddV3(sum, on);
+                }
             }
         }
         const float len = HMM_LenV3(sum);
@@ -162,7 +160,92 @@ static GfxMeshId upload_hull(GfxContext *g, Arena *arena, const Mgmb *mb, const 
             v[i].nx = sum.X / len, v[i].ny = sum.Y / len, v[i].nz = sum.Z / len;
         }
     }
-    const GfxMeshId id = upload_verts(g, arena, v, n);
+}
+
+static GfxMeshId upload_smooth(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name, float crease_deg)
+{
+    const MgmbGroup *gr = mb ? mgmb_group(mb, name) : NULL;
+    if (!gr || gr->vert_count == 0) {
+        return GFX_MESH_NONE;
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, gr->vert_count);
+    SDL_memcpy(v, gr->verts, sizeof(GfxVertex) * gr->vert_count);
+    smooth_normals(v, gr->verts, gr->vert_count, crease_deg);
+    const GfxMeshId id = upload_verts(g, arena, v, gr->vert_count);
+    arena_reset_to(arena, mark);
+    return id;
+}
+
+#define SMOOTH_CREASE 70.0f /* softer than any facet of the parts, sharper than a cane's cap or a hat's brim */
+
+static GfxMeshId upload_hull(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name) { return upload_smooth(g, arena, mb, name, 360.0f); }
+
+/* The suit body is a lathe: every vertex, the suit's detail patches included, takes the smooth normal of the
+ * profile at its height and angle, so a lapel or a badge shades exactly like the body under it. The profile is
+ * read from the plain body's zone-0 rings; ring normals average their two segments, heights between them lerp. */
+#define LATHE_RINGS 16
+static GfxMeshId upload_lathe(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name, const MgmbGroup *profile)
+{
+    const MgmbGroup *gr = mb ? mgmb_group(mb, name) : NULL;
+    if (!gr || gr->vert_count == 0 || !profile) {
+        return GFX_MESH_NONE;
+    }
+    float ry[LATHE_RINGS], rr[LATHE_RINGS];
+    int rings = 0;
+    for (uint32_t i = 0; i < profile->vert_count; i++) { /* the rings: distinct heights, their radius */
+        const GfxVertex *p = &profile->verts[i];
+        const float r = sqrtf(p->px * p->px + p->pz * p->pz);
+        int k = 0;
+        while (k < rings && fabsf(ry[k] - p->py) > 1e-4f) {
+            k++;
+        }
+        if (k == rings && rings < LATHE_RINGS) {
+            ry[rings] = p->py, rr[rings++] = r;
+        } else if (k < rings) {
+            rr[k] = fmaxf(rr[k], r);
+        }
+    }
+    for (int a = 1; a < rings; a++) { /* by height */
+        for (int b = a; b > 0 && ry[b - 1] > ry[b]; b--) {
+            float t = ry[b], u = rr[b];
+            ry[b] = ry[b - 1], rr[b] = rr[b - 1], ry[b - 1] = t, rr[b - 1] = u;
+        }
+    }
+    HMM_Vec2 rn[LATHE_RINGS]; /* (radial, up) normal at each ring */
+    for (int k = 0; k < rings; k++) {
+        HMM_Vec2 sum = HMM_V2(0, 0);
+        for (int s = -1; s <= 0; s++) { /* the segments below and above */
+            const int a = k + s, b = k + s + 1;
+            if (a < 0 || b >= rings) {
+                continue;
+            }
+            const float dr = rr[b] - rr[a], dy = ry[b] - ry[a];
+            const float len = sqrtf(dr * dr + dy * dy);
+            if (len > 1e-6f) {
+                sum = HMM_AddV2(sum, HMM_V2(dy / len, -dr / len));
+            }
+        }
+        rn[k] = HMM_LenV2(sum) > 1e-6f ? HMM_NormV2(sum) : HMM_V2(1, 0);
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, gr->vert_count);
+    SDL_memcpy(v, gr->verts, sizeof(GfxVertex) * gr->vert_count);
+    for (uint32_t i = 0; i < gr->vert_count && rings >= 2; i++) {
+        const float y = fminf(fmaxf(v[i].py, ry[0]), ry[rings - 1]);
+        int k = 0;
+        while (k + 2 < rings && y > ry[k + 1]) {
+            k++;
+        }
+        const float t = (y - ry[k]) / fmaxf(ry[k + 1] - ry[k], 1e-6f);
+        const HMM_Vec2 n2 = HMM_NormV2(HMM_LerpV2(rn[k], t, rn[k + 1]));
+        const float rad = sqrtf(v[i].px * v[i].px + v[i].pz * v[i].pz);
+        const float cx = rad > 1e-5f ? v[i].px / rad : 0.0f, cz = rad > 1e-5f ? v[i].pz / rad : 0.0f;
+        HMM_Vec3 n = rad > 1e-5f ? HMM_V3(cx * n2.X, n2.Y, cz * n2.X) : HMM_V3(0, y > 0.3f ? 1.0f : -1.0f, 0);
+        n = HMM_NormV3(n);
+        v[i].nx = n.X, v[i].ny = n.Y, v[i].nz = n.Z;
+    }
+    const GfxMeshId id = upload_verts(g, arena, v, gr->vert_count);
     arena_reset_to(arena, mark);
     return id;
 }
@@ -231,23 +314,24 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
         mg_log_error("avatar: avatar_options.mgmb missing: plain body, one hair cap, no extras");
     }
     /* the suit body (zones) and its hull, else the plain exported body */
-    m->body = upload_group(g, scratch, o, "body_suit");
+    const MgmbGroup *profile = mgmb_group(&base, "avatar_body");
+    m->body = upload_lathe(g, scratch, o, "body_suit", profile);
     m->body_hull = upload_hull(g, scratch, o, "body_suit_hull");
     if (m->body == GFX_MESH_NONE) {
-        m->body = upload_group(g, scratch, &base, "avatar_body");
+        m->body = upload_lathe(g, scratch, &base, "avatar_body", profile);
     }
     if (m->body_hull == GFX_MESH_NONE) {
         m->body_hull = upload_hull(g, scratch, &base, "avatar_body");
     }
-    m->head = upload_group(g, scratch, &base, "avatar_head");
+    m->head = upload_smooth(g, scratch, &base, "avatar_head", SMOOTH_CREASE);
     m->head_hull = upload_hull(g, scratch, &base, "avatar_head");
-    m->hand = upload_group(g, scratch, &base, "avatar_hand");
+    m->hand = upload_smooth(g, scratch, &base, "avatar_hand", SMOOTH_CREASE);
     m->hand_hull = upload_hull(g, scratch, &base, "avatar_hand");
     m->eye = upload_group(g, scratch, &base, "avatar_eye");
     static const char *const hair_groups[AVATAR_HAIRS] = {NULL, "avatar_hair", "hair_bob", "hair_bun", "hair_spiky", "hair_curly"};
     for (int s = HAIR_SHORT; s < AVATAR_HAIRS; s++) {
         const Mgmb *src = s == HAIR_SHORT ? &base : o;
-        m->hair[s] = upload_group(g, scratch, src, hair_groups[s]);
+        m->hair[s] = upload_smooth(g, scratch, src, hair_groups[s], SMOOTH_CREASE);
         m->hair_gap[s] = head_gap(src, hair_groups[s], m->rig.head_r);
         m->hair_hull[s] = upload_hull(g, scratch, src, hair_groups[s]);
         if (m->hair[s] == GFX_MESH_NONE) { /* no options file: every style is the short cap */
@@ -255,22 +339,22 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
             m->hair_hull[s] = m->hair_hull[HAIR_SHORT];
         }
     }
-    m->lod_body = upload_group(g, scratch, &base, "avatar_body_lod1");
+    m->lod_body = upload_lathe(g, scratch, &base, "avatar_body_lod1", mgmb_group(&base, "avatar_body_lod1"));
     m->lod_body_hull = upload_hull(g, scratch, &base, "avatar_body_lod1");
-    m->lod_head = upload_group(g, scratch, &base, "avatar_head_lod1");
+    m->lod_head = upload_smooth(g, scratch, &base, "avatar_head_lod1", SMOOTH_CREASE);
     m->lod_head_hull = upload_hull(g, scratch, &base, "avatar_head_lod1");
-    m->lod_hair = upload_group(g, scratch, &base, "avatar_hair_lod1");
-    m->lod_hand = upload_group(g, scratch, &base, "avatar_hand_lod1");
-    m->glasses = upload_group(g, scratch, o, "acc_sunglasses");
-    m->ears = upload_group(g, scratch, o, "acc_cat_ears");
-    m->mask = upload_group(g, scratch, o, "acc_mask");
-    m->hat = upload_group(g, scratch, o, "npc_hat");
+    m->lod_hair = upload_smooth(g, scratch, &base, "avatar_hair_lod1", SMOOTH_CREASE);
+    m->lod_hand = upload_smooth(g, scratch, &base, "avatar_hand_lod1", SMOOTH_CREASE);
+    m->glasses = upload_smooth(g, scratch, o, "acc_sunglasses", SMOOTH_CREASE);
+    m->ears = upload_smooth(g, scratch, o, "acc_cat_ears", SMOOTH_CREASE);
+    m->mask = upload_smooth(g, scratch, o, "acc_mask", SMOOTH_CREASE);
+    m->hat = upload_smooth(g, scratch, o, "npc_hat", SMOOTH_CREASE);
     static const char *const acc_groups[4] = {"acc_sunglasses", "acc_cat_ears", "acc_mask", "npc_hat"};
     for (int i = 0; i < 4; i++) {
         m->acc_gap[i] = head_gap(o, acc_groups[i], m->rig.head_r);
     }
-    m->cane = upload_group(g, scratch, o, "npc_cane");
-    m->bucket = upload_group(g, scratch, o, "npc_bucket");
+    m->cane = upload_smooth(g, scratch, o, "npc_cane", SMOOTH_CREASE);
+    m->bucket = upload_smooth(g, scratch, o, "npc_bucket", SMOOTH_CREASE);
     /* LOD2, far away or on another storey: the old representation re-proportioned to the new avatar */
     MeshBuilder mb;
     if (!mb_init(&mb, scratch, 512, 2048)) {

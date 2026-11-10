@@ -1,4 +1,4 @@
-/* The LIB-1 avatar (A1): a floating bean body, a faceted head with a hair cap and two eyes, two floating
+/* The LIB-1 avatar (A1), smooth + cel shaded: a floating bean body, a head with a hair cap and two eyes, two floating
  * hands, a contact disc. The parts come from assets/avatar/avatar.mgmesh (+ avatar_options.mgmesh: the other
  * hair styles, the suit details as zones of one body mesh, the extras), the sizes and the motion from
  * assets/avatar/avatar.json. Every player and NPC is posed by one function (avatar_solve) from a few inputs:

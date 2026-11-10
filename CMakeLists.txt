@@ -105,7 +105,7 @@ add_custom_target(mg_assets_lock ALL COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURC
                   COMMENT "Checking assets/ASSETS.lock" VERBATIM)
 # WORLD-1: mgmesh text -> engine mesh binary at build time (tools/meshgen.py); a malformed line fails the build
 set(MG_GEN_DIR ${CMAKE_BINARY_DIR}/generated)
-foreach(mesh world/kumar_island world/lawrance_island world/ambulance world/vehicles avatar/avatar menu/library)
+foreach(mesh world/kumar_island world/lawrance_island world/ambulance world/vehicles avatar/avatar avatar/avatar_options menu/library)
   get_filename_component(mesh_dir ${mesh} DIRECTORY)
   set(out ${MG_GEN_DIR}/assets/${mesh}.mgmb)
   add_custom_command(

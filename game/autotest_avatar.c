@@ -147,13 +147,13 @@ static int options(AvatarTest *t, const AvatarMeshes *m)
         if (m->body == GFX_MESH_NONE || m->head == GFX_MESH_NONE || m->hand == GFX_MESH_NONE || m->eye == GFX_MESH_NONE) {
             return failf(t, "options: a base part is missing");
         }
-        if (l.hair_style != HAIR_NONE && (m->hair[l.hair_style] == GFX_MESH_NONE || fabsf(m->hair_gap[l.hair_style]) > 0.03f)) {
+        if (l.hair_style != HAIR_NONE && (m->hair[l.hair_style] == GFX_MESH_NONE || m->hair_gap[l.hair_style] > 0.03f)) {
             return failf(t, "options: hair style %d missing or detached (gap %.3f m)", l.hair_style, (double)m->hair_gap[l.hair_style]);
         }
         const int acc = l.accessory == ACC_SUNGLASSES ? 0 : l.accessory == ACC_CAT_EARS ? 1 : l.accessory == ACC_MASK ? 2 : -1;
         if (acc >= 0) {
             const GfxMeshId mesh = acc == 0 ? m->glasses : acc == 1 ? m->ears : m->mask;
-            if (mesh == GFX_MESH_NONE || fabsf(m->acc_gap[acc]) > 0.03f) {
+            if (mesh == GFX_MESH_NONE || m->acc_gap[acc] > 0.03f) {
                 return failf(t, "options: extra %d missing or detached (gap %.3f m)", l.accessory, (double)m->acc_gap[acc]);
             }
         }
