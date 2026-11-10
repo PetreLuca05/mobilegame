@@ -340,7 +340,7 @@ static void lobby_column(SettingsMenu *m, Ui *ui, MenuAction *action, float x, f
         text_draw(ui->gfx, ui->font, x + head + 8.0f, py + 12.0f, 15.0f, k_ui_theme.text, r->meta.name);
         if (lobby_can_toggle(l)) {
             SDL_snprintf(label, sizeof(label), "%s##p_kick%d", str("lobby_kick"), i);
-            if (ui_button(ui, label, x + w - 84.0f, py + 2.0f, 84.0f, k_ui.target_min, false)) {
+            if (ui_button_v(ui, label, x + w - 84.0f, py + 2.0f, 84.0f, k_ui.target_min, UI_V_DESTRUCTIVE, UI_F_SMALL)) { /* kick: destructive */
                 lobby_kick(l, r->id);
             }
         }
