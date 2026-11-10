@@ -1150,8 +1150,9 @@ static void draw_net_badge(Game *g, MgApp *app)
     const float cx = app->width_pt * 0.5f, y = 104.0f; /* below the debug HUD lines */
     const char *msg = s->status_text;
     float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
-    ui_round_rect(app->gfx, &app->font, cx - mw * 0.5f - 12.0f, y, mw + 24.0f, 26.0f, 13.0f, ui_rgba(0xD94141E0));
-    text_draw_centered(app->gfx, &app->font, cx, y + 13.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
+    ui_shape(app->gfx, &(UiShape){.x = cx - mw * 0.5f - 14.0f, .y = y + k_ui.lip_pill, .w = mw + 28.0f, .h = 28.0f, .radius = -1.0f, .color = ui_rgba(k_ui.bad_lip)});
+    ui_shape(app->gfx, &(UiShape){.x = cx - mw * 0.5f - 14.0f, .y = y, .w = mw + 28.0f, .h = 28.0f, .radius = -1.0f, .color = ui_rgba(k_ui.bad)});
+    text_draw_centered(app->gfx, &app->font_bold, cx, y + 14.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
 }
 
 #ifdef MG_RENDER_FULL
@@ -2461,12 +2462,12 @@ static void draw_cloud_at(MgApp *app, float x, float y, bool active, float vis, 
     const float t = (float)app->time;
     y += active ? 3.0f * HMM_SinF(t * 2.0f * HMM_PI32) : 0.0f;
     const uint8_t alpha = (uint8_t)((active ? 235.0f : 95.0f) * vis);
-    const UiColor white = {255, 255, 255, alpha};
+    const UiColor white = {255, 255, 255, alpha}; /* the surface colour */
     ui_round_rect(app->gfx, &app->font, x - 19.0f * k, y - 12.0f * k, 38.0f * k, 24.0f * k, 12.0f * k, white); /* one shape: overlapping ones show through each other */
     for (int d = 0; d < 3; d++) {
         const float phase = active ? fmodf(t / 0.9f + (float)d / 3.0f, 1.0f) : 0.0f; /* in sequence */
         const float r = (active ? 1.8f + 1.4f * HMM_SinF(phase * HMM_PI32) : 2.0f) * k;
-        const UiColor dot = {40, 44, 54, alpha};
+        const UiColor dot = {0x17, 0x3A, 0x3A, alpha}; /* ink */
         ui_circle(app->gfx, &app->font, x + ((float)d * 7.0f - 7.0f) * k, y, r, dot);
     }
 }
@@ -3354,9 +3355,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         float gr[4];
         greet_rect(g, app, gr);
         const float cw = gr[2], ch = gr[3], cx = gr[0], cy = gr[1];
-        gfx_ui_blur_panel(app->gfx, cx, cy, cw, ch, 12.0f, HMM_V4(0.06f, 0.07f, 0.09f, 0.6f));
-        text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 18.0f, 13.0f, ui_rgba(0xFFD166FF), g->greet_name);
-        text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(0xFFFFFFFF), g->greet_line);
+        ui_surface(&g->ui, cx, cy, cw, ch - k_ui.lip_card, 16.0f, k_ui.lip_card, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+        text_draw_centered(app->gfx, &app->font_display, cx + cw * 0.5f, cy + 18.0f, 14.0f, ui_rgba(k_ui.teal_text), g->greet_name);
+        text_draw_centered(app->gfx, &app->font, cx + cw * 0.5f, cy + 40.0f, 15.0f, ui_rgba(k_ui.ink), g->greet_line);
     }
     if (g->lift_panel_ok && el) {
         elevator_panel_draw_3d(&g->lift_panel, app->gfx, el->car_floor);

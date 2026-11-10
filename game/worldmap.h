@@ -121,6 +121,12 @@ typedef struct WorldMap {
     float view_w, view_h, top_bar_b;
     int visible_cells, islands_drawn;
     bool join_disabled;    /* lobby guest: only the host starts */
+    /* UI-1: completion gained since the map was last seen flies into the top-bar counter (T3) */
+    int counter_shown;
+    bool seen_valid[WORLD_MAX_BOOKS];
+    int seen_pct[WORLD_MAX_BOOKS], seen_level_pct[WORLD_MAX_BOOKS][WORLD_MAX_LEVELS];
+    int reward_amount;     /* to launch once the counter has been drawn */
+    bool reward_banner;    /* a hospital reached 100 % */
 } WorldMap;
 
 static inline WmIsland *wm_cur(WorldMap *m) { return &m->isles[m->cur]; }

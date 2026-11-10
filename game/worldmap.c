@@ -10,6 +10,7 @@
 #include "npc_sim.h"
 #include "strings.h"
 #include "ui/text.h"
+#include "ui/ui_widgets.h"
 
 #define WM_SEA 0x3FB6D8u
 #define WM_SEA_Y (-0.55f) /* under the shallow water in the terrain */
@@ -400,6 +401,19 @@ void worldmap_open(WorldMap *m, WmState state, int island, const WorldProgress *
             is->pct[k] = world_completion_percent(is->comp[k]);
         }
         is->island_c = world_island_completion(wp, b);
+        if (m->seen_valid[i]) { /* what was earned since: a reward flight on the current island */
+            if (i == m->cur && is->island_c.known && is->island_c.percent > m->seen_pct[i]) {
+                m->reward_amount = is->island_c.percent - m->seen_pct[i];
+            }
+            for (int k = 0; k < b->level_count; k++) {
+                m->reward_banner = m->reward_banner || (i == m->cur && is->pct[k] >= 100 && m->seen_level_pct[i][k] < 100);
+            }
+        }
+        m->seen_valid[i] = true;
+        m->seen_pct[i] = is->island_c.known ? is->island_c.percent : 0;
+        for (int k = 0; k < b->level_count; k++) {
+            m->seen_level_pct[i][k] = is->pct[k];
+        }
     }
     m->cam_snap = true;
 }
@@ -969,7 +983,6 @@ static void ring_arc(Ui *ui, float cx, float cy, float r, float frac, float thic
     }
 }
 
-static UiColor level_color(int pct) { return ui_rgba(((pct >= 100 ? WM_RING_GREEN : pct > 0 ? WM_RING_YELLOW : WM_RING_GREY) << 8) | 0xFFu); }
 
 static void percent_text(char *out, size_t cap, int pct) { SDL_snprintf(out, cap, "%d%%", pct); }
 
@@ -1013,44 +1026,42 @@ static int draw_labels(WorldMap *m, Ui *ui)
         if (ui_hit_area(ui, id, x - r - 9.0f, y0 - 6.0f, 2.0f * r + 18.0f, 2.0f * r + 18.0f, &held)) { /* the badge: a chip never covers a neighbour's */
             tapped = i;
         }
-        const UiColor bg = ui_rgba(i == is->selected ? 0x1B2B48F0u : 0x101318D0u);
+        const bool sel = i == is->selected;
+        const UiColor bg = ui_rgba(sel ? k_ui.primary : k_ui.surface), lip = ui_rgba(sel ? k_ui.primary_lip : k_ui.lip_mint);
+        const uint32_t key = ui_key(id);
+        const float sx = ui->anim ? ui_anim_get(ui->anim, key, UI_SX, 1.0f) : 1.0f, sy = ui->anim ? ui_anim_get(ui->anim, key, UI_SY, 1.0f) : 1.0f;
+        gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, x, y + r + 3.0f);
         if (full) {
-            ui_round_rect(ui->gfx, ui->font, x0, y0, w, 2.0f * r + 6.0f, r + 3.0f, bg);
-            text_draw(ui->gfx, ui->font, x + r + 6.0f, y - 8.0f, 13.0f, ui_rgba(0xFFFFFFFF), name);
+            ui_surface(ui, x0, y0, w, 2.0f * r + 6.0f, -1.0f, 3.0f, bg, lip, 0.0f, ui_rgba(0));
+            ui_text(ui, TEXT_FACE_BOLD, x + r + 6.0f, y - 9.0f, 13.0f, ui_rgba(k_ui.ink), name);
         } else {
-            ui_circle(ui->gfx, ui->font, x, y, r + 3.0f, bg);
+            ui_surface(ui, x - r - 3.0f, y - r - 3.0f, 2.0f * r + 6.0f, 2.0f * r + 6.0f, -1.0f, 3.0f, bg, lip, 0.0f, ui_rgba(0));
         }
-        ui_circle(ui->gfx, ui->font, x, y, r - 2.0f, ui_rgba(0x2A3140FF));
-        ring_arc(ui, x, y, r - 0.5f, 1.0f, 2.5f, ui_rgba(0xFFFFFF33));
+        ui_circle(ui->gfx, ui->font, x, y, r - 2.0f, ui_rgba(k_ui.surface_tint));
+        ring_arc(ui, x, y, r - 0.5f, 1.0f, 2.5f, ui_rgba(k_ui.lip_mint));
         if (is->pct[i] > 0) {
-            ring_arc(ui, x, y, r - 0.5f, (float)is->pct[i] / 100.0f, 2.5f, level_color(is->pct[i]));
+            ring_arc(ui, x, y, r - 0.5f, (float)is->pct[i] / 100.0f, 2.5f, ui_rgba(k_ui.fill));
         }
-        text_draw_centered(ui->gfx, ui->font, x, y, 13.0f, ui_rgba(0xFFFFFFFF), num);
-        if (held) {
-            ui_circle(ui->gfx, ui->font, x, y, r + 3.0f, ui_rgba(0xFFFFFF30));
-        }
+        ui_text_c(ui, TEXT_FACE_DISPLAY, x, y + 1.0f, 13.0f, ui_rgba(k_ui.ink), num);
+        gfx_ui_group_off(ui->gfx);
     }
     return tapped;
 }
 
 static void bar(Ui *ui, float x, float y, float w, float h, int pct, bool known)
 {
-    ui_round_rect(ui->gfx, ui->font, x, y, w, h, h * 0.5f, ui_rgba(0xFFFFFF33));
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = w, .h = h, .radius = -1.0f, .color = ui_rgba(k_ui.lip_mint)});
     if (known && pct > 0) {
-        ui_round_rect(ui->gfx, ui->font, x, y, mg_maxf(w * (float)pct / 100.0f, h), h, h * 0.5f, level_color(pct));
+        ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = mg_maxf(w * (float)pct / 100.0f, h), .h = h, .radius = -1.0f, .color = ui_rgba(k_ui.fill)});
     }
 }
 
 static bool small_button(Ui *ui, const char *label, const char *id, float x, float y, float w, float h, bool highlighted, bool enabled)
 {
     char key[96];
-    if (!enabled) {
-        ui_round_rect(ui->gfx, ui->font, x, y, w, h, 12.0f, ui_rgba(0xFFFFFF1A));
-        text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + h * 0.5f, 16.0f, ui_rgba(0xFFFFFF66), label);
-        return false;
-    }
     SDL_snprintf(key, sizeof(key), "%s##%s", label, id);
-    return ui_button(ui, key, x, y, w, h, highlighted);
+    return ui_button_v(ui, key, x, y, w, h, !enabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
+                       highlighted && enabled ? UI_F_BREATHE : UI_F_SMALL);
 }
 
 /* The hospital's card, right side inside the safe area. */
@@ -1065,33 +1076,33 @@ static WmAction draw_card(WorldMap *m, Ui *ui, const float safe[4])
     const float top = safe[1] + WM_TOP_BAR, bottom = m->view_h - safe[3] - WM_EDGE;
     const float ch = mg_minf(bottom - top, 262.0f), cy = top + (bottom - top - ch) * 0.5f;
     m->card_x = cx, m->card_y = cy, m->card_w = cw, m->card_h = ch;
-    ui_round_rect(ui->gfx, ui->font, cx, cy, cw, ch, 16.0f, ui_rgba(0x0F1520D9)); /* flat: a blur panel cost 3 passes, ~1.5 ms on the iPad Air 4 */
-    ui_block(ui, cx, cy, cw, ch);
+    ui_card(ui, cx, cy, cw, ch - k_ui.lip_card); /* a card, no blur (a blur panel cost 3 passes, ~0.2 ms on the iPad Air 4) */
     float y = cy + pad;
     char line[96];
     SDL_snprintf(line, sizeof(line), str("wm_hospital_of"), b->name, is->selected + 1, b->level_count);
-    text_draw(ui->gfx, ui->font, cx + pad, y, 13.0f, ui_rgba(0xFFFFFFB0), line);
+    ui_text(ui, TEXT_FACE_BOLD, cx + pad, y, 13.0f, ui_rgba(k_ui.teal_text), line);
     y += 20.0f;
-    text_draw(ui->gfx, ui->font, cx + pad, y, 26.0f, ui_rgba(0xFFFFFFFF), lv->name);
+    ui_text(ui, TEXT_FACE_DISPLAY, cx + pad, y - 4.0f, 30.0f, ui_rgba(k_ui.ink), lv->name);
     const bool stand_in = lv->map_id[0] && SDL_strcmp(lv->scene, lv->map_id) != 0;
     if (stand_in) { /* the hospital scene stands in for this level's map */
         const char *tag = str("wm_provisional");
-        const float tw = text_width(ui->font, tag, 11.0f) + 14.0f, tx = cx + pad + text_width(ui->font, lv->name, 26.0f) + 8.0f;
-        ui_round_rect(ui->gfx, ui->font, mg_minf(tx, cx + cw - pad - tw), y + 7.0f, tw, 20.0f, 10.0f, ui_rgba(0xFFD16640));
-        text_draw_centered(ui->gfx, ui->font, mg_minf(tx, cx + cw - pad - tw) + tw * 0.5f, y + 17.0f, 11.0f, ui_rgba(0xFFE6A8FF), tag);
+        const float tw = ui_text_w(ui, TEXT_FACE_BOLD, tag, 11.0f) + 16.0f, tx = cx + pad + ui_text_w(ui, TEXT_FACE_DISPLAY, lv->name, 30.0f) + 8.0f;
+        ui_shape(ui->gfx, &(UiShape){.x = mg_minf(tx, cx + cw - pad - tw), .y = y + 7.0f, .w = tw, .h = 22.0f, .radius = -1.0f, .color = ui_rgba(k_ui.primary)});
+        ui_text_c(ui, TEXT_FACE_BOLD, mg_minf(tx, cx + cw - pad - tw) + tw * 0.5f, y + 18.0f, 11.0f, ui_rgba(k_ui.ink), tag);
     }
     y += 38.0f;
     const int pct = is->pct[is->selected];
     const char *status = pct >= 100 ? str("wm_completed") : pct > 0 ? str("wm_in_progress") : str("wm_not_started");
-    const float pw = text_width(ui->font, status, 13.0f) + 20.0f;
-    ui_round_rect(ui->gfx, ui->font, cx + pad, y, pw, 24.0f, 12.0f, pct >= 100 ? ui_rgba(0x3ECF8E40) : pct > 0 ? ui_rgba(0xFFD16640) : ui_rgba(0xFFFFFF26));
-    text_draw_centered(ui->gfx, ui->font, cx + pad + pw * 0.5f, y + 12.0f, 13.0f, ui_rgba(0xFFFFFFFF), status);
+    const float pw = ui_text_w(ui, TEXT_FACE_BOLD, status, 13.0f) + 22.0f;
+    ui_shape(ui->gfx, &(UiShape){.x = cx + pad, .y = y, .w = pw, .h = 26.0f, .radius = -1.0f,
+                                 .color = ui_rgba(pct >= 100 ? k_ui.ok : pct > 0 ? k_ui.primary : k_ui.surface_tint)});
+    ui_text_c(ui, TEXT_FACE_BOLD, cx + pad + pw * 0.5f, y + 13.0f, 13.0f, ui_rgba(pct >= 100 ? 0xFFFFFFFFu : k_ui.ink), status);
     y += 34.0f;
     char pt[16];
     percent_text(pt, sizeof(pt), pct);
-    const float ptw = text_width(ui->font, pt, 14.0f);
-    bar(ui, cx + pad, y + 4.0f, cw - 2.0f * pad - ptw - 10.0f, 8.0f, pct, true);
-    text_draw(ui->gfx, ui->font, cx + cw - pad - ptw, y - 3.0f, 14.0f, ui_rgba(0xFFFFFFFF), pt);
+    const float ptw = ui_text_w(ui, TEXT_FACE_DISPLAY, pt, 16.0f);
+    ui_progress(ui, "wm_card_bar", cx + pad, y, cw - 2.0f * pad - ptw - 10.0f, 16.0f, (float)pct / 100.0f);
+    ui_text(ui, TEXT_FACE_DISPLAY, cx + cw - pad - ptw, y - 3.0f, 16.0f, ui_rgba(k_ui.ink), pt);
     const bool arrived = m->state == WM_ARRIVED;
     const float bw = cw - 2.0f * pad;
     const float join_h = 48.0f, nav_h = 42.0f;
@@ -1105,10 +1116,10 @@ static WmAction draw_card(WorldMap *m, Ui *ui, const float safe[4])
         }
     }
     const float hw = (bw - 8.0f) * 0.5f, ny = cy + ch - pad - nav_h;
-    if (small_button(ui, str("wm_prev"), "wm_prev", cx + pad, ny, hw, nav_h, false, true)) {
+    if (small_button(ui, str("wm_prev"), "wm_prev", cx + pad, ny, hw, nav_h + 4.0f, false, true)) {
         worldmap_go(m, is->selected - 1);
     }
-    if (small_button(ui, str("wm_next"), "wm_next", cx + pad + hw + 8.0f, ny, hw, nav_h, false, true)) {
+    if (small_button(ui, str("wm_next"), "wm_next", cx + pad + hw + 8.0f, ny, hw, nav_h + 4.0f, false, true)) {
         worldmap_go(m, is->selected + 1);
     }
     return a;
@@ -1159,12 +1170,12 @@ static void tap_world(WorldMap *m, float x, float y)
 static bool text_button(Ui *ui, const char *label, const char *id, float x, float y, float *w_out)
 {
     char key[96];
-    const float w = text_width(ui->font, label, 15.0f) + 32.0f;
+    const float w = ui_text_w(ui, TEXT_FACE_DISPLAY, label, 16.0f) + 36.0f;
     if (w_out) {
         *w_out = w;
     }
     SDL_snprintf(key, sizeof(key), "%s##%s", label, id);
-    return ui_button(ui, key, x, y, w, 44.0f, false);
+    return ui_button_v(ui, key, x, y, w, 48.0f, UI_V_SECONDARY, UI_F_SMALL);
 }
 
 WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, float alpha)
@@ -1220,10 +1231,10 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         const float pw = mg_maxf(text_width(ui->font, label, 16.0f), can_skip ? text_width(ui->font, skip, 12.0f) : 0.0f) + 40.0f;
         const float ph = can_skip ? 54.0f : 44.0f, px = (m->view_w - pw) * 0.5f, py = m->view_h - safe[3] - WM_EDGE - ph;
         ui_block(ui, 0, 0, m->view_w, m->view_h); /* the voyage takes no other input */
-        ui_round_rect(ui->gfx, ui->font, px, py, pw, ph, 22.0f, ui_rgba(0x101318D0));
-        text_draw_centered(ui->gfx, ui->font, px + pw * 0.5f, py + (can_skip ? 18.0f : 22.0f), 16.0f, ui_rgba(0xFFFFFFFF), label);
+        ui_surface(ui, px, py, pw, ph - k_ui.lip_pill, 22.0f, k_ui.lip_pill, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, px + pw * 0.5f, py + (can_skip ? 16.0f : 20.0f), 16.0f, ui_rgba(k_ui.ink), label);
         if (can_skip) {
-            text_draw_centered(ui->gfx, ui->font, px + pw * 0.5f, py + 38.0f, 12.0f, ui_rgba(0xFFFFFFA0), skip);
+            ui_text_c(ui, TEXT_FACE_BOLD, px + pw * 0.5f, py + 35.0f, 12.0f, ui_rgba(k_ui.teal_text), skip);
         }
         for (int i = 0; i < MG_MAX_TOUCHES && can_skip; i++) { /* after 1.5 s a tap anywhere jumps to the arrival */
             if (app->input.touches[i].ended && worldmap_skip_voyage(m)) {
@@ -1233,11 +1244,10 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         return WM_NONE;
     }
     SDL_snprintf(label, sizeof(label), "   %s##wm_back", str("back"));
-    if (ui_button(ui, label, left, top, 110.0f, 44.0f, false)) {
+    if (ui_button_v(ui, label, left, top, 116.0f, 48.0f, UI_V_SECONDARY, UI_F_SMALL)) {
         act = WM_BACK;
     }
-    ui_line(ui->gfx, ui->font, left + 26.0f, top + 14.0f, left + 18.0f, top + 22.0f, 3.0f, ui_rgba(0xFFFFFFFF));
-    ui_line(ui->gfx, ui->font, left + 18.0f, top + 22.0f, left + 26.0f, top + 30.0f, 3.0f, ui_rgba(0xFFFFFFFF));
+    ui_icon(ui, UI_ICON_BACK, left + 24.0f, top + 21.0f, 22.0f, ui_rgba(k_ui.ink));
     char pct[24];
     island_text(is, pct, sizeof(pct));
     if (m->state == WM_BOOKS) { /* the island's title screen */
@@ -1246,13 +1256,16 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         SDL_snprintf(fin, sizeof(fin), str("wm_finished"), is->island_c.finished, is->island_c.count);
         SDL_snprintf(line, sizeof(line), "%s %s  ·  %s", pct, str("wm_complete"), fin);
         const float cx = m->view_w * 0.5f;
-        text_draw_shadow(ui->gfx, ui->font, cx - text_width(ui->font, book_n, 16.0f) * 0.5f, top + 2.0f, 16.0f, ui_rgba(0xFFFFFFD0), book_n);
-        text_draw_shadow(ui->gfx, ui->font, cx - text_width(ui->font, is->book->name, 44.0f) * 0.5f, top + 20.0f, 44.0f, ui_rgba(0xFFFFFFFF), is->book->name);
-        text_draw_shadow(ui->gfx, ui->font, cx - text_width(ui->font, line, 15.0f) * 0.5f, top + 72.0f, 15.0f, ui_rgba(0xFFFFFFE6), line);
+        const float nw = ui_text_w(ui, TEXT_FACE_DISPLAY, is->book->name, 44.0f), lw = ui_text_w(ui, TEXT_FACE_BOLD, line, 15.0f);
+        ui_label_caps(ui, cx - ui_text_w(ui, TEXT_FACE_BOLD, book_n, k_ui.t_label) * 0.6f, top + 2.0f, book_n);
+        ui_text(ui, TEXT_FACE_DISPLAY, cx - nw * 0.5f, top + 19.0f, 44.0f, ui_rgba(k_ui.ink), is->book->name); /* its lip */
+        ui_text(ui, TEXT_FACE_DISPLAY, cx - nw * 0.5f, top + 16.0f, 44.0f, ui_rgba(0xFFFFFFFF), is->book->name);
+        ui_surface(ui, cx - lw * 0.5f - 14.0f, top + 70.0f, lw + 28.0f, 26.0f, -1.0f, 3.0f, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+        ui_text(ui, TEXT_FACE_BOLD, cx - lw * 0.5f, top + 72.0f, 15.0f, ui_rgba(k_ui.ink), line);
         const char *hint = str("wm_tap_island");
         const float hw = text_width(ui->font, hint, 15.0f) + 32.0f, hy = m->view_h - safe[3] - WM_EDGE - 44.0f;
-        ui_round_rect(ui->gfx, ui->font, cx - hw * 0.5f, hy + 2.0f, hw, 40.0f, 20.0f, ui_rgba(0x101318C0));
-        text_draw_centered(ui->gfx, ui->font, cx, hy + 22.0f, 15.0f, ui_rgba(0xFFFFFFFF), hint);
+        ui_surface(ui, cx - hw * 0.5f, hy + 2.0f, hw, 40.0f, -1.0f, k_ui.lip_pill, ui_rgba(k_ui.ink), ui_rgba(0x0D2626FF), 0.0f, ui_rgba(0));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, cx, hy + 22.0f, 15.0f, ui_rgba(0xFFFFFFFF), hint);
         /* the neighbouring islands in book order, at the sides */
         float bw;
         if (m->cur > 0) {
@@ -1263,7 +1276,7 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         }
         if (m->cur + 1 < m->count) {
             SDL_snprintf(label, sizeof(label), "%s  >", m->isles[m->cur + 1].book->name);
-            bw = text_width(ui->font, label, 15.0f) + 32.0f;
+            bw = ui_text_w(ui, TEXT_FACE_DISPLAY, label, 16.0f) + 36.0f;
             if (text_button(ui, label, "wm_isl_next", right - bw, hy, NULL) || app->input.key_pressed[SDL_SCANCODE_RIGHT]) {
                 worldmap_voyage(m, m->cur + 1);
             }
@@ -1271,19 +1284,23 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
     } else {
         /* top bar: the book, its completion bar and percentage */
         const float pw = 200.0f, px = m->view_w * 0.5f - pw * 0.5f;
-        ui_round_rect(ui->gfx, ui->font, px, top + 4.0f, pw, 36.0f, 18.0f, ui_rgba(0x101318C8));
-        text_draw(ui->gfx, ui->font, px + 16.0f, top + 13.0f, 15.0f, ui_rgba(0xFFFFFFFF), is->book->name);
-        const float nw = text_width(ui->font, is->book->name, 15.0f), tw = text_width(ui->font, pct, 13.0f);
-        bar(ui, px + 26.0f + nw, top + 18.0f, pw - 52.0f - nw - tw, 8.0f, is->island_c.percent, is->island_c.known);
-        text_draw(ui->gfx, ui->font, px + pw - 16.0f - tw, top + 14.0f, 13.0f, ui_rgba(0xFFFFFFE6), pct);
+        ui_surface(ui, px, top + 2.0f, pw, 40.0f, -1.0f, k_ui.lip_pill, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+        ui_text(ui, TEXT_FACE_DISPLAY, px + 16.0f, top + 10.0f, 16.0f, ui_rgba(k_ui.ink), is->book->name);
+        const float nw = ui_text_w(ui, TEXT_FACE_DISPLAY, is->book->name, 16.0f), tw = ui_text_w(ui, TEXT_FACE_DISPLAY, pct, 14.0f) + 6.0f;
+        bar(ui, px + 26.0f + nw, top + 17.0f, pw - 56.0f - nw - tw, 10.0f, is->island_c.percent, is->island_c.known);
+        if (is->island_c.known) { /* a counter: it bumps, and the reward flight lands in it */
+            ui_counter(ui, "wm_island_pct", px + pw - 16.0f - tw - 8.0f, top + 6.0f, 32.0f, "", is->island_c.percent, "%", &m->counter_shown);
+        } else {
+            ui_text(ui, TEXT_FACE_DISPLAY, px + pw - 12.0f - tw, top + 11.0f, 14.0f, ui_rgba(k_ui.ink), pct);
+        }
         const char *il = str("wm_islands");
-        const float iw = text_width(ui->font, il, 15.0f) + 32.0f;
+        const float iw = ui_text_w(ui, TEXT_FACE_DISPLAY, il, 16.0f) + 36.0f;
         if (text_button(ui, il, "wm_islands", right - iw, top, NULL)) {
             m->state = WM_BOOKS; /* the islands' title view */
         }
         if (m->state != WM_OVERVIEW && m->state != WM_BOOKS) {
             const char *wl = str("wm_whole");
-            const float ww = text_width(ui->font, wl, 15.0f) + 32.0f;
+            const float ww = ui_text_w(ui, TEXT_FACE_DISPLAY, wl, 16.0f) + 36.0f;
             if (text_button(ui, wl, "wm_whole", right - iw - 8.0f - ww, top, NULL)) {
                 m->state = WM_OVERVIEW;
             }
@@ -1302,6 +1319,18 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
             } else if (app->input.key_pressed[SDL_SCANCODE_RIGHT]) {
                 worldmap_go(m, is->selected + 1);
             }
+        }
+    }
+    if ((m->reward_amount > 0 || m->reward_banner) && m->state != WM_BOOKS && m->state != WM_VOYAGE && ui->fx) { /* T3 */
+        float cx, cy, cw, ch;
+        if (m->reward_amount > 0 && ui_rect_of(ui, "wm_island_pct", &cx, &cy, &cw, &ch)) {
+            ui_fx_reward(ui->fx, m->view_w * 0.5f, m->view_h * 0.55f, ui_key("wm_island_pct"), cx + cw * 0.5f, cy + ch * 0.5f, m->reward_amount);
+            m->reward_amount = 0;
+        }
+        if (m->reward_banner && m->reward_amount == 0) {
+            ui_fx_banner(ui->fx, str("wm_completed"));
+            ui_fx_tier(ui->fx, UI_T3, m->view_w * 0.5f, m->view_h * 0.5f, true);
+            m->reward_banner = false;
         }
     }
     /* taps that no widget took: the 3D map */

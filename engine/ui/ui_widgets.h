@@ -34,7 +34,7 @@ bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value);
 /* A tab bar; *sel changes on a tap (T1 tick); returns true then. */
 bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel, float x, float y, float w, float h);
 /* A pill with a number that bumps when it changes (and follows a reward flight into it). */
-void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *prefix, int value, int *shown_last);
+void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *prefix, int value, const char *suffix, int *shown_last);
 /* A progress bar; the fill eases to `frac` (700 ms, overshoot curve) whenever it changes. */
 void ui_progress(Ui *ui, const char *id, float x, float y, float w, float h, float frac);
 /* A tappable list row (surface tint, lip 4); returns true on a tap. */

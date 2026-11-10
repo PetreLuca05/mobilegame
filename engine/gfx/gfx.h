@@ -207,10 +207,6 @@ void gfx_ui_size(const GfxContext *g, float *w_pt, float *h_pt);
 #define GFX_HEADS_PER_FRAME 2
 void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM_Vec3 eye);
 #define gfx_head_cell_end gfx_inset_end
-/* Frosted panel behind this frame's UI: the 3D image under it, blurred at
- * quarter resolution, mixed towards tint.rgb by tint.a, rounded corners.
- * Drawn before (under) all UI quads. Up to 4 per frame. */
-void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float radius, HMM_Vec4 tint);
 /* Clip the UI instances that follow to a rect (pt) until gfx_ui_clip_off (in the shader: no extra draw). */
 void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);

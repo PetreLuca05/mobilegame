@@ -1,4 +1,5 @@
 #include "notice_panel.h"
+#include "ui_widgets.h"
 
 #include <SDL3/SDL.h>
 #include <string.h>
@@ -100,34 +101,36 @@ NoticeResult notice_panel_draw(NoticePanel *p, Ui *ui, HeadIcons *h, const ui_fr
     p->y = rest;
     p->w = w;
     p->h = ph;
-    ui_block(ui, x, y, w, ph);
-    ui_round_rect(ui->gfx, ui->font, x, y, w, ph, 14.0f, ui_rgba(0x1E2230F8));
+    if (p->just_shown && ui->fx) {
+        ui_fx_tier(ui->fx, UI_TN, x + w * 0.5f, y + ph * 0.5f, true); /* an incoming notice */
+    }
+    ui_card(ui, x, y, w, ph);
     const float head = HEAD_SIZE * k, pad = (ph - head) * 0.5f;
     head_icon_draw(h, ui->gfx, ui->font, &n->skin, n->name, x + pad + head * 0.5f, y + ph * 0.5f, head, false);
     const bool buttons = n->kind != NOTICE_INFO;
     const float bw = BUTTON_W * k, bh = 44.0f, tx = x + pad + head + 10.0f;
     const float avail = w - (tx - x) - (buttons ? 2.0f * bw + 18.0f : pad);
-    text_draw(ui->gfx, ui->font, tx, y + ph * 0.5f - 21.0f * k, 15.0f * k, ui_rgba(0xFFFFFFFF), n->name);
+    ui_text(ui, TEXT_FACE_DISPLAY, tx, y + ph * 0.5f - 23.0f * k, 16.0f * k, ui_rgba(k_ui.ink), n->name);
     /* fits the message on its line whatever the language */
     float size = 12.0f * k;
     const float tw = text_width(ui->font, n->line, size);
     size = tw > avail ? size * avail / tw : size;
-    text_draw(ui->gfx, ui->font, tx, y + ph * 0.5f + 2.0f * k, size, ui_rgba(0xFFFFFFB3), n->line);
+    ui_text(ui, TEXT_FACE_BODY, tx, y + ph * 0.5f + 2.0f * k, size, ui_rgba(k_ui.ink_soft), n->line);
     NoticeResult res = NOTICE_NONE;
     if (buttons && !p->leaving) {
         char label[64];
         const float by = y + (ph - bh) * 0.5f;
         SDL_snprintf(label, sizeof(label), "%s##notice_ok", accept);
-        if (ui_button(ui, label, x + w - 2.0f * bw - 14.0f, by, bw, bh, true)) {
+        if (ui_button_v(ui, label, x + w - 2.0f * bw - 14.0f, by, bw, bh + 4.0f, UI_V_ACCENT, UI_F_SMALL)) {
             res = NOTICE_ACCEPT;
         }
         SDL_snprintf(label, sizeof(label), "%s##notice_no", decline);
-        if (ui_button(ui, label, x + w - bw - 8.0f, by, bw, bh, false)) {
+        if (ui_button_v(ui, label, x + w - bw - 8.0f, by, bw, bh + 4.0f, UI_V_SECONDARY, UI_F_SMALL)) {
             res = NOTICE_DECLINE;
         }
     }
     const float left = (float)((n->expires - now) / n->duration);
-    ui_rect(ui->gfx, ui->font, x + 14.0f, y + ph - 4.0f, (w - 28.0f) * mg_clampf(left, 0.0f, 1.0f), 2.0f, ui_rgba(0x4A8BFFFF));
+    ui_shape(ui->gfx, &(UiShape){.x = x + 16.0f, .y = y + ph - 6.0f, .w = (w - 32.0f) * mg_clampf(left, 0.0f, 1.0f), .h = 3.0f, .radius = -1.0f, .color = ui_rgba(k_ui.fill)});
     if (res != NOTICE_NONE) {
         *kind = n->kind;
         SDL_snprintf(id, NET_ID_LEN, "%s", n->id);

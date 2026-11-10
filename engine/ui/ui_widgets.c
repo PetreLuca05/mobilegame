@@ -282,7 +282,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
     return changed;
 }
 
-void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *prefix, int value, int *shown_last)
+void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *prefix, int value, const char *suffix, int *shown_last)
 {
     const uint32_t key = ui_key(id);
     const int shown = ui->fx ? ui_fx_shown(ui->fx, key, value) : value;
@@ -297,7 +297,7 @@ void ui_counter(Ui *ui, const char *id, float x, float y, float h, const char *p
         *shown_last = shown;
     }
     char text[48];
-    SDL_snprintf(text, sizeof(text), "%s%d", prefix ? prefix : "", shown);
+    SDL_snprintf(text, sizeof(text), "%s%d%s", prefix ? prefix : "", shown, suffix ? suffix : "");
     const float lip = k_ui.lip_pill, face_h = h - lip, tw = ui_text_w(ui, TEXT_FACE_DISPLAY, text, face_h * 0.55f), w = tw + face_h;
     float sx = 1.0f, sy = 1.0f;
     if (ui->anim) {

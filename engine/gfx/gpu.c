@@ -28,7 +28,6 @@
 #define GFX_IB_BYTES (2u << 20)
 #define GFX_MAX_UI 8192 /* UI instances per frame (glyphs + shapes + heads) */
 #define GFX_MAX_SHADERS 32
-#define GFX_MAX_PANELS 4
 #define GFX_PREVIEW_PX 512
 
 typedef struct GfxMeshRec {
@@ -128,11 +127,6 @@ typedef struct PipelineSet {
     SDL_GPUGraphicsPipeline *sky;
 } PipelineSet;
 
-typedef struct BlurPanel {
-    float x, y, w, h, radius; /* pt */
-    HMM_Vec4 tint;
-} BlurPanel;
-
 
 typedef struct ShaderCacheEntry {
     const char *name;
@@ -179,12 +173,9 @@ struct GfxContext {
     PipelineSet pipes[TARGET_COUNT];
     SDL_GPUGraphicsPipeline *ui_pipe;        /* UI inside the MSAA main pass */
     SDL_GPUGraphicsPipeline *ui_pipe_direct; /* UI pass on the swapchain (render scale < 1) */
-    SDL_GPUGraphicsPipeline *blur_pipe;      /* one Gaussian direction, quarter res */
     SDL_GPUGraphicsPipeline *present_pipe;   /* upscales the 3D image inside the UI pass */
     bool passes_logged;
-    SDL_GPUGraphicsPipeline *panel_pipe;     /* frosted UI panel on the swapchain */
-    BlurPanel panels[GFX_MAX_PANELS];
-    uint32_t panel_count;
+    SDL_GPUGraphicsPipeline *panel_pipe;     /* the settings preview composite (rounded, on the swapchain) */
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
     float ui_clip[4];     /* x0, y0, x1, y1 for the instances that follow; x1 < x0 = none */
     float ui_group[6];    /* a, b, c, d, ox, oy */
@@ -226,8 +217,6 @@ struct GfxContext {
 #endif
     SDL_GPUTexture *dummy_tex;
     SDL_GPUTexture *scene_tex; /* resolved 3D image when rendering below native size */
-    SDL_GPUTexture *blur_a, *blur_b; /* quarter-res blurred copy of the scene for panels */
-    uint32_t blur_w, blur_h;
     uint32_t target_w, target_h;
     float render_scale;
 
@@ -593,17 +582,6 @@ static bool create_pipelines(GfxContext *g)
     ui.samples = SDL_GPU_SAMPLECOUNT_1;
     ui.no_depth = true;
     g->ui_pipe_direct = make_pipeline(g, &ui);
-    PipeDesc blur = {
-        .vs = load_shader(g, "fullscreen.vert", 0, 0),
-        .fs = load_shader(g, "blur.frag", 1, 1),
-        .layout = LAYOUT_NONE,
-        .cull = SDL_GPU_CULLMODE_NONE,
-        .front = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-        .color_fmt = g->color_fmt,
-        .samples = SDL_GPU_SAMPLECOUNT_1,
-        .no_depth = true,
-    };
-    g->blur_pipe = make_pipeline(g, &blur);
     PipeDesc present = {
         .vs = load_shader(g, "fullscreen.vert", 0, 0),
         .fs = load_shader(g, "present.frag", 0, 1),
@@ -615,7 +593,7 @@ static bool create_pipelines(GfxContext *g)
         .no_depth = true,
     };
     g->present_pipe = make_pipeline(g, &present);
-    PipeDesc panel = blur;
+    PipeDesc panel = present;
     panel.vs = load_shader(g, "panel.vert", 1, 0);
     panel.fs = load_shader(g, "panel.frag", 1, 1);
     panel.blend = true;
@@ -647,7 +625,7 @@ static bool create_pipelines(GfxContext *g)
     }
 #endif
     release_shaders(g);
-    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->blur_pipe != NULL && g->panel_pipe != NULL && g->present_pipe != NULL;
+    return g->ui_pipe != NULL && g->ui_pipe_direct != NULL && g->panel_pipe != NULL && g->present_pipe != NULL;
 }
 
 /* ---------------------------------------------------------------- targets */
@@ -674,7 +652,7 @@ static SDL_GPUTexture *make_texture(GfxContext *g, SDL_GPUTextureFormat fmt, uin
 
 static void release_targets(GfxContext *g)
 {
-    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->scene_tex, &g->blur_a, &g->blur_b,
+    SDL_GPUTexture **ts[] = {&g->msaa_color, &g->depth, &g->scene_tex,
 #ifdef MG_RENDER_FULL
                              &g->refl_color, &g->refl_depth,
 #endif
@@ -721,7 +699,6 @@ static void release_pipelines(GfxContext *g)
     RELEASE_PIPE(g->floor_dither);
     RELEASE_PIPE(g->present_pipe);
     RELEASE_PIPE(g->ui_pipe);
-    RELEASE_PIPE(g->blur_pipe);
     RELEASE_PIPE(g->panel_pipe);
     RELEASE_PIPE(g->ui_pipe_direct);
 }
@@ -788,17 +765,10 @@ static bool ensure_targets(GfxContext *g, uint32_t w, uint32_t h, bool scaled)
         g->scene_tex = make_texture(g, g->color_fmt, w, h,
                                     SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                     SDL_GPU_SAMPLECOUNT_1);
-        g->blur_w = w / 4 > 0 ? w / 4 : 1;
-        g->blur_h = h / 4 > 0 ? h / 4 : 1;
-        for (int i = 0; i < 2; i++) {
-            (i ? &g->blur_b : &g->blur_a)[0] =
-                make_texture(g, g->color_fmt, g->blur_w, g->blur_h,
-                             SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER, SDL_GPU_SAMPLECOUNT_1);
-        }
     }
     /* every GPU texture the 3D path owns (no shadow or reflection targets in minimal) */
     mg_log_info("gfx: targets %ux%u: depth%s%s%s", w, h, g->msaa_color ? ", msaa colour" : "",
-                scaled ? ", scene + 2 blur" : "",
+                scaled ? ", scene" : "",
 #ifdef MG_RENDER_FULL
                 ", reflection colour + depth"
 #else
@@ -1177,7 +1147,6 @@ bool gfx_frame_begin(GfxContext *g)
 {
     g->draw_count = 0;
     g->ui_count = 0;
-    g->panel_count = 0;
     g->ui_clip[0] = g->ui_clip[1] = 0.0f;
     g->ui_clip[2] = g->ui_clip[3] = -1.0f;
     g->ui_group_on = false;
@@ -1994,44 +1963,8 @@ static void render_atlas(GfxContext *g)
     SDL_EndGPURenderPass(rp);
     g->atlas_valid = true;
 }
-
-/* Quarter-res copy of the finished 3D image, blurred H then V (blur_a). */
 #endif /* MG_RENDER_FULL */
 
-static void blur_scene(GfxContext *g, uint32_t rw, uint32_t rh)
-{
-    if (!g->blur_a || !g->blur_b) {
-        return;
-    }
-    SDL_GPUBlitInfo blit;
-    SDL_zero(blit);
-    blit.source.texture = g->scene_tex;
-    blit.source.w = rw;
-    blit.source.h = rh;
-    blit.destination.texture = g->blur_a;
-    blit.destination.w = g->blur_w;
-    blit.destination.h = g->blur_h;
-    blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
-    blit.filter = SDL_GPU_FILTER_LINEAR;
-    SDL_BlitGPUTexture(g->cmd, &blit);
-    for (int pass_i = 0; pass_i < 2; pass_i++) {
-        SDL_GPUTexture *src = pass_i == 0 ? g->blur_a : g->blur_b;
-        SDL_GPUTexture *dst = pass_i == 0 ? g->blur_b : g->blur_a;
-        SDL_GPUColorTargetInfo cti;
-        SDL_zero(cti);
-        cti.texture = dst;
-        cti.load_op = SDL_GPU_LOADOP_DONT_CARE;
-        cti.store_op = SDL_GPU_STOREOP_STORE;
-        SDL_GPURenderPass *rp = SDL_BeginGPURenderPass(g->cmd, &cti, 1, NULL);
-        SDL_BindGPUGraphicsPipeline(rp, g->blur_pipe);
-        HMM_Vec4 dir = pass_i == 0 ? HMM_V4(1.0f / (float)g->blur_w, 0, 0, 0) : HMM_V4(0, 1.0f / (float)g->blur_h, 0, 0);
-        SDL_PushGPUFragmentUniformData(g->cmd, 0, &dir, sizeof(dir));
-        SDL_GPUTextureSamplerBinding tsb = {src, g->linear_clamp};
-        SDL_BindGPUFragmentSamplers(rp, 0, &tsb, 1);
-        SDL_DrawGPUPrimitives(rp, 3, 1, 0, 0);
-        SDL_EndGPURenderPass(rp);
-    }
-}
 
 static void draw_preview_image(GfxContext *g, SDL_GPURenderPass *pass)
 {
@@ -2246,37 +2179,7 @@ static uint32_t render_heads(GfxContext *g)
     return draws;
 }
 
-static void draw_panels(GfxContext *g, SDL_GPURenderPass *pass)
-{
-    if (!g->blur_a) {
-        return;
-    }
-    float px_per_pt = (float)g->ui_px_w / g->ui_w_pt;
-    SDL_BindGPUGraphicsPipeline(pass, g->panel_pipe);
-    SDL_GPUTextureSamplerBinding tsb = {g->blur_a, g->linear_clamp};
-    SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
-    for (uint32_t i = 0; i < g->panel_count; i++) {
-        const BlurPanel *p = &g->panels[i];
-        HMM_Vec4 ndc = HMM_V4(p->x / g->ui_w_pt * 2.0f - 1.0f, 1.0f - p->y / g->ui_h_pt * 2.0f,
-                              (p->x + p->w) / g->ui_w_pt * 2.0f - 1.0f, 1.0f - (p->y + p->h) / g->ui_h_pt * 2.0f);
-        struct {
-            HMM_Vec4 rect, params, tint, mode;
-        } fu = {HMM_V4(p->x, p->y, p->w, p->h),
-                HMM_V4(p->radius, px_per_pt, 1.0f / (float)g->ui_px_w, 1.0f / (float)g->ui_px_h), p->tint,
-                HMM_V4(0, 0, 0, 0)};
-        SDL_PushGPUVertexUniformData(g->cmd, 0, &ndc, sizeof(ndc));
-        SDL_PushGPUFragmentUniformData(g->cmd, 0, &fu, sizeof(fu));
-        SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
-    }
-}
 
-void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float radius, HMM_Vec4 tint)
-{
-    if (!g->in_frame || g->panel_count >= GFX_MAX_PANELS) {
-        return;
-    }
-    g->panels[g->panel_count++] = (BlurPanel){x, y, w, h, radius, tint};
-}
 
 static void blit_scene_to_swap(GfxContext *g, uint32_t rw, uint32_t rh)
 {
@@ -2358,9 +2261,9 @@ static void frame_end(GfxContext *g)
     rw = rw > 0 ? rw : 1;
     rh = rh > 0 ? rh : 1;
     const bool shot = g->shot_path[0] != 0; /* this frame's 3D + UI go to scene_tex first */
-    /* this frame's pass layout: an offscreen scene only when the frame needs one (a lower render scale, a
-     * blurred panel, the preview, a screenshot); the textures, once made, stay allocated (no target churn) */
-    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->panel_count > 0 || g->preview_on || shot;
+    /* this frame's pass layout: an offscreen scene only when the frame needs one (a lower render scale, the
+     * preview, a screenshot); the textures, once made, stay allocated (no target churn). No blur since UI-1. */
+    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->preview_on || shot;
     g->keep_scaled = g->keep_scaled || scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
@@ -2493,10 +2396,6 @@ static void frame_end(GfxContext *g)
     if (scaled) {
         /* upscale the 3D image to the swapchain, then draw UI at native size */
         SDL_EndGPURenderPass(pass);
-        if (g->panel_count > 0) {
-            blur_scene(g, rw, rh);
-            g->stats.passes += 2;
-        }
         SDL_GPUFence *main_fence = NULL;
         double main_submit = 0.0;
         if (swap_cmd) {
@@ -2528,9 +2427,6 @@ static void frame_end(GfxContext *g)
 
     g->ui_px_w = shot ? rw : g->swap_w;
     g->ui_px_h = shot ? rh : g->swap_h;
-    if (scaled && g->panel_count > 0 && g->ui_w_pt > 0.0f) {
-        draw_panels(g, pass);
-    }
     if (g->ui_count > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) { /* the whole UI: one instanced draw, clipping in the shader */
         HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
         SDL_BindGPUGraphicsPipeline(pass, scaled ? g->ui_pipe_direct : g->ui_pipe);
@@ -2600,7 +2496,7 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->msaa_color = g->msaa_color ? color * samples : 0;
     o->depth = g->depth ? (uint64_t)SDL_CalculateGPUTextureFormatSize(g->depth_fmt, g->target_w, g->target_h, 1) * samples : 0;
     o->scene = g->scene_tex ? color : 0;
-    o->blur = g->blur_a ? (uint64_t)SDL_CalculateGPUTextureFormatSize(g->color_fmt, g->blur_w, g->blur_h, 1) * 2u : 0;
+    o->blur = 0; /* no blur since UI-1 */
     o->preview = g->preview_color ? (uint64_t)GFX_PREVIEW_PX * GFX_PREVIEW_PX * 4u * (1u + (g->preview_msaa ? samples : 0u)) : 0;
     o->swapchain = (uint64_t)g->swap_w * g->swap_h * 4u * 3u;
     o->ui_atlas = g->ui_atlas_bytes;

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "strings.h"
+#include "ui/ui_widgets.h"
 
 #define LOAD_TIMEOUT_S 20.0
 
@@ -76,7 +77,8 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
     }
     const float w = app->width_pt, ph = app->height_pt;
     ui_block(ui, 0, 0, w, ph);
-    ui_rect(ui->gfx, ui->font, 0, 0, w, ph, ui_rgba(0x000000A0));
+    ui_rect(ui->gfx, ui->font, 0, 0, w, ph, ui_rgba(k_ui.scrim));
+    ui->modal = true;
     char label[96];
     if (l->state == AL_LINKING || l->state == AL_MERGING || l->state == AL_LOADING) {
         if (l->state == AL_LOADING) {
@@ -90,7 +92,7 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
         }
         const bool loading = l->state == AL_LOADING || (l->state == AL_MERGING && l->merge_step >= 3);
         spinner(ui, w * 0.5f, ph * 0.5f - 18.0f, now);
-        text_draw_centered(ui->gfx, ui->font, w * 0.5f, ph * 0.5f + 28.0f, 17.0f, ui_rgba(0xFFFFFFFF), str(loading ? "link_step_load" : "link_step_connect"));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, w * 0.5f, ph * 0.5f + 30.0f, 18.0f, ui_rgba(0xFFFFFFFF), str(loading ? "link_step_load" : "link_step_connect"));
         return;
     }
     const float dw = mg_minf(440.0f, w - 48.0f), dx = (w - dw) * 0.5f;
@@ -120,7 +122,7 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
                 best = n ? n : 1;
             }
             SDL_snprintf(line, sizeof(line), "%.*s", best, p);
-            text_draw(ui->gfx, ui->font, dx + 20.0f, y, 15.0f, ui_rgba(0xFFFFFFFF), line);
+            ui_text(ui, TEXT_FACE_BODY, dx + 20.0f, y, 15.0f, ui_rgba(k_ui.ink), line);
             y += 22.0f;
             p += best;
         }
