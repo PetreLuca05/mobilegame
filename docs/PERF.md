@@ -321,3 +321,9 @@ Mac (desktop, labelled sanity, not the gate), 30 s, after the fix: worldmap 17 d
 
 - **First-run allocations and first-run regressions (trace task).** Since FRIENDS-2 the first run of a scenario sometimes has a few small allocations (24-56 bytes) inside `render` and a dropped frame, or reads over 10 % worse on render / GPU, and is clean on its one rerun (`stress200`, `menu`, then `yard`, `lobby`, `corridor_f2` at 3681449). Treated as one bug, for the allocation / Instruments trace task; not closed by the reruns.
 - **Device link drops during the gate (2026-11-10).** The iPad (linked over the network) dropped `devicectl --console` sessions about 30 s in, three times; `tools/perf_run.sh --no-console` launches detached and still checks run id, mtime and commit. The full gate for WORLD-1 has not run: device testing now needs the user's permission per run.
+
+## WORLD-1 / WORLD-2 sign-off (1be3e40)
+
+iPad Air 4, GPU at Minimum clock 91-99 %. Zoomed-in map (`island`, `worldmap_travel`): 6.44 ms frame, 39 % busy, **2.50 ms effective**, against a WORLD-1 estimate of 1.0 ms. Decision: **2.5 ms is the new estimate** for the zoomed-in map (the overview stays 1.5, measured 1.05; the voyage 2.5, measured 0.89). The cost is full-screen toon-lit terrain and props at 2x MSAA where the overview is mostly unlit sea; the hospital card's blur panel was 0.2 ms of it and is gone (flat card, 1 pass, 155 MB).
+
+Deferred: cheaper terrain shading when zoomed in on an island, for when the real hospital models land.
