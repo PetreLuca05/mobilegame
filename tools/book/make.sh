@@ -25,7 +25,14 @@ python3 -I "$T/figlabels.py" "$PACK"     # label boxes (+ fig/label_positions_ma
 [[ -f src/institute.map ]] || cp "$PACK/institute.map" src/institute.map
 python3 -I "$T/quests.py" "$PACK"
 python3 -I "$T/errata.py" "$PACK"
-if ls "$T"/topics/*.py >/dev/null 2>&1; then python3 -I "$T/compile.py" "$PACK"; fi
+if ls "$T"/topics/*.py >/dev/null 2>&1; then
+  python3 -I "$T/compile.py" "$PACK"
+  python3 -I "$T/packbin.py" "$PACK" "$PACK/gastro.mgpack"
+fi
+python3 -I "$T/inflections.py" "$PACK"      # §2: answers not verbatim (report appendix)
+python3 -I "$T/typofacts.py" "$PACK"        # §1: facts whose only testable token is a misprint
 python3 -I "$T/report.py" "$PACK"
 python3 -I "$T/leakguard.py" build "$PACK"
-python3 -I "$PACK/check.py" "$PACK" --topics "$(python3 -I -c "import json,sys;print(','.join(sorted({json.loads(l)['topic'] for l in open(sys.argv[1])})))" "$PACK/facts.jsonl")" || true
+python3 -I "$PACK/check.py" "$PACK" || true      # whole book: ledgers, map placement, script length, binary pack
+python3 -I "$T/review_sheets.py" "$PACK"    # §5: review_errata.csv, review_hidden.csv (decisions already filled are kept)
+python3 -I "$T/engine_prompt.py" "$PACK" "$PACK/gastro.mgpack"

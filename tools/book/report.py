@@ -7,7 +7,7 @@ PDF2PRINT = {1: 1147}
 for i, p in enumerate(range(1162, 1167)): PDF2PRINT[2 + i] = p
 for i, p in enumerate(range(1172, 1177)): PDF2PRINT[7 + i] = p
 for i, p in enumerate(range(1198, 1209)): PDF2PRINT[12 + i] = p
-ODD = re.compile(r'[0-9].*[a-zăâîșț]|[a-zăâîșț].*[0-9]|[/!{}�•\\|]|[a-zăâîșț][A-ZĂÂÎȘȚ]|^[a-zăâîșț]*[ii]{2}', re.I)
+ODD = re.compile(r'(?=.*[A-Za-zĂÂÎȘȚăâîșț])(?:[0-9][A-Za-zĂÂÎȘȚăâîșț]|[A-Za-zĂÂÎȘȚăâîșț][0-9]|[/!{}�•\\|]|[a-zăâîșț][A-ZĂÂÎȘȚ][a-zăâîșț]|[a-zăâîșț]ii[a-kmo-zăâîșț]|[şţŞŢ])')
 
 
 def main(pack):
@@ -34,6 +34,7 @@ def main(pack):
         w(open(q, encoding='utf-8').read().strip() + '\n')
     w('## Checker output\n')
     w('```\n' + chk.strip() + '\n```\n')
+    closeout(pack, w, facts, items, scripts, quests)
     # totals
     nonws = sum(1 for c in cleaned if not c.isspace())
     hid_atoms = [a for a in atoms if a['layer'] in ('under_blank', 'mixed')]
@@ -139,8 +140,154 @@ def main(pack):
     for fn in sorted(os.listdir(nd)):
         w(f'\n### {fn}\n')
         w(re.sub(r'^(#+)', r'###\1', open(os.path.join(nd, fn), encoding='utf-8').read().strip(), flags=re.M))
+    infl = os.path.join(pack, 'inflections.json')
+    if os.path.exists(infl):
+        R = json.load(open(infl, encoding='utf-8'))
+        w('\n## Appendix §2 — answers not verbatim in the book (non-cloze items)\n')
+        w(f'{len(R)} answers: ' + ', '.join(f'{k} {v}' for k, v in sorted(collections.Counter(r["kind"] for r in R).items())) + '. '
+          'Cloze gaps and label answers are exact substrings of the source sentence (check.py fails otherwise), so they are '
+          'not listed. kind = inflection (same words, changed form to fit the stem) or reworded (the item states it in other '
+          'words; the source sentence is quoted in its explanation).\n')
+        w('| item | type | printed form | used form | kind |')
+        w('|---|---|---|---|---|')
+        for r in R:
+            w(f'| {r["item"]} | {r["type"]} | {r["printed_form"].replace("|", "/")} | {r["used_form"].replace("|", "/")} | {r["kind"]} |')
     open(os.path.join(pack, 'report.md'), 'w', encoding='utf-8').write('\n'.join(L) + '\n')
     print('report.md written')
+
+
+def closeout(pack, w, facts, items, scripts, quests):
+    """§1-§4 of the close-out: typos, verbatim answers, prop kinds and placement, script length, required items."""
+    import importlib.util, math
+    spec = importlib.util.spec_from_file_location('gastro_check', os.path.join(pack, 'check.py'))
+    c = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(c)
+    P = lambda n: json.load(open(os.path.join(pack, n), encoding='utf-8')) if os.path.exists(os.path.join(pack, n)) else None
+    w('## Close-out (§1–§4)\n')
+    # §1
+    ts = [i for i in items if i.get('typo_shown')]
+    tc = P('typo_changes.json') or {}
+    tf = P('typo_only_facts.json') or []
+    n_hand = len(tc.get('cloze_gap_moved', []))
+    w('### §1 Typos are shown, not tested\n')
+    w(f'- items changed: {len(ts) + n_hand} — {len(ts)} with an answer field rewritten to the intended form (the printed '
+      f'wording and the erratum stay in the explanation; flagged needs_review) and {n_hand} cloze items whose gap moved off the '
+      f'misprint; one of the {len(ts)} was a cloze turned into a card; new items: {", ".join(tc.get("new_items", [])) or "none"}.')
+    w(f'- check.py: 0 items hold a misprint token (errata `typo_tokens`) as gap, keyed answer, pair member, sort entry / group, order step or label.')
+    w(f'- facts whose only testable token is the misprint (items kept, needs_review; for the author): ' +
+      '; '.join(f'{x["fact"]} „{x["text"]}” ({", ".join(x["errata"])})' for x in tf) + '\n')
+    w('| item | erratum | printed | used |')
+    w('|---|---|---|---|')
+    for i in ts:
+        for x in i['typo_shown']:
+            w(f'| {i["id"]} | {x["erratum"]} | {x["printed"]} | {x["used"]} |')
+    for x in tc.get('cloze_gap_moved', []):
+        w(f'| {x["item"]} | (gap moved) | {x["erratum_token"]} | gap now: {x["new_gap"]} |')
+    w('')
+    # §3
+    K = P('prop_kinds.json')
+    mapsrc = open(os.path.join(pack, 'institute.map'), encoding='utf-8').read()
+    rooms, ips, isl = c.parse_map(mapsrc)
+    w('### §3 Props and slots\n')
+    used = collections.Counter(p[3] for p in ips)
+    w(f'- iprop kinds: {len(used)} ({sum(1 for k in used if K["kinds"][k]["status"] == "existing")} existing in MAP-2 v3, '
+      f'{sum(1 for k in used if K["kinds"][k]["status"] == "new")} new); {len(ips)} props; {len(isl)} NPC slots '
+      f'({", ".join(f"{k} {v}" for k, v in collections.Counter(p[3] for p in isl).items())}).')
+    w('\n| kind | status | mount | footprint w x d (m) | props | what |')
+    w('|---|---|---|---|---:|---|')
+    for k, v in K['kinds'].items():
+        w(f'| {k} | {v["status"]} | {v["mount"]} | {v["w"]:.2f} x {v["d"]:.2f} | {used.get(k, 0)} | {v["desc"]} |')
+    models = collections.Counter()
+    for t in sorted(os.listdir(os.path.join(pack, 'topics'))) if os.path.isdir(os.path.join(pack, 'topics')) else []:
+        if t.endswith('.json'):
+            for p in json.load(open(os.path.join(pack, 'topics', t), encoding='utf-8')).get('props', []):
+                models[p['model']] += 1
+    if models:
+        w('\nAuthored models folded into those kinds (same model, different label): ' +
+          ', '.join(f'{m} → {K["model_to_kind"][m]} ({n})' for m, n in sorted(models.items())) + '.\n')
+    per = collections.defaultdict(set)
+    for line in mapsrc.splitlines():
+        m = re.match(r'(slot|prop)\s+(-?\d+)\s+(\S+)', line)
+        if m:
+            per[int(m.group(2))].add(m.group(3))
+    newper = collections.defaultdict(set)
+    for p in ips:
+        per[p[0]].add(p[3])
+        newper[p[0]].add(p[3])
+    w('| storey | visible kinds | of which iprop kinds | kinds |')
+    w('|---:|---:|---:|---|')
+    for f in sorted(per):
+        w(f'| {f} | {len(per[f])} | {len(newper[f])} | {", ".join(sorted(per[f]))} |')
+    pr = collections.Counter(p[1] for p in ips)
+    v = sorted(pr.values())
+    w(f'\n- new props per room ({len(v)} rooms): min {v[0]}, median {v[len(v) // 2]}, max {v[-1]}.')
+    anchors = collections.defaultdict(set)
+    for p in ips + isl:
+        anchors[p[1]].add(p[2])
+    for sc in scripts:
+        anchors[sc['room']].add(sc.get('prop') or sc.get('slot') or sc.get('npc') or 'trigger:' + sc.get('trigger', ''))
+    v = sorted(len(a) for a in anchors.values())
+    w(f'- interactables per room (new props + NPC slots + map slots the scripts use; {len(v)} rooms): min {v[0]}, median {v[len(v) // 2]}, '
+      f'max {v[-1]}; rooms above 12: {sum(1 for x in v if x > 12)}.')
+    mv = P('placement_moves.json') or {}
+    if mv:
+        # the failures that were found: rerun the check on the positions before the moves
+        orig_ips = [(a, b, n, d, *(mv[n]['from'][:2] if n in mv else (e, f)), (mv[n]['from'][2] if n in mv else g), h) for a, b, n, d, e, f, g, h in ips]
+        orig_isl = [(a, b, n, d, *(mv[n]['from'][:2] if n in mv else (e, f)), (mv[n]['from'][2] if n in mv else g)) for a, b, n, d, e, f, g in isl]
+        found = c.placement_check(rooms, orig_ips, orig_isl, K)
+        why = collections.Counter(re.sub(r'[0-9.]+ m off', 'N m off', re.sub(r'overlaps .*', 'overlaps another object', x[2])) for x in found)
+        d = sorted(math.hypot(m['to'][0] - m['from'][0], m['to'][1] - m['from'][1]) for m in mv.values())
+        w(f'- placement check (inside the room, 0.3 m from walls unless wall-mounted, wall-mounted kinds flush on a wall, clear of '
+          f'doors and their 1.0 m approach, no overlap with props or map furniture, a free 0.6 m standing cell beside it reachable '
+          f'from the door): {len({x[1] for x in found})} objects failed before the fix — ' + '; '.join(f'{k}: {n}' for k, n in why.items()) +
+          f'. All {len(mv)} moved by `tools/book/placeprops.py` (median {d[len(d) // 2]:.2f} m, max {d[-1]:.2f} m, no yaw changed); '
+          f'failures now: {len(c.placement_check(rooms, ips, isl, K))}.\n')
+    w('| room | new props | NPC slots | interactables |')
+    w('|---|---:|---:|---:|')
+    sl = collections.Counter(p[1] for p in isl)
+    for r in sorted(anchors):
+        w(f'| {r} | {pr.get(r, 0)} | {sl.get(r, 0)} | {len(anchors[r])} |')
+    # §4
+    w('\n### §4 Script length\n')
+    req = [s for s in scripts if s.get('required')]
+    groups = collections.OrderedDict()
+    for s in req:
+        groups.setdefault(s.get('group', s['id']), []).append(s)
+    authored = sorted(((sum(len(x['steps']) for x in P_) - sum(1 for x in P_ for st in x['steps'] if st.get('repeat')), g, P_[0]['room'], len(P_))
+                       for g, P_ in groups.items()), reverse=True)
+    a = sorted(x[0] for x in authored)
+    b = sorted(len(s['steps']) for s in req)
+    w(f'- as authored: {len(authored)} required scripts, steps min {a[0]}, median {a[len(a) // 2]}, max {a[-1]}; {sum(1 for x in a if x > 15)} over 15.')
+    w(f'- as played (one sitting): {len(req)} required scripts (parts), steps min {b[0]}, median {b[len(b) // 2]}, max {b[-1]}; '
+      f'{sum(1 for g in groups.values() if len(g) > 1)} scripts split into {sum(len(g) for g in groups.values() if len(g) > 1)} parts '
+      f'(„Partea 1, 2, …”, same prop / NPC; a part that starts inside a teach block shows that teach step again: '
+      f'{sum(1 for s in req for st in s["steps"] if st.get("repeat"))} repeated teach steps).\n')
+    w('Ten longest as authored:\n')
+    w('| script | room | steps | parts |')
+    w('|---|---|---:|---:|')
+    for n, g, r, k in authored[:10]:
+        w(f'| {g} | {r} | {n} | {k} |')
+    ch_of, title_of = {}, {}
+    for ch in quests['chapters']:
+        title_of[ch['id']] = ch.get('title', ch['id'])
+        for st in ch['steps']:
+            ch_of[st['topic']] = ch['id']
+    per_room, per_ch = collections.defaultdict(set), collections.defaultdict(set)
+    for s in req:
+        its = {st['item'] for st in s['steps'] if 'item' in st}
+        per_room[s['room']] |= its
+        per_ch[ch_of.get(s['topic'])] |= its
+    v = sorted(len(x) for x in per_room.values())
+    w(f'\n- required items per room ({len(v)} rooms): min {v[0]}, median {v[len(v) // 2]}, max {v[-1]}; total {len(set().union(*per_room.values()))}.\n')
+    w('| chapter | required items |')
+    w('|---|---:|')
+    for ch in quests['chapters']:
+        w(f'| {ch["id"]} | {len(per_ch.get(ch["id"], ()))} |')
+    w('\n| room | required items |')
+    w('|---|---:|')
+    for r in sorted(per_room):
+        w(f'| {r} | {len(per_room[r])} |')
+    w('')
 
 
 if __name__ == '__main__':

@@ -5,18 +5,95 @@ pack that this prompt ships with (`tools/book/packbin.py`), not estimated, unles
 
 ---
 
-You are implementing **BOOK-1 in the engine**: the Gastro chapter of the Kumar textbook, already turned into a content pack
+## Order of work (two prompts, in this order)
+
+1. **MAP-2 — the institute scene.** Run the project prompt `learn1b-quest1-map2-prompt.md` first: it builds the institute
+   scene from `content/gastro/institute.map` **as updated by BOOK-1** — rooms, doors, map slots, storeys, lifts, **plus the
+   201 `iprop` props (15 kinds, 2 of them new models: see "Prop kinds" below) and the 34 `islot` NPC
+   points**. MAP-2 owns the meshes, the instancing and the placement on the floor; BOOK-1 only adds the records.
+2. **BOOK-ENGINE — this prompt.** Only after MAP-2 is merged: load `gastro.mgpack`, play the script kinds, keep progress,
+   apply the completion rules. If MAP-2 is not merged, stop after S2 and say so; do not fake the rooms in `hospital_v1`.
+
+You are implementing **BOOK-ENGINE**: the Gastro chapter of the Kumar textbook, already turned into a content pack
 (facts → items → scripts → rooms of the institute map), becomes playable. Read `CLAUDE.md`, `docs/PERF_RULES.md`,
-`game/interact.h`, `docs/UI.md`, `content/gastro/README.md`, `content/gastro/STATE.md` and `tools/book/packbin.py` first.
+`game/interact.h`, `docs/UI.md`, `content/gastro/README.md`, `content/gastro/STATE.md`, `tools/book/packbin.py` and
+`content/gastro/mgpack_read.c` first.
 
 ## What the pack holds (measured)
 
-- 3,349 facts, 3,477 items (cloze 1453, multiplu 720, simplu 623, card 454, sort 74, order 67, match 65, label 21), 287 scripts (inspect 107, station 50, read 33, case 23, colleague 23, dispense 20, directory 14, sort 6, exam 5, sequence 4, round 1, garda 1); 280 required.
+- 3,349 facts, 3,478 items (cloze 1452, multiplu 720, simplu 623, card 456, sort 74, order 67, match 65, label 21); 389 scripts (inspect 152, station 78, read 43, case 30, colleague 28, dispense 27, directory 14, sort 6, exam 5, sequence 4, round 1, garda 1): 382 required, all in the
+  pack, plus 7 optional review / exam pools that are rules, not content (listed under S7; not in the pack).
+- One sitting = at most 15 steps: 96 longer required scripts are stored as 198 parts (`part` / `parts` in the script record, title „… · Partea N”, same prop / NPC,
+  same room; a part that starts inside a teach block shows that teach step again, step flag 1). Play the parts in order:
+  the prop offers the first unfinished part.
 - 50 topics in 45 rooms of `content/gastro/institute.map` (MAP-2 layout v3), 5 chapters; 201 new interactable props
-  (`iprop`, 19 models: bed_chart, bookshelf, breath_analyser, dispensing_counter, filing_cabinet, iv_stand, lab_bench, lectern, lightbox, microscope, model_stomach, monitor, or_screen, pharmacy_shelf, poster, scope_tower, specimen_shelf, wall_plaque, whiteboard) and 34 new slots (`islot`); per storey: storey 0: 46 props / 14 models, storey 1: 67 props / 15 models, storey 2: 59 props / 14 models, storey 3: 29 props / 13 models.
+  (`iprop`, 15 kinds) and 34 new NPC points (`islot`); per storey: storey 0: 46 props / 12 kinds, storey 1: 67 props / 12 kinds, storey 2: 59 props / 13 kinds, storey 3: 29 props / 10 kinds. Every prop and slot passes the
+  placement check in `check.py` (inside its room, 0.3 m from walls unless wall-mounted, wall-mounted kinds flush on a wall,
+  clear of doors and their 1.0 m approach, no overlap with props or map furniture, a free 0.6 m standing cell beside it
+  that connects to the door). Interactables per room: min 1, median 6, max 9; none above 12.
 - 18 figures (`fig/<id>.png`, 200 dpi crops; `fig/figures.json` gives each label's box for `label` items).
-- Compiled: `gastro.mgpack` = **2,320,628 bytes** (2.21 MB): fixed-size little-endian records, one UTF-8 string
+- Compiled: `gastro.mgpack` = **2,355,308 bytes** (2.25 MB): fixed-size little-endian records, one UTF-8 string
   table, u32 offsets (`gastro.mgpack.h` holds the structs). Per-account progress = one bit per fact = **419 bytes**.
+- Measured by the reference reader: string table **1,818,519 bytes** (25,280 strings), longest string
+  **1,776 bytes**, largest single script **`s-barrett_dx-praga-p1`** (12 steps, 25,117 bytes of strings it pulls in:
+  title, teach text, stems, options, explanations).
+
+## Prop kinds (`content/gastro/prop_kinds.json`)
+
+`iprop` records name a **kind**, not a model: the same kind is reused with a different label (a poster is a poster whatever
+it says). Footprint w × d in metres (w across the facing direction, d along it); `wall` = hangs on / stands flush against
+a wall, `free` = stands in the room. yaw 0 faces +z (south), 90 east, 180 north, 270 west.
+
+| kind | status | mount | footprint | props | description |
+|---|---|---|---|---:|---|
+| poster | existing | wall | 0.70 × 0.05 | 37 | framed wall poster (corridor posters of MAP-2) |
+| plaque | existing | wall | 0.40 × 0.04 | 19 | small wall plaque, like the coloured door signs |
+| board | existing | wall | 1.60 × 0.10 | 26 | whiteboard (MAP-2 PROP board) |
+| lightbox | existing | wall | 0.90 × 0.10 | 17 | X-ray / figure viewer on the wall (MAP-2 PROP lightbox) |
+| shelf | existing | wall | 1.20 × 0.40 | 29 | shelf unit against a wall: books, drugs, specimens (MAP-2 shelf) |
+| cabinet | existing | wall | 0.80 × 0.50 | 6 | filing / storage cabinet (MAP-2 cabinet) |
+| counter | existing | wall | 1.60 × 0.60 | 2 | dispensing counter (map slot kind counter) |
+| bench | existing | wall | 1.80 × 0.70 | 6 | lab bench (map slot kind bench) |
+| cart | existing | free | 0.70 × 0.50 | 14 | trolley; used as the bedside chart trolley (MAP-2 PROP cart) |
+| monitor | existing | free | 0.50 × 0.50 | 19 | monitor on a stand; also OR screen and breath analyser (MAP-2 monitor) |
+| scope_tower | existing | free | 0.70 × 0.60 | 9 | endoscopy tower (MAP-2 trolleyTower) |
+| model | existing | free | 0.50 × 0.50 | 4 | anatomical model on a stand (MAP-2 PROP model) |
+| podium | existing | free | 0.60 × 0.50 | 1 | lectern (MAP-2 PROP podium) |
+| microscope | new | free | 0.80 × 0.60 | 9 | small lab table with a microscope; footprint 0.8 x 0.6 m, height 1.2 m |
+| iv_stand | new | free | 0.50 × 0.50 | 3 | IV pole on a 5-wheel base with a drip bag; footprint 0.5 x 0.5 m, height 1.9 m |
+
+New models to build in MAP-2: **microscope** (small lab table with a microscope; footprint 0.8 x 0.6 m, height 1.2 m), **iv_stand** (IV pole on a 5-wheel base with a drip bag; footprint 0.5 x 0.5 m, height 1.9 m). Visible kinds per storey (map furniture + map props + iprop kinds; target ≤ 30):
+storey -1: 4, storey 0: 18, storey 1: 16, storey 2: 17, storey 3: 16, storey 4: 1. NPC points: `npc_stand` 0.5 × 0.5 m, `npc_seat` 0.6 × 0.6 m (positions, no mesh).
+
+## Pack binary layout (`gastro.mgpack`, version 2)
+
+- Little-endian throughout; the file is read in place (embed it, point into it). Header at offset 0: `magic` u32 = "MGPK",
+  `version` u32 = 2, `fact_count` u32, `item_count` u32, then 16 table descriptors `{offset u32, count u32,
+  record_size u32}` (13 used, the rest zero) = 208 bytes. Every table starts 8-byte aligned.
+- Strings: one table of NUL-terminated UTF-8; a string field is a u32 offset into it (0 = empty, `0xFFFFFFFF` = none). Index
+  fields are u32 / u16 row numbers into the named table (`0xFFFF` / `0xFFFFFFFF` = none). `refs` is a shared u32 array:
+  item → facts, teach step → atoms.
+
+| # | table | record bytes | count | offset | holds |
+|---:|---|---:|---:|---:|---|
+| 0 | strings | 1 | 1,818,519 | 208 | NUL-terminated UTF-8, addressed by u32 offsets |
+| 1 | rooms | 28 | 85 | 1,818,728 | map room id, name, storey, rectangle |
+| 2 | topics | 40 | 50 | 1,821,112 | id, title, room, chapter, step; fact / item / script ranges |
+| 3 | atoms | 20 | 657 | 1,823,112 | printed text unit: page, topic, kind, layer |
+| 4 | facts | 20 | 3,349 | 1,836,256 | claim, atom, topic, page, type, flags (needs_review, unverified_ocr) |
+| 5 | items | 40 | 3,478 | 1,903,240 | stem, explanation, review note, type, flags, option / fact-ref ranges, correct mask |
+| 6 | opts | 20 | 10,301 | 2,042,360 | options, gaps, card answers, sort / match / order / label entries |
+| 7 | refs | 4 | 9,152 | 2,248,384 | u32: item → facts, teach step → atoms |
+| 8 | scripts | 36 | 382 | 2,284,992 | id, title, topic, room, kind, required, part / parts, prop / slot / npc, step range |
+| 9 | steps | 12 | 3,870 | 2,298,744 | stage (predict / teach / check), flags, item or atom-ref range |
+| 10 | props | 28 | 201 | 2,345,184 | iprop: id, kind, label, room, storey, yaw, x, z |
+| 11 | slots | 28 | 34 | 2,350,816 | islot: id, kind, room, storey, yaw, x, z |
+| 12 | figlabels | 20 | 177 | 2,351,768 | figure label text + box on the 200-dpi crop |
+
+- Reference reader: `content/gastro/mgpack_read.c` (C11, ~200 lines, no allocation after load) checks the header, every
+  table bound and record size, every string offset and cross-reference, and prints counts and sizes. `check.py` compiles it
+  with `-Wall -Wextra -Werror -include gastro.mgpack.h` and runs it against the pack; the check fails if it rejects the pack
+  or its counts differ from the sources. The engine loader is that file without the checks' printing.
 
 ## Rules that do not change
 
@@ -31,12 +108,10 @@ You are implementing **BOOK-1 in the engine**: the Gastro chapter of the Kumar t
 
 ## Steps
 
-### S0. Prerequisite: the institute scene (MAP-2)
+### S0. Prerequisite: MAP-2 merged
 
-`assets/world/books.json` still points Gastro at the stand-in scene `hospital_v1`. BOOK-1 needs the institute map loaded as
-a scene (rooms, doors, slots, storeys, lifts). If MAP-2 is not done, stop after S2 and say so; do not fake the rooms in
-`hospital_v1`. The map parser must accept the two new records: `iprop <floor> <room> <id> <model> <x> <z> <yaw> "<label>"`
-and `islot <floor> <room> <id> <kind> <x> <z> <yaw>` (x east, z south, yaw 0 faces +z).
+The institute scene exists (step 1 of "Order of work") and loads `iprop` / `islot`; `assets/world/books.json` points Gastro's
+`scene` at it. Check that every `iprop` id, room and storey of `institute.map` is reachable from game code by id.
 
 ### S1. Build: a private content location, compiled at build time
 
@@ -57,19 +132,18 @@ and `islot <floor> <room> <id> <kind> <x> <z> <yaw>` (x east, z south, yaw 0 fac
   ranges (the compiler sorts by topic). One `perm` arena allocation for the derived per-room tables; nothing in the frame.
 - ctest `test_pack.c`: open the stub pack and a corrupted copy (bad magic, short table) — the second must be refused.
 
-### S3. Props and slots: instanced, one draw per model per visible storey
+### S3. Props and slots
 
-- Procedural meshes for the 19 prop models (`tools/meshgen.py` `.mgmesh`, vertex colours, flat normals, ≤ 300
-  triangles each), merged nothing: each prop is an instance, so one `gfx_draw` per model per visible storey
-  (at most 15 models on one storey). Storey-tagged like the scene (floor fade, x-ray rules unchanged).
-- Slots are positions only (NPC stands); NPC packages may use them like `rooms.h` slots.
+MAP-2 draws them (instanced per kind: one draw per kind per visible storey, at most 13 iprop kinds on one
+storey). BOOK-ENGINE only needs the prop / slot index → world position and storey, from the pack's `props` / `slots` tables.
 
 ### S4. Interactions: reuse the registry and its 10 Hz scan
 
-- Each script becomes an interactable (`ia_add`, a new kind `IA_SCRIPT` or `IA_BUTTON` with a script ref) at its prop or
-  slot, label = script title, `on_interact` opens the script player. Register only the scripts of the **current storey**
-  (most on one storey: 88 required + the optional ones of that storey), re-registered on storey change; this
-  keeps the registry under `IA_MAX` (320) with NPCs and markers. The scan, ranges (2.0 / 2.5 m) and the panel are unchanged.
+- Each **anchor** (a prop, an NPC point or a map slot that scripts use) becomes one interactable (`ia_add`, a new kind
+  `IA_SCRIPT` with the anchor's script list), label = the next unfinished script's title (parts in order), `on_interact`
+  opens the script player. Register only the anchors of the **current storey** (most on one storey: 89),
+  re-registered on storey change; this keeps the registry under `IA_MAX` (320) with NPCs and markers. The scan, ranges
+  (2.0 / 2.5 m) and the panel are unchanged.
 - A room's station shows a marker until the room is complete (existing `markers.c`).
 
 ### S5. Script player and item widgets (UI-1 Jelly Pop)
@@ -96,10 +170,22 @@ and `islot <floor> <room> <id> <kind> <x> <z> <yaw>` (x east, z south, yaw 0 fac
 
 ### S7. Rooms, chapters, exams
 
-- Room complete = popcount over its topics' fact ranges equals their size. Chapter complete = all its rooms. The chapter exam
-  (Sala Comisiei) and the final simulation (Sala de examen) draw from item pools (`scripts.json` `pool`); **question counts
-  and scoring of the final simulation are the author's to set: leave them as constants marked TODO and ask.**
-- Round (nurse station) and garda (emergency bays) draw from completed rooms, oldest-answered facts first.
+- Room complete = popcount over its topics' fact ranges equals their size. Chapter complete = all its rooms. Review scripts
+  never count toward completion. The pools (from `scripts.json`, kept as engine constants; items are picked from the pack by
+  topic → chapter and item type):
+
+| id | kind | room | anchor | opens when | draws from |
+|---|---|---|---|---|---|
+| `r-comisie-ch1` | exam | o_comisie | table | every room of chapter 1 complete | chapters 1; types simplu, multiplu; count set by the author |
+| `r-comisie-ch2` | exam | o_comisie | table | every room of chapter 2 complete | chapters 2; types simplu, multiplu; count set by the author |
+| `r-comisie-ch3` | exam | o_comisie | table | every room of chapter 3 complete | chapters 3; types simplu, multiplu; count set by the author |
+| `r-comisie-ch4` | exam | o_comisie | table | every room of chapter 4 complete | chapters 4; types simplu, multiplu; count set by the author |
+| `r-round` | round | w_statie | post | always | chapters completed rooms; types all; spacing facts answered longest ago first |
+| `r-garda` | garda | g_garda | desk | always | chapters completed rooms; types simplu, multiplu, card; rooms g_bay1, g_bay2, g_bay3, g_bay4, g_bay5, g_bay6 |
+| `r-examen` | exam | o_examen | desk | every chapter exam passed | chapters 1, 2, 3, 4; types simplu, multiplu; count set by the author; scoring set by the author |
+
+- **Question counts and scoring of the chapter exams and of the final simulation are the author's to set: leave them as
+  constants marked TODO and ask.**
 
 ### S8. Tests
 
@@ -112,10 +198,10 @@ and `islot <floor> <room> <id> <kind> <x> <z> <yaw>` (x east, z south, yaw 0 fac
 
 | Area | Budget | BOOK-1 estimate | How |
 |---|---|---|---|
-| Draw calls per frame | 150 | +15 at most on one storey (one per prop model), +≤3 UI while a card is open | instancing, one UI batch |
-| CPU tick | 5.0 ms | < 0.02 ms: ≤ 80 more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
+| Draw calls per frame | 150 | +13 at most on one storey (one per prop kind, MAP-2), +≤3 UI while a card is open | instancing, one UI batch |
+| CPU tick | 5.0 ms | < 0.02 ms: ≤ 89 more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
 | CPU render submission | 2.0 ms | + instance building for ≤ 201 props (< 0.05 ms) | estimate, measure |
-| Memory | 300 MB | pack 2.21 MB (embedded, read in place) + figure atlas ≤ 36 MB RGBA8 (2048² pages; ASTC 4×4 would be a quarter) + derived tables < 0.1 MB | measured / estimate |
+| Memory | 300 MB | pack 2.25 MB (embedded, read in place) + figure atlas ≤ 36 MB RGBA8 (2048² pages; ASTC 4×4 would be a quarter) + derived tables < 0.1 MB | measured / estimate |
 | Heap allocations in the frame loop | 0 | 0: fixed-size player state, arena tables built at load | |
 | GPU frame | 8.0 ms | props are small toon meshes; the card is one SDF batch | measure with Instruments |
 
@@ -128,7 +214,10 @@ blocks sign-off.
 
 ## Done checklist
 
+- [ ] MAP-2 (`learn1b-quest1-map2-prompt.md`) merged first, with the BOOK-1 props and slots of `institute.map`
 - [ ] S0–S8 done, or stopped at S2 with MAP-2 named as the blocker
+- [ ] the pack loader accepts what `content/gastro/mgpack_read.c` accepts (same checks) and the final simulation's question
+      counts and scoring are left unset (constants marked TODO) for the author
 - [ ] `content/gastro/check.py` passes in the build; the public build uses the stub pack and stays green
 - [ ] the content location is proposed in `content/README` and left as an open question for the author
 - [ ] `--autotest book` and `--autotest book_ui` pass; pack ctest passes; `link_test.sql` passes

@@ -73,6 +73,10 @@ def main(pack):
                         bbox = m[k]
                 if bbox is None:
                     missing += 1
+                else:   # a glyph box can reach a pixel or two past the crop edge (descenders): keep it inside the crop
+                    from PIL import Image
+                    cw, ch = Image.open(os.path.join(pack, f['file'])).size
+                    bbox = [max(0, min(cw, bbox[0])), max(0, min(ch, bbox[1])), max(0, min(cw, bbox[2])), max(0, min(ch, bbox[3]))]
                 labels.append({'t': t, 'bbox': bbox})
         f['labels'] = labels
         f['labels_without_position'] = sum(1 for l in labels if l['bbox'] is None)

@@ -76,8 +76,16 @@ def merge(pack):
     # map: source map + generated iprop section
     src = open(os.path.join(pack, '..', 'src', 'institute.map'), encoding='utf-8').read().split(MAP_MARK)[0].rstrip('\n')
     lines = [src, '', MAP_MARK,
-             '# iprop <floor> <room> <id> <model> <x> <z> <yaw> "<label>"   an interactable prop (instanced per model); yaw 0 faces +z / south',
-             '# islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand, bed, chair) used by scripts']
+             '# iprop <floor> <room> <id> <kind> <x> <z> <yaw> "<label>"    an interactable prop (instanced per kind); yaw 0 faces +z / south',
+             '# islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand / seat) used by scripts',
+             '# prop kinds (prop_kinds.json; w x d metres across x along the facing direction; wall = flush against a wall):']
+    PK = json.load(open(os.path.join(pack, 'prop_kinds.json'), encoding='utf-8'))
+    for k, v in PK['kinds'].items():
+        lines.append(f'#   {k:12s} {v["w"]:.2f} x {v["d"]:.2f}  {v["mount"]:4s}  {v["status"]:8s}  {v["desc"]}')
+    for p in props:
+        if p['model'] not in PK['model_to_kind']:
+            raise SystemExit(f'prop {p["id"]}: model {p["model"]} has no kind in prop_kinds.json')
+        p['kind'] = PK['model_to_kind'][p['model']]
     rooms = []
     for p in props + slots:
         if p['room'] not in rooms:
@@ -88,7 +96,7 @@ def merge(pack):
         tops = sorted(set(p['topic'] for p in P + S))
         lines.append(f'# room {r} ({", ".join(tops)}): {len(P)} props, {len(S)} slots')
         for p in P:
-            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["model"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"')
+            lines.append(f'iprop {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]} "{p["label"]}"')
         for p in S:
             lines.append(f'islot {p["floor"]} {p["room"]} {p["id"]} {p["kind"]} {p["x"]} {p["z"]} {p["yaw"]}')
     open(os.path.join(pack, 'institute.map'), 'w', encoding='utf-8').write('\n'.join(lines) + '\n')

@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
-"""Write PACK/ENGINE_PROMPT.md (Phase F): the Claude Code prompt for the engine agent, with the measured pack figures.
-  engine_prompt.py PACK MGPACK"""
-import collections, json, os, re, sys
+"""Write PACK/ENGINE_PROMPT.md (Phase F hand-over): the Claude Code prompt for the engine agent, with the measured figures.
+  engine_prompt.py PACK MGPACK
+Sizes come from the pack itself: the header is read here, and the reference reader (PACK/mgpack_read.c) is compiled and run
+for the string / script measurements, so the prompt and check.py report the same numbers."""
+import collections, json, os, re, shutil, struct, subprocess, sys, tempfile
+
+TABLES = ['strings', 'rooms', 'topics', 'atoms', 'facts', 'items', 'opts', 'refs', 'scripts', 'steps', 'props', 'slots', 'figlabels']
+HOLDS = {'strings': 'NUL-terminated UTF-8, addressed by u32 offsets', 'rooms': 'map room id, name, storey, rectangle',
+         'topics': 'id, title, room, chapter, step; fact / item / script ranges', 'atoms': 'printed text unit: page, topic, kind, layer',
+         'facts': 'claim, atom, topic, page, type, flags (needs_review, unverified_ocr)',
+         'items': 'stem, explanation, review note, type, flags, option / fact-ref ranges, correct mask',
+         'opts': 'options, gaps, card answers, sort / match / order / label entries', 'refs': 'u32: item → facts, teach step → atoms',
+         'scripts': 'id, title, topic, room, kind, required, part / parts, prop / slot / npc, step range',
+         'steps': 'stage (predict / teach / check), flags, item or atom-ref range', 'props': 'iprop: id, kind, label, room, storey, yaw, x, z',
+         'slots': 'islot: id, kind, room, storey, yaw, x, z', 'figlabels': 'figure label text + box on the 200-dpi crop'}
+
+
+def measure(pack, mgpack):
+    cc = shutil.which('cc') or shutil.which('gcc') or shutil.which('clang')
+    with tempfile.TemporaryDirectory() as td:
+        exe = os.path.join(td, 'r')
+        subprocess.run([cc, '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-include', mgpack + '.h',
+                        os.path.join(pack, 'mgpack_read.c'), '-o', exe], check=True)
+        r = subprocess.run([exe, mgpack], capture_output=True, text=True, check=True)
+    return dict(l.split('=', 1) for l in r.stdout.splitlines() if '=' in l)
 
 
 def main(pack, mgpack):
@@ -9,40 +31,77 @@ def main(pack, mgpack):
     facts, items = J('facts.jsonl'), J('items.jsonl')
     scripts = json.load(open(os.path.join(pack, 'scripts.json'), encoding='utf-8'))['scripts']
     mp = open(os.path.join(pack, 'institute.map'), encoding='utf-8').read()
+    K = json.load(open(os.path.join(pack, 'prop_kinds.json'), encoding='utf-8'))
     props = re.findall(r'^iprop\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)', mp, re.M)
     slots = re.findall(r'^islot\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)', mp, re.M)
     figs = json.load(open(os.path.join(pack, 'fig', 'figures.json'), encoding='utf-8'))
-    size = os.path.getsize(mgpack)
+    data = open(mgpack, 'rb').read()
+    magic, version, nf, ni = struct.unpack_from('<4sIII', data, 0)
+    descs = [struct.unpack_from('<III', data, 16 + 12 * i) for i in range(16)]
+    kv = measure(pack, mgpack)
+    size = len(data)
     types = collections.Counter(i['type'] for i in items)
     kinds = collections.Counter(s['kind'] for s in scripts)
     per_storey = collections.Counter(int(p[0]) for p in props)
-    models_storey = collections.defaultdict(set)
+    kinds_storey = collections.defaultdict(set)
     for p in props:
-        models_storey[int(p[0])].add(p[3])
-    models = sorted(set(p[3] for p in props))
-    req = [s for s in scripts if s.get('required')]
-    req_storey = collections.Counter()
+        kinds_storey[int(p[0])].add(p[3])
+    used = collections.Counter(p[3] for p in props)
+    new = [k for k in used if K['kinds'][k]['status'] == 'new']
+    vis = collections.defaultdict(set)
+    for line in mp.splitlines():
+        m = re.match(r'(slot|prop)\s+(-?\d+)\s+(\S+)', line)
+        if m:
+            vis[int(m.group(2))].add(m.group(3))
+    for p in props:
+        vis[int(p[0])].add(p[3])
     room_floor = {m.group(2): int(m.group(1)) for m in re.finditer(r'^room\s+(-?\d+)\s+(\S+)', mp, re.M)}
-    for s in req:
-        req_storey[room_floor.get(s['room'], -9)] += 1
-    fig_px = sum(f['bbox'][2] - f['bbox'][0] for f in figs)
+    anchors = collections.defaultdict(set)
+    for p in props + slots:
+        anchors[p[1]].add(p[2])
+    for s in scripts:
+        anchors[s['room']].add(s.get('prop') or s.get('slot') or s.get('npc') or 'trigger:' + s.get('trigger', ''))
+    anch_storey = collections.Counter()
+    for r, a in anchors.items():
+        anch_storey[room_floor.get(r, -9)] += len(a)
+    ia = sorted(len(a) for a in anchors.values())
+    groups = collections.Counter(s['group'] for s in scripts if s.get('group'))
+    req = [s for s in scripts if s.get('required')]
+    pools = [s for s in scripts if not s.get('topic')]
+    fmt = lambda v: ', '.join(map(str, v)) if isinstance(v, list) else str(v)
+    pools_table = '\n'.join(f'| `{s["id"]}` | {s["kind"]} | {s["room"]} | {s.get("slot") or s.get("prop") or "-"} | '
+                            f'{s.get("opens_when", "always")} | chapters {fmt(s["pool"].get("chapters"))}; types {fmt(s["pool"].get("types"))}'
+                            + ''.join(f'; {k} {fmt(v)}' for k, v in s['pool'].items() if k not in ('chapters', 'types')) + ' |' for s in pools)
     tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'engine_prompt_template.md'), encoding='utf-8').read()
+    kinds_table = '\n'.join(f'| {k} | {v["status"]} | {v["mount"]} | {v["w"]:.2f} × {v["d"]:.2f} | {used.get(k, 0)} | {v["desc"]} |'
+                            for k, v in K['kinds'].items())
+    layout = '\n'.join(f'| {i} | {t} | {descs[i][2]} | {descs[i][1]:,} | {descs[i][0]:,} | {HOLDS[t]} |' for i, t in enumerate(TABLES))
     vals = {
         'FACTS': f'{len(facts):,}', 'ITEMS': f'{len(items):,}',
         'ITEM_TYPES': ', '.join(f'{k} {v}' for k, v in types.most_common()),
-        'SCRIPTS': f'{len(scripts)}', 'REQ_SCRIPTS': f'{len(req)}',
+        'SCRIPTS': f'{len(scripts)}', 'REQ_SCRIPTS': f'{len(req)}', 'NPOOLS': str(len(pools)), 'POOLS_TABLE': pools_table,
         'SCRIPT_KINDS': ', '.join(f'{k} {v}' for k, v in kinds.most_common()),
-        'PROPS': f'{len(props)}', 'SLOTS': f'{len(slots)}', 'MODELS': ', '.join(models), 'NMODELS': str(len(models)),
-        'PROPS_STOREY': ', '.join(f'storey {k}: {per_storey[k]} props / {len(models_storey[k])} models' for k in sorted(per_storey)),
-        'REQ_STOREY': ', '.join(f'storey {k}: {v}' for k, v in sorted(req_storey.items())),
-        'MAX_REQ_STOREY': str(max(req_storey.values()) if req_storey else 0),
-        'MAX_MODELS_STOREY': str(max((len(v) for v in models_storey.values()), default=0)),
+        'SPLIT': f'{len(groups)} longer required scripts are stored as {sum(groups.values())} parts',
+        'PROPS': f'{len(props)}', 'SLOTS': f'{len(slots)}', 'NKINDS': str(len(used)), 'NNEW': str(len(new)),
+        'NEW_KINDS': ', '.join(f'**{k}** ({K["kinds"][k]["desc"]})' for k in new) or 'none',
+        'KINDS_TABLE': kinds_table, 'LAYOUT_TABLE': layout, 'VERSION': str(version),
+        'KINDS_STOREY': ', '.join(f'storey {f}: {len(vis[f])}' for f in sorted(vis)),
+        'PROPS_STOREY': ', '.join(f'storey {k}: {per_storey[k]} props / {len(kinds_storey[k])} kinds' for k in sorted(per_storey)),
+        'IA_ROOM': f'min {ia[0]}, median {ia[len(ia) // 2]}, max {ia[-1]}',
+        'MAX_ANCHORS_STOREY': str(max(anch_storey.values()) if anch_storey else 0),
+        'MAX_KINDS_STOREY': str(max((len(v) for v in kinds_storey.values()), default=0)),
         'PACK_BYTES': f'{size:,}', 'PACK_MB': f'{size / 1048576:.2f}',
+        'STRING_BYTES': f'{int(kv["string_table_bytes"]):,}', 'NSTRINGS': f'{int(kv["strings"]):,}',
+        'LONGEST': f'{int(kv["longest_string_bytes"]):,}', 'BIG_SCRIPT': f'`{kv["largest_script"]}`',
+        'BIG_STEPS': kv['largest_script_steps'], 'BIG_BYTES': f'{int(kv["largest_script_string_bytes"]):,}',
         'BITSET': f'{(len(facts) + 7) // 8}', 'FIGS': str(len(figs)),
         'FIG_MB': f'{len(figs) * 1024 * 1024 * 4 / 1048576 / 2:.0f}',
     }
     for k, v in vals.items():
         tpl = tpl.replace('{' + k + '}', v)
+    left = sorted(set(re.findall(r'\{[A-Z][A-Z_]+\}', tpl)) - {'{MG_GEN_DIR}'})
+    if left:
+        sys.exit(f'unfilled placeholders: {left}')
     open(os.path.join(pack, 'ENGINE_PROMPT.md'), 'w', encoding='utf-8').write(tpl)
     print('ENGINE_PROMPT.md', len(tpl), 'chars;', vals['FACTS'], 'facts,', vals['ITEMS'], 'items,', vals['PACK_BYTES'], 'bytes pack')
 

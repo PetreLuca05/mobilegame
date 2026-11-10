@@ -15,6 +15,15 @@ topics/
 notes/
 fixes/
 *.mgpack
-*.mgpack.h
 exam_exempt.json
 atoms.lock.json
+review_errata.csv
+review_hidden.csv
+errata_decisions.json
+hidden_confirmed.json
+review_applied.json
+inflections.json
+typo_only_facts.json
+typo_changes.json
+placement_moves.json
+pack_measure.json

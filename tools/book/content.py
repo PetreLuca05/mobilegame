@@ -12,7 +12,8 @@ v2 rules (author's check-in answers, §2):
 - cloze: one gap (the tested token) unless list=True.
 Option letters are shuffled deterministically per item, so the key is not always A.
 """
-import hashlib, json, os, re
+import hashlib, json, os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 LETTERS = 'ABCDE'
 
@@ -22,6 +23,49 @@ def norm(s):
     s = re.sub(r'[„”"«»().,;:!?…\-–—•\s]+', ' ', s)
     return s.strip()
 
+
+
+MAX_STEPS = 15      # one sitting; a longer required script is played as parts on the same prop / NPC (Partea 1, 2, ...)
+
+
+def _split_steps(S):
+    """Cut a step list into the fewest parts of <= MAX_STEPS. A part that starts in the middle of a teach block shows that
+    teach step again first (a new sitting); cuts right before a teach step are preferred, then even sizes."""
+    L = len(S)
+    if L <= MAX_STEPS:
+        return [S]
+    last_teach = [None] * (L + 1)
+    lt = None
+    for i, st in enumerate(S):
+        last_teach[i] = lt if st['stage'] != 'teach' else None
+        if st['stage'] == 'teach':
+            lt = st
+    INF = (10 ** 9,)
+    best = [INF] * (L + 1)
+    cut = [0] * (L + 1)
+    best[0] = (0, 0, 0)
+    for j in range(1, L + 1):
+        for i in range(max(0, j - MAX_STEPS), j):
+            if best[i] == INF:
+                continue
+            rep = 1 if last_teach[i] is not None else 0
+            size = j - i + rep
+            if size > MAX_STEPS:
+                continue
+            c = (best[i][0] + 1, best[i][1] + rep, max(best[i][2], size))
+            if c < best[j]:
+                best[j], cut[j] = c, i
+    bounds, j = [], L
+    while j:
+        bounds.append((cut[j], j))
+        j = cut[j]
+    out = []
+    for i, j in reversed(bounds):
+        P = list(S[i:j])
+        if last_teach[i] is not None:
+            P.insert(0, dict(last_teach[i], repeat=True))
+        out.append(P)
+    return out
 
 class Topic:
     def __init__(self, topic_id, pack):
@@ -64,7 +108,7 @@ class Topic:
              'type': ftype, 'keys': list(keys), 'qa': [list(x) for x in qa], 'page': a['page']}
         notes = [review] if review else []
         for e in self.errata:                              # a fact whose span holds a printed erratum is flagged
-            if atom in e['atoms']:
+            if atom in e['atoms'] and not e.get('withdrawn') and not e.get('resolved'):
                 i = t.find(e['printed'])
                 while i >= 0:                              # every occurrence of the printed snippet
                     if i < span[1] and i + len(e['printed']) > span[0]:
@@ -139,8 +183,50 @@ class Topic:
         it = {'id': iid, 'topic': self.topic, 'type': itype, 'fact_ids': list(dict.fromkeys(tested)), 'stem': stem,
               'explanation': expl, 'source': source, 'difficulty': difficulty, 'flags': fl}
         it.update(kw)
+        self._typo_guard(it)
         self.items.append(it)
         return iid
+
+    def _typo_guard(self, it):
+        """Typos are shown, not tested: a printed typo token in an answer field (keyed option, card answer, pair, sort
+        entry / group, order step) is replaced by its intended form, and the explanation shows the printed wording with the
+        erratum note. Cloze gaps cannot be rewritten (they must be exact substrings): check.py fails them instead."""
+        import typoguard
+        if not hasattr(self, '_typos'):
+            off = {e['id'] for e in self.errata if e.get('withdrawn') or e.get('resolved')}
+            self._typos = {k: v for k, v in typoguard.load_tokens().items() if k not in off}
+            self._eissue = {e['id']: e['issue'] for e in self.errata}
+        shown = []
+        for path, txt in typoguard.answer_fields(it):
+            if path[0] in ('answers', 'labels'):
+                continue
+            new = txt
+            for eid, toks in self._typos.items():
+                for tok, cor in toks:
+                    m = typoguard.find(tok, new)
+                    while m:
+                        rep = cor[0].upper() + cor[1:] if m.group(0)[:1].isupper() and cor[:1].islower() else cor
+                        new = new[:m.start()] + rep + new[m.end():]
+                        if (eid, tok) not in [(x['erratum'], x['printed']) for x in shown]:
+                            shown.append({'erratum': eid, 'printed': tok, 'used': cor})
+                        m = typoguard.find(tok, new)
+            if new != txt:
+                obj = it
+                for k in path[:-1]:
+                    obj = obj[k]
+                obj[path[-1]] = new
+                # a keyed option that is a registered answer to q keeps being one in its intended form
+                if path[0] == 'options' and it.get('q'):
+                    for f in self.facts:
+                        if f['id'] in it['fact_ids'] and [it['q'], txt] in f['qa'] and [it['q'], new] not in f['qa']:
+                            f['qa'].append([it['q'], new])
+        if shown:
+            it['typo_shown'] = shown
+            notes = ' '.join(f'Textul tipărește „{x["printed"]}” ({x["erratum"]}: {self._eissue.get(x["erratum"], "")}); răspunsul folosește forma „{x["used"]}”.' for x in shown)
+            it['explanation'] = notes + ' ' + it['explanation']
+            if 'needs_review' not in it['flags']:
+                it['flags'].append('needs_review')
+            it.setdefault('review_note', 'typo shown, not tested: ' + ', '.join(x['erratum'] for x in shown))
 
     def _shuffle(self, key, opts):
         h = int(hashlib.sha1(f'{self.topic}/{key}'.encode()).hexdigest(), 16)
@@ -255,16 +341,30 @@ class Topic:
                     if f not in covers:
                         covers.append(f)
                 S.append({'stage': stage, 'item': iid})
-        sc = {'id': f's-{self.topic}-{sid}', 'topic': self.topic, 'room': room, 'kind': kind, 'title': title,
-              'trigger': trigger, 'required': required, 'steps': S, 'covers': covers}
-        if slot:
-            sc['slot'] = slot
-        if prop:
-            sc['prop'] = prop
-        if npc:
-            sc['npc'] = npc
-        self.scripts.append(sc)
-        return sc['id']
+        parts = _split_steps(S) if required else [S]
+        base = f's-{self.topic}-{sid}'
+        for k, P in enumerate(parts, 1):
+            pc = []
+            for st in P:
+                for f in (self.item_by_id(st['item'])['fact_ids'] if 'item' in st else []):
+                    if f not in pc:
+                        pc.append(f)
+            sc = {'id': base if len(parts) == 1 else f'{base}-p{k}', 'topic': self.topic, 'room': room, 'kind': kind,
+                  'title': title if len(parts) == 1 else f'{title} · Partea {k}', 'trigger': trigger, 'required': required,
+                  'steps': P, 'covers': [f for f in covers if f in pc]}
+            if len(parts) > 1:
+                sc.update(group=base, part=k, parts=len(parts))
+            if slot:
+                sc['slot'] = slot
+            if prop:
+                sc['prop'] = prop
+            if npc:
+                sc['npc'] = npc
+            self.scripts.append(sc)
+        return base
+
+    def item_by_id(self, iid):
+        return next(i for i in self.items if i['id'] == iid)
 
     # ------------------------------------------------------------------ save + local checks
     def save(self):

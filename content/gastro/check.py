@@ -56,6 +56,27 @@ def words_of(s):
 NUM_RE = re.compile(r'\d+(?:[.,]\d+)*')
 
 
+def answer_fields(it):
+    """every text a candidate produces or picks as correct"""
+    t = it['type']
+    if t == 'cloze':
+        return [(('answers', i), a) for i, a in enumerate(it['answers'])]
+    if t in ('simplu', 'multiplu'):
+        return [(('options', i), o['t']) for i, o in enumerate(it['options']) if o.get('ok')]
+    if t == 'card':
+        return [(('answer',), it['answer'])]
+    if t == 'sort':
+        return ([(('entries', i), e['t']) for i, e in enumerate(it['entries'])] + [(('groups', i), g) for i, g in enumerate(it['groups'])]
+                + [(('entry groups', i), e['group']) for i, e in enumerate(it['entries'])])
+    if t == 'match':
+        return [(('pairs', i), p['left']) for i, p in enumerate(it['pairs'])] + [(('pairs', i), p['right']) for i, p in enumerate(it['pairs'])]
+    if t == 'order':
+        return [(('sequence', i), x) for i, x in enumerate(it['sequence'])]
+    if t == 'label':
+        return [(('labels', i), l['t']) for i, l in enumerate(it['labels'])]
+    return []
+
+
 def leak_scan(pack, repo):
     guard = set(l.strip() for l in open(os.path.join(pack, 'leakguard.txt')) if l.strip() and not l.startswith('#'))
     WORD = re.compile(r'[0-9a-zăâîșțáéíóúöüßçñµα-ω]+', re.I)
@@ -80,9 +101,301 @@ def leak_scan(pack, repo):
     return bad
 
 
+# ---------------------------------------------------------------------------------------------------------- placement
+CELL = 0.1
+
+
+def parse_map(mapsrc):
+    """rooms {id: {floor, x0, z0, x1, z1, open, doors: [(x, z, w, side)], slots: [(kind, x, z, yaw)]}},
+    iprops [(floor, room, id, kind, x, z, yaw, label)], islots [(floor, room, id, kind, x, z, yaw)]"""
+    rooms, cur = {}, None
+    for line in mapsrc.splitlines():
+        line = line.split('#')[0].strip()
+        m = re.match(r'room\s+(-?\d+)\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+        if m:
+            cur = m.group(2)
+            rooms[cur] = {'floor': int(m.group(1)), 'x0': float(m.group(3)), 'z0': float(m.group(4)), 'x1': float(m.group(5)),
+                          'z1': float(m.group(6)), 'doors': [], 'slots': [], 'open': False}
+            continue
+        m = re.match(r'door\s+-?\d+\s+(\S+)\s+(\S+)\s+(\S+)\s+([NSEW])', line)
+        if m and cur:
+            rooms[cur]['doors'].append((float(m.group(1)), float(m.group(2)), float(m.group(3)), m.group(4)))
+            continue
+        m = re.match(r'slot\s+-?\d+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+        if m and cur:
+            rooms[cur]['slots'].append((m.group(1), float(m.group(2)), float(m.group(3)), float(m.group(4))))
+    iprops = [(int(a), b, c, d, float(e), float(f), float(g), h) for a, b, c, d, e, f, g, h in
+              re.findall(r'^iprop\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"([^"]*)"', mapsrc, re.M)]
+    islots = [(int(a), b, c, d, float(e), float(f), float(g)) for a, b, c, d, e, f, g in
+              re.findall(r'^islot\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', mapsrc, re.M)]
+    return rooms, iprops, islots
+
+
+def footprint(x, z, yaw, w, d):
+    q = int(round(yaw / 90.0)) % 2
+    hw, hd = (w / 2, d / 2) if q == 0 else (d / 2, w / 2)
+    return (x - hw, z - hd, x + hw, z + hd)
+
+
+def overlap(a, b, eps=0.02):
+    return a[0] < b[2] - eps and b[0] < a[2] - eps and a[1] < b[3] - eps and b[1] < a[3] - eps
+
+
+def room_objects(room, rid, iprops, islots, kinds):
+    """every object of a room: (name, rect, mount, is_new)"""
+    K, SK, MF = kinds['kinds'], kinds['slot_kinds'], kinds['map_slot_furniture']
+    objs = []
+    for kind, x, z, yaw in room['slots']:
+        f = MF.get(kind)
+        if f:
+            objs.append((f'map slot {kind}@{x},{z}', footprint(x, z, yaw, f['w'], f['d']), 'free', False))
+    for fl, r, pid, kind, x, z, yaw, _ in iprops:
+        if r == rid:
+            k = K.get(kind, {'w': 0.6, 'd': 0.6, 'mount': 'free'})
+            objs.append((pid, footprint(x, z, yaw, k['w'], k['d']), k['mount'], True))
+    for fl, r, sid, kind, x, z, yaw in islots:
+        if r == rid:
+            k = SK.get(kind, {'w': 0.5, 'd': 0.5})
+            objs.append((sid, footprint(x, z, yaw, k['w'], k['d']), 'free', True))
+    return objs
+
+
+def placement_check(rooms, iprops, islots, kinds, only=None):
+    """-> (failures [(room, object, problem)], per-room standability grids are local)"""
+    fails = []
+    for rid, room in rooms.items():
+        objs = room_objects(room, rid, iprops, islots, kinds)
+        news = [o for o in objs if o[3] and (only is None or o[0] in only)]
+        yaws = {pid: yaw for fl, r, pid, kind, x, z, yaw, _ in iprops if r == rid}
+        if not news:
+            continue
+        ix0, iz0, ix1, iz1 = room['x0'] + 0.1, room['z0'] + 0.1, room['x1'] - 0.1, room['z1'] - 0.1
+        approach = []
+        for dx, dz, dw, side in room['doors']:
+            if side in 'NS':
+                zz = dz + (1.0 if abs(dz - room['z0']) < abs(dz - room['z1']) else -1.0)
+                approach.append((dx - dw / 2, min(dz, zz), dx + dw / 2, max(dz, zz)))
+            else:
+                xx = dx + (1.0 if abs(dx - room['x0']) < abs(dx - room['x1']) else -1.0)
+                approach.append((min(dx, xx), dz - dw / 2, max(dx, xx), dz + dw / 2))
+        nx, nz = int(round((ix1 - ix0) / CELL)), int(round((iz1 - iz0) / CELL))
+        blocked = [[False] * nx for _ in range(nz)]
+        for _, rc, _, _ in objs:
+            for j in range(max(0, int((rc[1] - iz0) / CELL)), min(nz, int((rc[3] - iz0) / CELL) + 1)):
+                for i in range(max(0, int((rc[0] - ix0) / CELL)), min(nx, int((rc[2] - ix0) / CELL) + 1)):
+                    blocked[j][i] = True
+        # standable: a 0.6 m square (6 x 6 cells) free of objects and inside the room
+        S = [[0] * (nx + 1) for _ in range(nz + 1)]
+        for j in range(nz):
+            for i in range(nx):
+                S[j + 1][i + 1] = S[j][i + 1] + S[j + 1][i] - S[j][i] + (1 if blocked[j][i] else 0)
+        stand = [[False] * nx for _ in range(nz)]
+        for j in range(3, nz - 3):
+            for i in range(3, nx - 3):
+                if S[j + 3][i + 3] - S[j - 3][i + 3] - S[j + 3][i - 3] + S[j - 3][i - 3] == 0:
+                    stand[j][i] = True
+        # reachable from the doors (or anywhere for an open room)
+        seen = [[False] * nx for _ in range(nz)]
+        q = []
+        for j in range(nz):
+            for i in range(nx):
+                if stand[j][i]:
+                    cx, cz = ix0 + (i + 0.5) * CELL, iz0 + (j + 0.5) * CELL
+                    if room['open'] or not room['doors'] or any(a[0] - 0.4 <= cx <= a[2] + 0.4 and a[1] - 0.4 <= cz <= a[3] + 0.4 for a in approach):
+                        seen[j][i] = True
+                        q.append((j, i))
+        while q:
+            j, i = q.pop()
+            for dj, di in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                a, b = j + dj, i + di
+                if 0 <= a < nz and 0 <= b < nx and stand[a][b] and not seen[a][b]:
+                    seen[a][b] = True
+                    q.append((a, b))
+        for name, rc, mount, _ in news:
+            if not (rc[0] >= ix0 - 0.001 and rc[2] <= ix1 + 0.001 and rc[1] >= iz0 - 0.001 and rc[3] <= iz1 + 0.001):
+                fails.append((rid, name, 'outside the room'))
+                continue
+            if mount == 'free' and min(rc[0] - ix0, ix1 - rc[2], rc[1] - iz0, iz1 - rc[3]) < 0.3 - 0.001:
+                fails.append((rid, name, 'closer than 0.3 m to a wall'))
+            if mount == 'wall':
+                back = {0: rc[1] - iz0, 1: rc[0] - ix0, 2: iz1 - rc[3], 3: ix1 - rc[2]}[int(round(yaws[name] / 90.0)) % 4]
+                if back > 0.05:
+                    fails.append((rid, name, f'wall-mounted but {back:.2f} m off the wall behind it'))
+            for a in approach:
+                if overlap(rc, a):
+                    fails.append((rid, name, 'in a door opening or its 1.0 m approach'))
+                    break
+            for other, orc, _, _ in objs:
+                if other != name and overlap(rc, orc):
+                    fails.append((rid, name, f'overlaps {other}'))
+                    break
+            ok = False
+            for j in range(max(0, int((rc[1] - 0.5 - iz0) / CELL)), min(nz, int((rc[3] + 0.5 - iz0) / CELL) + 1)):
+                for i in range(max(0, int((rc[0] - 0.5 - ix0) / CELL)), min(nx, int((rc[2] + 0.5 - ix0) / CELL) + 1)):
+                    if seen[j][i]:
+                        cx, cz = ix0 + (i + 0.5) * CELL, iz0 + (j + 0.5) * CELL
+                        gx = max(rc[0] - cx, 0, cx - rc[2]) - 0.3
+                        gz = max(rc[1] - cz, 0, cz - rc[3]) - 0.3
+                        if max(gx, gz) <= 0.2:
+                            ok = True
+                            break
+                if ok:
+                    break
+            if not ok:
+                fails.append((rid, name, 'no free 0.6 m standing cell beside it that connects to the door'))
+    return fails
+
+
+# ---------------------------------------------------------------------------------------------------------- review sheets
+YES = {'y', 'yes', 'ok', 'da', 'd', '1', 'x', '✓'}
+
+
+def tools_dir(pack):
+    for d in (os.path.join(pack, '..', 'tools', 'book'), os.path.join(pack, '..', '..', 'tools', 'book')):
+        if os.path.exists(os.path.join(d, 'build.py')):
+            return os.path.abspath(d)
+    sys.exit('tools/book not found next to the pack')
+
+
+def apply_review(pack):
+    """Read review_errata.csv / review_hidden.csv back: decisions go into errata_decisions.json (-> errata.json) and
+    fixes/review.json (-> fixes.json); hidden-text confirmations into fixes/pNN.json (status verified) or
+    hidden_confirmed.json. Then rebuild the text (build, atoms, errata; not the topics) and list what must be rebuilt."""
+    import csv, subprocess
+    pack = os.path.abspath(pack)
+    atoms = load_jsonl(os.path.join(pack, 'atoms.jsonl'))
+    A = {a['id']: a for a in atoms}
+    errata = {e['id']: e for e in json.load(open(os.path.join(pack, 'errata.json'), encoding='utf-8'))}
+    fdir = os.path.join(pack, 'fixes')
+    rv_path = os.path.join(fdir, 'review.json')
+    review = json.load(open(rv_path, encoding='utf-8')) if os.path.exists(rv_path) else []
+    rv_ids = {f['id'] for f in review}
+    dp = os.path.join(pack, 'errata_decisions.json')
+    dec = json.load(open(dp, encoding='utf-8')) if os.path.exists(dp) else {}
+    hc_path = os.path.join(pack, 'hidden_confirmed.json')
+    confirmed = json.load(open(hc_path, encoding='utf-8')) if os.path.exists(hc_path) else []
+    bad, log = [], collections.Counter()
+
+    def page_count(pdf_page, s_):
+        return sum(a['text'].count(s_) for a in atoms if a['pdf_page'] == pdf_page)
+
+    ef = os.path.join(pack, 'review_errata.csv')
+    for r in csv.DictReader(open(ef, encoding='utf-8-sig')) if os.path.exists(ef) else []:
+        d = (r.get('decision') or '').strip()
+        if not d:
+            continue
+        eid = r['id']
+        if eid not in errata:
+            bad.append(f'review_errata.csv: unknown erratum {eid}')
+            continue
+        m = re.match(r'(?i)(correct|corect|corectează)\s*:\s*(.+)$', d)
+        if d.lower() in ('keep', 'păstrează', 'pastreaza'):
+            dec[eid] = {'decision': 'keep'}
+        elif d.lower() in ('not_an_error', 'not an error', 'nu e eroare', 'nu este eroare'):
+            dec[eid] = {'decision': 'not_an_error'}
+        elif m:
+            text = m.group(2).strip()
+            dec[eid] = {'decision': 'correct', 'text': text}
+            e = errata[eid]
+            for pg in sorted({A[a]['pdf_page'] for a in e['atoms'] if a in A}):
+                fid = f'rv-{eid}-p{pg:02d}'
+                n = page_count(pg, e['printed'])
+                if fid not in rv_ids and n:
+                    review.append({'id': fid, 'pdf_page': pg, 'find': e['printed'], 'replace': text, 'count': n,
+                                   'why': f'author review of {eid} ({e["kind"]}): {e["issue"]}', 'status': 'author'})
+                    rv_ids.add(fid)
+        else:
+            bad.append(f'review_errata.csv {eid}: decision {d!r} is not keep / not_an_error / correct: <text>')
+            continue
+        log['errata ' + dec[eid]['decision']] += 1
+    hf = os.path.join(pack, 'review_hidden.csv')
+    page_fixes = {}
+    for r in csv.DictReader(open(hf, encoding='utf-8-sig')) if os.path.exists(hf) else []:
+        ok = (r.get('ok') or '').strip()
+        if not ok:
+            continue
+        a = A.get(r['atom'])
+        if not a:
+            bad.append(f"review_hidden.csv: unknown atom {r['atom']}")
+            continue
+        fixid = r['source'][4:].split(':')[0] if r['source'].startswith('fix ') else None
+        if ok.lower() in YES:
+            if fixid:
+                fn = os.path.join(fdir, f'{fixid[:3]}.json')
+                L = page_fixes.setdefault(fn, json.load(open(fn, encoding='utf-8')))
+                for f in L:
+                    if f['id'] == fixid and f.get('status') == 'unverified':
+                        f['status'] = 'verified'
+                        f['verified_by'] = 'author review'
+            elif not any(c['atom'] == r['atom'] and c['pos'] == int(r['pos']) for c in confirmed):
+                confirmed.append({'atom': r['atom'], 'pos': int(r['pos']), 'token': r['token']})
+            log['hidden confirmed'] += 1
+        else:
+            pos, best, sent = int(r['pos']), r['best_reading'], r['sentence']
+            if a['text'][pos:pos + len(best)] != best:
+                bad.append(f"review_hidden.csv {r['atom']}@{pos}: the text there is no longer {best!r} (sheet is stale: regenerate it)")
+                continue
+            s0 = a['text'].find(sent)
+            if s0 < 0 or not (s0 <= pos < s0 + len(sent)):
+                sent, s0 = best, pos
+            new = sent[:pos - s0] + ok + sent[pos - s0 + len(best):]
+            fid = f"rv-h-{r['atom']}-{pos}"
+            if fid not in rv_ids:
+                review.append({'id': fid, 'pdf_page': a['pdf_page'], 'find': sent, 'replace': new, 'count': page_count(a['pdf_page'], sent),
+                               'layer': 'under_blank', 'status': 'author', 'why': f'author review of hidden text: {best!r} -> {ok!r}'})
+                rv_ids.add(fid)
+            log['hidden corrected'] += 1
+    if bad:
+        for b in bad:
+            print('REVIEW', b)
+        sys.exit(f'{len(bad)} problems in the review sheets: nothing applied')
+    for fn, L in page_fixes.items():
+        with open(fn, 'w', encoding='utf-8') as f:
+            f.write('[\n' + ',\n'.join(' ' + json.dumps(x, ensure_ascii=False) for x in L) + '\n]\n')
+    if review:
+        json.dump(review, open(rv_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    json.dump(dec, open(dp, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    json.dump(confirmed, open(hc_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print('applied: ' + (', '.join(f'{k} {v}' for k, v in sorted(log.items())) or 'nothing (no decisions filled in)'))
+    if not log:
+        return
+    # rebuild the text only, then list what changed against the lock the topics were written on
+    T = tools_dir(pack)
+    root = os.path.dirname(os.path.abspath(pack))
+    for step in (['build.py', pack], ['atoms.py', pack], ['errata.py', pack]):
+        r = subprocess.run([sys.executable, '-I', os.path.join(T, step[0]), step[1]], capture_output=True, text=True, cwd=root)
+        if r.returncode:
+            sys.exit(f'{step[0]} failed:\n{r.stdout}\n{r.stderr}')
+        if step[0] == 'build.py':
+            import shutil
+            shutil.copy(os.path.join(root, 'build', 'fixes_merged.json'), os.path.join(pack, 'fixes.json'))
+    lock = json.load(open(os.path.join(pack, 'atoms.lock.json'), encoding='utf-8'))
+    import hashlib
+    atoms2 = {a['id']: a for a in load_jsonl(os.path.join(pack, 'atoms.jsonl'))}
+    stale_a = sorted(i for i, a in atoms2.items() if lock.get(i) != hashlib.sha1(a['text'].encode('utf-8')).hexdigest()[:16])
+    facts = load_jsonl(os.path.join(pack, 'facts.jsonl'))
+    items = load_jsonl(os.path.join(pack, 'items.jsonl'))
+    stale_f = [f['id'] for f in facts if f['atom'] not in atoms2 or atoms2[f['atom']]['text'][f['span'][0]:f['span'][1]] != f['text']]
+    changed_e = [eid for eid, d in dec.items() if d['decision'] in ('not_an_error', 'correct')]
+    e_facts = [f['id'] for f in facts if any(re.search(rf'(?<![0-9A-Z]){e}:', f.get('needs_review', '')) for e in changed_e)]
+    sf = set(stale_f) | set(e_facts)
+    stale_i = sorted(it['id'] for it in items if sf & set(it['fact_ids']) or
+                     any(x['erratum'] in changed_e for x in it.get('typo_shown', [])))
+    topics = sorted({f['topic'] for f in facts if f['id'] in sf} | {it['topic'] for it in items if it['id'] in stale_i})
+    out = {'atoms_changed': stale_a, 'facts_stale': stale_f, 'facts_errata_changed': e_facts, 'items_to_rebuild': stale_i,
+           'topics_to_rebuild': topics}
+    json.dump(out, open(os.path.join(pack, 'review_applied.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print(f'must be rebuilt: {len(stale_a)} atoms changed; {len(stale_f)} facts whose text changed; {len(e_facts)} facts whose '
+          f'erratum decision changed; {len(stale_i)} items; topics: {", ".join(topics) or "none"}')
+    print('next: edit the topic modules of those topics where a fact quote no longer matches, then tools/book/make.sh PACK '
+          '(compile + pack + check); review_applied.json has the lists')
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     pack = args[0] if args and os.path.isdir(args[0]) else HERE
+    if '--apply-review' in sys.argv:
+        return apply_review(pack)
     only = set(sys.argv[sys.argv.index('--topics') + 1].split(',')) if '--topics' in sys.argv else None
     from_topics = '--from-topics' in sys.argv
     E = collections.defaultdict(list)
@@ -214,6 +527,10 @@ def main():
     stats['numbers'] = f'{num_ok}/{num_tot}'
 
     # ---------------------------------------------------------------- items
+    ep = os.path.join(pack, 'errata.json')
+    errata = json.load(open(ep, encoding='utf-8')) if os.path.exists(ep) else []
+    typo_tokens = [(e['id'], tok) for e in errata if e.get('kind') == 'typo' and not e.get('withdrawn') and not e.get('resolved')
+                   for tok, _ in e.get('typo_tokens', [])]
     answers = collections.defaultdict(set)          # q -> normalized answers (whole book)
     claims = set(norm(f['claim']) for f in facts)
     for f in facts:
@@ -317,8 +634,22 @@ def main():
             for ans in it['answers']:
                 if norm(ans) in FUNCTION or (len(norm(ans)) < 2 and not norm(ans).isdigit()):
                     E['items'].append(f'{iid}: gap {ans!r} is a function word')
-                if q and norm(ans) not in norm(q):
-                    E['items'].append(f'{iid}: gap {ans!r} not in the source sentence')
+                if q and ans not in q:
+                    E['items'].append(f'{iid}: gap {ans!r} is not an exact substring of the source sentence')
+        if t == 'label':
+            for l in it.get('labels', []):
+                fa = A.get(F[l['fact']]['atom']) if l['fact'] in F else None
+                if not fa or l['t'] not in fa['text']:
+                    E['items'].append(f"{iid}: label {l['t']!r} is not an exact substring of the figure's printed labels")
+        # §1 typos are shown, not tested: no answer field may hold a printed typo token
+        for path_, txt in answer_fields(it):
+            for eid, tok in typo_tokens:
+                if re.search(r'(?<!\w)' + re.escape(tok) + r'(?!\w)', txt, re.I):
+                    E['typos tested'].append(f'{iid}: {path_[0]} holds the misprint {tok!r} ({eid})')
+        if t == 'sort':
+            for e in it['entries']:
+                if e['group'] not in it['groups']:
+                    E['items'].append(f"{iid}: entry group {e['group']!r} is not one of the item's groups")
         if t in ('sort', 'match', 'label'):
             exp = {e['fact'] for e in it.get('entries', it.get('pairs', it.get('labels', [])))}
             if exp != set(it['fact_ids']):
@@ -406,6 +737,100 @@ def main():
         for t in topic_room:
             if not any(f['topic'] == t for f in facts):
                 E['L2 sentences'].append(f'topic {t}: no facts yet')
+
+    # ---------------------------------------------------------------- map: prop kinds, placement, interactables
+    if only is None and not from_topics:
+        pkf = os.path.join(pack, 'prop_kinds.json')
+        if not os.path.exists(pkf):
+            E['map'].append('prop_kinds.json missing')
+        else:
+            PK = json.load(open(pkf, encoding='utf-8'))
+            mrooms, ips, isl = parse_map(mapsrc)
+            for p in ips:
+                if p[3] not in PK['kinds']:
+                    E['map'].append(f'iprop {p[2]}: kind {p[3]} not in prop_kinds.json')
+            for p in isl:
+                if p[3] not in PK['slot_kinds']:
+                    E['map'].append(f'islot {p[2]}: kind {p[3]} not in prop_kinds.json')
+            used = sorted({p[3] for p in ips})
+            new = [k for k in used if PK['kinds'].get(k, {}).get('status') == 'new']
+            stats['prop kinds (iprop)'] = f'{len(used)} ({len(used) - len(new)} existing, {len(new)} new: {", ".join(new)})'
+            if len(new) > 12:
+                E['map'].append(f'{len(new)} new prop kinds (max 12)')
+            per = collections.defaultdict(set)
+            for line in mapsrc.splitlines():
+                m = re.match(r'(slot|prop)\s+(-?\d+)\s+(\S+)', line)
+                if m:
+                    per[int(m.group(2))].add(m.group(3))
+            for p in ips:
+                per[p[0]].add(p[3])
+            stats['visible kinds per storey'] = ', '.join(f'{f}: {len(per[f])}' for f in sorted(per))
+            for f in sorted(per):
+                if len(per[f]) > 30:
+                    E['map'].append(f'storey {f}: {len(per[f])} visible prop kinds (max 30)')
+            for rid, name, why in placement_check(mrooms, ips, isl, PK):
+                E['placement'].append(f'{rid} {name}: {why}')
+            stats['placement (props + slots)'] = f'{len(ips) + len(isl)} checked, {len(E.get("placement", []))} failures'
+            anchors = collections.defaultdict(set)      # every point a player interacts with: new props / slots + map slots scripts use
+            for p in ips + isl:
+                anchors[p[1]].add(p[2])
+            for sc in scripts:
+                anchors[sc['room']].add(sc.get('prop') or sc.get('slot') or sc.get('npc') or 'trigger:' + sc.get('trigger', ''))
+            cnt = {r: len(a) for r, a in anchors.items()}
+            groups = collections.defaultdict(list)
+            for sc in scripts:
+                if sc.get('group'):
+                    groups[sc['group']].append(sc)
+            for g, P in groups.items():
+                if sorted(x['part'] for x in P) != list(range(1, len(P) + 1)) or any(x['parts'] != len(P) for x in P):
+                    E['script length'].append(f'{g}: parts not numbered 1..{len(P)}')
+                if len({(x['room'], x.get('prop'), x.get('slot'), x.get('npc'), x['kind']) for x in P}) != 1:
+                    E['script length'].append(f'{g}: parts not on the same prop / NPC')
+            stats['split scripts'] = f'{len(groups)} scripts played in {sum(len(P) for P in groups.values())} parts'
+            for r, n in cnt.items():
+                if n > 12:
+                    E['map'].append(f'room {r}: {n} interactables (max 12)')
+            v = sorted(cnt.values())
+            stats['interactables per room'] = f'min {v[0]}, median {v[len(v) // 2]}, max {v[-1]} ({len(v)} rooms)'
+            # script length (one sitting): required scripts at most 15 steps
+            lens = sorted((len(sc['steps']), sc['id'], sc['room']) for sc in scripts if sc.get('required'))
+            for n, sid, r in lens:
+                if n > 15:
+                    E['script length'].append(f'{sid} ({r}): {n} steps (max 15 in one sitting; split into parts)')
+            if lens:
+                stats['steps per required script'] = f'min {lens[0][0]}, median {lens[len(lens) // 2][0]}, max {lens[-1][0]}'
+
+    # ---------------------------------------------------------------- binary pack: the reference C reader must accept it
+    if only is None and not from_topics:
+        import shutil, subprocess, tempfile
+        mg = os.path.join(pack, 'gastro.mgpack')
+        cc = shutil.which('cc') or shutil.which('gcc') or shutil.which('clang')
+        if not os.path.exists(mg) or not os.path.exists(mg + '.h'):
+            E['pack'].append('gastro.mgpack (+ .h) missing: run tools/book/packbin.py PACK PACK/gastro.mgpack')
+        elif not cc:
+            stats['binary pack'] = 'not read (no C compiler)'
+        else:
+            with tempfile.TemporaryDirectory() as td:
+                exe = os.path.join(td, 'mgpack_read')
+                r = subprocess.run([cc, '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror', '-include', mg + '.h',
+                                    os.path.join(pack, 'mgpack_read.c'), '-o', exe], capture_output=True, text=True)
+                if r.returncode:
+                    E['pack'].append('mgpack_read.c does not build: ' + r.stderr.strip()[:300])
+                else:
+                    r = subprocess.run([exe, mg], capture_output=True, text=True)
+                    kv = dict(l.split('=', 1) for l in r.stdout.splitlines() if '=' in l)
+                    if r.returncode:
+                        E['pack'].append('reference reader rejects the pack: ' + r.stderr.strip()[:300])
+                    want = {'facts': len(facts), 'items': len(items), 'scripts': sum(1 for x in scripts if x.get('topic')),
+                            'figlabels': sum(len(fg.get('labels', [])) for fg in json.load(open(os.path.join(pack, 'fig', 'figures.json'), encoding='utf-8'))),
+                            'props': len(re.findall(r'^iprop\s', mapsrc, re.M)), 'slots': len(re.findall(r'^islot\s', mapsrc, re.M))}
+                    for k, v in want.items():
+                        if str(v) != kv.get(k):
+                            E['pack'].append(f'pack {k} = {kv.get(k)}, sources {v} (stale pack: rerun packbin.py)')
+                    stats['binary pack'] = (f"{int(kv.get('bytes', 0)):,} bytes, v{kv.get('version')}, string table {int(kv.get('string_table_bytes', 0)):,} "
+                                            f"bytes, longest string {kv.get('longest_string_bytes')} bytes, largest script "
+                                            f"{kv.get('largest_script')} ({kv.get('largest_script_steps')} steps, {int(kv.get('largest_script_string_bytes', 0)):,} string bytes)")
+                    json.dump(kv, open(os.path.join(pack, 'pack_measure.json'), 'w'), indent=1)
 
     # ---------------------------------------------------------------- leak
     if '--leak' in sys.argv:

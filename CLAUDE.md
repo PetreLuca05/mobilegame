@@ -568,3 +568,11 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   consecutive words of the book (`tools/book/leakguard.py` + the hashed shingles in `content/gastro/leakguard.txt`);
   `check.py --leak .` scans every tracked file.
 - Every printed character is exam material; teach the book as printed (OCR fixes only, the book's own errors go to errata).
+  Misprints are shown, never tested (no gap / keyed answer / pair / sort label holds one); cloze gaps and label answers are
+  exact substrings of the source sentence.
+- Map side (`content/gastro/institute.map`, `prop_kinds.json`): `iprop` names a kind (15: 13 existing in MAP-2, 2 new); the
+  whole-book `check.py` runs the placement check, ≤ 12 interactables per room and ≤ 15 steps per required script (longer
+  ones are parts on the same prop); `tools/book/placeprops.py` moves failing props. `content/gastro/mgpack_read.c` is the
+  reference reader of `gastro.mgpack` (v2), built and run by `check.py`.
+- Author review: `review_errata.csv` / `review_hidden.csv` (zip only) → `check.py content/gastro --apply-review` → lists
+  what must be rebuilt. Hand-over: `content/gastro/ENGINE_PROMPT.md` (MAP-2 first, then BOOK-ENGINE).
