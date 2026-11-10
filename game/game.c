@@ -226,6 +226,8 @@ typedef struct Game {
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
     UiAnim ui_anim;
     int ui_screen_key; /* which screen the UI layer shows (its enter starts on a change) */
+    int juice_cycles, juice_shown; /* perf scenario ui_juice */
+    double juice_banner_at;
     double ui_screen_t0;        /* UI-1: the tween pool */
     UiFx ui_fx;            /* UI-1: particles, rings, reward tokens, banner, sounds, haptics */
 } Game;
@@ -257,7 +259,8 @@ static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with not
 
 static bool perf_wants_npcs(const Game *g)
 {
-    return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0 || SDL_strcmp(g->perf.scenario, "menu") == 0);
+    return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0 || SDL_strcmp(g->perf.scenario, "menu") == 0 ||
+                              SDL_strcmp(g->perf.scenario, "ui_juice") == 0);
 }
 
 static bool has_flag(int argc, char **argv, const char *flag)
@@ -582,7 +585,7 @@ bool game_init(MgApp *app)
         const char *sc = g->perf.scenario;
         open_map(g, app, SDL_strcmp(sc, "worldmap") == 0 ? WM_OVERVIEW : SDL_strcmp(sc, "worldmap_voyage") == 0 ? WM_BOOKS : WM_ARRIVED); /* travel starts parked, then drives on */
     }
-    if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
+    if (g->perf.active && (SDL_strcmp(g->perf.scenario, "menu") == 0 || SDL_strcmp(g->perf.scenario, "ui_juice") == 0)) {
         play_now = false;
         g->fe.state = FE_MAIN_MENU;
         g->demo_lobby = true;
@@ -1692,6 +1695,27 @@ static void map_flow(Game *g, MgApp *app)
     }
 }
 
+/* Perf scenario ui_juice: every 2 s a toast enters and a T3 reward (flight of 40 into a counter, then the
+ * banner, burst 26, ring, shake) plays over the menu and its lobby panel. */
+static void ui_juice(Game *g, MgApp *app)
+{
+    const int cycle = (int)((app->time - g->start_time) / 2.0);
+    const float cx = app->width_pt * 0.5f - 40.0f, cy = mg_maxf(app->safe_top, 8.0f) + 60.0f;
+    ui_counter(&g->ui, "juice_pct", cx, cy, 40.0f, "", 40 * g->juice_cycles, "%", &g->juice_shown);
+    if (cycle > g->juice_cycles) {
+        g->juice_cycles = cycle;
+        frontend_toast(&g->fe, str("link_ok"), app->time);
+        ui_fx_tier(&g->ui_fx, UI_TN, app->width_pt * 0.5f, 40.0f, true);
+        ui_fx_reward(&g->ui_fx, app->width_pt * 0.5f, app->height_pt * 0.6f, ui_key("juice_pct"), cx + 40.0f, cy + 17.0f, 40);
+        g->juice_banner_at = app->time + 1.2;
+    }
+    if (g->juice_banner_at > 0.0 && app->time >= g->juice_banner_at) {
+        g->juice_banner_at = 0.0;
+        ui_fx_banner(&g->ui_fx, str("wm_completed"));
+        ui_fx_tier(&g->ui_fx, UI_T3, app->width_pt * 0.5f, app->height_pt * 0.5f, true);
+    }
+}
+
 /* Everything outside PLAY: menu scene, screens, their actions. */
 static void frontend_flow(Game *g, MgApp *app, bool back)
 {
@@ -1751,6 +1775,9 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     ctx.row_count = g->menu_row_count;
     memcpy(ctx.slots, g->menu_slots, sizeof(ctx.slots));
     FeAction a = frontend_frame(f, &g->ui, app, &ctx, &g->avatar_meshes);
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "ui_juice") == 0 && f->state == FE_MAIN_MENU) {
+        ui_juice(g, app);
+    }
     if (g->demo_lobby && !g->perf.active && f->state == FE_MAIN_MENU && app->time - g->start_time > 3.0 && g->start_time > 0.0) {
         lobby_layout_check(g, app, &ctx);
     }
@@ -2640,7 +2667,10 @@ void game_frame(MgApp *app, float alpha)
     game_frame_inner(app, alpha);
     Game *g = (Game *)app->game;
     gfx_ui_screen(app->gfx, 0.0f, 0.0f, 1.0f);
-    ui_fx_update_draw(&g->ui_fx, app->gfx, app->width_pt, app->height_pt); /* over every screen */
+    {
+        PROF_SCOPE("ui.fx"); /* tweens' effects: particles, rings, tokens, banner */
+        ui_fx_update_draw(&g->ui_fx, app->gfx, app->width_pt, app->height_pt); /* over every screen */
+    }
     head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
 }
 
@@ -2952,7 +2982,10 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* UI claims touches first (pause button + menu), then gameplay controls. The
      * menu is drawn first too; while it is open (modal) nothing else 2D is. */
     ui_begin(&g->ui, app->gfx, &app->font, &app->input);
-    ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion());
+    {
+        PROF_SCOPE("ui.anim");
+        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion());
+    }
     g->ui_fx.haptics = s->haptics;
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
     { /* screen changes enter; the UI shake moves UI only, never the camera */

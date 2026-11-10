@@ -33,6 +33,7 @@ static const Scenario k_scenarios[] = {
     {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"lobby4", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2}, /* 3 guests, join panel up, 200 NPCs */
     {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: hospital, roaming NPCs, hero */
+    {"ui_juice", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},       /* UI-1: menu + lobby panel, a toast and a T3 reward every 2 s */
     {"worldmap", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},        /* WORLD-1: the island's overview, labels */
     {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */
     {"worldmap_voyage", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* WORLD-2: by plane between the islands, back and forth */
@@ -132,7 +133,7 @@ static void write_report(const PerfRun *p, MgApp *app)
 {
     static char out[32768];
     static const char *const names[PERF_FIELDS] = {"draws", "tris", "instances", "pipe_binds", "tex_binds", "uniform_bytes",
-                                                   "passes", "gpu_main_ms_approx", "gpu_ui_ms_approx"};
+                                                   "passes", "gpu_main_ms_approx", "gpu_ui_ms_approx", "ui_draws", "ui_instances"};
     int n = 0;
 #define PUT(...) n += SDL_snprintf(out + n, sizeof(out) - (size_t)n, __VA_ARGS__)
     const double frames = p->samples ? (double)p->samples : 1.0;
@@ -259,6 +260,8 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     add(&p->f[PERF_PASSES], g->passes);
     add(&p->f[PERF_GPU_MAIN], (double)g->gpu_main_ms);
     add(&p->f[PERF_GPU_UI], (double)g->gpu_ui_ms);
+    add(&p->f[PERF_UI_DRAWS], g->ui_draws);
+    add(&p->f[PERF_UI_QUADS], g->ui_quads);
     p->samples++;
     p->panel_samples += probe->interact_visible || probe->lift_panel_open;
     p->sim_max = s->sim > p->sim_max ? s->sim : p->sim_max;

@@ -13,7 +13,7 @@ import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
 PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "worldmap", "worldmap_travel", "island", "worldmap_voyage"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "ui_juice", "worldmap", "worldmap_travel", "island", "worldmap_voyage"]
 # WORLD-1 estimates (iPad Air 4); a measurement over 2x an estimate fails. Draws counted by the renderer include the
 # HUD batch: <= 16 world + 1 x-ray (a cube hides the parked ambulance) + 1 HUD = 18.
 WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_tick_ms": 0.05},
@@ -22,6 +22,9 @@ WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_ti
                 "worldmap_voyage": {"gpu_effective_ms": 2.5, "render_ms": 0.25, "cpu_tick_ms": 0.05}}
 WORLD_MAX_DRAWS = 18
 WORLD_MAX_DRAWS_VOYAGE = 38  # WORLD-2: both islands for part of a voyage (32) + vehicle 4 + effects 1 + HUD 1
+# UI-1 estimates (fail over 2x), every scenario: tween + effect update, UI submit (instance upload); the UI is one draw
+UI_LIMITS = {"ui_update_ms": 0.05, "ui_submit_ms": 0.15}
+UI_MAX_DRAWS = 3
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
@@ -78,6 +81,15 @@ def main():
                     print(f"{'PASS' if m[name] <= 2 * est else 'FAIL'} {dev:6} {sc:12} {name:18} {m[name]:9.2f} estimate {est} (fails over 2x)")
                     if m[name] > 2 * est:
                         problems.append(f"{dev} {sc}: {name} {m[name]:.2f} is over 2x the estimate {est}")
+            scope = {x["name"]: x["avg"] for x in d["scopes"]}
+            ui = {"ui_update_ms": scope.get("ui.anim", 0.0) + scope.get("ui.fx", 0.0), "ui_submit_ms": scope.get("render.ui", 0.0)}
+            for name, est in UI_LIMITS.items():
+                print(f"{'PASS' if ui[name] <= 2 * est else 'FAIL'} {dev:6} {sc:12} {name:18} {ui[name]:9.3f} estimate {est} (fails over 2x)")
+                if ui[name] > 2 * est:
+                    problems.append(f"{dev} {sc}: {name} {ui[name]:.3f} is over 2x the estimate {est}")
+            if "ui_draws" in d["counters"] and d["counters"]["ui_draws"]["max"] > UI_MAX_DRAWS:
+                problems.append(f"{dev} {sc}: {d['counters']['ui_draws']['max']:.0f} UI draws, UI-1 allows {UI_MAX_DRAWS}")
+            print(f"INFO {dev:6} {sc:12} passes max {d['counters']['passes']['max']:.0f}")
             if m["thermal"] > 1:
                 problems.append(f"{dev} {sc}: thermal state {m['thermal']} above fair")
             if compare:

@@ -2248,6 +2248,7 @@ static void frame_end(GfxContext *g)
         apply_msaa(g);
     }
     g->stats.draws = 0;
+    g->stats.ui_draws = 0;
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
@@ -2277,6 +2278,7 @@ static void frame_end(GfxContext *g)
 
     /* UI vertices for this frame */
     if (g->ui_count > 0) {
+        PROF_SCOPE("render.ui");
         uint32_t bytes = g->ui_count * (uint32_t)sizeof(GfxUiInst);
         const uint32_t r = g->ring % GFX_BUFFER_RING;
         void *map = SDL_MapGPUTransferBuffer(g->dev, g->ui_tb_ring[r], false);
@@ -2442,6 +2444,7 @@ static void frame_end(GfxContext *g)
         SDL_SetGPUScissor(pass, &full);
         SDL_DrawGPUPrimitives(pass, 6, g->ui_count, 0, 0);
         g->stats.draws++;
+        g->stats.ui_draws++;
         g->stats.tris += g->ui_count * 2;
     }
     if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
