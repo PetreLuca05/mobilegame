@@ -1,14 +1,16 @@
 #!/bin/zsh
 # Runs --autotest perf on the connected devices and records the results.
 #   tools/perf_run.sh OUTDIR [--no-console] [--devices "ipad"] [--scenarios "yard lobby corridor_f2 stress200 npcs lift_panel interact_npc"]
-#                     [--seconds N] [--gpu] [--gate] [--no-json] [--tag NAME] [--extra "app args"]
+#                     [--seconds N] [--gpu] [--gate] [--no-json] [--tag NAME] [--extra "app args"] [--resume]
+# A device that drops off (devicectl or Instruments) is waited for, up to 10 min, and the
+# scenario retried (3 tries); --resume skips scenarios OUTDIR already has from this build.
 # Fails (non-zero, naming the file) if a run produced no new output: every file
 # must be newer than its run, carry that run's id and the commit at HEAD.
 # Never falls back to an earlier file.
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu ui_juice worldmap worldmap_travel island worldmap_voyage); SECONDS_OVERRIDE=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu ui_juice worldmap worldmap_travel island worldmap_voyage); SECONDS_OVERRIDE=0; RESUME=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;
@@ -19,6 +21,7 @@ while (( $# )); do
     --no-json) JSON=0; shift ;;
     --tag) TAG=_$2; shift 2 ;;
     --extra) EXTRA=(${=2}); shift 2 ;;
+    --resume) RESUME=1; shift ;;
     --no-console) NOCONSOLE=1; shift ;; # launch detached (a Wi-Fi link drops long console sessions); the JSON's run id, mtime and commit still prove the run
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
@@ -42,6 +45,22 @@ pull() { # device source dest
 }
 same_build() { # the app in a commit is HEAD's app if only docs/ or tools/ changed since
   [[ $1 != *-dirty ]] && git diff --quiet "$1" HEAD -- . ':!docs' ':!tools' 2>/dev/null
+}
+json_commit() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("commit",""))' "$1" 2>/dev/null }
+have() { # file: present and from this build (for --resume)
+  [[ -s $1 ]] && same_build "$(json_commit "$1")"
+}
+wait_device() { # dev: until both devicectl and Instruments list it as connected (10 min)
+  local udid=$(device_udid $1) name=$(device_name $1) t
+  for t in {1..40}; do
+    if xcrun devicectl list devices 2>/dev/null | grep -F "$name" | grep -q "available" &&
+       { (( ! GPU )) || xcrun xctrace list devices 2>/dev/null | sed '/Devices Offline/,$d' | grep -q "$udid"; }; then
+      return 0
+    fi
+    (( t == 1 )) && echo "$1: not reachable, waiting for it to reconnect (up to 10 min)" >&2
+    sleep 15
+  done
+  fail "$1 did not come back in 10 min; rerun with --resume once it is connected"
 }
 check_file() { # path start
   [[ -s $1 ]] || fail "$1: no file produced by this run"
@@ -84,14 +103,18 @@ for dev in $DEVICES; do
   name=$(device_name $dev)
   for s in $SCEN; do
     secs=60; [[ $s == stress200 ]] && secs=180; (( SECONDS_OVERRIDE > 0 )) && secs=$SECONDS_OVERRIDE
-    if (( JSON )); then
+    wait_device $dev
+    if (( JSON )) && (( RESUME )) && have "$OUT/${dev}_$s$TAG.json"; then
+      echo "$dev $s: already measured on this build (resume)"
+    elif (( JSON )); then
       id=$(date +%s)$RANDOM
       start=$(date +%s)
       limit=$(( secs + 40 ))
       log="$OUT/${dev}_$s$TAG.log"
       if (( NOCONSOLE )); then
-        xcrun devicectl device process launch --terminate-existing --device "$name" $BID \
-          --autotest perf $s $secs --quit-after $limit --perf-run-id $id $EXTRA > "$log" 2>&1 || fail "$log: could not launch"
+        launch() { xcrun devicectl device process launch --terminate-existing --device "$name" $BID \
+          --autotest perf $s $secs --quit-after $limit --perf-run-id $id $EXTRA > "$log" 2>&1 }
+        launch || { echo "$dev $s: launch failed, reconnecting" >&2; wait_device $dev; launch || fail "$log: could not launch" }
         sleep $(( secs + 25 )) # settle 5 s + the run + the write
       else
         xcrun devicectl device process launch --console --terminate-existing --device "$name" $BID \
@@ -111,7 +134,18 @@ for dev in $DEVICES; do
       sleep 15
     fi
     if (( GPU )); then
-      gpu_trace $dev $s || { echo "$dev $s: GPU trace failed, rerunning once" >&2; gpu_trace $dev $s || fail "$GPU_ERROR" ; echo "$dev $s: GPU trace passed on the rerun" }
+      if (( RESUME )) && have "$OUT/${dev}_$s${TAG}_gpu.json"; then
+        echo "$dev $s: GPU already measured on this build (resume)"
+      else
+        local_try=1
+        until gpu_trace $dev $s; do
+          (( local_try >= 3 )) && fail "$GPU_ERROR (3 tries)"
+          echo "$dev $s: GPU trace failed ($GPU_ERROR), reconnecting and retrying" >&2
+          wait_device $dev
+          local_try=$(( local_try + 1 ))
+        done
+        (( local_try > 1 )) && echo "$dev $s: GPU trace passed on try $local_try"
+      fi
       sleep 15
     fi
   done

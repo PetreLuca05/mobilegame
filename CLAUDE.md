@@ -499,7 +499,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
 - `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `ui_juice`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
-  `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
+  `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu] [--resume]` (waits up to 10 min for a dropped device, retries; `--resume` continues a run) (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.
 - Jobs: `app->jobs`, `jobs_run(js, fn, ctx, count, batch)` + `jobs_wait`; workers never touch render state.
   `--autotest determinism` runs 400 NPCs on 1 and N threads and compares every position.

@@ -42,10 +42,10 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
         return false;
     }
     const HMM_Vec4 white = HMM_V4(1, 1, 1, 1);
-    /* darker sides and top under a light front plate, so it reads as a solid */
-    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(SLAB_HALF_W, SLAB_HALF_H, SLAB_HALF_D), HMM_V4(0.55f, 0.58f, 0.64f, 1.0f));
+    /* lip_mint sides and top under a surface front plate (UI-1), so it reads as a solid */
+    mb_box(&mb, HMM_M4D(1.0f), HMM_V3(SLAB_HALF_W, SLAB_HALF_H, SLAB_HALF_D), mg_rgb(k_ui.lip_mint >> 8));
     mb_box(&mb, HMM_Translate(HMM_V3(0.0f, 0.0f, SLAB_HALF_D)), HMM_V3(SLAB_HALF_W - 0.004f, SLAB_HALF_H - 0.004f, 0.002f), white);
-    mb_box(&mb, HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT)), HMM_V3(INDICATOR_HALF_W, INDICATOR_HALF_H, INDICATOR_THICK), HMM_V4(0.08f, 0.09f, 0.12f, 1.0f));
+    mb_box(&mb, HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT)), HMM_V3(INDICATOR_HALF_W, INDICATOR_HALF_H, INDICATOR_THICK), mg_rgb(k_ui.lift_display_bg >> 8));
     p->slab = mb_upload(&mb, g);
     /* the column, top floor first, under the floor indicator */
     const float top = 0.235f, bottom = -0.345f;
@@ -209,7 +209,7 @@ void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_f
     }
     if (current_floor >= 0 && current_floor < p->floors) { /* the floor indicator */
         const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT + INDICATOR_THICK + LABEL_LIFT)), HMM_Scale(HMM_V3(INDICATOR_EM, INDICATOR_EM, 1.0f))));
-        GfxMaterial amber = mat_text(HMM_V4(1.0f, 0.82f, 0.4f, 1.0f));
+        GfxMaterial amber = mat_text(mg_rgb(k_ui.lift_display_digit >> 8));
         gfx_draw(g, p->label[current_floor], &m, &amber, GFX_DRAW_NO_SHADOW);
     }
     gfx_inset_end(g);

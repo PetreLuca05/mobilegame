@@ -86,6 +86,10 @@ The whole UI is one instanced draw (`GfxUiInst`, 96 bytes, up to 8192 per frame)
 
 Deferred: **exit-then-enter for screen changes.** Screens only enter (the layer slides in from the left, rows stagger); cards, modals, toasts and the notice panel have their own enter and toasts / notices their exit. A real screen exit needs the front end to keep drawing the old screen, input off, for 180 ms after the state has already changed, i.e. a drawn state separate from the logical one across `frontend.c` and the screen dispatch in `game.c`. Accepted as deferred at UI-1 sign-off (a8b1d90); do not restructure `game.c` for it until a milestone asks.
 
+Bob is defined (`bob_y`, `bob_tilt_deg`, `bob_s`) but unused: no reward icon sits idle on any screen yet. Keep the constants for the first one.
+
+Tokenised exception: the lift's floor display stays a dark plate (`lift_display_bg`, digit `lift_display_digit`), the one place a dark panel is right; the panel body is `lip_mint` sides under a `surface` face, the keys `primary`.
+
 Reduced (Settings -> Animații interfață -> Reduse, or iOS Reduce Motion): no bursts, rings, shake, breathe or bob; press is a 4 % uniform scale; the rest are 150 ms fades or linear moves; the reward counts up over 400 ms.
 
 ### Tiers
