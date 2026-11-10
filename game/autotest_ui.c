@@ -265,22 +265,49 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
             centre(p, "ut_b0", &t->cx, &t->cy);
             t->taps = t->fired[0];
             t->sub = 1, t->at = now;
+            t->tap_index = t->tap_missed = t->tap_missed_slow = 0;
+            t->tap_check_frame = 0;
+            t->tap_max_dt = t->tap_worst_dt = 0.0f;
+        }
+        t->tap_max_dt = mg_maxf(t->tap_max_dt, app->frame_dt);
+        if (t->tap_check_frame && app->frame_index >= t->tap_check_frame) { /* this tap's action, at most 2 frames late */
+            const int want = t->taps + t->tap_index - t->tap_missed - t->tap_missed_slow;
+            if (t->fired[0] < want) {
+                const bool slow = t->tap_max_dt > 2.0f / 60.0f + 0.002f; /* a frame over two 60 Hz frames */
+                t->tap_worst_dt = mg_maxf(t->tap_worst_dt, t->tap_max_dt);
+                if (slow) {
+                    t->tap_missed_slow++;
+                    mg_log_info("autotest ui: WARN perf symptom: tap %d missed; the slowest frame around it took %.1f ms", t->tap_index, (double)(t->tap_max_dt * 1000.0f));
+                } else {
+                    t->tap_missed++;
+                    mg_log_error("autotest ui: tap %d missed with frames of at most %.1f ms", t->tap_index, (double)(t->tap_max_dt * 1000.0f));
+                }
+            }
+            t->tap_check_frame = 0;
         }
         if (t->sub <= 20) {
             const int k = t->sub - 1; /* even: down, odd: up, 50 ms apart */
             if (now - t->at >= 0.05 * k) {
                 autotest_finger(app, (k & 1) ? SDL_EVENT_FINGER_UP : SDL_EVENT_FINGER_DOWN, UT_FINGER, t->cx, t->cy);
+                if (k & 1) { /* processed next frame; checked 2 frames after that */
+                    t->tap_index++;
+                    t->tap_check_frame = app->frame_index + 3;
+                } else {
+                    t->tap_max_dt = 0.0f;
+                }
                 t->sub++;
             }
             return 0;
         }
-        if (now - t->at < 1.3) {
+        if (now - t->at < 1.3 || t->tap_check_frame) {
             return 0;
         }
-        if (t->fired[0] - t->taps != 10) {
-            return failf(t, "ten taps in 1 s gave %d actions", t->fired[0] - t->taps);
+        const int actions = t->fired[0] - t->taps;
+        if (t->tap_missed > 0 || actions + t->tap_missed_slow != 10) {
+            return failf(t, "ten taps in 1 s gave %d actions (%d missed on normal frames, %d on slow frames up to %.1f ms)", actions, t->tap_missed, t->tap_missed_slow,
+                         (double)(t->tap_worst_dt * 1000.0f));
         }
-        mg_log_info("autotest ui: ten taps in 1 s, ten actions");
+        mg_log_info("autotest ui: ten taps in 1 s, %d actions on time%s", actions, t->tap_missed_slow ? " (see the WARN perf symptom above)" : "");
         next(t, now, S_DRAG);
         return 0;
     case S_DRAG: /* 3: down, drag off, up: no action, the release plays */

@@ -50,6 +50,10 @@ typedef struct UiTest {
     float max_v, cx, cy;
     int counter0, coins0, max_passes, screen_i, skip;
     bool moved, saw_shake, fx_clean;
+    /* ten taps: each checked 2 frames after its touch-up; a miss logs the window's slowest frame */
+    uint64_t tap_check_frame;
+    int tap_index, tap_missed, tap_missed_slow;
+    float tap_max_dt, tap_worst_dt;
     char why[200];
 } UiTest;
 
