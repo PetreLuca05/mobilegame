@@ -26,6 +26,7 @@ static int row(Creator *c, Ui *ui, int r, RowKind kind, const char *title, float
         char id[24];
         SDL_snprintf(id, sizeof(id), "cr%d_%d_%d", c->tab, r, i);
         bool held = false;
+        ui->hclass = HC_SWATCH; /* a creator option */
         if (ui_press(ui, id, tx, y, tw, TILE, &held, false)) {
             picked = i;
             ui_pop(ui, id); /* a confirmed choice */

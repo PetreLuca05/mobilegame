@@ -1,5 +1,7 @@
 #include "ui_fx.h"
 
+#include "haptics.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -26,7 +28,7 @@ void ui_fx_init(UiFx *fx, UiAnim *anim, Audio *audio, const TextFont *display)
     fx->audio = audio;
     fx->display = display;
     fx->rng = 0x5EEDu;
-    fx->haptics = fx->sounds = true;
+    fx->sounds = true;
 }
 
 /* sine notes with a fast decay, gain ~0.07, +-3 % pitch per note */
@@ -87,15 +89,7 @@ void ui_fx_sound(UiFx *fx, UiSound s, int index)
 #undef J
 }
 
-static void haptic(UiFx *fx, HapticKind k)
-{
-    fx->haptic_count++;
-    if (fx->haptics) {
-        haptic_play(k);
-    }
-}
 
-void ui_fx_haptic(UiFx *fx, HapticKind k) { haptic(fx, k); }
 
 void ui_fx_burst(UiFx *fx, float cx, float cy, int n, float dist)
 {
@@ -202,7 +196,6 @@ void ui_fx_tier(UiFx *fx, UiTier tier, float cx, float cy, bool on)
     switch (tier) {
     case UI_T0:
         ui_fx_sound(fx, UI_SND_DOWN, 0);
-        haptic(fx, HAPTIC_LIGHT);
         break;
     case UI_T1:
         ui_fx_burst(fx, cx, cy, 8, 90.0f);
@@ -217,29 +210,24 @@ void ui_fx_tier(UiFx *fx, UiTier tier, float cx, float cy, bool on)
             ui_fx_burst(fx, cx, cy, 6, 54.0f);
         }
         ui_fx_sound(fx, on ? UI_SND_TOGGLE_ON : UI_SND_TOGGLE_OFF, 0);
-        haptic(fx, HAPTIC_MEDIUM);
         break;
     case UI_T2:
         ui_fx_burst(fx, cx, cy, 16, 90.0f);
         ui_fx_ring(fx, cx, cy);
         ui_fx_sound(fx, UI_SND_SUCCESS, 0);
-        haptic(fx, HAPTIC_SUCCESS);
         break;
     case UI_T2_FAIL: /* no particles, no flash */
         ui_fx_sound(fx, UI_SND_ERROR, 0);
-        haptic(fx, HAPTIC_ERROR);
         break;
     case UI_T3: /* the reward flight is started by the caller; this is the completion */
         ui_fx_burst(fx, cx, cy, 26, 200.0f);
         ui_fx_ring(fx, cx, cy);
         ui_fx_shake(fx, 8.0f);
         ui_fx_sound(fx, UI_SND_FANFARE, 0);
-        haptic(fx, HAPTIC_SUCCESS);
-        haptic(fx, HAPTIC_HEAVY);
+        ui_haptic(HAPTIC_COMPLETE);
         break;
     case UI_TN:
         ui_fx_sound(fx, UI_SND_NOTICE, 0);
-        haptic(fx, HAPTIC_LIGHT);
         break;
     }
 }
@@ -306,6 +294,7 @@ void ui_fx_update_draw(UiFx *fx, GfxContext *g, float w_pt, float h_pt)
                 ui_anim_keys(fx->anim, fx->counter_key, UI_SY, 1.0f, bt, bv, 3, k_ui.bump_s, UI_EASE_OUT);
             }
             ui_fx_sound(fx, UI_SND_COIN, fx->landed_tokens - 1);
+            ui_haptic((HapticId)(HAPTIC_REWARD_0 + (fx->landed_tokens - 1 < 7 ? fx->landed_tokens - 1 : 7))); /* rising; the last is R4 */
             continue;
         }
         nt++;

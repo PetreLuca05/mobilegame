@@ -1,4 +1,5 @@
 #include "friends.h"
+#include "ui/haptics.h"
 
 #include <SDL3/SDL.h>
 #include <string.h>
@@ -138,6 +139,7 @@ void friends_request_code(Friends *f, const char *code)
     SDL_snprintf(body, sizeof(body), "{\"p_code\":\"%s\"}", esc);
     f->error[0] = 0;
     net_rpc(f->net, NET_RPC_FRIEND_REQUEST, body);
+    ui_haptic(HAPTIC_REQUEST_SENT);
 }
 
 void friends_search(Friends *f, const char *prefix)

@@ -1,4 +1,5 @@
 #include "notice_panel.h"
+#include "haptics.h"
 #include "ui_widgets.h"
 
 #include <SDL3/SDL.h>
@@ -103,6 +104,7 @@ NoticeResult notice_panel_draw(NoticePanel *p, Ui *ui, HeadIcons *h, const ui_fr
     p->h = ph;
     if (p->just_shown && ui->fx) {
         ui_fx_tier(ui->fx, UI_TN, x + w * 0.5f, y + ph * 0.5f, true); /* an incoming notice */
+        ui_haptic(p->q[0].kind == NOTICE_FRIEND ? HAPTIC_REQUEST_RECEIVED : HAPTIC_NOTICE);
     }
     ui_card(ui, x, y, w, ph);
     const float head = HEAD_SIZE * k, pad = (ph - head) * 0.5f;

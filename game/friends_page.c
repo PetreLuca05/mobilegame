@@ -1,4 +1,5 @@
 #include "friends_page.h"
+#include "ui/haptics.h"
 
 #include <SDL3/SDL.h>
 #include <string.h>
@@ -193,6 +194,7 @@ static float tab_requests(Ui *ui, Friends *f, HeadIcons *h, float x, float y, fl
                 if (small_button(ui, str("friend_accept"), id, x + w - 212.0f, y + 4.0f, 104.0f, true)) {
                     friends_respond(f, f->id[i], true);
                     ui_tier_at(ui, id, UI_T2); /* a friend added */
+                    ui_haptic(HAPTIC_INVITE_ACCEPTED);
                 }
                 SDL_snprintf(id, sizeof(id), "frq_no_%s", f->code[i]);
                 if (small_button(ui, str("friend_decline"), id, x + w - 100.0f, y + 6.0f, 100.0f, false)) {
@@ -252,6 +254,7 @@ static float friends_header(FriendsPage *p, Ui *ui, Friends *f, MgApp *app, floa
     if (f->my_code[0] && small_button(ui, str(app->time < p->copied_until ? "friend_copied" : "friend_copy"), "fcopy", x + w - 110.0f, y, 110.0f, false)) {
         SDL_SetClipboardText(f->my_code);
         p->copied_until = app->time + 1.5;
+        ui_haptic(HAPTIC_CODE_COPIED);
     }
     y += 54.0f;
     ui_label_caps(ui, x, y, str("friend_search_field"));
@@ -408,6 +411,7 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
         f->error[0] = 0;
         if (ui->fx) {
             ui_fx_tier(ui->fx, UI_T2_FAIL, 0.0f, 0.0f, false); /* a refused request */
+            ui_haptic(HAPTIC_REFUSED);
         }
         ui_shake(ui, "fnote", 10.0f);
     }
@@ -457,7 +461,7 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
     if (p->confirm_id[0]) {
         const float dw = 360.0f, dh = 160.0f;
         float dx, dy;
-        ui_modal(ui, "fconfirm", dw, dh, &dx, &dy);
+        ui_modal_warning(ui, "fconfirm", dw, dh, &dx, &dy);
         ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 30.0f, 22.0f, ui_rgba(k_ui.ink), str("friend_remove_q"));
         ui_text_c(ui, TEXT_FACE_BODY, dx + dw * 0.5f, dy + 60.0f, 15.0f, ui_rgba(k_ui.ink_soft), p->confirm_name);
         const float bw = (dw - 48.0f) * 0.5f;
@@ -466,7 +470,7 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
         }
         char yl[64];
         SDL_snprintf(yl, sizeof(yl), "%s##frm_yes", str("friend_remove"));
-        if (ui_button_v(ui, yl, dx + 32.0f + bw, dy + dh - 62.0f, bw, 46.0f, UI_V_DESTRUCTIVE, UI_F_SMALL)) {
+        if (ui_button_v(ui, yl, dx + 32.0f + bw, dy + dh - 62.0f, bw, 46.0f, UI_V_DESTRUCTIVE, UI_F_SMALL | UI_F_CONFIRM)) {
             friends_remove(f, p->confirm_id);
             p->confirm_id[0] = 0;
         }

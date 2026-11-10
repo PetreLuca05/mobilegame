@@ -1,5 +1,6 @@
 #include "ui/layout.h"
 #include "settings_menu.h"
+#include "ui/haptics.h"
 
 #include <SDL3/SDL_stdinc.h>
 #include <string.h>
@@ -74,8 +75,22 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += 52.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
     cy += 52.0f;
-    ui_toggle(ui, str("haptics"), cx, cy, cw, &s->haptics);
-    cy += 52.0f;
+    if (ui_haptic_supported()) { /* HAPTIC-1 Vibrații: hidden without a Taptic Engine */
+        ui_label_caps(ui, cx, cy + 4.0f, str("haptics"));
+        cy += 22.0f;
+        static const char *const keys[3] = {"haptics_off", "haptics_fine", "haptics_full"};
+        const float vib_w = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            char hl[64];
+            SDL_snprintf(hl, sizeof(hl), "%s##vib%d", str(keys[i]), i);
+            if (ui_button(ui, hl, cx + (float)i * (vib_w + 8.0f), cy, vib_w, k_ui.target_min, s->haptics == i) && s->haptics != i) {
+                s->haptics = i;
+                ui_haptic_set_level((HapticLevel)i);
+                ui_haptic(HAPTIC_PRIMARY); /* a preview at the new level */
+            }
+        }
+        cy += 56.0f;
+    }
     ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
     cy += 52.0f;
     ui_label_caps(ui, cx, cy + 4.0f, str("ui_motion")); /* UI-1: Animații interfață: Complete / Reduse */

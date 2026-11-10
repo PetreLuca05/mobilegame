@@ -26,6 +26,8 @@ typedef struct Ui {
     const TextFont *display, *bold;
     bool press_inside;    /* the active widget is drawn pressed (finger still inside) */
     bool modal;           /* a modal is up: idle loops stop under it */
+    int hclass;           /* HapticClass of the next ui_press (the widget sets it; back to HC_LINK after) */
+    uint32_t modal_key, modal_prev; /* this frame's modal and last frame's: open / close haptics */
     float scr_dx, scr_alpha; /* the screen layer this frame (enter + UI shake): ui_screen_enter */
     float scr_age;           /* seconds since the current screen entered */
     /* tappable widgets of the last frame (self-tests tap them by id) */

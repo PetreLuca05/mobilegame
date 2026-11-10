@@ -1,5 +1,7 @@
 #include "widgets.h"
 
+#include "haptics.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -59,6 +61,12 @@ void ui_attach(Ui *ui, struct UiAnim *anim, struct UiFx *fx, const TextFont *dis
 
 void ui_begin(Ui *ui, GfxContext *gfx, const TextFont *font, MgInput *in)
 {
+    if (ui->modal_prev && !ui->modal_key) { /* a modal went away last frame */
+        ui_haptic(HAPTIC_SURFACE_CLOSE);
+    }
+    ui->modal_prev = ui->modal_key;
+    ui->modal_key = 0;
+    ui->hclass = HC_LINK;
     ui->modal = false;
     ui->gfx = gfx;
     ui->font = font;
@@ -182,9 +190,12 @@ static void press_motion(Ui *ui, uint32_t key, bool down)
 bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, bool *held, bool quiet)
 {
     uint32_t id = ui_key(label);
+    const int hc = ui->hclass;
+    ui->hclass = HC_LINK; /* the default for the next one: links, rows, hit areas */
     remember(ui, label, x, y, w, h);
     int t = claim(ui, x, y, w, h);
     if (t >= 0) {
+        ui_haptic(k_haptic_class[hc].down); /* the one touch-down haptic call for every widget kind */
         ui->active_id = id;
         ui->active_touch = t;
         ui->press_inside = true;
@@ -205,6 +216,9 @@ bool ui_press(Ui *ui, const char *label, float x, float y, float w, float h, boo
             }
         } else if (tt->ended) {
             clicked = inside(tt, x, y, w, h, false);
+            if (clicked) {
+                ui_haptic(k_haptic_class[hc].up); /* the one action haptic call for every widget kind */
+            }
             if (ui->press_inside) {
                 press_motion(ui, id, false);
             }
@@ -238,6 +252,7 @@ bool ui_slider(Ui *ui, const char *label, float x, float y, float w, float *valu
     if (t >= 0) {
         ui->active_id = id;
         ui->active_touch = t;
+        ui_haptic(HAPTIC_SLIDER_GRAB);
     }
     bool changed = false;
     if (ui->active_id == id && ui->active_touch >= 0) {
@@ -245,6 +260,14 @@ bool ui_slider(Ui *ui, const char *label, float x, float y, float w, float *valu
         float f = mg_saturate((tt->x - x) / w);
         float nv = min + (max - min) * f;
         changed = nv != *value;
+        if (changed) { /* a tick every 1/20 of the range (the limiter caps them at 20 a second), a bump at either end */
+            const float f0 = mg_saturate((*value - min) / (max - min));
+            if ((f <= 0.0f || f >= 1.0f) && f0 > 0.0f && f0 < 1.0f) {
+                ui_haptic(HAPTIC_SLIDER_END);
+            } else if ((int)(f * 20.0f) != (int)(f0 * 20.0f)) {
+                ui_haptic(HAPTIC_SLIDER_STEP);
+            }
+        }
         *value = nv;
         if (!tt->active) {
             ui->active_id = 0;
@@ -365,6 +388,7 @@ int ui_text_field(Ui *ui, const char *id, float x, float y, float w, float h, ch
 {
     int result = UI_EDIT_NONE;
     bool held;
+    ui->hclass = *editing ? HC_NONE : HC_FIELD; /* focus on touch down; typing gets nothing */
     if (ui_hit_area(ui, id, x, y, w, h, &held) && !*editing) {
         *editing = true;
         result = UI_EDIT_STARTED;

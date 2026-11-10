@@ -2,6 +2,7 @@
 
 #include <math.h>
 
+#include "haptics.h"
 #include "ui_style.h"
 
 #define SQUASH_S 0.09f /* = k_ui.press_s: the knob's touch-down squash, then it blends into the stretch */
@@ -72,7 +73,7 @@ void stick_view_update(StickView *v, const TouchControls *tc, const TouchControl
         v->ring_on = false;
         v->armed = true;
         if (fx) {
-            ui_fx_haptic(fx, HAPTIC_LIGHT); /* quiet: no sound on touch down */
+            ui_haptic(HAPTIC_STICK_DOWN); /* quiet: no sound on touch down */
         }
     }
     if (touched) {
@@ -88,7 +89,7 @@ void stick_view_update(StickView *v, const TouchControls *tc, const TouchControl
                 v->t_tick = now;
                 if (fx) {
                     ui_fx_sound(fx, UI_SND_TICK, 0);
-                    ui_fx_haptic(fx, HAPTIC_LIGHT);
+                    ui_haptic(HAPTIC_STICK_FULL);
                 }
             }
             v->armed = false;

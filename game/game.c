@@ -73,6 +73,7 @@
 #include "settings_menu.h"
 #include "stats.h"
 #include "ui/hud.h"
+#include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/touch_controls.h"
 #include "ui/ui_widgets.h"
@@ -143,6 +144,7 @@ typedef struct Game {
     Autotest autotest;
     UiTest uitest; /* --autotest ui */
     bool sys_reduce_motion, sys_reduce_logged;
+    bool pause_was_open;
     PerfRun perf;
     StressCrowd crowd;
     bool crowd_ok, prof_on, no_lod;
@@ -432,6 +434,8 @@ bool game_init(MgApp *app)
     kinematic_default_params(&g->kparams);
     prefs_load(&g->prefs, g->profile_name);
     g->settings = g->prefs.settings; /* per device */
+    ui_haptic_set_level((HapticLevel)g->settings.haptics);
+    ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     g->has_save = save_exists(g->profile_name);
     if (!world_books_load(&g->books)) {
         mg_log_error("world: assets/world/books.json has no book");
@@ -685,6 +689,9 @@ void game_tick(MgApp *app)
     if (el && el->arrived) {
         el->arrived = false;
         audio_ding(g->audio);
+        if (g->playing && g->player.kin.pos.X >= el->x0 && g->player.kin.pos.X <= el->x1 && g->player.kin.pos.Z >= el->z0 && g->player.kin.pos.Z <= el->z1) {
+            ui_haptic(HAPTIC_LIFT_ARRIVE); /* only for a rider: not a car the player cannot see */
+        }
         g->stats.rides++;
         stats_reset_position(&g->stats);
     }
@@ -1232,6 +1239,7 @@ static void follow_account_link(Game *g, MgApp *app)
         l->linked = false;
         g->fill_name_from_provider = true;
         frontend_toast(&g->fe, str("link_ok"), app->time);
+        ui_haptic(HAPTIC_LINKED);
         save_prefs(g);
     }
     if (l->merged) {
@@ -1361,6 +1369,7 @@ static void lobby_follow(Game *g, MgApp *app)
     if (l->declined_name[0]) {
         char msg[96];
         SDL_snprintf(msg, sizeof(msg), "%s %s", l->declined_name, str("invite_declined"));
+        ui_haptic(HAPTIC_INVITE_DECLINED);
         frontend_toast(&g->fe, msg, app->time);
         l->declined_name[0] = 0;
     }
@@ -1377,6 +1386,9 @@ static void lobby_follow(Game *g, MgApp *app)
             r->shown = true;
             notice_push(&g->notice, NOTICE_INVITE, r->id, r->name, &r->skin, str("notice_invite"), LOBBY_INVITE_PANEL_S);
         }
+    }
+    if (l->grant_ready) {
+        ui_haptic(HAPTIC_INVITE_ACCEPTED); /* our join was accepted */
     }
     if (l->grant_ready && l->grant.in_menu) { /* their lobby is in the menu: nothing to load */
         l->grant_ready = false;
@@ -1454,9 +1466,6 @@ static void draw_notices(Game *g, MgApp *app)
         }
         if (g->settings.ui_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
-        }
-        if (g->settings.haptics) {
-            haptic_impact(false);
         }
     }
     if (res != NOTICE_NONE && kind == NOTICE_JOIN) {
@@ -2212,9 +2221,7 @@ static void interact_tap(Game *g, MgApp *app)
         if (g->settings.ui_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK);
         }
-        if (g->settings.haptics) {
-            haptic_impact(false);
-        }
+        ui_haptic(HAPTIC_INTERACT);
     }
 }
 
@@ -2223,9 +2230,7 @@ static void lift_panel_press(Game *g, Elevator *el, int floor)
     if (floor != el->car_floor && g->lift_panel.pressed < 0) {
         audio_ding(g->audio);
     }
-    if (g->settings.haptics) {
-        haptic_impact(false);
-    }
+    ui_haptic(HAPTIC_LIFT_KEY); /* a mechanical click, firmer than a UI button */
     elevator_panel_press(&g->lift_panel, floor, el->car_floor);
 }
 
@@ -2689,6 +2694,8 @@ static void game_frame_inner(MgApp *app, float alpha)
     Game *g = (Game *)app->game;
     g->frame_alpha = alpha;
     GameSettings *s = &g->settings;
+    ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
+    ui_haptic_set_level((HapticLevel)s->haptics);
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
@@ -3010,7 +3017,6 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
         ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || sys_reduce || g->uitest.reduced);
     }
-    g->ui_fx.haptics = s->haptics;
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
     { /* screen changes enter; the UI shake moves UI only, never the camera */
         const int key = !g->playing ? 100 + (int)g->fe.state : g->fpage.open ? 3 : g->menu.open && !g->menu.card ? 2 : 0;
@@ -3036,6 +3042,10 @@ static void game_frame_inner(MgApp *app, float alpha)
         } else {
             g->menu.open = g->menu.card = false;
         }
+    }
+    if (g->menu.open != g->pause_was_open) { /* pause opens / the game resumes */
+        g->pause_was_open = g->menu.open;
+        ui_haptic(HAPTIC_PAUSE);
     }
     SettingsAccount acct = account_view(g);
     const bool stats_was = s->show_stats;
@@ -3525,9 +3535,7 @@ static void marker_tapped(Game *g, MgApp *app, uint32_t id)
         g->active_marker = id;
         marker_set_state(m, MARKER_TAPPED);
         marker_cue(g, AUDIO_CUE_TICK);
-        if (g->settings.haptics) {
-            haptic_impact(false);
-        }
+        ui_haptic(HAPTIC_MARKER_TAP);
     } else {
         autonav_clear(&g->autonav);
         marker_failed(g, app, m);
@@ -3541,9 +3549,7 @@ static void marker_reached(Game *g, MgApp *app, marker_t *m)
 {
     marker_set_state(m, MARKER_REACHED);
     marker_cue(g, AUDIO_CUE_CHIME);
-    if (g->settings.haptics) {
-        haptic_impact(true);
-    }
+    ui_haptic(HAPTIC_MARKER_REACHED);
     g->markers_reached++;
     if (m->id == g->active_marker) {
         g->active_marker = 0;
@@ -3624,6 +3630,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         g->active_marker = 0;
         autonav_clear(&g->autonav);
     } else if (g->autonav.state == AUTONAV_CANCELLED) {
+        ui_haptic(HAPTIC_NAV_CANCEL);
         if (a) {
             marker_set_state(a, MARKER_IDLE);
             marker_cue(g, AUDIO_CUE_DUP);
@@ -3631,6 +3638,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         g->active_marker = 0;
         autonav_clear(&g->autonav);
     } else if (g->autonav.state == AUTONAV_FAILED) {
+        ui_haptic(HAPTIC_REFUSED); /* no path */
         if (a) {
             marker_failed(g, app, a);
         }
@@ -4150,6 +4158,7 @@ void game_pause(MgApp *app)
     session_say_goodbye(&g->session, app->clock.tick, g->player.kin.pos, g->player.yaw);
     lobby_background(&g->lobby);
     net_set_background(g->net, true); /* leave the room: others see us go at once */
+    ui_haptics_active(false); /* the engine stops; nothing plays in the background */
 }
 
 void game_resume(MgApp *app)
@@ -4157,6 +4166,7 @@ void game_resume(MgApp *app)
     Game *g = (Game *)app->game;
     net_set_background(g->net, false);
     lobby_foreground(&g->lobby);
+    ui_haptics_active(true);
 }
 
 void game_quit(MgApp *app)

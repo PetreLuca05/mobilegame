@@ -1,4 +1,5 @@
 #include "worldmap.h"
+#include "ui/haptics.h"
 
 #include <math.h>
 #include <SDL3/SDL.h>
@@ -423,6 +424,7 @@ void worldmap_go(WorldMap *m, int level)
     WmIsland *is = wm_cur(m);
     const int n = is->book->level_count;
     is->selected = (level % n + n) % n;
+    ui_haptic(HAPTIC_HOSPITAL); /* a hospital selected */
     const float to = worldmap_stop_s(is, is->selected);
     const float d = fabsf(to - is->amb_s);
     if (d < 0.01f) {
@@ -515,6 +517,7 @@ bool worldmap_voyage(WorldMap *m, int to)
     v->pos = v->prev_pos = HMM_V3(p.X, y, p.Y);
     v->heading = v->prev_heading = atan2f(-d.Y, d.X);
     m->state = WM_VOYAGE;
+    ui_haptic(HAPTIC_VOYAGE_START);
     mg_log_info("world: voyage %s -> %s by %s", a->book->id, b->book->id, world_ride_name(v->ride));
     return true;
 }
@@ -564,6 +567,7 @@ static void voyage_tick(WorldMap *m, float dt)
         m->cur = v->to;
         m->state = WM_BOOKS;
         m->voyages++;
+        ui_haptic(HAPTIC_VOYAGE_END);
     }
 }
 
@@ -576,6 +580,7 @@ bool worldmap_skip_voyage(WorldMap *m)
     m->state = WM_BOOKS;
     m->voyages++;
     m->skips++;
+    ui_haptic(HAPTIC_VOYAGE_SKIP);
     m->cam_snap = true;
     mg_log_info("world: voyage skipped at %.1f s", (double)m->voy.elapsed);
     return true;
@@ -652,6 +657,7 @@ void worldmap_tick(WorldMap *m, float dt)
     if (m->state == WM_TRAVEL && !wm_cur(m)->travelling) {
         m->state = WM_ARRIVED;
         m->arrivals++;
+        ui_haptic(HAPTIC_HOSPITAL); /* the ambulance arrives */
     }
     if (m->state == WM_VOYAGE) {
         voyage_tick(m, dt);
@@ -1056,12 +1062,12 @@ static void bar(Ui *ui, float x, float y, float w, float h, int pct, bool known)
     }
 }
 
-static bool small_button(Ui *ui, const char *label, const char *id, float x, float y, float w, float h, bool highlighted, bool enabled)
+static bool small_button(Ui *ui, const char *label, const char *id, float x, float y, float w, float h, bool highlighted, bool enabled, int flags)
 {
     char key[96];
     SDL_snprintf(key, sizeof(key), "%s##%s", label, id);
     return ui_button_v(ui, key, x, y, w, h, !enabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
-                       highlighted && enabled ? UI_F_BREATHE : UI_F_SMALL);
+                       (highlighted && enabled ? UI_F_BREATHE : UI_F_SMALL) | flags);
 }
 
 /* The hospital's card, right side inside the safe area. */
@@ -1108,18 +1114,18 @@ static WmAction draw_card(WorldMap *m, Ui *ui, const float safe[4])
     const float join_h = 48.0f, nav_h = 42.0f;
     const float join_y = cy + ch - pad - nav_h - 8.0f - join_h;
     if (!lv->map_id[0]) {
-        small_button(ui, str("wm_coming_soon"), "wm_join", cx + pad, join_y, bw, join_h, true, false);
+        small_button(ui, str("wm_coming_soon"), "wm_join", cx + pad, join_y, bw, join_h, true, false, 0);
     } else {
         const char *label = pct >= 100 ? str("wm_replay") : pct > 0 ? str("wm_continue_here") : str("wm_join");
-        if (small_button(ui, label, "wm_join", cx + pad, join_y, bw, join_h, true, arrived && !m->join_disabled)) {
+        if (small_button(ui, label, "wm_join", cx + pad, join_y, bw, join_h, true, arrived && !m->join_disabled, UI_F_MAIN)) {
             a = WM_JOIN;
         }
     }
     const float hw = (bw - 8.0f) * 0.5f, ny = cy + ch - pad - nav_h;
-    if (small_button(ui, str("wm_prev"), "wm_prev", cx + pad, ny, hw, nav_h + 4.0f, false, true)) {
+    if (small_button(ui, str("wm_prev"), "wm_prev", cx + pad, ny, hw, nav_h + 4.0f, false, true, UI_F_STEPPER)) {
         worldmap_go(m, is->selected - 1);
     }
-    if (small_button(ui, str("wm_next"), "wm_next", cx + pad + hw + 8.0f, ny, hw, nav_h + 4.0f, false, true)) {
+    if (small_button(ui, str("wm_next"), "wm_next", cx + pad + hw + 8.0f, ny, hw, nav_h + 4.0f, false, true, UI_F_STEPPER)) {
         worldmap_go(m, is->selected + 1);
     }
     return a;

@@ -1,5 +1,7 @@
 #include "ui_widgets.h"
 
+#include "haptics.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -158,13 +160,39 @@ static void begin_squash(Ui *ui, uint32_t key, float cx, float bottom, float ext
     gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, cx, bottom);
 }
 
+/* the haptic row of a button: its variant, the screen's main action (the breathing one), a destructive modal's confirm */
+static int button_class(UiVariant v, int flags)
+{
+    if (flags & UI_F_STEPPER) {
+        return HC_STEPPER;
+    }
+    if (flags & UI_F_RANDOMISE) {
+        return HC_RANDOMISE;
+    }
+    if (flags & UI_F_LINK) {
+        return HC_LINK;
+    }
+    switch (v) {
+    case UI_V_PRIMARY:
+    case UI_V_OK:
+        return (flags & (UI_F_MAIN | UI_F_BREATHE)) ? HC_MAIN : HC_PRIMARY;
+    case UI_V_DESTRUCTIVE:
+        return (flags & UI_F_CONFIRM) ? HC_CONFIRM : HC_DESTRUCTIVE;
+    case UI_V_DISABLED:
+        return HC_NONE;
+    default:
+        return (flags & UI_F_MAIN) ? HC_MAIN : HC_SECONDARY;
+    }
+}
+
 bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, UiVariant v, int flags)
 {
     UiColor face, lip, tc;
     ui_variant_colors(v, &face, &lip, &tc);
     const uint32_t key = ui_key(label);
     bool held = false, clicked = false;
-    if (v != UI_V_DISABLED) { /* disabled: no motion, no sound, not a target */
+    if (v != UI_V_DISABLED) { /* disabled: no motion, no sound, no haptic, not a target */
+        ui->hclass = button_class(v, flags);
         clicked = ui_press(ui, label, x, y, w, h, &held, (flags & UI_F_QUIET) != 0);
     }
     const float lip_h = mg_minf(k_ui.lip_button, h * 0.13f), face_h = h - lip_h;
@@ -201,6 +229,7 @@ bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float
     const uint32_t key = ui_key(id);
     bool held = false, clicked = false;
     if (v != UI_V_DISABLED) {
+        ui->hclass = HC_SECONDARY; /* icon buttons: the secondary row */
         clicked = ui_press(ui, id, x, y, size, size, &held, false);
     }
     const float lip_h = mg_minf(k_ui.lip_button, size * 0.13f), face_h = size - lip_h;
@@ -219,6 +248,7 @@ bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value)
 {
     const uint32_t key = ui_key(id);
     bool held = false;
+    ui->hclass = HC_NONE; /* the toggle's haptic depends on the new state: played below */
     const bool flipped = ui_press(ui, id, x, y, k_ui.toggle_w, k_ui.toggle_h, &held, false);
     float pos = *value ? 1.0f : 0.0f;
     if (flipped) {
@@ -229,6 +259,7 @@ bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value)
             ui_anim_to(ui->anim, key, UI_ALPHA, pos, *value ? 1.0f : 0.0f, k_ui.colour_s, UI_EASE_LINEAR, NULL, false);
         }
         if (ui->fx) {
+            ui_haptic(*value ? HAPTIC_TOGGLE_ON : HAPTIC_TOGGLE_OFF);
             ui_fx_tier(ui->fx, UI_T1_TOGGLE, x + (*value ? k_ui.toggle_w - k_ui.toggle_h * 0.5f : k_ui.toggle_h * 0.5f), y + k_ui.toggle_h * 0.5f, *value);
         }
     }
@@ -253,6 +284,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
         char tid[64];
         bool held = false;
         SDL_snprintf(tid, sizeof(tid), "%s%d", id, i);
+        ui->hclass = HC_TAB;
         if (ui_press(ui, tid, x + inner + seg * (float)i, y, seg, h, &held, false) && i != *sel) { /* the lip is part of the target */
             const float from = (float)*sel;
             *sel = i;
@@ -353,7 +385,9 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
     const float h = k_ui.row_h + k_ui.lip_row, lip = k_ui.lip_row;
     const uint32_t key = ui_key(id);
     bool held = false;
+    ui->hclass = HC_ANSWER;
     const bool clicked = state == UI_ANS_DEFAULT && ui_press(ui, id, x, y, w, h, &held, false);
+    ui->hclass = HC_LINK;
     UiColor face = C(k_ui.surface_tint), lip_c = C(k_ui.secondary_lip), tc = C(k_ui.ink);
     if (state == UI_ANS_OK) {
         face = C(k_ui.ok), lip_c = C(k_ui.ok_lip), tc = C(k_ui.white);
@@ -377,9 +411,13 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
     return clicked;
 }
 
-void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y)
+static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, bool warning)
 {
     const uint32_t key = ui_key(id);
+    if (ui->modal_prev != key) { /* it opens this frame */
+        ui_haptic(warning ? HAPTIC_WARNING_MODAL : HAPTIC_SURFACE_OPEN);
+    }
+    ui->modal_key = key;
     float W = 0.0f, H = 0.0f;
     gfx_ui_size(ui->gfx, &W, &H);
     ui->modal = true;
@@ -394,6 +432,9 @@ void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y)
     ui_card(ui, *x, *y, w, h);
     gfx_ui_group(ui->gfx, s, 0.0f, 0.0f, s, *x + w * 0.5f, *y + h * 0.5f); /* the card and what the caller draws in it */
 }
+
+void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y) { modal(ui, id, w, h, x, y, false); }
+void ui_modal_warning(Ui *ui, const char *id, float w, float h, float *x, float *y) { modal(ui, id, w, h, x, y, true); }
 
 void ui_modal_end(Ui *ui) { gfx_ui_group_off(ui->gfx); }
 

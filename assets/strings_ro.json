@@ -101,6 +101,10 @@
   "wm_provisional": "Hartă provizorie",
   "ui_sounds": "Sunete interfață",
   "ui_motion": "Animații interfață",
+  "haptics": "Vibrații",
+  "haptics_off": "Oprit",
+  "haptics_fine": "Fin",
+  "haptics_full": "Complet",
   "ui_motion_full": "Complete",
   "ui_motion_reduced": "Reduse"
 }

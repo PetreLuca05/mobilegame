@@ -80,7 +80,10 @@ void prefs_load(Prefs *p, const char *profile)
 #endif
         g->show_own_name = flag(s, "show_own_name", g->show_own_name);
         g->show_xray = flag(s, "show_xray", g->show_xray);
-        g->haptics = flag(s, "haptics", g->haptics);
+        { /* HAPTIC-1: a level; the old on / off migrates to Complet / Oprit */
+            const cJSON *h = cJSON_GetObjectItemCaseSensitive(s, "haptics");
+            g->haptics = cJSON_IsBool(h) ? (cJSON_IsTrue(h) ? 2 : 0) : (int)mg_clampf(num(s, "haptics", (float)g->haptics), 0.0f, 2.0f);
+        }
         g->ui_sounds = flag(s, "ui_sounds", flag(s, "marker_sounds", g->ui_sounds)); /* the old key, migrated */
         g->ui_motion = (int)mg_clampf(num(s, "ui_motion", (float)g->ui_motion), 0.0f, 1.0f);
         g->test_markers = flag(s, "test_markers", g->test_markers);
@@ -152,7 +155,7 @@ bool prefs_save(const Prefs *p, const char *profile)
 #endif
     cJSON_AddBoolToObject(s, "show_own_name", g->show_own_name);
     cJSON_AddBoolToObject(s, "show_xray", g->show_xray);
-    cJSON_AddBoolToObject(s, "haptics", g->haptics);
+    cJSON_AddNumberToObject(s, "haptics", g->haptics);
     cJSON_AddBoolToObject(s, "ui_sounds", g->ui_sounds);
     cJSON_AddNumberToObject(s, "ui_motion", g->ui_motion);
     cJSON_AddBoolToObject(s, "test_markers", g->test_markers);

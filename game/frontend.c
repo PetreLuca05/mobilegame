@@ -1,4 +1,5 @@
 #include "frontend.h"
+#include "ui/haptics.h"
 
 #include <SDL3/SDL_stdinc.h>
 #include <string.h>
@@ -265,6 +266,7 @@ void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app)
     /* a card from the top centre: enters on its first frame, exits in its last 0.18 s */
     const uint32_t key = ui_key("toast");
     if (ui->anim && ui_anim_fresh(ui->anim, key)) {
+        ui_haptic(HAPTIC_NOTICE); /* a toast arrives */
         ui_anim_to(ui->anim, key, UI_Y, -80.0f, 0.0f, ui->anim->reduced ? k_ui.reduced_s : k_ui.enter_s, ui->anim->reduced ? UI_EASE_LINEAR : UI_EASE_BEZIER, &k_ui.enter,
                    false);
     }
@@ -417,7 +419,7 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     FeAction a = FE_NONE;
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##dice", str("randomise"));
-    if (ui_button_v(ui, label, r - 120.0f, y - 7.0f, 120.0f, k_ui.target_min, UI_V_SECONDARY, UI_F_SMALL)) {
+    if (ui_button_v(ui, label, r - 120.0f, y - 7.0f, 120.0f, k_ui.target_min, UI_V_SECONDARY, UI_F_SMALL | UI_F_RANDOMISE)) {
         creator_randomise(ctx->skin);
         a = FE_SKIN_CHANGED;
     }
@@ -533,6 +535,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     /* the account, top right: opens Friends */
     const float chip_r = w - EDGE, chip_w = head_chip_width(ui->font, ctx->lobby_visible ? ctx->name : str("lobby_offline_chip")), chip_y = TOP_EDGE;
     bool chip_held = false;
+    ui->hclass = HC_PILL;
     if (ui_hit_area(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, &chip_held) && !f->confirm_new) {
         a = FE_OPEN_FRIENDS;
     }
@@ -593,7 +596,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
 
     if (f->confirm_new) { /* overwrite dialog */
         float dw = 360.0f, dh = 160.0f, dx, dy;
-        ui_modal(ui, "overwrite", dw, dh, &dx, &dy);
+        ui_modal_warning(ui, "overwrite", dw, dh, &dx, &dy);
         ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 40.0f, 22.0f, ui_rgba(k_ui.ink), str("overwrite_q"));
         float bw = (dw - 48.0f) * 0.5f;
         char c1[48], c2[48];
@@ -602,7 +605,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         if (ui_button_v(ui, c1, dx + 16.0f, dy + dh - 66.0f, bw, 50.0f, UI_V_SECONDARY, UI_F_SMALL)) {
             f->confirm_new = false;
         }
-        if (ui_button_v(ui, c2, dx + 32.0f + bw, dy + dh - 66.0f, bw, 50.0f, UI_V_DESTRUCTIVE, UI_F_SMALL)) { /* it overwrites */
+        if (ui_button_v(ui, c2, dx + 32.0f + bw, dy + dh - 66.0f, bw, 50.0f, UI_V_DESTRUCTIVE, UI_F_SMALL | UI_F_CONFIRM)) { /* it overwrites */
             f->confirm_new = false;
             a = FE_NEW_GAME;
         }

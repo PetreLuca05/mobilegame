@@ -4,6 +4,7 @@
 #ifndef MG_UI_WIDGETS_H
 #define MG_UI_WIDGETS_H
 
+#include "haptics.h"
 #include "ui_fx.h"
 #include "widgets.h"
 
@@ -11,7 +12,8 @@ typedef enum UiVariant { UI_V_PRIMARY, UI_V_SECONDARY, UI_V_ACCENT, UI_V_DESTRUC
 typedef enum UiIcon { UI_ICON_NONE, UI_ICON_BACK, UI_ICON_CLOSE, UI_ICON_CHECK, UI_ICON_PLUS, UI_ICON_MINUS, UI_ICON_PAUSE, UI_ICON_MENU,
                       UI_ICON_NEXT, UI_ICON_PREV, UI_ICON_CROWN, UI_ICON_COPY } UiIcon;
 typedef enum UiAnswer { UI_ANS_DEFAULT, UI_ANS_OK, UI_ANS_BAD, UI_ANS_REVEAL, UI_ANS_DIM } UiAnswer;
-enum { UI_F_BREATHE = 1, UI_F_SMALL = 2, UI_F_QUIET = 4 };
+/* flags; MAIN / CONFIRM / STEPPER / RANDOMISE also pick the haptic class (haptic_table.h) */
+enum { UI_F_BREATHE = 1, UI_F_SMALL = 2, UI_F_QUIET = 4, UI_F_MAIN = 8, UI_F_CONFIRM = 16, UI_F_STEPPER = 32, UI_F_RANDOMISE = 64, UI_F_LINK = 128 };
 
 /* colours of a variant: face, lip, text */
 void ui_variant_colors(UiVariant v, UiColor *face, UiColor *lip, UiColor *text);
@@ -43,6 +45,7 @@ bool ui_row(Ui *ui, const char *id, float x, float y, float w, float h, bool tap
 bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float w, UiAnswer state);
 /* Scrim + a centred card that enters from 0.8 (550 ms); returns the card's rect. */
 void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y);
+void ui_modal_warning(Ui *ui, const char *id, float w, float h, float *x, float *y); /* destructive: the WARNING haptic */
 void ui_modal_end(Ui *ui); /* after the card's content: ends its enter scale */
 /* Screen changes: the whole UI layer enters from the left edge (550 ms, the enter curve; reduced:
  * a 150 ms fade). `age` = seconds since the screen changed, `shake_x` the UI shake. */

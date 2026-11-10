@@ -187,6 +187,7 @@ add_library(mg_engine STATIC
   engine/ui/widgets.c
   engine/ui/ui_anim.c
   engine/ui/ui_fx.c
+  engine/ui/haptics.c
   engine/ui/ui_widgets.c
   engine/ui/touch_controls.c
   engine/ui/stick_view.c
@@ -213,7 +214,7 @@ if(MG_PLATFORM STREQUAL "ios")
   target_sources(mg_engine PRIVATE platform/ios/google_auth.m platform/ios/apple_auth.m platform/ios/haptics.m platform/ios/safe_area.m)
   set_source_files_properties(platform/ios/google_auth.m platform/ios/apple_auth.m platform/ios/haptics.m platform/ios/safe_area.m PROPERTIES COMPILE_OPTIONS
                               "-fobjc-arc")
-  target_link_libraries(mg_engine PUBLIC "-framework AuthenticationServices" "-framework UIKit")
+  target_link_libraries(mg_engine PUBLIC "-framework AuthenticationServices" "-framework UIKit" "-framework CoreHaptics")
 elseif(MG_PLATFORM STREQUAL "android")
   target_sources(mg_engine PRIVATE engine/platform/google_auth_android.c)
 else()
