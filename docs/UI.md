@@ -84,6 +84,8 @@ The whole UI is one instanced draw (`GfxUiInst`, 96 bytes, up to 8192 per frame)
 | bump / pop / shake | counter 1 -> 1.22 -> 1 in 200 ms; confirm 1 -> 1.05 -> 1 in 380 ms; x offsets 0 -1 1 -0.7 0.7 -0.35 0.35 0 over 320 ms |
 | breathe / bob | the screen's main button 1 <-> 1.03 over 2.4 s; reward icons -3 pt and 8 deg over 2.2 s; stop under a modal |
 
+Deferred: **exit-then-enter for screen changes.** Screens only enter (the layer slides in from the left, rows stagger); cards, modals, toasts and the notice panel have their own enter and toasts / notices their exit. A real screen exit needs the front end to keep drawing the old screen, input off, for 180 ms after the state has already changed, i.e. a drawn state separate from the logical one across `frontend.c` and the screen dispatch in `game.c`. Accepted as deferred at UI-1 sign-off (a8b1d90); do not restructure `game.c` for it until a milestone asks.
+
 Reduced (Settings -> Animații interfață -> Reduse, or iOS Reduce Motion): no bursts, rings, shake, breathe or bob; press is a 4 % uniform scale; the rest are 150 ms fades or linear moves; the reward counts up over 400 ms.
 
 ### Tiers
