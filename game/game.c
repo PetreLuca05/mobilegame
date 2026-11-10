@@ -1158,7 +1158,7 @@ static void draw_net_badge(Game *g, MgApp *app)
     float mw = mg_minf(text_width(&app->font, msg, 14.0f), app->width_pt - 40.0f);
     ui_shape(app->gfx, &(UiShape){.x = cx - mw * 0.5f - 14.0f, .y = y + k_ui.lip_pill, .w = mw + 28.0f, .h = 28.0f, .radius = -1.0f, .color = ui_rgba(k_ui.bad_lip)});
     ui_shape(app->gfx, &(UiShape){.x = cx - mw * 0.5f - 14.0f, .y = y, .w = mw + 28.0f, .h = 28.0f, .radius = -1.0f, .color = ui_rgba(k_ui.bad)});
-    text_draw_centered(app->gfx, &app->font_bold, cx, y + 14.0f, 14.0f, ui_rgba(0xFFFFFFFF), msg);
+    text_draw_centered(app->gfx, &app->font_bold, cx, y + 14.0f, 14.0f, ui_rgba(k_ui.white), msg);
 }
 
 #ifdef MG_RENDER_FULL

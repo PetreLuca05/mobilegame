@@ -1096,7 +1096,7 @@ static WmAction draw_card(WorldMap *m, Ui *ui, const float safe[4])
     const float pw = ui_text_w(ui, TEXT_FACE_BOLD, status, 13.0f) + 22.0f;
     ui_shape(ui->gfx, &(UiShape){.x = cx + pad, .y = y, .w = pw, .h = 26.0f, .radius = -1.0f,
                                  .color = ui_rgba(pct >= 100 ? k_ui.ok : pct > 0 ? k_ui.primary : k_ui.surface_tint)});
-    ui_text_c(ui, TEXT_FACE_BOLD, cx + pad + pw * 0.5f, y + 13.0f, 13.0f, ui_rgba(pct >= 100 ? 0xFFFFFFFFu : k_ui.ink), status);
+    ui_text_c(ui, TEXT_FACE_BOLD, cx + pad + pw * 0.5f, y + 13.0f, 13.0f, ui_rgba(pct >= 100 ? k_ui.white : k_ui.ink), status);
     y += 34.0f;
     char pt[16];
     percent_text(pt, sizeof(pt), pct);
@@ -1259,13 +1259,13 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         const float nw = ui_text_w(ui, TEXT_FACE_DISPLAY, is->book->name, 44.0f), lw = ui_text_w(ui, TEXT_FACE_BOLD, line, 15.0f);
         ui_label_caps(ui, cx - ui_text_w(ui, TEXT_FACE_BOLD, book_n, k_ui.t_label) * 0.6f, top + 2.0f, book_n);
         ui_text(ui, TEXT_FACE_DISPLAY, cx - nw * 0.5f, top + 19.0f, 44.0f, ui_rgba(k_ui.ink), is->book->name); /* its lip */
-        ui_text(ui, TEXT_FACE_DISPLAY, cx - nw * 0.5f, top + 16.0f, 44.0f, ui_rgba(0xFFFFFFFF), is->book->name);
+        ui_text(ui, TEXT_FACE_DISPLAY, cx - nw * 0.5f, top + 16.0f, 44.0f, ui_rgba(k_ui.white), is->book->name);
         ui_surface(ui, cx - lw * 0.5f - 14.0f, top + 70.0f, lw + 28.0f, 26.0f, -1.0f, 3.0f, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
         ui_text(ui, TEXT_FACE_BOLD, cx - lw * 0.5f, top + 72.0f, 15.0f, ui_rgba(k_ui.ink), line);
         const char *hint = str("wm_tap_island");
         const float hw = text_width(ui->font, hint, 15.0f) + 32.0f, hy = m->view_h - safe[3] - WM_EDGE - 44.0f;
-        ui_surface(ui, cx - hw * 0.5f, hy + 2.0f, hw, 40.0f, -1.0f, k_ui.lip_pill, ui_rgba(k_ui.ink), ui_rgba(0x0D2626FF), 0.0f, ui_rgba(0));
-        ui_text_c(ui, TEXT_FACE_DISPLAY, cx, hy + 22.0f, 15.0f, ui_rgba(0xFFFFFFFF), hint);
+        ui_surface(ui, cx - hw * 0.5f, hy + 2.0f, hw, 40.0f, -1.0f, k_ui.lip_pill, ui_rgba(k_ui.ink), ui_rgba(k_ui.ink_lip), 0.0f, ui_rgba(0));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, cx, hy + 22.0f, 15.0f, ui_rgba(k_ui.white), hint);
         /* the neighbouring islands in book order, at the sides */
         float bw;
         if (m->cur > 0) {

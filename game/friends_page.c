@@ -112,7 +112,7 @@ static float tab_friends(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons
             ui_row(ui, id, x - 6.0f, y, w + 12.0f, ROW_H, false);
             head_icon_draw(h, ui->gfx, ui->font, &f->skin[i], f->name[i], x + head * 0.5f, y + ROW_H * 0.5f, head, away);
             /* grey offline, blue in the menu, green in a game */
-            const uint32_t dot = away ? 0x8A8F98FF : f->in_menu[i] ? 0x3B82F6FF : 0x34C759FF;
+            const uint32_t dot = away ? k_ui.status_off : f->in_menu[i] ? k_ui.status_menu : k_ui.status_game;
             ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 8.0f, ui_rgba(k_ui.surface));
             ui_circle(ui->gfx, ui->font, x + head * 0.85f, y + ROW_H * 0.5f + head * 0.35f, 6.0f, ui_rgba(dot));
             const char *sub = waiting ? str("friend_waiting") : status_text(f, i);
@@ -363,7 +363,7 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
             char n[8];
             SDL_snprintf(n, sizeof(n), "%d", f->incoming);
             ui_circle(ui->gfx, ui->font, x0 + lw - 22.0f, y + 22.0f, 12.0f, ui_rgba(k_ui.bad));
-            text_draw_centered(ui->gfx, ui->font, x0 + lw - 22.0f, y + 22.0f, 13.0f, ui_rgba(0xFFFFFFFF), n);
+            text_draw_centered(ui->gfx, ui->font, x0 + lw - 22.0f, y + 22.0f, 13.0f, ui_rgba(k_ui.white), n);
         }
         y += 58.0f;
     }
@@ -414,8 +414,8 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
     if (p->note[0] && app->time < p->note_until) {
         const float tw = ui_text_w(ui, TEXT_FACE_BOLD, p->note, 14.0f), sx = ui_shake_x(ui, "fnote");
         ui_surface(ui, x + (w - tw) * 0.5f - 14.0f + sx, bottom - 40.0f, tw + 28.0f, 32.0f, -1.0f, k_ui.lip_pill, ui_rgba(p->note_bad ? k_ui.bad : k_ui.ink),
-                   ui_rgba(p->note_bad ? k_ui.bad_lip : 0x0D2626FF), 0.0f, ui_rgba(0));
-        ui_text_c(ui, TEXT_FACE_BOLD, x + w * 0.5f + sx, bottom - 24.0f, 14.0f, ui_rgba(0xFFFFFFFF), p->note);
+                   ui_rgba(p->note_bad ? k_ui.bad_lip : k_ui.ink_lip), 0.0f, ui_rgba(0));
+        ui_text_c(ui, TEXT_FACE_BOLD, x + w * 0.5f + sx, bottom - 24.0f, 14.0f, ui_rgba(k_ui.white), p->note);
     }
     if (p->action_id[0]) {
         const float dw = 300.0f, step = 54.0f, dh = 56.0f + 5.0f * step + 4.0f;

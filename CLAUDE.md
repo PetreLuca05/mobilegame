@@ -16,7 +16,7 @@ engine/platform  SDL3 app lifecycle (app_sdl.c), touch/keyboard input, secure to
                  native Google sign-in (google_auth*.c; iOS part in platform/ios/google_auth.m)
 engine/audio     procedural sound (elevator ding) through an SDL audio stream
 engine/gfx       gfx.h interface; gpu.c = SDL3 GPU backend; meshes, camera, materials, planar
-                 reflection, frosted UI panels, clipped UI batches, preview camera
+                 reflection, one instanced SDF UI draw (UI-1), preview camera
 engine/physics   capsule-vs-OBB queries (collide.c) and the kinematic controller (kinematic.c)
 engine/net       net_transport.h interface; mongoose WebSocket + Supabase auth/Realtime/PostgREST; replication
 engine/ui        SDF text + UI shapes, HUD, touch controls
@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -267,9 +267,9 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 - Debug: Developer -> Markers (Test markers, count 1-16, show paths for all,
   respawn) - on in debug builds. Test markers: 50 % rooms, 25 % corridors,
   25 % yard, replaced 0.5 s after being reached. Prefs: `haptics`,
-  `marker_sounds`, `test_markers`, `test_marker_count`. `--autotest markers`.
+  `ui_sounds` (was `marker_sounds`), `test_markers`, `test_marker_count`. `--autotest markers`.
 
-- In-game menu: pause button (top right in play, 34 pt frosted disc, two rounded bars), account chip (avatar + name; top left in play, top right on the main menu, where tapping it opens Friends) / Back = centred pause card, max 420 pt (Resume, Settings,
+- In-game menu: pause button (top right in play, 54 pt accent icon button), account chip (avatar + name; top left in play, top right on the main menu, where tapping it opens Friends) / Back = centred pause card, max 420 pt (Resume, Settings,
   Save & back to menu, Disconnect in a room); Settings' back arrow returns to
   it. Arrows are drawn with `ui_line` (the font has no left arrow).
 - `--autotest offline`: an unresolvable host behaves like airplane mode; count
@@ -364,6 +364,16 @@ Books are islands; a book's levels are hospitals on it (book 1 Kumar, 9 levels, 
 - `game/worldmap.c`: `WorldMap.isles[]`, `cur`, `wm_cur()`. An island is drawn only when its bounds are in the frustum. BOOKS has the previous / next island's button (`wm_isl_prev`, `wm_isl_next`, arrow keys; a tap on the other island works too); the top bar's `wm_islands` returns to BOOKS. `VOYAGE`: no input; a cubic Bezier between coast points (the farthest terrain vertex above y 0.5 within 10 deg of the other island, x 0.965 air / 1.2 sea), bowed 70 / 110 to a random side; per-vehicle progress, height and attitude profiles, spinners, a wake behind the boat, the submarine under the opaque sea with a periscope wake and a surface shadow; camera A overview -> follow -> B overview at ease 2.2/s. Ends in BOOKS on the destination.
 - `world_next_ride` (`game/world_progress.c`): a bag of the four in a random order on the game's xorshift stream (`npc_rand`), redrawn if it starts with the last trip's vehicle or is a rotation of either of the two previous bags. Stored in `prefs.json` `rides` (and a copy in save v6). `--debug ride <plane|helicopter|boat|submarine>` forces the next one. `prefs.json` `last_book`: Maps opens that island. In a lobby `map_id` = book * 64 + level.
 - Tests: `tools/worldmap2_test.sh` (`--autotest worldmap2`, then `--autotest worldmap2 relaunch`; pictures `worldmap2_<vehicle>`), perf scenario `worldmap_voyage` (by plane back and forth).
+
+## UI look (UI-1 "Jelly Pop")
+
+Details, motion table, tiers and how to add a widget: [docs/UI.md](docs/UI.md).
+
+- One token table `engine/ui/ui_style.h` (`k_ui`): no colour, radius, duration or curve literal in screens. Components in `engine/ui/ui_widgets.c` (buttons by variant, icon button, switch, tabs, counter, progress, row, answer, card, modal), motion in `ui_anim.c` (128 tweens), effects / sounds / haptics / tiers in `ui_fx.c` (64 particles, 4 rings, 8 tokens). Fonts: Baloo 2 + Nunito (`TEXT_FACE_DISPLAY` / `BODY` / `BOLD`, one MGF2 atlas).
+- The whole UI is one instanced SDF draw in the existing pass; no blur pass exists any more (modals use `scrim`). The lift panel and the preview card stay 3D insets.
+- Input: `ui_press` = press motion + T0 + the action on the touch-up frame; targets >= 44 pt; `ui_remember` for rects that are not targets. Screens enter (layer slides in, rows stagger); toasts and notices also exit.
+- Settings -> Animații interfață (`ui_motion` 0 full / 1 reduced; iOS Reduce Motion forces 1); `ui_sounds` (was `marker_sounds`, migrated), `haptics`.
+- `--autotest ui` (all windows incl. `MG_WINDOW=iphone|iphone-flip|ipad`), perf scenario `ui_juice`; the perf gate checks `ui.anim` + `ui.fx` and `render.ui` against the UI-1 estimates and at most 3 UI draws.
 
 ## Networking
 
@@ -487,7 +497,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
-- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`) writes `perf_SCENARIO.json` to
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `ui_juice`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.

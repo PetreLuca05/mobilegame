@@ -217,7 +217,7 @@ static void title_block(Ui *ui, const char *title, float x, float y, float w, bo
     const float size = 44.0f, lip = 3.0f;
     const float tx = centred ? x + (w - ui_text_w(ui, TEXT_FACE_DISPLAY, title, size)) * 0.5f : x;
     ui_text(ui, TEXT_FACE_DISPLAY, tx, y + lip - 4.0f, size, ui_rgba(k_ui.ink), title);
-    ui_text(ui, TEXT_FACE_DISPLAY, tx, y - 4.0f, size, ui_rgba(0xFFFFFFFF), title);
+    ui_text(ui, TEXT_FACE_DISPLAY, tx, y - 4.0f, size, ui_rgba(k_ui.white), title);
 }
 
 /* greedy word wrap; returns the height used */
@@ -288,7 +288,7 @@ static bool pill(Ui *ui, const char *id, float x, float y, float w, uint32_t bg,
     const bool hit = ui_button_v(ui, key, x, y, w, 54.0f, busy ? UI_V_DISABLED : UI_V_SECONDARY, UI_F_SMALL);
     const UiColor ink = ui_rgba(k_ui.ink);
     if (mark == 1) { /* Google "G" */
-        ui_text_c(ui, TEXT_FACE_DISPLAY, x + 30.0f, y + 24.0f, 24.0f, ui_rgba(0x4285F4FF), "G");
+        ui_text_c(ui, TEXT_FACE_DISPLAY, x + 30.0f, y + 24.0f, 24.0f, ui_rgba(k_ui.brand_google), "G");
     } else if (mark == 2) { /* simple apple: body, bite, leaf */
         ui_circle(ui->gfx, ui->font, x + 27.0f, y + 27.0f, 9.0f, ink);
         ui_circle(ui->gfx, ui->font, x + 33.0f, y + 27.0f, 9.0f, ink);
@@ -539,7 +539,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
     head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, chip_name, chip_r, chip_y);
     if (chip_held) {
-        ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(0xFFFFFF26));
+        ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(k_ui.glass));
     }
     if (ctx->lobby_visible) {
         lobby_panel(f, ui, app, ctx, chip_y + 44.0f + 8.0f, &a);
@@ -548,7 +548,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         char n[8];
         SDL_snprintf(n, sizeof(n), "%d", ctx->friend_requests);
         ui_circle(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 11.0f, ui_rgba(k_ui.bad));
-        ui_text_c(ui, TEXT_FACE_DISPLAY, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(0xFFFFFFFF), n);
+        ui_text_c(ui, TEXT_FACE_DISPLAY, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(k_ui.white), n);
     }
     /* the rows scroll between the divider and the account line when the screen is short */
     const float fy = h - EDGE - 16.0f;
@@ -589,7 +589,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
     }
     float vw = text_width(ui->font, ctx->version, 13.0f);
-    ui_text(ui, TEXT_FACE_BOLD, w - EDGE - vw, fy, 13.0f, ui_rgba(0xFFFFFFA0), ctx->version);
+    ui_text(ui, TEXT_FACE_BOLD, w - EDGE - vw, fy, 13.0f, ui_rgba(k_ui.white_soft), ctx->version);
 
     if (f->confirm_new) { /* overwrite dialog */
         float dw = 360.0f, dh = 160.0f, dx, dy;
@@ -648,7 +648,7 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_LOADING: {
         float bw = app->width_pt * 0.4f, bx = (app->width_pt - bw) * 0.5f, by = app->height_pt * 0.82f;
-        ui_text_c(ui, TEXT_FACE_DISPLAY, app->width_pt * 0.5f, by - 24.0f, 18.0f, ui_rgba(0xFFFFFFFF), str("loading"));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, app->width_pt * 0.5f, by - 24.0f, 18.0f, ui_rgba(k_ui.white), str("loading"));
         ui_progress(ui, "loading", bx, by, bw, k_ui.progress_h, ctx->load_progress);
         a = FE_LOAD_STEP;
         break;

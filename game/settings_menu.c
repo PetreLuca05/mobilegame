@@ -41,7 +41,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
     }
     y = sy + 52.0f;
-    ui_rect(ui->gfx, ui->font, x, y - 6.0f, w, 1.0f, ui_rgba(0xFFFFFF22));
+    ui_rect(ui->gfx, ui->font, x, y - 6.0f, w, 1.0f, ui_rgba(k_ui.hairline));
     y += 6.0f;
 #endif
     float cx = x, cy = y;
@@ -319,7 +319,7 @@ static void lobby_column(SettingsMenu *m, Ui *ui, MenuAction *action, float x, f
         char n[8];
         SDL_snprintf(n, sizeof(n), "%d", m->friends->incoming);
         ui_circle(ui->gfx, ui->font, x + w - 24.0f, y + row * 0.5f, 12.0f, ui_rgba(k_ui.bad));
-        text_draw_centered(ui->gfx, ui->font, x + w - 24.0f, y + row * 0.5f, 13.0f, ui_rgba(0xFFFFFFFF), n);
+        text_draw_centered(ui->gfx, ui->font, x + w - 24.0f, y + row * 0.5f, 13.0f, ui_rgba(k_ui.white), n);
     }
     y += row + gap + 2.0f;
     SDL_snprintf(label, sizeof(label), "%s (%d/%d)", str("lobby_players"), session_player_count(se), LOBBY_MAX_PLAYERS);

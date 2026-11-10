@@ -19,6 +19,9 @@ typedef struct UiStyleTable {
     uint32_t disabled, disabled_lip, disabled_text;
     uint32_t ok, ok_lip, bad, bad_lip;
     uint32_t coin;
+    uint32_t white, white_soft, ink_lip, hairline, glass; /* text on colour; version; the ink pill's lip; dividers; chip on the 3D */
+    uint32_t status_off, status_menu, status_game;     /* friends' presence dots */
+    uint32_t brand_google;
     uint32_t confetti[4];
     uint32_t scrim;
     uint32_t highlight, highlight_accent; /* button top band: white 55 %, 30 % on accent */
@@ -59,6 +62,9 @@ static const UiStyleTable k_ui = {
     .disabled = 0xE3EFECFF, .disabled_lip = 0xC5D8D3FF, .disabled_text = 0x4F6965FF,
     .ok = 0x1A7F45FF, .ok_lip = 0x0F5A2FFF, .bad = 0xC93A3AFF, .bad_lip = 0x8E2424FF,
     .coin = 0xF2A900FF,
+    .white = 0xFFFFFFFF, .white_soft = 0xFFFFFFA0, .ink_lip = 0x0D2626FF, .hairline = 0xFFFFFF22, .glass = 0xFFFFFF26,
+    .status_off = 0x8A8F98FF, .status_menu = 0x3B82F6FF, .status_game = 0x34C759FF,
+    .brand_google = 0x4285F4FF,
     .confetti = {0xFFC933FF, 0xFF7A6BFF, 0x12A594FF, 0xFFFFFFFF},
     .scrim = 0x173A3A59, /* 35 % */
     .highlight = 0xFFFFFF8C, .highlight_accent = 0xFFFFFF4D, .fill_highlight = 0xFFFFFF59,

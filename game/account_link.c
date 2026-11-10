@@ -92,7 +92,7 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
         }
         const bool loading = l->state == AL_LOADING || (l->state == AL_MERGING && l->merge_step >= 3);
         spinner(ui, w * 0.5f, ph * 0.5f - 18.0f, now);
-        ui_text_c(ui, TEXT_FACE_DISPLAY, w * 0.5f, ph * 0.5f + 30.0f, 18.0f, ui_rgba(0xFFFFFFFF), str(loading ? "link_step_load" : "link_step_connect"));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, w * 0.5f, ph * 0.5f + 30.0f, 18.0f, ui_rgba(k_ui.white), str(loading ? "link_step_load" : "link_step_connect"));
         return;
     }
     const float dw = mg_minf(440.0f, w - 48.0f), dx = (w - dw) * 0.5f;
@@ -145,7 +145,7 @@ void account_link_draw(AccountLink *l, Ui *ui, HeadIcons *h, MgApp *app, double 
     ui_panel(ui, dx, dy, dw, dh);
     head_icon_draw(h, ui->gfx, ui->font, &l->loaded.skin, l->loaded.display_name, dx + dw * 0.5f, dy + 50.0f, 64.0f, false);
     SDL_snprintf(label, sizeof(label), str("link_welcome_back"), l->loaded.display_name);
-    text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 104.0f, 20.0f, ui_rgba(0xFFFFFFFF), label);
+    text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 104.0f, 20.0f, ui_rgba(k_ui.white), label);
     SDL_snprintf(label, sizeof(label), str("link_summary"), l->loaded.stats.sessions, l->loaded.stats.play_seconds / 60);
     text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 134.0f, 14.0f, ui_rgba(0xFFFFFFB3), label);
     SDL_snprintf(label, sizeof(label), "%s##link_done", str("done"));

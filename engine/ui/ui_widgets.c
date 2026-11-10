@@ -34,7 +34,7 @@ void ui_variant_colors(UiVariant v, UiColor *face, UiColor *lip, UiColor *text)
 {
     *face = C(v == UI_V_PRIMARY ? k_ui.primary : v == UI_V_SECONDARY ? k_ui.surface : v == UI_V_ACCENT ? k_ui.accent : v == UI_V_DESTRUCTIVE ? k_ui.bad : v == UI_V_OK ? k_ui.ok : k_ui.disabled);
     *lip = C(v == UI_V_PRIMARY ? k_ui.primary_lip : v == UI_V_SECONDARY ? k_ui.secondary_lip : v == UI_V_ACCENT ? k_ui.accent_lip : v == UI_V_DESTRUCTIVE ? k_ui.bad_lip : v == UI_V_OK ? k_ui.ok_lip : k_ui.disabled_lip);
-    *text = C(v == UI_V_PRIMARY || v == UI_V_SECONDARY ? k_ui.ink : v == UI_V_DISABLED ? k_ui.disabled_text : 0xFFFFFFFFu);
+    *text = C(v == UI_V_PRIMARY || v == UI_V_SECONDARY ? k_ui.ink : v == UI_V_DISABLED ? k_ui.disabled_text : k_ui.white);
 }
 
 void ui_icon(Ui *ui, UiIcon icon, float cx, float cy, float size, UiColor c)
@@ -270,7 +270,7 @@ bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel,
     ui_shape(ui->gfx, &(UiShape){.x = x + inner + seg * at, .y = y + inner, .w = seg, .h = face_h - 2.0f * inner, .radius = k_ui.r_tab - inner, .color = C(k_ui.ink)});
     for (int i = 0; i < n; i++) {
         const float near = 1.0f - mg_minf(fabsf(at - (float)i), 1.0f); /* the indicator over it: white text */
-        const UiColor ink = C(k_ui.ink), white = C(0xFFFFFFFF);
+        const UiColor ink = C(k_ui.ink), white = C(k_ui.white);
         const UiColor tc = {(uint8_t)(ink.r + (white.r - ink.r) * near), (uint8_t)(ink.g + (white.g - ink.g) * near), (uint8_t)(ink.b + (white.b - ink.b) * near), 255};
         float size = k_ui.t_body;
         const float tw = ui_text_w(ui, TEXT_FACE_BOLD, labels[i], size);
@@ -356,9 +356,9 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
     const bool clicked = state == UI_ANS_DEFAULT && ui_press(ui, id, x, y, w, h, &held, false);
     UiColor face = C(k_ui.surface_tint), lip_c = C(k_ui.secondary_lip), tc = C(k_ui.ink);
     if (state == UI_ANS_OK) {
-        face = C(k_ui.ok), lip_c = C(k_ui.ok_lip), tc = C(0xFFFFFFFF);
+        face = C(k_ui.ok), lip_c = C(k_ui.ok_lip), tc = C(k_ui.white);
     } else if (state == UI_ANS_BAD) {
-        face = C(k_ui.bad), lip_c = C(k_ui.bad_lip), tc = C(0xFFFFFFFF);
+        face = C(k_ui.bad), lip_c = C(k_ui.bad_lip), tc = C(k_ui.white);
     }
     const float alpha = state == UI_ANS_DIM ? 0.55f : 1.0f;
     const float dx = ui->anim ? ui_anim_get(ui->anim, key, UI_X, 0.0f) : 0.0f;
