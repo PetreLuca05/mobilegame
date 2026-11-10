@@ -224,7 +224,9 @@ typedef struct Game {
     int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
-    UiAnim ui_anim;        /* UI-1: the tween pool */
+    UiAnim ui_anim;
+    int ui_screen_key; /* which screen the UI layer shows (its enter starts on a change) */
+    double ui_screen_t0;        /* UI-1: the tween pool */
     UiFx ui_fx;            /* UI-1: particles, rings, reward tokens, banner, sounds, haptics */
 } Game;
 
@@ -2953,7 +2955,14 @@ static void game_frame_inner(MgApp *app, float alpha)
     ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || app_reduce_motion());
     g->ui_fx.haptics = s->haptics;
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
-    gfx_ui_screen(app->gfx, ui_fx_shake_x(&g->ui_fx), 0.0f, 1.0f); /* the UI shake: UI only, never the camera */
+    { /* screen changes enter; the UI shake moves UI only, never the camera */
+        const int key = !g->playing ? 100 + (int)g->fe.state : g->fpage.open ? 3 : g->menu.open && !g->menu.card ? 2 : 0;
+        if (key != g->ui_screen_key) {
+            g->ui_screen_key = key;
+            g->ui_screen_t0 = app->time;
+        }
+        ui_screen_enter(&g->ui, (float)(app->time - g->ui_screen_t0), ui_fx_shake_x(&g->ui_fx));
+    }
     bool back = app->input.key_pressed[SDL_SCANCODE_AC_BACK] || app->input.key_pressed[SDL_SCANCODE_ESCAPE];
     if (!g->playing) {
         frontend_flow(g, app, back);

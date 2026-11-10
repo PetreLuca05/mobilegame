@@ -26,6 +26,8 @@ typedef struct Ui {
     const TextFont *display, *bold;
     bool press_inside;    /* the active widget is drawn pressed (finger still inside) */
     bool modal;           /* a modal is up: idle loops stop under it */
+    float scr_dx, scr_alpha; /* the screen layer this frame (enter + UI shake): ui_screen_enter */
+    float scr_age;           /* seconds since the current screen entered */
     /* tappable widgets of the last frame (self-tests tap them by id) */
     struct {
         uint32_t key;

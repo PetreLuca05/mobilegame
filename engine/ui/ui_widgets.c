@@ -399,6 +399,40 @@ void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y)
 
 void ui_modal_end(Ui *ui) { gfx_ui_group_off(ui->gfx); }
 
+#define UI_ENTER_DX 56.0f /* pt: where a screen's layer comes in from (the left edge side) */
+
+/* dx and alpha of something that entered `t` seconds ago */
+static void enter_at(const Ui *ui, float t, float *dx, float *alpha)
+{
+    const bool reduced = ui->anim && ui->anim->reduced;
+    if (reduced) {
+        *dx = 0.0f, *alpha = mg_saturate(t / k_ui.reduced_s);
+        return;
+    }
+    const float u = mg_saturate(t / k_ui.enter_s);
+    *dx = -UI_ENTER_DX * (1.0f - ui_bezier(&k_ui.enter, u));
+    *alpha = mg_saturate(t / k_ui.exit_fade_s);
+}
+
+void ui_screen_enter(Ui *ui, float age, float shake_x)
+{
+    float dx, alpha;
+    enter_at(ui, age, &dx, &alpha);
+    ui->scr_age = age;
+    ui->scr_dx = dx + shake_x, ui->scr_alpha = alpha;
+    gfx_ui_screen(ui->gfx, ui->scr_dx, 0.0f, ui->scr_alpha);
+}
+
+void ui_stagger(Ui *ui, int index)
+{
+    const int k = index < 0 ? 0 : index < k_ui.stagger_max - 1 ? index : k_ui.stagger_max - 1;
+    float dx, alpha;
+    enter_at(ui, ui->scr_age - k_ui.stagger_s * (float)k, &dx, &alpha);
+    gfx_ui_screen(ui->gfx, ui->scr_dx + dx, 0.0f, ui->scr_alpha * alpha);
+}
+
+void ui_stagger_end(Ui *ui) { gfx_ui_screen(ui->gfx, ui->scr_dx, 0.0f, ui->scr_alpha); }
+
 void ui_shake(Ui *ui, const char *id, float amp)
 {
     if (!ui->anim || ui->anim->reduced) {

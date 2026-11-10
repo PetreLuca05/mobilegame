@@ -305,6 +305,7 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
     (void)app;
     char id[96];
     SDL_snprintf(id, sizeof(id), "%s##menurow%d", label, index);
+    ui_stagger(ui, index);
     const bool hit = ui_button_v(ui, id, x, y, w, ROW_H, disabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
                                  highlighted && !f->confirm_new ? UI_F_BREATHE : 0);
     if (tag) {
@@ -313,6 +314,7 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
         ui_shape(ui->gfx, &(UiShape){.x = x + w - tw - 12.0f, .y = ty, .w = tw, .h = 24.0f, .radius = -1.0f, .color = ui_rgba(k_ui.surface_tint)});
         ui_text_c(ui, TEXT_FACE_BOLD, x + w - tw * 0.5f - 12.0f, ty + 12.0f, 13.0f, ui_rgba(k_ui.teal_text), tag);
     }
+    ui_stagger_end(ui);
     if (hit) {
         f->clicked = true;
     }

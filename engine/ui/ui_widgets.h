@@ -44,6 +44,12 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
 /* Scrim + a centred card that enters from 0.8 (550 ms); returns the card's rect. */
 void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y);
 void ui_modal_end(Ui *ui); /* after the card's content: ends its enter scale */
+/* Screen changes: the whole UI layer enters from the left edge (550 ms, the enter curve; reduced:
+ * a 150 ms fade). `age` = seconds since the screen changed, `shake_x` the UI shake. */
+void ui_screen_enter(Ui *ui, float age, float shake_x);
+/* Lists and menu rows: row `index` enters 40 ms after the one before (at most 8 apart); end restores the screen layer. */
+void ui_stagger(Ui *ui, int index);
+void ui_stagger_end(Ui *ui);
 /* Shake a widget (T2-): 10 pt along x, 320 ms; ui_shake_x reads it. */
 void ui_shake(Ui *ui, const char *id, float amp);
 float ui_shake_x(const Ui *ui, const char *id);

@@ -108,6 +108,7 @@ static float tab_friends(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons
             const bool away = f->stale || f->status[i] == NET_FS_OFFLINE;
             const bool waiting = l->state == LOBBY_JOINING && strcmp(l->join_host, f->id[i]) == 0;
             SDL_snprintf(id, sizeof(id), "frow_%s", f->code[i]);
+            ui_stagger(ui, shown - 1);
             ui_row(ui, id, x - 6.0f, y, w + 12.0f, ROW_H, false);
             head_icon_draw(h, ui->gfx, ui->font, &f->skin[i], f->name[i], x + head * 0.5f, y + ROW_H * 0.5f, head, away);
             /* grey offline, blue in the menu, green in a game */
@@ -154,6 +155,7 @@ static float tab_friends(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons
                     disabled_chip(ui, str("friend_invite"), rx - bw, y + 6.0f, bw);
                 }
             }
+            ui_stagger_end(ui);
             y += ROW_H + 4.0f;
         }
     }
@@ -182,6 +184,7 @@ static float tab_requests(Ui *ui, Friends *f, HeadIcons *h, float x, float y, fl
             }
             shown++;
             SDL_snprintf(id, sizeof(id), "frqrow_%s", f->code[i]);
+            ui_stagger(ui, shown - 1);
             ui_row(ui, id, x - 6.0f, y, w + 12.0f, ROW_H, false);
             head_icon_draw(h, ui->gfx, ui->font, &f->skin[i], f->name[i], x + head * 0.5f, y + ROW_H * 0.5f, head, f->stale);
             row_text(ui, f->name[i], f->code[i], x + head + 10.0f, y, f->stale);
@@ -201,6 +204,7 @@ static float tab_requests(Ui *ui, Friends *f, HeadIcons *h, float x, float y, fl
                     friends_remove(f, f->id[i]);
                 }
             }
+            ui_stagger_end(ui);
             y += ROW_H + 4.0f;
         }
         y += in_group ? 8.0f : 0.0f;
