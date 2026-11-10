@@ -286,6 +286,9 @@ set(MG_GAME_SOURCES
   game/prefs.c
   game/save.c
   game/strings.c
+  game/world_data.c
+  game/world_progress.c
+  game/worldmap.c
 )
 
 # --------------------------------------------------------------- targets

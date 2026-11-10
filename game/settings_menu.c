@@ -339,7 +339,11 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
 {
     MenuAction action = MENU_NONE;
     const float row = 50.0f, pad = 18.0f, gutter = 16.0f;
-    const int rows = m->is_guest ? 5 : 4;
+#ifdef MG_PROF
+    const int rows = (m->is_guest ? 5 : 4) + 2; /* + Map, + the test row */
+#else
+    const int rows = (m->is_guest ? 5 : 4) + 1;
+#endif
     const float room = h_pt - safe_t - safe_b - 12.0f;
     const float wanted = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
     const float cw = mg_minf(680.0f, w_pt - 48.0f), ch = mg_minf(wanted, room); /* the column scrolls if it does not fit */
@@ -373,6 +377,20 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     SDL_snprintf(label, sizeof(label), "%s##p_perf", str("performance_row"));
     ui_toggle(ui, label, bx, y + 7.0f, bw, &s->show_stats);
     y += row + 8.0f;
+    SDL_snprintf(label, sizeof(label), "%s##p_map", str("map_row"));
+    if (ui_button(ui, label, bx, y, bw, row, false)) {
+        action = MENU_OPEN_MAP;
+        m->open = false;
+        m->card = false;
+    }
+    y += row + 8.0f;
+#ifdef MG_PROF
+    SDL_snprintf(label, sizeof(label), "%s##p_progress", str("debug_progress"));
+    if (ui_button(ui, label, bx, y, bw, row, false)) {
+        action = MENU_DEBUG_PROGRESS; /* the card stays up */
+    }
+    y += row + 8.0f;
+#endif
     SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
         action = MENU_MAIN_MENU;

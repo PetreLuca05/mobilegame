@@ -97,5 +97,6 @@
   "link_welcome_back": "Bine ai revenit, %s",
   "link_summary": "%d sesiuni, %d minute jucate",
   "link_row": "Conectează contul",
-  "link_ok": "Cont conectat"
+  "link_ok": "Cont conectat",
+  "wm_provisional": "Hartă provizorie"
 }

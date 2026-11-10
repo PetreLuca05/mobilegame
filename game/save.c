@@ -5,7 +5,8 @@
 #include "core/log.h"
 #include "prefs.h"
 
-#define SAVE_BYTES 56
+#define SAVE_BYTES 88
+#define SAVE_BYTES_V4 56
 #define SAVE_BYTES_V3 52
 #define SAVE_BYTES_V2 48
 
@@ -55,6 +56,9 @@ bool save_write(const SaveGame *s, const char *profile)
     put32(b + 40, (uint32_t)(s->visited_rooms >> 32));
     put32(b + 48, s->npc_seed);
     put32(b + 52, s->npc_tick);
+    SDL_memcpy(b + 56, s->book_id, 16);
+    SDL_memcpy(b + 72, s->level_id, 16);
+    b[56 + 15] = b[72 + 15] = 0;
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     bool ok = SDL_SaveFile(tmp, b, sizeof(b)) && SDL_RenamePath(tmp, path);
     if (!ok) {
@@ -78,7 +82,15 @@ bool save_read(SaveGame *s, const char *profile)
         s->elevator_rides = get32(b + 32);
         s->visited_rooms = (uint64_t)get32(b + 36) | ((uint64_t)get32(b + 40) << 32);
         s->npc_seed = s->version >= 3 && len >= SAVE_BYTES_V3 ? get32(b + 48) : 0;
-        s->npc_tick = s->version >= 4 && len >= SAVE_BYTES ? get32(b + 52) : 0;
+        s->npc_tick = s->version >= 4 && len >= SAVE_BYTES_V4 ? get32(b + 52) : 0;
+        if (s->version >= 5 && len >= SAVE_BYTES) {
+            SDL_memcpy(s->book_id, b + 56, 16);
+            SDL_memcpy(s->level_id, b + 72, 16);
+            s->book_id[15] = s->level_id[15] = 0;
+        } else { /* before WORLD-1 there was one hospital */
+            SDL_snprintf(s->book_id, sizeof(s->book_id), "kumar");
+            SDL_snprintf(s->level_id, sizeof(s->level_id), "gastro");
+        }
     }
     SDL_free(b);
     return ok;

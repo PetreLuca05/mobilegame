@@ -113,6 +113,7 @@ void prefs_load(Prefs *p, const char *profile)
         p->stats_queue.elevator_rides = (int)num(q, "elevator_rides", 0);
         p->stats_queue.rooms_joined = (int)num(q, "rooms_joined", 0);
     }
+    world_progress_read(&p->world, cJSON_GetObjectItemCaseSensitive(j, "world"));
     cJSON_Delete(j);
 }
 
@@ -178,6 +179,7 @@ bool prefs_save(const Prefs *p, const char *profile)
         cJSON_AddNumberToObject(q, "elevator_rides", p->stats_queue.elevator_rides);
         cJSON_AddNumberToObject(q, "rooms_joined", p->stats_queue.rooms_joined);
     }
+    world_progress_write(&p->world, j, "world");
     char *txt = cJSON_Print(j);
     cJSON_Delete(j);
     if (!txt) {

@@ -33,6 +33,8 @@ typedef enum MenuAction {
     MENU_LOBBY_TOGGLE, /* open / locked changed: save it */
     MENU_FRIENDS,      /* open the Friends page */
     MENU_LINK_ACCOUNT, /* pause card: save, close the lobby, go to Settings -> Account */
+    MENU_OPEN_MAP,     /* pause card: save, back to the menu, the island with this hospital selected */
+    MENU_DEBUG_PROGRESS, /* pause card, test builds: this hospital +25 % (wraps after 100) */
 } MenuAction;
 
 typedef struct SettingsAccount {

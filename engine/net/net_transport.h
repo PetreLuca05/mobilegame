@@ -67,11 +67,21 @@ typedef struct NetStats {
 } NetStats;
 
 /* The signed-in player's account (profiles + stats rows). */
+/* WORLD-1: the last hospital played in a book (book_state; the newer choice wins) */
+#define NET_MAX_BOOKS 4
+typedef struct NetBookState {
+    char book[24];
+    char level[24];
+    double updated_ms; /* unix ms */
+} NetBookState;
+
 typedef struct NetProfile {
     char user_id[NET_ID_LEN];
     char display_name[NET_NAME_LEN];
     NetSkin skin;
     NetStats stats;
+    int book_count;
+    NetBookState books[NET_MAX_BOOKS];
     bool guest;            /* anonymous user, not linked to Google yet */
     char email[64];        /* Google account, "" for guests */
     char google_name[NET_NAME_LEN]; /* name on the Google account ("" for guests) */
@@ -230,6 +240,8 @@ void net_account_start(NetTransport *n);
 void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *skin);
 /* Store stats totals (coalesced; one PATCH in flight). */
 void net_save_stats(NetTransport *n, const NetStats *totals);
+/* book_state_set: the last hospital of a book, chosen at at_ms (coalesced; an older choice does not overwrite). */
+void net_save_book_state(NetTransport *n, const char *book, const char *level, double at_ms);
 /* Link the guest to Google or Apple ("google" / "apple") with a
  * native-sign-in ID token (+ raw nonce).
  * Success arrives as NET_EV_PROFILE (guest = false), failure as

@@ -74,6 +74,8 @@
 #include "stats.h"
 #include "ui/hud.h"
 #include "ui/touch_controls.h"
+#include "world_data.h"
+#include "worldmap.h"
 
 typedef struct Game {
     Scene *scene;
@@ -215,6 +217,11 @@ typedef struct Game {
     char pending_name[64]; /* Apple full name from the first sign-in */    /* desktop --skin P,H,A: local only, never saved */
     NetSkin override_skin;
     int last_ride_count; /* elevator rides already counted */
+    WorldBooks books;      /* WORLD-1: assets/world/books.json */
+    WorldMap wm;           /* the island; loaded on first open */
+    bool wm_tried;
+    int play_level;        /* this game's level in book 0 (the save's level) */
+    char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -363,6 +370,8 @@ static void on_net_event(void *user, const NetEvent *e)
 }
 
 static double wall_clock_ms(void);
+static void maps_tag_update(Game *g);
+static bool open_map(Game *g, MgApp *app, WmState state);
 
 /* One head icon, for ui/head_icons.c: the interact preview's floating head, turned 15 degrees */
 static void draw_head_icon(void *user, GfxContext *gfx, const NetSkin *skin)
@@ -410,6 +419,16 @@ bool game_init(MgApp *app)
     prefs_load(&g->prefs, g->profile_name);
     g->settings = g->prefs.settings; /* per device */
     g->has_save = save_exists(g->profile_name);
+    if (!world_books_load(&g->books)) {
+        mg_log_error("world: assets/world/books.json has no book");
+        return false;
+    }
+    for (int i = 1; i + 3 < app->argc; i++) { /* --debug level-progress <level> <percent> (test builds) */
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "level-progress") == 0) {
+            world_debug_progress(&g->prefs.world, app->argv[i + 2], SDL_atoi(app->argv[i + 3]));
+        }
+    }
+    maps_tag_update(g);
     touch_controls_default_config(&g->touch_cfg);
 #if !PLAYER_SPRINT_ENABLED
     g->touch_cfg.sprint_at = 2.0f; /* never: no rim sprint, no knob highlight */
@@ -540,6 +559,10 @@ bool game_init(MgApp *app)
         if (g->fe.state == FE_FRIENDS) {
             friends_page_open(&g->fpage, &g->friends);
         }
+        if (SDL_strcmp(fe_arg, "map") == 0 || SDL_strcmp(fe_arg, "books") == 0) { /* WORLD-1: the island */
+            g->fe.state = FE_MAIN_MENU;
+            open_map(g, app, fe_arg[0] == 'b' ? WM_BOOKS : WM_ARRIVED);
+        }
     }
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
         play_now = false;
@@ -611,6 +634,9 @@ void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
     if (!g->playing) {
+        if (g->fe.state == FE_MAP) {
+            worldmap_tick(&g->wm, MG_TICK_DT);
+        }
         if (g->menu_world_on && g->npcs_on && !g->settings.freeze_npcs) { /* the people outside the menu */
             npc_step(g, app);
         }
@@ -816,6 +842,87 @@ static void write_save(Game *g)
     g->has_save = save_write(s, g->profile_name) || g->has_save;
 }
 
+/* ------------------------------------------------------------ WORLD-1 */
+
+static const WorldBookDef *cur_book(const Game *g) { return &g->books.books[0]; }
+
+static void maps_tag_update(Game *g)
+{
+    const WorldBookDef *b = cur_book(g);
+    const IslandCompletion ic = world_island_completion(&g->prefs.world, b);
+    if (ic.known) {
+        SDL_snprintf(g->maps_tag, sizeof(g->maps_tag), "%s %d%%", b->name, ic.percent);
+    } else {
+        SDL_snprintf(g->maps_tag, sizeof(g->maps_tag), "%s %s", b->name, str("wm_unknown"));
+    }
+}
+
+/* book_state: send our newer choice once the account is there */
+static void push_book_state(Game *g)
+{
+    if (!g->net || !g->profile_loaded) {
+        return;
+    }
+    for (int i = 0; i < g->prefs.world.book_count; i++) {
+        WorldBookState *s = &g->prefs.world.books[i];
+        if (s->unsynced && s->last_level[0]) {
+            net_save_book_state(g->net, s->book, s->last_level, s->updated_ms);
+            s->unsynced = false;
+        }
+    }
+}
+
+static int level_index(const Game *g, const char *id)
+{
+    const int i = world_level_find(cur_book(g), id);
+    return i < 0 ? 0 : i;
+}
+
+/* The island: BOOKS after New Game, ARRIVED on the last played hospital from Maps and the pause card. */
+static bool open_map(Game *g, MgApp *app, WmState state)
+{
+    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    if (!g->wm.loaded && !g->wm_tried) {
+        g->wm_tried = true;
+        prof_allocs_exempt(true); /* once: the island's meshes */
+        worldmap_load(&g->wm, cur_book(g), 1, app->gfx, &app->perm);
+        prof_allocs_exempt(false);
+        arena_release_unused(&app->perm);
+    }
+    if (!g->wm.loaded) {
+        frontend_toast(&g->fe, "Could not load the map", app->time);
+        return false;
+    }
+    const WorldBookState *bs = world_book_state(&g->prefs.world, cur_book(g)->id);
+    const int level = bs->last_level[0] ? level_index(g, bs->last_level) : 0;
+    worldmap_open(&g->wm, state, level, state == WM_BOOKS ? bs->ambulance_s : -1.0f, &g->prefs.world);
+    maps_tag_update(g);
+    g->fe.depth = 0;
+    g->fe.state = FE_MAIN_MENU;
+    frontend_go(&g->fe, FE_MAP);
+    mg_log_info("world: map open (%s) in %.1f ms, level %s", state == WM_BOOKS ? "books" : "arrived", (double)SDL_GetTicksNS() * 1e-6 - t0,
+                cur_book(g)->levels[level].id);
+    return true;
+}
+
+static void start_loading(Game *g, int what);
+
+/* Join on the card: the level's scene through the normal New Game / lobby path. */
+static void join_level(Game *g, MgApp *app, int level)
+{
+    const WorldBookDef *b = cur_book(g);
+    const WorldLevelDef *lv = &b->levels[level];
+    g->play_level = level;
+    world_set_last_level(&g->prefs.world, b->id, lv->id, worldmap_stop_s(&g->wm, level), wall_clock_ms());
+    push_book_state(g);
+    save_prefs(g);
+    SaveGame cur;
+    const bool same = g->has_save && save_read(&cur, g->profile_name) && SDL_strcmp(cur.book_id, b->id) == 0 && SDL_strcmp(cur.level_id, lv->id) == 0;
+    mg_log_info("world: join %s/%s (scene %s%s)", b->id, lv->id, lv->scene, same ? ", where the save left off" : "");
+    (void)app;
+    start_loading(g, same ? 3 : 5);
+}
+
 /* Back to the main menu from the hospital (leaves or closes the lobby). */
 static void leave_play(Game *g, MgApp *app)
 {
@@ -840,6 +947,7 @@ static void leave_play(Game *g, MgApp *app)
     g->menu.open = false;
     g->fe.depth = 0;
     g->fe.state = FE_MAIN_MENU;
+    maps_tag_update(g);
     save_prefs(g);
 }
 
@@ -923,6 +1031,17 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
     case MENU_MAIN_MENU:
         leave_play(g, app);
         break;
+    case MENU_OPEN_MAP:
+        leave_play(g, app);
+        open_map(g, app, WM_ARRIVED);
+        break;
+    case MENU_DEBUG_PROGRESS: {
+        const char *id = cur_book(g)->levels[g->play_level].id;
+        const int pct = world_completion_percent(world_level_completion(&g->prefs.world, cur_book(g)->id, id));
+        world_debug_progress(&g->prefs.world, id, pct >= 100 ? 0 : pct + 25);
+        mg_log_info("world: test progress %s = %d%%", id, pct >= 100 ? 0 : pct + 25);
+        break;
+    }
     case MENU_EDIT_CHARACTER:
         if (g->playing) { /* the world stays loaded; Done comes back here */
             g->playing = false;
@@ -1131,6 +1250,11 @@ static void account_loaded(Game *g, MgApp *app)
         }
     }
     g->pending_name[0] = 0;
+    for (int i = 0; i < g->profile.book_count; i++) { /* book_state: the newer choice wins */
+        const NetBookState *b = &g->profile.books[i];
+        world_progress_merge_remote(&g->prefs.world, b->book, b->level, b->updated_ms);
+    }
+    push_book_state(g);
     g->prefs.has_profile_cache = true;
     SDL_snprintf(g->prefs.cache_name, sizeof(g->prefs.cache_name), "%s", g->profile.display_name);
     g->prefs.cache_skin = g->profile.skin;
@@ -1296,7 +1420,7 @@ static void load_step(Game *g, MgApp *app)
         break;
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
-        g->offline_play = g->pending_play == 0 || g->pending_play == 3;
+        g->offline_play = g->pending_play == 0 || g->pending_play == 3 || g->pending_play == 5;
         net_set_quiet(g->net, g->offline_play && !g->friends.signed_in); /* online, a solo game is a lobby */
         g->npc_epoch_ms = g->pending_play == 4 ? g->lobby.grant.start_tick : 0.0;
         g->save_play_base = g->save_rides_base = 0;
@@ -1312,6 +1436,16 @@ static void load_step(Game *g, MgApp *app)
             }
             g->save_play_base = g->save.play_seconds - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = g->save.elevator_rides - (uint32_t)g->stats.rides;
+            g->play_level = level_index(g, g->save.level_id);
+            world_set_last_level(&g->prefs.world, cur_book(g)->id, cur_book(g)->levels[g->play_level].id, -1.0f, wall_clock_ms());
+            push_book_state(g);
+        } else if (g->pending_play == 5) { /* Join: the level from its entrance; play time and rides carry on */
+            SaveGame prev;
+            const bool had = save_read(&prev, g->profile_name);
+            SDL_zero(g->save);
+            g->npc_resume_tick = 0;
+            g->save_play_base = (had ? prev.play_seconds : 0u) - (uint32_t)g->stats.play_seconds;
+            g->save_rides_base = (had ? prev.elevator_rides : 0u) - (uint32_t)g->stats.rides;
         } else if (g->pending_play == 0) { /* New Game: a clean slot */
             save_delete(g->profile_name);
             g->has_save = false;
@@ -1320,6 +1454,11 @@ static void load_step(Game *g, MgApp *app)
             g->save_play_base = (uint32_t)0 - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = (uint32_t)0 - (uint32_t)g->stats.rides;
         }
+        if (g->pending_play == 4) { /* a friend's game: the host's level */
+            g->play_level = SDL_clamp(g->lobby.grant.map_id, 0, cur_book(g)->level_count - 1);
+        }
+        SDL_snprintf(g->save.book_id, sizeof(g->save.book_id), "%s", cur_book(g)->id);
+        SDL_snprintf(g->save.level_id, sizeof(g->save.level_id), "%s", cur_book(g)->levels[g->play_level].id);
         g->next_save = app->time + 30.0;
         autonav_clear(&g->autonav);
         g->active_marker = 0;
@@ -1335,7 +1474,7 @@ static void load_step(Game *g, MgApp *app)
                 g->npc_epoch_ms = wall_clock_ms() - (double)g->npc_resume_tick / 0.06;
                 session_set_npc_epoch(&g->session, g->npc_epoch_ms);
             }
-            lobby_start_host(&g->lobby, 0, npc_seed_for(g, app)); /* online when signed in; offline nothing leaves the device */
+            lobby_start_host(&g->lobby, g->play_level, npc_seed_for(g, app)); /* map_id = the level; online when signed in, offline nothing leaves the device */
         }
         g->playing = true;
         g->fe.depth = 0;
@@ -1462,6 +1601,25 @@ static void lobby_layout_check(Game *g, MgApp *app, const FrontendCtx *ctx)
     app->quit_requested = true;
 }
 
+/* FE_MAP: the island instead of the menu's backdrop */
+static void map_flow(Game *g, MgApp *app)
+{
+    (void)menu_world(g, app); /* off: the hospital's crowd stops */
+    GfxSceneParams sp = {0};
+    scene_defaults(&sp, (float)app->time, &g->day_state);
+    g->wm.join_disabled = g->lobby_visible && !lobby_is_host(&g->lobby); /* only the host starts the game */
+    const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    world_book_state(&g->prefs.world, cur_book(g)->id)->ambulance_s = g->wm.amb_s;
+    draw_notices(g, app);
+    frontend_toast_draw(&g->fe, &g->ui, app);
+    if (a == WM_BACK) {
+        save_prefs(g);
+        frontend_back(&g->fe);
+    } else if (a == WM_JOIN) {
+        join_level(g, app, g->wm.selected);
+    }
+}
+
 /* Everything outside PLAY: menu scene, screens, their actions. */
 static void frontend_flow(Game *g, MgApp *app, bool back)
 {
@@ -1494,6 +1652,10 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = i == 0;
         }
     }
+    if (f->state == FE_MAP) {
+        map_flow(g, app);
+        return;
+    }
     const bool world_behind = menu_world(g, app);
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
@@ -1509,6 +1671,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        &g->heads,
                        g->load_step / 2.0f,
                        MG_VERSION};
+    ctx.maps_tag = g->maps_tag;
     ctx.lobby_visible = g->lobby_visible;
     ctx.lobby_host = g->demo_lobby || lobby_is_host(&g->lobby);
     ctx.lobby_open = g->lobby.open;
@@ -1598,8 +1761,16 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             f->state = FE_MAIN_MENU;
         }
         break;
-    case FE_NEW_GAME:
-        start_loading(g, 0);
+    case FE_NEW_GAME: /* a clean slot, the ambulance on the start pad, the island's title */
+        save_delete(g->profile_name);
+        g->has_save = false;
+        SDL_zero(g->save);
+        world_progress_reset(&g->prefs.world, cur_book(g)->id, wall_clock_ms());
+        save_prefs(g);
+        open_map(g, app, WM_BOOKS);
+        break;
+    case FE_OPEN_MAPS:
+        open_map(g, app, WM_ARRIVED);
         break;
     case FE_CONTINUE:
         start_loading(g, 3);
@@ -2566,7 +2737,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     if ((int)g->fe.state != g->logged_fe) { /* screen changes, for device logs */
         static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU",
-                                            "SETTINGS", "FRIENDS", "LOADING", "PLAY"};
+                                            "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
         g->logged_fe = (int)g->fe.state;
         mg_log_info("frontend: %s", names[g->logged_fe]);
     }
@@ -2583,7 +2754,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         {
             const FeState st = g->fe.state;
             lobby_set_menu(&g->lobby, !g->playing && !g->play_paused &&
-                                          (st == FE_MAIN_MENU || st == FE_SETTINGS || st == FE_FRIENDS || (st == FE_CREATOR && g->prefs.onboarding_done)));
+                                          (st == FE_MAIN_MENU || st == FE_SETTINGS || st == FE_FRIENDS || st == FE_MAP || (st == FE_CREATOR && g->prefs.onboarding_done)));
         }
         lobby_tick(&g->lobby, app->time);
         lobby_follow(g, app);

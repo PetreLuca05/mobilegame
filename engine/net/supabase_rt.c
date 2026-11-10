@@ -43,6 +43,7 @@ typedef enum NetCmdType {
     CMD_ACCOUNT,
     CMD_PROFILE_SAVE,
     CMD_STATS_SAVE,
+    CMD_BOOK_SAVE,
     CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
     CMD_SIGN_OUT,
     CMD_QUIET,
@@ -67,6 +68,7 @@ typedef struct NetCmd {
     int32_t npc_seed;
     double start_tick;
     uint32_t save_hash;
+    NetBookState book;
 } NetCmd;
 
 typedef enum LinkStage { LS_NONE, LS_TICKET, LS_CLEAR, LS_SIGNIN, LS_REDEEM, LS_CHECK } LinkStage;
@@ -169,6 +171,8 @@ struct NetTransport {
     NetPeerMeta profile_save;
     bool stats_pending;
     NetStats stats_save;
+    bool book_pending;
+    NetBookState book_save;
     char rest_body[1024];
     /* Google link handoff (under lock) */
     char link_token[2048];
@@ -988,6 +992,10 @@ static void process_commands(NetTransport *n)
             n->stats_save = c.stats;
             n->stats_pending = true;
             break;
+        case CMD_BOOK_SAVE:
+            n->book_save = c.book;
+            n->book_pending = true;
+            break;
         case CMD_LINK_GOOGLE:
             n->link_pending = true;
             n->want_account = true;
@@ -1044,6 +1052,24 @@ static void account_error(NetTransport *n, const char *what, int status)
 }
 
 /* [{"display_name":..,"skin":{..},"stats":{..}}] */
+/* "2026-11-10T08:19:00.123456+00:00" (PostgREST, UTC) -> unix ms; 0 if unreadable */
+static double iso_to_unix_ms(const char *t)
+{
+    int y, mo, d, h, mi;
+    double sec;
+    if (sscanf(t, "%d-%d-%dT%d:%d:%lf", &y, &mo, &d, &h, &mi, &sec) != 6) {
+        return 0.0;
+    }
+    /* days from civil (proleptic Gregorian) */
+    y -= mo <= 2;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const int yoe = y - era * 400;
+    const int doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const double days = (double)era * 146097.0 + (double)doe - 719468.0;
+    return ((days * 24.0 + h) * 60.0 + mi) * 60000.0 + sec * 1000.0;
+}
+
 static void profile_loaded(void *user, int status, const char *body, size_t len)
 {
     NetTransport *n = (NetTransport *)user;
@@ -1076,6 +1102,18 @@ static void profile_loaded(void *user, int status, const char *body, size_t len)
         }
         if (cJSON_IsObject(skin)) {
             read_skin(skin, &p->skin);
+        }
+        const cJSON *bk;
+        cJSON_ArrayForEach(bk, cJSON_GetObjectItemCaseSensitive(row, "book_state"))
+        {
+            const cJSON *id = cJSON_GetObjectItemCaseSensitive(bk, "book_id"), *lv = cJSON_GetObjectItemCaseSensitive(bk, "last_level");
+            const cJSON *at = cJSON_GetObjectItemCaseSensitive(bk, "updated_at");
+            if (p->book_count < NET_MAX_BOOKS && cJSON_IsString(id) && cJSON_IsString(lv)) {
+                NetBookState *b = &p->books[p->book_count++];
+                snprintf(b->book, sizeof(b->book), "%s", id->valuestring);
+                snprintf(b->level, sizeof(b->level), "%s", lv->valuestring);
+                b->updated_ms = cJSON_IsString(at) ? iso_to_unix_ms(at->valuestring) : 0.0;
+            }
         }
         if (cJSON_IsObject(st)) {
 #define NUM(field, key) do { const cJSON *v = cJSON_GetObjectItemCaseSensitive(st, key); \
@@ -1112,6 +1150,15 @@ static void stats_saved(void *user, int status, const char *body, size_t len)
     }
 }
 
+static void book_saved(void *user, int status, const char *body, size_t len)
+{
+    (void)body;
+    (void)len;
+    if (status < 200 || status >= 300) {
+        account_error((NetTransport *)user, "book state save failed", status);
+    }
+}
+
 static void drive_account(NetTransport *n)
 {
     if (n->auth.account_changed) { /* linked, switched or signed out */
@@ -1140,7 +1187,8 @@ static void drive_account(NetTransport *n)
     char path[160];
     if (strcmp(n->loaded_uid, n->auth.user_id) != 0) {
         snprintf(n->loaded_uid, sizeof(n->loaded_uid), "%s", n->auth.user_id);
-        snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*)", n->auth.user_id);
+        snprintf(path, sizeof(path), "profiles?id=eq.%s&select=display_name,skin,stats(*),book_state(book_id,last_level,updated_at)",
+                 n->auth.user_id);
         rest_call(&n->rest, &n->mgr, n->auth.access_token, "GET", path, NULL, profile_loaded, n);
     } else if (n->profile_pending) {
         char name[NET_NAME_LEN * 2];
@@ -1160,6 +1208,11 @@ static void drive_account(NetTransport *n)
         snprintf(path, sizeof(path), "stats?user_id=eq.%s", n->auth.user_id);
         n->stats_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "PATCH", path, n->rest_body,
                                       stats_saved, n);
+    } else if (n->book_pending) {
+        const NetBookState *b = &n->book_save;
+        snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_book\":\"%s\",\"p_level\":\"%s\",\"p_at_ms\":%.0f}", b->book, b->level,
+                 b->updated_ms);
+        n->book_pending = !rest_call(&n->rest, &n->mgr, n->auth.access_token, "POST", "rpc/book_state_set", n->rest_body, book_saved, n);
     }
 }
 
@@ -1344,7 +1397,7 @@ static void link_abort(NetTransport *n, bool signed_in, const char *why)
 static void link_merged(NetTransport *n)
 {
     supa_auth_link_commit(&n->auth);
-    n->stats_pending = n->profile_pending = false; /* the guest's numbers must not land on this account */
+    n->stats_pending = n->profile_pending = n->book_pending = false; /* the guest's numbers must not land on this account */
     SDL_LockMutex(n->lock);
     n->friend_count = 0;
     n->search_count = 0;
@@ -1548,7 +1601,7 @@ static int net_thread(void *arg)
     }
     /* last profile/stats writes before closing (bounded) */
     for (int i = 0; i < 300 && n->want_account && supa_auth_ready(&n->auth) &&
-                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending);
+                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending || n->book_pending);
          i++) {
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         drive_account(n);
@@ -1749,6 +1802,20 @@ void net_save_profile(NetTransport *n, const char *display_name, const NetSkin *
     c.type = CMD_PROFILE_SAVE;
     snprintf(c.meta.name, sizeof(c.meta.name), "%s", display_name);
     c.meta.skin = *skin;
+    push_cmd(n, &c);
+}
+
+void net_save_book_state(NetTransport *n, const char *book, const char *level, double at_ms)
+{
+    if (!n) {
+        return;
+    }
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_BOOK_SAVE;
+    snprintf(c.book.book, sizeof(c.book.book), "%s", book);
+    snprintf(c.book.level, sizeof(c.book.level), "%s", level);
+    c.book.updated_ms = at_ms;
     push_cmd(n, &c);
 }
 

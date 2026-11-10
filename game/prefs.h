@@ -9,6 +9,7 @@
 
 #include "net/net_transport.h"
 #include "settings.h"
+#include "world_progress.h"
 
 typedef struct Prefs {
     GameSettings settings;
@@ -23,6 +24,7 @@ typedef struct Prefs {
     /* stats that could not be flushed (offline) */
     bool has_stats_queue;
     NetStats stats_queue;
+    WorldProgress world; /* WORLD-1: per book, the last hospital and the ambulance ("world") */
 } Prefs;
 
 /* Defaults when the file is missing or broken. */

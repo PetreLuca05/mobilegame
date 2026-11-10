@@ -9,8 +9,8 @@
 #include "strings.h"
 #include "ui/head_icons.h"
 
-#define ROW_H 52.0f
-#define CONTINUE_H 72.0f
+#define ROW_H 46.0f      /* four rows and Continue fit a 390 pt iPhone without scrolling */
+#define CONTINUE_H 64.0f
 #define LOBBY_PANEL_W 270.0f
 #define LOBBY_ROW_H 48.0f
 #define LOBBY_SLOT_FADE_S 0.25f
@@ -582,6 +582,10 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         } else {
             a = FE_NEW_GAME;
         }
+    }
+    y += ROW_H + 8.0f;
+    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, false, guest, ctx->maps_tag) && !guest) {
+        a = FE_OPEN_MAPS;
     }
     y += ROW_H + 8.0f;
     if (menu_row(f, ui, app, 31, str("locker"), x, y, cw, false, false, NULL)) {

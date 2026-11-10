@@ -1,7 +1,8 @@
 /* Front end (M4): one state machine for the screens before and around play.
  *
  *   WELCOME -> USERNAME -> CREATOR -> MAIN_MENU      (first launch)
- *   MAIN_MENU -> New Game / Continue -> LOADING -> PLAY (my own lobby, or offline)
+ *   MAIN_MENU -> New Game / Maps -> MAP (the island, game/worldmap.c) -> Join -> LOADING -> PLAY
+ *   MAIN_MENU -> Continue -> LOADING -> PLAY (my own lobby, or offline; no map in between)
  *   MAIN_MENU -> SETTINGS, FRIENDS
  *
  * Outside PLAY the "locker room" is shown: a 6 x 6 m room with one spot
@@ -27,6 +28,7 @@ typedef enum FeState {
     FE_FRIENDS,       /* drawn by the game, like SETTINGS */
     FE_LOADING,
     FE_PLAY,
+    FE_MAP,           /* WORLD-1: a book's island, drawn by the game (worldmap.c) */
 } FeState;
 
 typedef enum FeAction {
@@ -37,7 +39,8 @@ typedef enum FeAction {
     FE_NAME_DONE,     /* Frontend.name is valid */
     FE_SKIN_CHANGED,  /* creator edited *ctx->skin */
     FE_CREATOR_DONE,
-    FE_NEW_GAME,      /* confirmed (overwrite asked if a save exists) */
+    FE_NEW_GAME,      /* confirmed (overwrite asked if a save exists): reset, the island in BOOKS */
+    FE_OPEN_MAPS,     /* the island, the last played hospital selected */
     FE_CONTINUE,
     FE_OPEN_FRIENDS,
     FE_OPEN_INVITE,   /* the Friends page, in invite mode */
@@ -69,6 +72,7 @@ typedef struct FrontendCtx {
     const LobbyRow *rows;
     int row_count;
     HMM_Vec3 slots[LOBBY_MAX_PLAYERS];
+    const char *maps_tag; /* WORLD-1: the Maps row's island completion, "Kumar 23%" */
 } FrontendCtx;
 
 /* A player standing in the menu scene; goes on fading out after they have left the list */
