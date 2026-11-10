@@ -1,5 +1,5 @@
-/* SDF text and UI shapes (rects, rounded rects, circles) drawn through the
- * gfx UI quad stream. Coordinates are points from the window's top-left. */
+/* SDF text and UI shapes (rects, rounded rects, circles, lines, ui_shape) as gfx UI instances:
+ * the whole UI of a frame is one instanced draw. Coordinates are points from the window's top-left. */
 #ifndef MG_TEXT_H
 #define MG_TEXT_H
 
@@ -61,6 +61,18 @@ void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, fl
  * centred on its origin, readable from +Z, `height_m` = em height in metres.
  * Draw the mesh with mat_text(). */
 void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_m, HMM_Vec4 color, const char *s);
+
+/* UI-1: one rounded shape (a GfxUiInst): radius -1 = fully round; stroke > 0 = an outline that wide;
+ * highlight = a top band of `highlight` pt in color2 (over the face); dashes = dashed ring segments;
+ * sx / sy (0 = 1) scale and rot (radians) turn it about its centre, or its bottom edge with origin_bottom. */
+typedef struct UiShape {
+    float x, y, w, h;
+    float radius, stroke, highlight, dashes;
+    float sx, sy, rot;
+    bool origin_bottom;
+    UiColor color, color2;
+} UiShape;
+void ui_shape(GfxContext *g, const UiShape *sh);
 
 void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c);
 void ui_round_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, float r, UiColor c);

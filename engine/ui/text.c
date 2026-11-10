@@ -148,23 +148,10 @@ float text_width(const TextFont *f, const char *s, float size_pt)
     return w;
 }
 
-static void put_quad(GfxUiVertex *v, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1,
-                     UiColor c)
+static void put_inst(GfxContext *g, int kind, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, UiColor c)
 {
-    const float xs[4] = {x0, x1, x1, x0};
-    const float ys[4] = {y0, y0, y1, y1};
-    const float us[4] = {u0, u1, u1, u0};
-    const float vs[4] = {v0, v0, v1, v1};
-    for (int i = 0; i < 4; i++) {
-        v[i].x = xs[i];
-        v[i].y = ys[i];
-        v[i].u = us[i];
-        v[i].v = vs[i];
-        v[i].r = c.r;
-        v[i].g = c.g;
-        v[i].b = c.b;
-        v[i].a = c.a;
-    }
+    const GfxUiInst in = {{x0, y0, x1 - x0, y1 - y0}, {u0, v0, u1, v1}, {1, 0, 0, 1}, {0}, {0}, {c.r, c.g, c.b, c.a}, {0}, (float)kind, 0};
+    gfx_ui_push(g, &in);
 }
 
 float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s)
@@ -175,13 +162,9 @@ float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_p
     while (*s) {
         const TextGlyph *gl = glyph_for(f, next_cp(&s));
         if (gl->w > 0.0f) {
-            GfxUiVertex *v = gfx_ui_quads(g, 1);
-            if (!v) {
-                break;
-            }
             float x0 = pen + gl->xoff * scale;
             float y0 = baseline + gl->yoff * scale;
-            put_quad(v, x0, y0, x0 + gl->w * scale, y0 + gl->h * scale, gl->u0, gl->v0, gl->u1, gl->v1, c);
+            put_inst(g, GFX_UI_GLYPH, x0, y0, x0 + gl->w * scale, y0 + gl->h * scale, gl->u0, gl->v0, gl->u1, gl->v1, c);
         }
         pen += gl->advance * scale;
     }
@@ -230,64 +213,52 @@ void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, fl
 
 void ui_textured_quad(GfxContext *g, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, UiColor c)
 {
-    GfxUiVertex *v = gfx_ui_quads(g, 1);
-    if (v) {
-        put_quad(v, x0, y0, x1, y1, u0, v0, u1, v1, c);
+    if (u0 >= 2.0f) { /* the head atlas (u + 2) */
+        put_inst(g, GFX_UI_HEAD, x0, y0, x1, y1, u0 - 2.0f, v0, u1 - 2.0f, v1, c);
+    } else {
+        put_inst(g, GFX_UI_GLYPH, x0, y0, x1, y1, u0, v0, u1, v1, c);
     }
+}
+
+void ui_shape(GfxContext *g, const UiShape *sh)
+{
+    const float r = sh->radius < 0.0f ? mg_minf(sh->w, sh->h) * 0.5f : sh->radius; /* -1 = fully round */
+    const float sx = sh->sx > 0.0f ? sh->sx : 1.0f, sy = sh->sy > 0.0f ? sh->sy : 1.0f;
+    const float cs = cosf(sh->rot), sn = sinf(sh->rot);
+    GfxUiInst in = {{sh->x, sh->y, sh->w, sh->h}, {0}, {cs * sx, sn * sx, -sn * sy, cs * sy}, {0}, {r, sh->stroke, sh->highlight, sh->dashes},
+                    {sh->color.r, sh->color.g, sh->color.b, sh->color.a}, {sh->color2.r, sh->color2.g, sh->color2.b, sh->color2.a}, (float)GFX_UI_SHAPE, 0};
+    if (sh->origin_bottom && sy != 1.0f) { /* scale about the bottom edge, not the centre (press / release) */
+        in.rect[1] += sh->h * 0.5f * (1.0f - sy);
+    }
+    gfx_ui_push(g, &in);
 }
 
 void ui_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, UiColor c)
 {
-    GfxUiVertex *v = gfx_ui_quads(g, 1);
-    if (v) {
-        put_quad(v, x, y, x + w, y + h, f->solid_u, f->solid_v, f->solid_u, f->solid_v, c);
-    }
+    (void)f;
+    ui_shape(g, &(UiShape){.x = x, .y = y, .w = w, .h = h, .color = c});
 }
 
 void ui_line(GfxContext *g, const TextFont *f, float x0, float y0, float x1, float y1, float thick, UiColor c)
 {
-    float dx = x1 - x0, dy = y1 - y0, len = sqrtf(dx * dx + dy * dy);
-    GfxUiVertex *v = gfx_ui_quads(g, 1);
-    if (!v || len < 1e-3f) {
+    (void)f;
+    const float dx = x1 - x0, dy = y1 - y0, len = sqrtf(dx * dx + dy * dy);
+    if (len < 1e-3f) {
         return;
     }
-    float nx = -dy / len * thick * 0.5f, ny = dx / len * thick * 0.5f;
-    const float xs[4] = {x0 + nx, x1 + nx, x1 - nx, x0 - nx}, ys[4] = {y0 + ny, y1 + ny, y1 - ny, y0 - ny};
-    for (int i = 0; i < 4; i++) {
-        v[i] = (GfxUiVertex){xs[i], ys[i], f->solid_u, f->solid_v, c.r, c.g, c.b, c.a};
-    }
+    /* a capsule along the segment: round caps, round joins between strokes */
+    ui_shape(g, &(UiShape){.x = (x0 + x1) * 0.5f - (len + thick) * 0.5f, .y = (y0 + y1) * 0.5f - thick * 0.5f, .w = len + thick, .h = thick, .radius = -1.0f,
+                           .rot = atan2f(dy, dx), .color = c});
 }
 
 void ui_circle(GfxContext *g, const TextFont *f, float cx, float cy, float r, UiColor c)
 {
-    GfxUiVertex *v = gfx_ui_quads(g, 1);
-    if (!v) {
-        return;
-    }
-    float R = r / f->circle_fill; /* quad half-size so the SDF edge lands at r */
-    put_quad(v, cx - R, cy - R, cx + R, cy + R, f->circle_u0, f->circle_v0, f->circle_u1, f->circle_v1, c);
+    (void)f;
+    ui_shape(g, &(UiShape){.x = cx - r, .y = cy - r, .w = 2.0f * r, .h = 2.0f * r, .radius = r, .color = c});
 }
 
 void ui_round_rect(GfxContext *g, const TextFont *f, float x, float y, float w, float h, float r, UiColor c)
 {
-    r = mg_minf(r, mg_minf(w, h) * 0.5f);
-    if (r <= 0.5f) {
-        ui_rect(g, f, x, y, w, h, c);
-        return;
-    }
-    /* cross of three solid rects + four circle quadrants, no overlaps */
-    ui_rect(g, f, x + r, y, w - 2 * r, h, c);
-    ui_rect(g, f, x, y + r, r, h - 2 * r, c);
-    ui_rect(g, f, x + w - r, y + r, r, h - 2 * r, c);
-    float R = r / f->circle_fill;
-    float um = (f->circle_u0 + f->circle_u1) * 0.5f;
-    float vm = (f->circle_v0 + f->circle_v1) * 0.5f;
-    GfxUiVertex *v = gfx_ui_quads(g, 4);
-    if (!v) {
-        return;
-    }
-    put_quad(v + 0, x + r - R, y + r - R, x + r, y + r, f->circle_u0, f->circle_v0, um, vm, c);
-    put_quad(v + 4, x + w - r, y + r - R, x + w - r + R, y + r, um, f->circle_v0, f->circle_u1, vm, c);
-    put_quad(v + 8, x + w - r, y + h - r, x + w - r + R, y + h - r + R, um, vm, f->circle_u1, f->circle_v1, c);
-    put_quad(v + 12, x + r - R, y + h - r, x + r, y + h - r + R, f->circle_u0, vm, um, f->circle_v1, c);
+    (void)f;
+    ui_shape(g, &(UiShape){.x = x, .y = y, .w = w, .h = h, .radius = mg_minf(r, mg_minf(w, h) * 0.5f), .color = c});
 }

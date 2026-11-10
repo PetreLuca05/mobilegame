@@ -11,35 +11,90 @@ struct PSMain_out
 struct PSMain_in
 {
     float2 i_uv [[user(locn0)]];
-    float4 i_col [[user(locn1)]];
+    float2 i_local [[user(locn1)]];
+    float2 i_half_size [[user(locn2)]];
+    float4 i_shape [[user(locn3)]];
+    float4 i_col [[user(locn4)]];
+    float4 i_col2 [[user(locn5)]];
+    float4 i_clip [[user(locn6)]];
+    float3 i_ptk [[user(locn7)]];
 };
 
 fragment PSMain_out PSMain(PSMain_in in [[stage_in]], texture2d<float> u_atlas [[texture(0)]], texture2d<float> u_heads [[texture(1)]], sampler u_sampler [[sampler(0)]], sampler u_heads_sampler [[sampler(1)]])
 {
     PSMain_out out = {};
-    float4 _310;
+    float4 _838;
     do
     {
-        if (in.i_uv.x >= 2.0)
+        if ((in.i_clip.z >= in.i_clip.x) && ((((in.i_ptk.x < in.i_clip.x) || (in.i_ptk.y < in.i_clip.y)) || (in.i_ptk.x > in.i_clip.z)) || (in.i_ptk.y > in.i_clip.w)))
         {
-            float2 _204 = float2(in.i_uv.x - 2.0, in.i_uv.y);
-            float _211 = length(fract(_204 * 8.0) - float2(0.5)) * 2.0;
-            float _214 = fast::max(fwidth(_211), 0.001000000047497451305389404296875);
-            float _219 = 1.0 - smoothstep(1.0 - _214, 1.0, _211);
-            float _225 = smoothstep(0.89999997615814208984375 - _214, 0.89999997615814208984375, _211) * _219;
-            float4 _230 = u_heads.sample(u_heads_sampler, _204);
-            float4 _186 = _230;
-            _310 = float4((mix(_230.xyz, in.i_col.xyz, float3(_225)) * _219) * in.i_col.w, fast::max(_186.w * _219, _225) * in.i_col.w);
+            discard_fragment();
+        }
+        if (in.i_ptk.z > 1.5)
+        {
+            float _498 = length(fract(in.i_uv * 8.0) - float2(0.5)) * 2.0;
+            float _501 = fast::max(fwidth(_498), 0.001000000047497451305389404296875);
+            float _506 = 1.0 - smoothstep(1.0 - _501, 1.0, _498);
+            float _512 = smoothstep(0.89999997615814208984375 - _501, 0.89999997615814208984375, _498) * _506;
+            float4 _517 = u_heads.sample(u_heads_sampler, in.i_uv);
+            float4 _428 = _517;
+            _838 = float4((mix(_517.xyz, in.i_col.xyz, float3(_512)) * _506) * in.i_col.w, fast::max(_428.w * _506, _512) * in.i_col.w);
             break;
         }
-        float4 _265 = u_atlas.sample(u_sampler, in.i_uv);
-        float _266 = _265.x;
-        float _270 = fast::max(fwidth(_266), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
-        float _279 = smoothstep(0.5 - _270, 0.5 + _270, _266) * in.i_col.w;
-        _310 = float4(in.i_col.xyz * _279, _279);
+        if (in.i_ptk.z < 0.5)
+        {
+            float4 _555 = u_atlas.sample(u_sampler, in.i_uv);
+            float _556 = _555.x;
+            float _560 = fast::max(fwidth(_556), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+            float _569 = smoothstep(0.5 - _560, 0.5 + _560, _556) * in.i_col.w;
+            _838 = float4(in.i_col.xyz * _569, _569);
+            break;
+        }
+        float _717 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
+        float2 _724 = (abs(in.i_local) - in.i_half_size) + float2(_717);
+        float2 _708 = _724;
+        float _736 = (length(fast::max(_724, float2(0.0))) + fast::min(fast::max(_708.x, _708.y), 0.0)) - _717;
+        float _833;
+        if (in.i_shape.y > 0.0)
+        {
+            _833 = abs(_736 + (in.i_shape.y * 0.5)) - (in.i_shape.y * 0.5);
+        }
+        else
+        {
+            _833 = _736;
+        }
+        float _604 = fwidth(_833);
+        float _605 = fast::max(_604, 0.001000000047497451305389404296875);
+        float _610 = fast::clamp(0.5 - (_833 / _605), 0.0, 1.0);
+        float _835;
+        if (in.i_shape.w > 0.5)
+        {
+            float _621 = (precise::atan2(in.i_local.y, in.i_local.x) * 0.15915493667125701904296875) + 0.5;
+            float _626 = fract(_621 * in.i_shape.w);
+            float _632 = fast::max(fwidth(_621 * in.i_shape.w), 0.001000000047497451305389404296875);
+            _835 = _610 * (smoothstep(0.0, _632, _626) * (1.0 - smoothstep(0.5 - _632, 0.5, _626)));
+        }
+        else
+        {
+            _835 = _610;
+        }
+        float3 _837;
+        if (in.i_shape.z > 0.0)
+        {
+            float _746 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
+            float2 _753 = (abs(in.i_local) - in.i_half_size) + float2(_746);
+            float2 _737 = _753;
+            _837 = mix(in.i_col.xyz, in.i_col2.xyz, float3((fast::clamp(((in.i_shape.z - in.i_half_size.y) - in.i_local.y) / fast::max(fwidth(in.i_local.y), 0.001000000047497451305389404296875), 0.0, 1.0) * fast::clamp((-((length(fast::max(_753, float2(0.0))) + fast::min(fast::max(_737.x, _737.y), 0.0)) - _746)) / _605, 0.0, 1.0)) * in.i_col2.w));
+        }
+        else
+        {
+            _837 = in.i_col.xyz;
+        }
+        float _696 = in.i_col.w * _835;
+        _838 = float4(_837 * _696, _696);
         break;
     } while(false);
-    out._entryPointOutput = _310;
+    out._entryPointOutput = _838;
     return out;
 }
 

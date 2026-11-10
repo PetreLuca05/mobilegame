@@ -5,7 +5,7 @@
  *   gfx_frame_begin()          acquire swapchain (false = skip frame)
  *   gfx_set_scene()            camera, sun, sky
  *   gfx_draw() ...             queue meshes (fixed-capacity list, no allocs)
- *   gfx_ui_quads() ...         queue UI quads (pt coordinates)
+ *   gfx_ui_push() ...          queue UI instances (pt coordinates)
  *   gfx_frame_end()            reflection pass, main pass, UI, present
  */
 #ifndef MG_GFX_H
@@ -27,12 +27,24 @@ typedef struct GfxVertex {
     uint8_t r, g, b, a;
 } GfxVertex;
 
-/* 20-byte UI vertex; x/y in points from the top-left of the window. */
-typedef struct GfxUiVertex {
-    float x, y;
-    float u, v;
-    uint8_t r, g, b, a;
-} GfxUiVertex;
+/* UI-1: one instance per UI primitive, all of a frame's UI in one instanced draw (ui.vert / ui.frag).
+ * Points from the window's top-left. The quad is `rect` turned and scaled about its centre by the
+ * 2 x 2 `xf` (identity 1 0 0 1; squash, stretch, lines at an angle), then clipped to `clip`.
+ *   GFX_UI_GLYPH  `uv` is the SDF atlas rect, colour = face
+ *   GFX_UI_SHAPE  rounded rectangle by signed distance: shape.x radius, shape.y stroke width (0 = filled),
+ *                 shape.z top highlight band (pt, colour2 over the face), shape.w dashes around a circle (0 none)
+ *   GFX_UI_HEAD   `uv` + 2 in the head atlas, a circle with a colour ring (head_icons.c) */
+enum { GFX_UI_GLYPH, GFX_UI_SHAPE, GFX_UI_HEAD };
+
+typedef struct GfxUiInst {
+    float rect[4];  /* x, y, w, h */
+    float uv[4];    /* u0, v0, u1, v1 */
+    float xf[4];    /* a, b, c, d: x' = a x + c y, y' = b x + d y */
+    float clip[4];  /* x0, y0, x1, y1; set by gfx from gfx_ui_clip */
+    float shape[4];
+    uint8_t color[4], color2[4]; /* rgba */
+    float kind, pad;
+} GfxUiInst; /* 96 bytes */
 
 typedef enum GfxMaterialKind {
     GFX_MAT_UNLIT,  /* vertex colour x tint */
@@ -178,8 +190,8 @@ void gfx_set_lights_per_draw(GfxContext *g, int n);
 /* (Re)allocates shadow textures when sizes change; call outside a frame. */
 bool gfx_set_shadows(GfxContext *g, const GfxShadowConfig *cfg);
 #endif
-/* Returns room for `quad_count` quads (4 vertices each) or NULL if full. */
-GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count);
+/* Queue one UI instance (its clip comes from gfx_ui_clip); false when the frame's UI is full. */
+bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst);
 /* Head icons (ui/head_icons.c): draws between begin and end land in one cell of the
  * 8 x 8 atlas, through a small offscreen pass that only exists on frames that use it.
  * In UI quads, u + 2 samples this atlas. */
@@ -191,7 +203,7 @@ void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM
  * quarter resolution, mixed towards tint.rgb by tint.a, rounded corners.
  * Drawn before (under) all UI quads. Up to 4 per frame. */
 void gfx_ui_blur_panel(GfxContext *g, float x, float y, float w, float h, float radius, HMM_Vec4 tint);
-/* Clip the UI quads that follow to a rect (pt) until gfx_ui_clip_off. */
+/* Clip the UI instances that follow to a rect (pt) until gfx_ui_clip_off (in the shader: no extra draw). */
 void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);
 /* Render this frame's GFX_DRAW_PREVIEW draws with a second camera into an

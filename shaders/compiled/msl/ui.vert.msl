@@ -1,33 +1,99 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
 
 struct UiVS
 {
     float4 u_screen;
 };
 
+constant spvUnsafeArray<float2, 6> _28 = spvUnsafeArray<float2, 6>({ float2(0.0), float2(1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0), float2(1.0), float2(0.0, 1.0) });
+
 struct VSMain_out
 {
     float2 _entryPointOutput_uv [[user(locn0)]];
-    float4 _entryPointOutput_col [[user(locn1)]];
+    float2 _entryPointOutput_local [[user(locn1)]];
+    float2 _entryPointOutput_half_size [[user(locn2)]];
+    float4 _entryPointOutput_shape [[user(locn3)]];
+    float4 _entryPointOutput_col [[user(locn4)]];
+    float4 _entryPointOutput_col2 [[user(locn5)]];
+    float4 _entryPointOutput_clip [[user(locn6)]];
+    float3 _entryPointOutput_ptk [[user(locn7)]];
     float4 gl_Position [[position]];
 };
 
 struct VSMain_in
 {
-    float2 i_pos [[attribute(0)]];
-    float2 i_uv [[attribute(1)]];
-    float4 i_col [[attribute(2)]];
+    float4 i_rect [[attribute(0)]];
+    float4 i_uv [[attribute(1)]];
+    float4 i_xf [[attribute(2)]];
+    float4 i_clip [[attribute(3)]];
+    float4 i_shape [[attribute(4)]];
+    float4 i_col [[attribute(5)]];
+    float4 i_col2 [[attribute(6)]];
+    float2 i_kind [[attribute(7)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _27 [[buffer(0)]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant UiVS& _116 [[buffer(0)]], uint gl_VertexIndex [[vertex_id]])
 {
     VSMain_out out = {};
-    out.gl_Position = float4((in.i_pos.x * _27.u_screen.x) - 1.0, 1.0 - (in.i_pos.y * _27.u_screen.y), 0.0, 1.0);
-    out._entryPointOutput_uv = in.i_uv;
+    uint _248 = gl_VertexIndex % 6u;
+    float2 _254 = in.i_rect.zw * 0.5;
+    float2 _273 = (_28[_248] - float2(0.5)) * (in.i_rect.zw + float2(((in.i_kind.x > 0.5) && (in.i_kind.x < 1.5)) ? 3.0 : 0.0));
+    float2 _240 = _273;
+    float2 _303 = (in.i_rect.xy + _254) + float2((in.i_xf.x * _240.x) + (in.i_xf.z * _240.y), (in.i_xf.y * _240.x) + (in.i_xf.w * _240.y));
+    float2 _242 = _303;
+    out.gl_Position = float4((_242.x * _116.u_screen.x) - 1.0, 1.0 - (_242.y * _116.u_screen.y), 0.0, 1.0);
+    out._entryPointOutput_uv = mix(in.i_uv.xy, in.i_uv.zw, _28[_248]);
+    out._entryPointOutput_local = _273;
+    out._entryPointOutput_half_size = _254;
+    out._entryPointOutput_shape = in.i_shape;
     out._entryPointOutput_col = in.i_col;
+    out._entryPointOutput_col2 = in.i_col2;
+    out._entryPointOutput_clip = in.i_clip;
+    out._entryPointOutput_ptk = float3(_303, in.i_kind.x);
     return out;
 }
 

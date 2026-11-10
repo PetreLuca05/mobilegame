@@ -26,10 +26,9 @@
 #define GFX_MAX_DRAWS 16384
 #define GFX_VB_BYTES (4u << 20)
 #define GFX_IB_BYTES (2u << 20)
-#define GFX_MAX_UI_QUADS 8192
+#define GFX_MAX_UI 8192 /* UI instances per frame (glyphs + shapes + heads) */
 #define GFX_MAX_SHADERS 32
 #define GFX_MAX_PANELS 4
-#define GFX_MAX_UI_BATCHES 64
 #define GFX_PREVIEW_PX 512
 
 typedef struct GfxMeshRec {
@@ -134,12 +133,6 @@ typedef struct BlurPanel {
     HMM_Vec4 tint;
 } BlurPanel;
 
-/* Run of UI quads sharing one clip rectangle. */
-typedef struct UiBatch {
-    uint32_t first, count;
-    bool clipped;
-    float clip[4]; /* x, y, w, h in pt */
-} UiBatch;
 
 typedef struct ShaderCacheEntry {
     const char *name;
@@ -193,8 +186,7 @@ struct GfxContext {
     BlurPanel panels[GFX_MAX_PANELS];
     uint32_t panel_count;
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
-    UiBatch ui_batches[GFX_MAX_UI_BATCHES];
-    uint32_t ui_batch_count;
+    float ui_clip[4];     /* x0, y0, x1, y1 for the instances that follow; x1 < x0 = none */
     /* settings preview: second camera into an offscreen square */
     bool preview_on;
     bool preview_lit; /* false: preview pass gets no scene lights/shadows */
@@ -215,10 +207,9 @@ struct GfxContext {
     uint32_t mesh_count;
 
     SDL_GPUBuffer *ui_vb_ring[GFX_BUFFER_RING];
-    SDL_GPUBuffer *ui_ib;
     SDL_GPUTransferBuffer *ui_tb_ring[GFX_BUFFER_RING];
-    GfxUiVertex *ui_verts;
-    uint32_t ui_quads;
+    GfxUiInst *ui_insts;
+    uint32_t ui_count;
     float ui_w_pt, ui_h_pt;
     SDL_GPUTexture *ui_atlas;
     SDL_GPUSampler *ui_sampler;
@@ -377,14 +368,19 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
         attrs[1] = (SDL_GPUVertexAttribute){1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, offsetof(GfxVertex, nx)};
         attrs[2] = (SDL_GPUVertexAttribute){2, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxVertex, r)};
         nattr = 3;
-    } else if (d->layout == LAYOUT_UI) {
+    } else if (d->layout == LAYOUT_UI) { /* one instance per primitive; the corners come from the vertex index */
         vbd.slot = 0;
-        vbd.pitch = sizeof(GfxUiVertex);
-        vbd.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        attrs[0] = (SDL_GPUVertexAttribute){0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiVertex, x)};
-        attrs[1] = (SDL_GPUVertexAttribute){1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiVertex, u)};
-        attrs[2] = (SDL_GPUVertexAttribute){2, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiVertex, r)};
-        nattr = 3;
+        vbd.pitch = sizeof(GfxUiInst);
+        vbd.input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
+        attrs[0] = (SDL_GPUVertexAttribute){0, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, rect)};
+        attrs[1] = (SDL_GPUVertexAttribute){1, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, uv)};
+        attrs[2] = (SDL_GPUVertexAttribute){2, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, xf)};
+        attrs[3] = (SDL_GPUVertexAttribute){3, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, clip)};
+        attrs[4] = (SDL_GPUVertexAttribute){4, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, offsetof(GfxUiInst, shape)};
+        attrs[5] = (SDL_GPUVertexAttribute){5, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiInst, color)};
+        attrs[6] = (SDL_GPUVertexAttribute){6, 0, SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM, offsetof(GfxUiInst, color2)};
+        attrs[7] = (SDL_GPUVertexAttribute){7, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, offsetof(GfxUiInst, kind)};
+        nattr = 8;
     }
 
     SDL_GPUColorTargetDescription ctd;
@@ -887,9 +883,9 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->run_len = ARENA_PUSH(perm, uint16_t, GFX_MAX_DRAWS);
     g->run_first = ARENA_PUSH(perm, uint32_t, GFX_MAX_DRAWS);
     g->inst = ARENA_PUSH(perm, GfxInstance, GFX_MAX_INSTANCES);
-    g->ui_verts = ARENA_PUSH(perm, GfxUiVertex, GFX_MAX_UI_QUADS * 4);
+    g->ui_insts = ARENA_PUSH(perm, GfxUiInst, GFX_MAX_UI);
     if (!g || !g->draws || !g->order || !g->order_tmp || !g->keys || !g->keys_tmp || !g->run_len || !g->run_first || !g->inst ||
-        !g->ui_verts) {
+        !g->ui_insts) {
         mg_log_error("gfx: out of permanent memory");
         return false;
     }
@@ -942,15 +938,12 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     g->vb = SDL_CreateGPUBuffer(g->dev, &vbci);
     g->ib = SDL_CreateGPUBuffer(g->dev, &ibci);
 
-    SDL_GPUBufferCreateInfo uvci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_UI_QUADS * 4 * sizeof(GfxUiVertex), 0};
-    SDL_GPUBufferCreateInfo uici = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_MAX_UI_QUADS * 6 * sizeof(uint16_t), 0};
-    SDL_GPUTransferBufferCreateInfo utci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                                            GFX_MAX_UI_QUADS * 4 * sizeof(GfxUiVertex), 0};
+    SDL_GPUBufferCreateInfo uvci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_UI * sizeof(GfxUiInst), 0};
+    SDL_GPUTransferBufferCreateInfo utci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, GFX_MAX_UI * sizeof(GfxUiInst), 0};
     for (int i = 0; i < GFX_BUFFER_RING; i++) {
         g->ui_vb_ring[i] = SDL_CreateGPUBuffer(g->dev, &uvci);
         g->ui_tb_ring[i] = SDL_CreateGPUTransferBuffer(g->dev, &utci);
     }
-    g->ui_ib = SDL_CreateGPUBuffer(g->dev, &uici);
     SDL_GPUBufferCreateInfo ivci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_INSTANCES * (uint32_t)sizeof(GfxInstance), 0};
     for (int i = 0; i < GFX_BUFFER_RING; i++) {
         g->inst_vb[i] = SDL_CreateGPUBuffer(g->dev, &ivci);
@@ -961,26 +954,10 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     for (int i = 0; i < GFX_BUFFER_RING; i++) {
         ring_ok = ring_ok && g->ui_vb_ring[i] && g->ui_tb_ring[i] && g->inst_vb[i] && g->inst_tb[i];
     }
-    if (!g->vb || !g->ib || !g->ui_ib || !ring_ok) {
+    if (!g->vb || !g->ib || !ring_ok) {
         mg_log_error("gfx: buffer creation failed: %s", SDL_GetError());
         return false;
     }
-
-    /* static quad index buffer for the UI */
-    size_t mark = arena_mark(perm);
-    uint16_t *qi = ARENA_PUSH(perm, uint16_t, GFX_MAX_UI_QUADS * 6);
-    for (uint32_t q = 0; q < GFX_MAX_UI_QUADS; q++) {
-        uint16_t b = (uint16_t)(q * 4);
-        uint16_t *p = &qi[q * 6];
-        p[0] = b;
-        p[1] = (uint16_t)(b + 1);
-        p[2] = (uint16_t)(b + 2);
-        p[3] = b;
-        p[4] = (uint16_t)(b + 2);
-        p[5] = (uint16_t)(b + 3);
-    }
-    upload_bytes(g, g->ui_ib, 0, qi, GFX_MAX_UI_QUADS * 6 * sizeof(uint16_t));
-    arena_reset_to(perm, mark);
 
     SDL_GPUSamplerCreateInfo sci;
     SDL_zero(sci);
@@ -1126,7 +1103,6 @@ void gfx_shutdown(GfxContext *g)
         SDL_ReleaseGPUBuffer(g->dev, g->inst_vb[i]);
         SDL_ReleaseGPUTransferBuffer(g->dev, g->inst_tb[i]);
     }
-    SDL_ReleaseGPUBuffer(g->dev, g->ui_ib);
     if (g->ui_atlas) {
         SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
     }
@@ -1197,10 +1173,10 @@ float gfx_default_render_scale(void)
 bool gfx_frame_begin(GfxContext *g)
 {
     g->draw_count = 0;
-    g->ui_quads = 0;
+    g->ui_count = 0;
     g->panel_count = 0;
-    g->ui_batch_count = 1;
-    g->ui_batches[0] = (UiBatch){0, 0, false, {0, 0, 0, 0}};
+    g->ui_clip[0] = g->ui_clip[1] = 0.0f;
+    g->ui_clip[2] = g->ui_clip[3] = -1.0f;
     g->preview_on = false;
     g->inset_count = g->current_inset = 0;
 #ifdef MG_RENDER_FULL
@@ -1261,32 +1237,27 @@ void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t coun
     }
 }
 
-GfxUiVertex *gfx_ui_quads(GfxContext *g, uint32_t quad_count)
+bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst)
 {
-    if (!g->in_frame || g->ui_quads + quad_count > GFX_MAX_UI_QUADS) {
-        return NULL;
+    if (!g->in_frame || g->ui_count >= GFX_MAX_UI) {
+        return false;
     }
-    GfxUiVertex *v = &g->ui_verts[g->ui_quads * 4];
-    g->ui_quads += quad_count;
-    g->ui_batches[g->ui_batch_count - 1].count += quad_count;
-    return v;
+    GfxUiInst *o = &g->ui_insts[g->ui_count++];
+    *o = *inst;
+    memcpy(o->clip, g->ui_clip, sizeof(o->clip));
+    return true;
 }
 
-static void ui_new_batch(GfxContext *g, bool clipped, float x, float y, float w, float h)
+void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h)
 {
-    UiBatch *b = &g->ui_batches[g->ui_batch_count - 1];
-    if (b->count > 0) {
-        if (g->ui_batch_count >= GFX_MAX_UI_BATCHES) {
-            return;
-        }
-        b = &g->ui_batches[g->ui_batch_count++];
-    }
-    *b = (UiBatch){g->ui_quads, 0, clipped, {x, y, w, h}};
+    g->ui_clip[0] = x, g->ui_clip[1] = y, g->ui_clip[2] = x + w, g->ui_clip[3] = y + h;
 }
 
-void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h) { ui_new_batch(g, true, x, y, w, h); }
-
-void gfx_ui_clip_off(GfxContext *g) { ui_new_batch(g, false, 0, 0, 0, 0); }
+void gfx_ui_clip_off(GfxContext *g)
+{
+    g->ui_clip[0] = g->ui_clip[1] = 0.0f;
+    g->ui_clip[2] = g->ui_clip[3] = -1.0f;
+}
 
 void gfx_preview(GfxContext *g, const GfxSceneParams *camera, float x, float y, float size, float radius,
                  HMM_Vec4 background)
@@ -2336,7 +2307,7 @@ static void frame_end(GfxContext *g)
     }
     g->stats.draws = 0;
     g->stats.reflect_draws = 0;
-    g->stats.ui_quads = g->ui_quads;
+    g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
     g->stats.gpu_main_ms = (float)SDL_GetAtomicInt(&g->gpu_main_us) * 0.001f;
     g->stats.gpu_ui_ms = (float)SDL_GetAtomicInt(&g->gpu_ui_us) * 0.001f;
@@ -2363,11 +2334,11 @@ static void frame_end(GfxContext *g)
     }
 
     /* UI vertices for this frame */
-    if (g->ui_quads > 0) {
-        uint32_t bytes = g->ui_quads * 4 * (uint32_t)sizeof(GfxUiVertex);
+    if (g->ui_count > 0) {
+        uint32_t bytes = g->ui_count * (uint32_t)sizeof(GfxUiInst);
         const uint32_t r = g->ring % GFX_BUFFER_RING;
         void *map = SDL_MapGPUTransferBuffer(g->dev, g->ui_tb_ring[r], false);
-        memcpy(map, g->ui_verts, bytes);
+        memcpy(map, g->ui_insts, bytes);
         SDL_UnmapGPUTransferBuffer(g->dev, g->ui_tb_ring[r]);
         SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
         SDL_GPUTransferBufferLocation src = {g->ui_tb_ring[r], 0};
@@ -2521,41 +2492,22 @@ static void frame_end(GfxContext *g)
     if (scaled && g->panel_count > 0 && g->ui_w_pt > 0.0f) {
         draw_panels(g, pass);
     }
-    if (g->ui_quads > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) {
+    if (g->ui_count > 0 && g->ui_atlas && g->ui_w_pt > 0.0f) { /* the whole UI: one instanced draw, clipping in the shader */
         HMM_Vec4 screen = HMM_V4(2.0f / g->ui_w_pt, 2.0f / g->ui_h_pt, 0.0f, 0.0f);
         SDL_BindGPUGraphicsPipeline(pass, scaled ? g->ui_pipe_direct : g->ui_pipe);
         SDL_PushGPUVertexUniformData(g->cmd, 0, &screen, sizeof(screen));
         SDL_GPUBufferBinding vbb = {g->ui_vb_ring[g->ring % GFX_BUFFER_RING], 0};
-        SDL_GPUBufferBinding ibb = {g->ui_ib, 0};
         SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
-        SDL_BindGPUIndexBuffer(pass, &ibb, SDL_GPU_INDEXELEMENTSIZE_16BIT);
         SDL_GPUTextureSamplerBinding tsb[2] = {{g->ui_atlas, g->ui_sampler}, {g->head_atlas ? g->head_atlas : g->dummy_tex, g->linear_clamp}};
         SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
         g->stats.pipe_binds++;
         g->stats.tex_binds++;
         g->stats.uniform_bytes += (uint32_t)sizeof(screen);
-        float k = (float)g->ui_px_w / g->ui_w_pt; /* pt -> px */
         SDL_Rect full = {0, 0, (int)g->ui_px_w, (int)g->ui_px_h};
-        for (uint32_t i = 0; i < g->ui_batch_count; i++) {
-            const UiBatch *b = &g->ui_batches[i];
-            if (b->count == 0) {
-                continue;
-            }
-            SDL_Rect r = full;
-            if (b->clipped) {
-                r = (SDL_Rect){(int)(b->clip[0] * k), (int)(b->clip[1] * k), (int)(b->clip[2] * k + 0.5f),
-                               (int)(b->clip[3] * k + 0.5f)};
-                SDL_Rect out;
-                r = SDL_GetRectIntersection(&r, &full, &out) ? out : (SDL_Rect){0, 0, 0, 0};
-                if (r.w <= 0 || r.h <= 0) {
-                    continue;
-                }
-            }
-            SDL_SetGPUScissor(pass, &r);
-            SDL_DrawGPUIndexedPrimitives(pass, b->count * 6, 1, b->first * 6, 0, 0);
-            g->stats.draws++;
-            g->stats.tris += b->count * 2;
-        }
+        SDL_SetGPUScissor(pass, &full);
+        SDL_DrawGPUPrimitives(pass, 6, g->ui_count, 0, 0);
+        g->stats.draws++;
+        g->stats.tris += g->ui_count * 2;
     }
     if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
         /* over the panel it sits in (no UI is drawn on top of the preview) */
@@ -2617,6 +2569,6 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->mesh_ib_reserved = GFX_IB_BYTES;
     o->mesh_vb_used = g->vb_used;
     o->mesh_ib_used = g->ib_used;
-    o->ui_buffers = GFX_MAX_UI_QUADS * 4u * sizeof(GfxUiVertex) * 2u * GFX_BUFFER_RING + GFX_MAX_UI_QUADS * 6u * sizeof(uint16_t);
+    o->ui_buffers = GFX_MAX_UI * sizeof(GfxUiInst) * 2u * GFX_BUFFER_RING;
     o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u * GFX_BUFFER_RING;
 }
