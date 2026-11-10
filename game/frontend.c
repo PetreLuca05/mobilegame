@@ -8,6 +8,7 @@
 #include "gfx/mesh.h"
 #include "strings.h"
 #include "ui/head_icons.h"
+#include "ui/ui_widgets.h"
 
 #define ROW_H 46.0f      /* four rows and Continue fit a 390 pt iPhone without scrolling */
 #define CONTINUE_H 64.0f
@@ -19,8 +20,6 @@
 #define TOP_EDGE 8.0f
 #define NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _"
 
-static const UiColor k_row = {0, 0, 0, 89};          /* rgba(0,0,0,0.35) */
-static const UiColor k_row_hi = {255, 255, 255, 46}; /* rgba(255,255,255,0.18) */
 
 /* ------------------------------------------------------------------ setup */
 
@@ -212,18 +211,13 @@ static void spin_drag(Frontend *f, MgApp *app, float x0, float x1)
 
 /* ------------------------------------------------------------------ helpers */
 
+/* A title over the 3D scene: display face, white, on an ink lip (no blurred shadow) */
 static void title_block(Ui *ui, const char *title, float x, float y, float w, bool centred)
 {
-    UiColor white = ui_rgba(0xFFFFFFFF), shadow = ui_rgba(0x0000006A);
-    if (centred) {
-        text_draw_centered(ui->gfx, ui->font, x + w * 0.5f + 2.0f, y + 26.0f, 44.0f, shadow, title);
-        text_draw_centered(ui->gfx, ui->font, x + w * 0.5f, y + 24.0f, 44.0f, white, title);
-        text_draw_centered(ui->gfx, ui->font, x + w * 0.5f + 0.8f, y + 24.0f, 44.0f, white, title); /* bold */
-    } else {
-        text_draw(ui->gfx, ui->font, x + 2.0f, y + 2.0f, 44.0f, shadow, title);
-        text_draw(ui->gfx, ui->font, x, y, 44.0f, white, title);
-        text_draw(ui->gfx, ui->font, x + 0.8f, y, 44.0f, white, title);
-    }
+    const float size = 44.0f, lip = 3.0f;
+    const float tx = centred ? x + (w - ui_text_w(ui, TEXT_FACE_DISPLAY, title, size)) * 0.5f : x;
+    ui_text(ui, TEXT_FACE_DISPLAY, tx, y + lip - 4.0f, size, ui_rgba(k_ui.ink), title);
+    ui_text(ui, TEXT_FACE_DISPLAY, tx, y - 4.0f, size, ui_rgba(0xFFFFFFFF), title);
 }
 
 /* greedy word wrap; returns the height used */
@@ -268,61 +262,56 @@ void frontend_toast_draw(Frontend *f, Ui *ui, MgApp *app)
     if (app->time >= f->toast_until || !f->toast[0]) {
         return;
     }
-    float tw = text_width(ui->font, f->toast, 16.0f) + 40.0f;
-    float x = (app->width_pt - tw) * 0.5f, y = app->height_pt - mg_maxf(app->safe_bottom, 12.0f) - 56.0f;
-    ui_round_rect(ui->gfx, ui->font, x, y, tw, 40.0f, 20.0f, ui_rgba(0x101318E6));
-    text_draw_centered(ui->gfx, ui->font, x + tw * 0.5f, y + 20.0f, 16.0f, ui_rgba(0xFFFFFFFF), f->toast);
+    /* a card from the top centre: enters on its first frame, exits in its last 0.18 s */
+    const uint32_t key = ui_key("toast");
+    if (ui->anim && ui_anim_fresh(ui->anim, key)) {
+        ui_anim_to(ui->anim, key, UI_Y, -80.0f, 0.0f, ui->anim->reduced ? k_ui.reduced_s : k_ui.enter_s, ui->anim->reduced ? UI_EASE_LINEAR : UI_EASE_BEZIER, &k_ui.enter,
+                   false);
+    }
+    const float left = (float)(f->toast_until - app->time);
+    const float exit = left < k_ui.exit_s ? 1.0f - left / k_ui.exit_s : 0.0f;
+    const float dy = (ui->anim ? ui_anim_get(ui->anim, key, UI_Y, 0.0f) : 0.0f) - 80.0f * exit * exit;
+    const float tw = ui_text_w(ui, TEXT_FACE_BOLD, f->toast, 16.0f) + 44.0f;
+    const float x = (app->width_pt - tw) * 0.5f, y = mg_maxf(app->safe_top, 8.0f) + 8.0f + dy;
+    ui_surface(ui, x, y, tw, 44.0f, k_ui.r_card * 0.6f, k_ui.lip_card, ui_rgba(k_ui.surface), ui_rgba(k_ui.lip_mint), 0.0f, ui_rgba(0));
+    ui_text_c(ui, TEXT_FACE_BOLD, x + tw * 0.5f, y + 22.0f, 16.0f, ui_rgba(k_ui.ink), f->toast);
 }
 
-/* a wide pill (sign-in buttons) */
+/* a wide sign-in button: the provider's mark at the left */
 static bool pill(Ui *ui, const char *id, float x, float y, float w, uint32_t bg, uint32_t fg, const char *label,
                  int mark, bool busy)
 {
-    bool held = false;
-    bool hit = ui_hit_area(ui, id, x, y, w, 52.0f, &held);
-    UiColor b = ui_rgba((bg << 8) | 0xFFu);
-    if (held) {
-        b.a = 200;
-    }
-    ui_round_rect(ui->gfx, ui->font, x, y, w, 52.0f, 26.0f, b);
-    UiColor c = ui_rgba((fg << 8) | 0xFFu);
-    float lx = x + w * 0.5f + 12.0f;
+    (void)bg;
+    (void)fg;
+    char key[96];
+    SDL_snprintf(key, sizeof(key), "%s##%s", busy ? str("signing_in") : label, id);
+    const bool hit = ui_button_v(ui, key, x, y, w, 54.0f, busy ? UI_V_DISABLED : UI_V_SECONDARY, UI_F_SMALL);
+    const UiColor ink = ui_rgba(k_ui.ink);
     if (mark == 1) { /* Google "G" */
-        text_draw_centered(ui->gfx, ui->font, x + 30.0f, y + 26.0f, 24.0f, ui_rgba(0x4285F4FF), "G");
+        ui_text_c(ui, TEXT_FACE_DISPLAY, x + 30.0f, y + 24.0f, 24.0f, ui_rgba(0x4285F4FF), "G");
     } else if (mark == 2) { /* simple apple: body, bite, leaf */
-        ui_circle(ui->gfx, ui->font, x + 27.0f, y + 29.0f, 9.0f, c);
-        ui_circle(ui->gfx, ui->font, x + 33.0f, y + 29.0f, 9.0f, c);
-        ui_circle(ui->gfx, ui->font, x + 39.5f, y + 26.0f, 4.0f, b);
-        ui_circle(ui->gfx, ui->font, x + 32.0f, y + 15.5f, 3.0f, c);
+        ui_circle(ui->gfx, ui->font, x + 27.0f, y + 27.0f, 9.0f, ink);
+        ui_circle(ui->gfx, ui->font, x + 33.0f, y + 27.0f, 9.0f, ink);
+        ui_circle(ui->gfx, ui->font, x + 39.5f, y + 24.0f, 4.0f, ui_rgba(k_ui.surface));
+        ui_circle(ui->gfx, ui->font, x + 32.0f, y + 13.5f, 3.0f, ink);
     }
-    text_draw_centered(ui->gfx, ui->font, lx, y + 26.0f, 17.0f, c, busy ? str("signing_in") : label);
     return hit && !busy;
 }
 
-/* menu row with 60 ms press feedback */
+/* a menu row: a secondary button (or the breathing primary), an optional tag pill at the right */
 static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *label, float x, float y, float w,
                      bool highlighted, bool disabled, const char *tag)
 {
-    char id[24];
-    SDL_snprintf(id, sizeof(id), "menurow%d", index);
-    bool held = false;
-    bool hit = ui_hit_area(ui, id, x, y, w, ROW_H, &held);
-    if (hit || (held && f->pressed_row != index)) {
-        f->pressed_row = index;
-        f->pressed_at = app->time;
-    }
-    float s = (held || app->time - f->pressed_at < 0.06) && f->pressed_row == index ? 0.97f : 1.0f;
-    float rw = w * s, rh = ROW_H * s;
-    float rx = x + (w - rw) * 0.5f, ry = y + (ROW_H - rh) * 0.5f;
-    ui_round_rect(ui->gfx, ui->font, rx, ry, rw, rh, 12.0f, highlighted ? k_row_hi : k_row);
-    UiColor tc = disabled ? ui_rgba(0xFFFFFF66) : ui_rgba(0xFFFFFFFF);
-    text_draw(ui->gfx, ui->font, rx + 18.0f, ry + rh * 0.5f - 12.0f, 20.0f, tc, label);
+    (void)app;
+    char id[96];
+    SDL_snprintf(id, sizeof(id), "%s##menurow%d", label, index);
+    const bool hit = ui_button_v(ui, id, x, y, w, ROW_H, disabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
+                                 highlighted && !f->confirm_new ? UI_F_BREATHE : 0);
     if (tag) {
-        float tw = text_width(ui->font, tag, 13.0f) + 16.0f;
-        ui_round_rect(ui->gfx, ui->font, rx + rw - tw - 14.0f, ry + rh * 0.5f - 11.0f, tw, 22.0f, 11.0f,
-                      ui_rgba(0xFFFFFF26));
-        text_draw_centered(ui->gfx, ui->font, rx + rw - tw * 0.5f - 14.0f, ry + rh * 0.5f, 13.0f, ui_rgba(0xFFFFFFCC),
-                           tag);
+        const float lip = mg_minf(k_ui.lip_button, ROW_H * 0.13f), tw = ui_text_w(ui, TEXT_FACE_BOLD, tag, 13.0f) + 18.0f;
+        const float ty = y + (ROW_H - lip) * 0.5f - 12.0f;
+        ui_shape(ui->gfx, &(UiShape){.x = x + w - tw - 12.0f, .y = ty, .w = tw, .h = 24.0f, .radius = -1.0f, .color = ui_rgba(k_ui.surface_tint)});
+        ui_text_c(ui, TEXT_FACE_BOLD, x + w - tw * 0.5f - 12.0f, ty + 12.0f, 13.0f, ui_rgba(k_ui.teal_text), tag);
     }
     if (hit) {
         f->clicked = true;
@@ -346,7 +335,6 @@ static float column_top(Ui *ui, const char *title, const MgApp *app, float x, fl
     float y = TOP_EDGE + 8.0f;
     title_block(ui, title, x, y - 8.0f, w, false);
     y += 54.0f;
-    ui_rect(ui->gfx, ui->font, x, y, w, 1.0f, ui_rgba(0xFFFFFF33));
     return y + 12.0f;
 }
 
@@ -355,9 +343,10 @@ static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     float w = app->width_pt;
     float cx = EDGE, cw = column_w(app);
     float y = column_top(ui, str("game_name"), app, cx, cw);
-    y += wrapped(ui, cx, y, cw, 15.0f, ui_rgba(0xFFFFFFFF), str("description"), false) + 16.0f;
     const int buttons = (ctx->google_available || !ctx->apple_available ? 1 : 0) + (ctx->apple_available ? 1 : 0);
-    gfx_ui_blur_panel(ui->gfx, cx - 8.0f, y - 12.0f, cw + 16.0f, (float)buttons * 64.0f + 54.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
+    const float desc_h = wrapped(ui, cx, y, cw, 15.0f, ui_rgba(0), str("description"), false); /* measured: drawn on the card below */
+    ui_card(ui, cx - 10.0f, y - 12.0f, cw + 20.0f, desc_h + (float)buttons * 64.0f + 64.0f);
+    y += wrapped(ui, cx, y, cw, 15.0f, ui_rgba(k_ui.ink), str("description"), false) + 16.0f;
     FeAction a = FE_NONE;
     if (ctx->google_available || !ctx->apple_available) {
         if (pill(ui, "google", cx, y, cw, 0xFFFFFF, 0x1F1F1F, str("google"), 1, ctx->signin_busy)) {
@@ -377,9 +366,8 @@ static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
         !ctx->signin_busy) {
         a = FE_GUEST;
     }
-    text_draw_centered(ui->gfx, ui->font, cx + cw * 0.5f, y + 12.0f, 16.0f,
-                       held ? ui_rgba(0xFFFFFFFF) : ui_rgba(0xFFFFFFB3), str("guest"));
-    ui_rect(ui->gfx, ui->font, cx + (cw - gw) * 0.5f, y + 24.0f, gw, 1.0f, ui_rgba(0xFFFFFF66));
+    ui_text_c(ui, TEXT_FACE_BOLD, cx + cw * 0.5f, y + 12.0f, 16.0f, ui_rgba(k_ui.teal_text), str("guest"));
+    ui_rect(ui->gfx, ui->font, cx + (cw - gw) * 0.5f, y + 24.0f, gw, 2.0f, ui_rgba(k_ui.teal_text));
     spin_drag(f, app, 0.0f, w * 0.5f);
     return a;
 }
@@ -395,21 +383,19 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
     float w = app->width_pt;
     float x = EDGE, cw = column_w(app);
     float y = TOP_EDGE + 8.0f;
-    text_draw(ui->gfx, ui->font, x, y + 6.0f, 22.0f, ui_rgba(0xFFFFFFFF), str("username_title"));
-    y += 54.0f;
-    ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
-    y += 16.0f;
-    gfx_ui_blur_panel(ui->gfx, x - 8.0f, y - 12.0f, cw + 16.0f, 170.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
+    title_block(ui, str("username_title"), x, y, cw, false);
+    y += 70.0f;
+    ui_card(ui, x - 10.0f, y - 12.0f, cw + 20.0f, 176.0f);
     int ed = ui_text_field(ui, "username", x, y, cw, 52.0f, f->name, (int)sizeof(f->name), &f->editing_name,
                            NAME_CHARS);
     y += 60.0f;
     bool ok = name_valid(f->name);
-    text_draw(ui->gfx, ui->font, x + 4.0f, y, 14.0f, ok ? ui_rgba(0xFFFFFF99) : ui_rgba(0xFF8A80FF),
-              strlen(f->name) < 2 ? str("username_short") : str("username_rule"));
+    ui_text(ui, TEXT_FACE_BODY, x + 4.0f, y, 14.0f, ok ? ui_rgba(k_ui.ink_soft) : ui_rgba(k_ui.bad),
+            strlen(f->name) < 2 ? str("username_short") : str("username_rule"));
     y += 34.0f;
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##name_ok", str("continue"));
-    bool go = ui_button(ui, label, x, y, cw, 52.0f, ok);
+    bool go = ui_button_v(ui, label, x, y, cw, 54.0f, ok ? UI_V_PRIMARY : UI_V_DISABLED, UI_F_BREATHE);
     spin_drag(f, app, 0.0f, w * 0.5f);
     if ((go || ed == UI_EDIT_DONE) && ok) {
         f->editing_name = false;
@@ -424,13 +410,12 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
     float x = EDGE + 12.0f, cw = creator_w(app), r = x + cw; /* the frosted panel starts at the edge margin */
     float y = TOP_EDGE + 8.0f;
     float panel_h = h - y - EDGE - 8.0f;
-    gfx_ui_blur_panel(ui->gfx, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 16.0f, 18.0f, HMM_V4(0, 0, 0, 0.45f));
-    ui_block(ui, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 16.0f);
-    text_draw(ui->gfx, ui->font, x, y, 24.0f, ui_rgba(0xFFFFFFFF), str("creator_title"));
+    ui_card(ui, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 8.0f);
+    ui_text(ui, TEXT_FACE_DISPLAY, x, y - 4.0f, 28.0f, ui_rgba(k_ui.ink), str("creator_title"));
     FeAction a = FE_NONE;
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##dice", str("randomise"));
-    if (ui_button(ui, label, r - 110.0f, y - 4.0f, 110.0f, 36.0f, false)) {
+    if (ui_button_v(ui, label, r - 120.0f, y - 6.0f, 120.0f, 42.0f, UI_V_SECONDARY, UI_F_SMALL)) {
         creator_randomise(ctx->skin);
         a = FE_SKIN_CHANGED;
     }
@@ -439,7 +424,7 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
         a = FE_SKIN_CHANGED;
     }
     SDL_snprintf(label, sizeof(label), "%s##creator", str("done"));
-    if (ui_button(ui, label, x, y + panel_h - 110.0f, cw, 52.0f, true)) {
+    if (ui_button_v(ui, label, x, y + panel_h - 110.0f, cw, 54.0f, UI_V_PRIMARY, UI_F_BREATHE)) {
         a = FE_CREATOR_DONE;
     }
     spin_drag(f, app, r + 12.0f, w);
@@ -458,7 +443,7 @@ float frontend_menu_free_right(const MgApp *app, bool lobby_panel)
 
 void frontend_draw_crown(GfxContext *g, const TextFont *font, float x, float y, float size)
 {
-    const UiColor gold = ui_rgba(0xFFC940FF);
+    const UiColor gold = ui_rgba(k_ui.primary);
     const float s = size / 14.0f, t = 2.0f * s;
     const float px[7] = {0.0f, 0.0f, 4.0f, 7.0f, 10.0f, 14.0f, 14.0f}, py[7] = {11.0f, 3.0f, 6.5f, 0.5f, 6.5f, 3.0f, 11.0f};
     for (int i = 0; i < 6; i++) {
@@ -472,30 +457,31 @@ static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
 {
     const float pw = LOBBY_PANEL_W, x = app->width_pt - EDGE - pw;
     float y = top;
+    ui_card(ui, x - 10.0f, y - 8.0f, pw + 20.0f, 44.0f + 16.0f + (float)ctx->row_count * (LOBBY_ROW_H + 8.0f));
     char title[32];
     SDL_snprintf(title, sizeof(title), "%s \xC2\xB7 %d/%d", str("lobby_title"), ctx->row_count, LOBBY_MAX_PLAYERS);
     if (ctx->lobby_host) {
-        text_draw(ui->gfx, ui->font, x + 4.0f, y + 3.0f, 16.0f, ui_rgba(0xFFFFFFFF), title);
-        text_draw(ui->gfx, ui->font, x + 4.0f, y + 24.0f, 12.0f, ui_rgba(0xFFFFFFB3), str(ctx->lobby_open ? "lobby_open" : "lobby_locked"));
-        const float bw = 92.0f, sw = 46.0f, sh = 26.0f, sx = x + pw - bw - 10.0f - sw, sy = y + 9.0f;
-        bool held;
-        if (ui_hit_area(ui, "lobby_switch", sx - 6.0f, y, sw + 12.0f, 44.0f, &held) && !f->confirm_new) {
+        ui_text(ui, TEXT_FACE_DISPLAY, x + 2.0f, y - 1.0f, 18.0f, ui_rgba(k_ui.ink), title);
+        ui_text(ui, TEXT_FACE_BOLD, x + 2.0f, y + 24.0f, 12.0f, ui_rgba(k_ui.ink_soft), str(ctx->lobby_open ? "lobby_open" : "lobby_locked"));
+        const float bw = 92.0f, sx = x + pw - bw - 8.0f - k_ui.toggle_w;
+        bool open = ctx->lobby_open;
+        if (ui_switch(ui, "lobby_switch", sx, y, &open) && !f->confirm_new) {
             *a = FE_LOBBY_TOGGLE;
         }
-        ui_round_rect(ui->gfx, ui->font, sx, sy, sw, sh, sh * 0.5f, ctx->lobby_open ? ui_rgba(0x34C759FF) : ui_rgba(0xFFFFFF40));
-        ui_circle(ui->gfx, ui->font, ctx->lobby_open ? sx + sw - sh * 0.5f : sx + sh * 0.5f, sy + sh * 0.5f, sh * 0.5f - 3.0f, ui_rgba(0xFFFFFFFF));
         char label[48];
         SDL_snprintf(label, sizeof(label), "%s##lobby_invite", str("friend_invite"));
-        if (ui_button(ui, label, x + pw - bw, y, bw, 44.0f, true) && !f->confirm_new) {
+        if (ui_button_v(ui, label, x + pw - bw, y - 2.0f, bw, 48.0f, UI_V_ACCENT, UI_F_SMALL) && !f->confirm_new) {
             *a = FE_OPEN_INVITE;
         }
     } else {
-        text_draw(ui->gfx, ui->font, x + 4.0f, y + 12.0f, 16.0f, ui_rgba(0xFFFFFFFF), title);
+        ui_text(ui, TEXT_FACE_DISPLAY, x + 2.0f, y + 8.0f, 18.0f, ui_rgba(k_ui.ink), title);
     }
     y += 44.0f + 8.0f;
     for (int i = 0; i < ctx->row_count; i++) {
         const LobbyRow *r = &ctx->rows[i];
-        ui_round_rect(ui->gfx, ui->font, x, y, pw, LOBBY_ROW_H, 12.0f, k_row);
+        char rid[24];
+        SDL_snprintf(rid, sizeof(rid), "lobby_row%d", i);
+        ui_row(ui, rid, x, y, pw, LOBBY_ROW_H, false);
         head_icon_draw(ctx->heads, ui->gfx, ui->font, &r->skin, r->name, x + 26.0f, y + LOBBY_ROW_H * 0.5f, 40.0f, false);
         const float tx = x + 52.0f;
         float room = pw - 52.0f - 8.0f;
@@ -503,19 +489,15 @@ static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         if (ctx->lobby_host && !r->me) { /* kick */
             const float cx = x + pw - 24.0f, cy = y + LOBBY_ROW_H * 0.5f;
             SDL_snprintf(id, sizeof(id), "lobby_kick%d", i);
-            bool held;
-            if (ui_hit_area(ui, id, cx - 22.0f, cy - 22.0f, 44.0f, 44.0f, &held) && !f->confirm_new) {
+            if (ui_icon_button(ui, id, UI_ICON_CLOSE, cx - 22.0f, cy - 24.0f, 44.0f, UI_V_SECONDARY) && !f->confirm_new) {
                 SDL_snprintf(f->kick_id, sizeof(f->kick_id), "%s", r->id);
                 *a = FE_LOBBY_KICK;
             }
-            ui_circle(ui->gfx, ui->font, cx, cy, 16.0f, held ? ui_rgba(0xFFFFFF55) : ui_rgba(0xFFFFFF26));
-            ui_line(ui->gfx, ui->font, cx - 5.0f, cy - 5.0f, cx + 5.0f, cy + 5.0f, 2.5f, ui_rgba(0xFFFFFFFF));
-            ui_line(ui->gfx, ui->font, cx + 5.0f, cy - 5.0f, cx - 5.0f, cy + 5.0f, 2.5f, ui_rgba(0xFFFFFFFF));
             room -= 44.0f;
         } else if (!ctx->lobby_host && r->me) { /* leave */
             char label[48];
             SDL_snprintf(label, sizeof(label), "%s##lobby_leave", str("lobby_leave"));
-            if (ui_button(ui, label, x + pw - 72.0f, y + 5.0f, 66.0f, 38.0f, false) && !f->confirm_new) {
+            if (ui_button_v(ui, label, x + pw - 76.0f, y + 2.0f, 70.0f, 42.0f, UI_V_SECONDARY, UI_F_SMALL) && !f->confirm_new) {
                 *a = FE_LOBBY_LEAVE;
             }
             room -= 72.0f;
@@ -524,7 +506,7 @@ static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         float size = 16.0f;
         const float tw = text_width(ui->font, r->name, size);
         size = tw > room ? size * room / tw : size;
-        text_draw(ui->gfx, ui->font, tx, y + LOBBY_ROW_H * 0.5f - size * 0.65f, size, ui_rgba(0xFFFFFFFF), r->name);
+        ui_text(ui, TEXT_FACE_BOLD, tx, y + LOBBY_ROW_H * 0.5f - size * 0.75f, size, ui_rgba(k_ui.ink), r->name);
         if (r->host) {
             frontend_draw_crown(ui->gfx, ui->font, tx + text_width(ui->font, r->name, size) + 6.0f, y + LOBBY_ROW_H * 0.5f - 7.0f, 14.0f);
         }
@@ -543,7 +525,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     float y = TOP_EDGE + 8.0f;
     title_block(ui, str("menu_title"), x, y - 8.0f, cw, false);
     y += 54.0f;
-    ui_rect(ui->gfx, ui->font, x, y, cw, 1.0f, ui_rgba(0xFFFFFF33));
     y += 12.0f;
     FeAction a = FE_NONE;
     /* the account, top right: opens Friends */
@@ -563,8 +544,8 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     if (ctx->friend_requests > 0) {
         char n[8];
         SDL_snprintf(n, sizeof(n), "%d", ctx->friend_requests);
-        ui_circle(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 11.0f, ui_rgba(0xE5484DFF));
-        text_draw_centered(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(0xFFFFFFFF), n);
+        ui_circle(ui->gfx, ui->font, chip_r - 4.0f, chip_y + 4.0f, 11.0f, ui_rgba(k_ui.bad));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(0xFFFFFFFF), n);
     }
     /* the rows scroll between the divider and the account line when the screen is short */
     const float fy = h - EDGE - 16.0f;
@@ -576,7 +557,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     y -= rows_off;
     if (guest) {
         menu_row(f, ui, app, 0, str("lobby_wait_host"), x, y, cw, false, true, NULL);
-    } else if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, false, false, NULL)) {
+    } else if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, !show_continue, false, NULL)) { /* the main button when there is no save */
         if (ctx->has_save) {
             f->confirm_new = true;
         } else {
@@ -600,30 +581,29 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     if (show_continue) {
         char label[48];
         SDL_snprintf(label, sizeof(label), "%s##menurow1", str("continue_game"));
-        if (ui_button(ui, label, x, bottom - CONTINUE_H, cw, CONTINUE_H, true)) {
+        if (ui_button_v(ui, label, x, bottom - CONTINUE_H, cw, CONTINUE_H, UI_V_PRIMARY, f->confirm_new ? 0 : UI_F_BREATHE)) {
             a = FE_CONTINUE;
         }
     }
     float vw = text_width(ui->font, ctx->version, 13.0f);
-    text_draw(ui->gfx, ui->font, w - EDGE - vw, fy, 13.0f, ui_rgba(0xFFFFFF66), ctx->version);
+    ui_text(ui, TEXT_FACE_BOLD, w - EDGE - vw, fy, 13.0f, ui_rgba(0xFFFFFFA0), ctx->version);
 
     if (f->confirm_new) { /* overwrite dialog */
-        ui_block(ui, 0, 0, w, h);
-        ui_rect(ui->gfx, ui->font, 0, 0, w, h, ui_rgba(0x00000080));
-        float dw = 360.0f, dh = 150.0f, dx = (w - dw) * 0.5f, dy = (h - dh) * 0.5f;
-        ui_panel(ui, dx, dy, dw, dh);
-        text_draw_centered(ui->gfx, ui->font, dx + dw * 0.5f, dy + 40.0f, 18.0f, ui_rgba(0xFFFFFFFF), str("overwrite_q"));
+        float dw = 360.0f, dh = 160.0f, dx, dy;
+        ui_modal(ui, "overwrite", dw, dh, &dx, &dy);
+        ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 40.0f, 22.0f, ui_rgba(k_ui.ink), str("overwrite_q"));
         float bw = (dw - 48.0f) * 0.5f;
         char c1[48], c2[48];
         SDL_snprintf(c1, sizeof(c1), "%s##ow_cancel", str("cancel"));
         SDL_snprintf(c2, sizeof(c2), "%s##ow_new", str("new_game"));
-        if (ui_button(ui, c1, dx + 16.0f, dy + dh - 64.0f, bw, 48.0f, false)) {
+        if (ui_button_v(ui, c1, dx + 16.0f, dy + dh - 66.0f, bw, 50.0f, UI_V_SECONDARY, UI_F_SMALL)) {
             f->confirm_new = false;
         }
-        if (ui_button(ui, c2, dx + 32.0f + bw, dy + dh - 64.0f, bw, 48.0f, true)) {
+        if (ui_button_v(ui, c2, dx + 32.0f + bw, dy + dh - 66.0f, bw, 50.0f, UI_V_DESTRUCTIVE, UI_F_SMALL)) { /* it overwrites */
             f->confirm_new = false;
             a = FE_NEW_GAME;
         }
+        ui_modal_end(ui);
     }
     return a;
 }
@@ -631,14 +611,12 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
 static void back_button(Frontend *f, Ui *ui, MgApp *app, float bx)
 {
     char label[48];
-    SDL_snprintf(label, sizeof(label), "   %s##feback", str("back"));
-    const float by = app->height_pt - EDGE - 48.0f;
-    if (ui_button(ui, label, bx, by, 110.0f, 44.0f, false)) {
+    SDL_snprintf(label, sizeof(label), "%s##feback", str("back"));
+    const float by = app->height_pt - EDGE - 54.0f;
+    if (ui_button_v(ui, label, bx, by, 120.0f, 54.0f, UI_V_SECONDARY, UI_F_SMALL)) {
         frontend_back(f);
     }
-    /* procedural arrow: the font has no left arrow */
-    ui_line(ui->gfx, ui->font, bx + 26.0f, by + 14.0f, bx + 18.0f, by + 22.0f, 3.0f, ui_rgba(0xFFFFFFFF));
-    ui_line(ui->gfx, ui->font, bx + 18.0f, by + 22.0f, bx + 26.0f, by + 30.0f, 3.0f, ui_rgba(0xFFFFFFFF));
+    ui_icon(ui, UI_ICON_BACK, bx + 22.0f, by + 23.0f, 22.0f, ui_rgba(k_ui.ink));
 }
 
 /* ------------------------------------------------------------------ frame */
@@ -667,11 +645,8 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_LOADING: {
         float bw = app->width_pt * 0.4f, bx = (app->width_pt - bw) * 0.5f, by = app->height_pt * 0.82f;
-        text_draw_centered(ui->gfx, ui->font, app->width_pt * 0.5f, by - 22.0f, 16.0f, ui_rgba(0xFFFFFFCC),
-                           str("loading"));
-        ui_round_rect(ui->gfx, ui->font, bx, by, bw, 10.0f, 5.0f, ui_rgba(0xFFFFFF33));
-        ui_round_rect(ui->gfx, ui->font, bx, by, mg_maxf(bw * ctx->load_progress, 10.0f), 10.0f, 5.0f,
-                      ui_rgba(0x4A8BFFFF));
+        ui_text_c(ui, TEXT_FACE_DISPLAY, app->width_pt * 0.5f, by - 24.0f, 18.0f, ui_rgba(0xFFFFFFFF), str("loading"));
+        ui_progress(ui, "loading", bx, by, bw, k_ui.progress_h, ctx->load_progress);
         a = FE_LOAD_STEP;
         break;
     }

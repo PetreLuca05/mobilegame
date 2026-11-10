@@ -1,4 +1,5 @@
 #include "head_icons.h"
+#include "ui_style.h"
 
 #include <string.h>
 
@@ -112,9 +113,11 @@ void head_chip_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSki
 {
     const float head = 36.0f, pad = 4.0f, size = 16.0f;
     const float w = head_chip_width(f, name), x = right - w;
-    ui_round_rect(g, f, x, y, w, head + 2.0f * pad, 22.0f, ui_rgba(0x1E2230B0));
-    head_icon_draw(h, g, f, skin, name, x + pad + head * 0.5f, y + pad + head * 0.5f, head, false);
-    text_draw(g, f, x + pad + head + 8.0f, y + pad + head * 0.5f - size * 0.65f, size, ui_rgba(0xFFFFFFFF), name);
+    const float ch = head + 2.0f * pad, lip = k_ui.lip_pill; /* a white pill on its lip (UI-1) */
+    ui_shape(g, &(UiShape){.x = x, .y = y + lip, .w = w, .h = ch - lip, .radius = -1.0f, .color = ui_rgba(k_ui.lip_mint)});
+    ui_shape(g, &(UiShape){.x = x, .y = y, .w = w, .h = ch - lip, .radius = -1.0f, .color = ui_rgba(k_ui.surface)});
+    head_icon_draw(h, g, f, skin, name, x + pad + head * 0.5f, y + (ch - lip) * 0.5f, head - 4.0f, false);
+    text_draw(g, f, x + pad + head + 8.0f, y + (ch - lip) * 0.5f - size * 0.65f, size, ui_rgba(k_ui.ink), name);
 }
 
 int head_icons_used(const HeadIcons *h)

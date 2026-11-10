@@ -4,6 +4,7 @@
 
 #include "avatar.h"
 #include "strings.h"
+#include "ui/ui_widgets.h"
 
 #define TILE 56.0f
 
@@ -15,7 +16,7 @@ typedef enum { ROW_TEXT, ROW_COLOR, ROW_SUIT } RowKind;
 static int row(Creator *c, Ui *ui, int r, RowKind kind, const char *title, float x, float y, float w, int count,
                int selected, const uint32_t *colors, const char *(*name)(int))
 {
-    ui_label(ui, x, y, 15.0f, k_ui_theme.text_dim, title);
+    ui_label_caps(ui, x, y + 2.0f, title);
     y += 22.0f;
     float tw = kind == ROW_TEXT ? 96.0f : (kind == ROW_SUIT ? 84.0f : TILE);
     float off = ui_scroll_begin(ui, &c->rows[r], x - 4.0f, y - 4.0f, w + 8.0f, TILE + 8.0f, true);
@@ -25,25 +26,33 @@ static int row(Creator *c, Ui *ui, int r, RowKind kind, const char *title, float
         char id[24];
         SDL_snprintf(id, sizeof(id), "cr%d_%d_%d", c->tab, r, i);
         bool held = false;
-        if (ui_hit_area(ui, id, tx, y, tw, TILE, &held)) {
+        if (ui_press(ui, id, tx, y, tw, TILE, &held, false)) {
             picked = i;
+            ui_pop(ui, id); /* a confirmed choice */
+            if (ui->fx) {
+                ui_fx_sound(ui->fx, UI_SND_TICK, 0);
+            }
         }
-        if (i == selected) {
-            ui_round_rect(ui->gfx, ui->font, tx - 3.0f, y - 3.0f, tw + 6.0f, TILE + 6.0f, 15.0f, k_ui_theme.accent);
+        const uint32_t key = ui_key(id);
+        const float sx = ui->anim ? ui_anim_get(ui->anim, key, UI_SX, 1.0f) : 1.0f, sy = ui->anim ? ui_anim_get(ui->anim, key, UI_SY, 1.0f) : 1.0f;
+        gfx_ui_group(ui->gfx, sx, 0.0f, 0.0f, sy, tx + tw * 0.5f, y + TILE);
+        ui_surface(ui, tx, y, tw, TILE - k_ui.lip_row, k_ui.r_row, k_ui.lip_row, ui_rgba(k_ui.surface_tint), ui_rgba(k_ui.secondary_lip), 0.0f, ui_rgba(0));
+        if (i == selected) { /* the selection ring */
+            ui_shape(ui->gfx, &(UiShape){.x = tx - 3.0f, .y = y - 3.0f, .w = tw + 6.0f, .h = TILE - k_ui.lip_row + 6.0f, .radius = k_ui.r_row + 3.0f, .stroke = k_ui.ring_width,
+                                         .color = ui_rgba(k_ui.primary_lip)});
         }
-        ui_round_rect(ui->gfx, ui->font, tx, y, tw, TILE, 12.0f, held ? k_ui_theme.button_down : ui_rgba(0x2A3042FF));
         if (kind == ROW_COLOR) {
-            ui_circle(ui->gfx, ui->font, tx + tw * 0.5f, y + TILE * 0.5f, 18.0f, rgb(colors[i]));
+            ui_circle(ui->gfx, ui->font, tx + tw * 0.5f, y + (TILE - k_ui.lip_row) * 0.5f, 17.0f, rgb(colors[i]));
         } else if (kind == ROW_SUIT) {
             uint32_t outfit, accent;
             avatar_suit_colors(i, &outfit, &accent);
             ui_round_rect(ui->gfx, ui->font, tx + tw * 0.5f - 14.0f, y + 8.0f, 28.0f, 30.0f, 10.0f, rgb(outfit));
             ui_circle(ui->gfx, ui->font, tx + tw * 0.5f + 6.0f, y + 18.0f, 4.0f, rgb(accent));
-            text_draw_centered(ui->gfx, ui->font, tx + tw * 0.5f, y + 47.0f, 10.0f, k_ui_theme.text_dim,
-                               avatar_suit_name(i));
+            ui_text_c(ui, TEXT_FACE_BOLD, tx + tw * 0.5f, y + 44.0f, 10.0f, ui_rgba(k_ui.ink_soft), avatar_suit_name(i));
         } else {
-            text_draw_centered(ui->gfx, ui->font, tx + tw * 0.5f, y + TILE * 0.5f, 15.0f, k_ui_theme.text, name(i));
+            ui_text_c(ui, TEXT_FACE_BOLD, tx + tw * 0.5f, y + (TILE - k_ui.lip_row) * 0.5f, 15.0f, ui_rgba(k_ui.ink), name(i));
         }
+        gfx_ui_group_off(ui->gfx);
     }
     ui_scroll_end(ui, &c->rows[r], w, (float)count * (tw + 10.0f));
     return picked;
