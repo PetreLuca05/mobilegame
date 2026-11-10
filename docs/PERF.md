@@ -349,3 +349,26 @@ The 2 remaining passes on the iPad are the world's own (main pass + the upscalin
 Mac (Release): `interact_npc`, `lobby4`, `menu`, `ui_juice`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`: 1 pass, 1 UI draw, 0 allocations, UI update <= 0.005 ms, UI submit 0.029-0.033 ms; `ui_juice` peaks at ~290 UI instances. `lobby4` was 4 passes on the iPad before UI-1 (blur); on the Mac it is 1. Not measured on the iPad this round: `lobby4`, `menu`, `ui_juice`, the four map scenarios, and therefore the "full menu of cards <= 0.4 ms GPU" estimate and the `worldmap_travel` pass re-check. `docs/perf/after` is not replaced (the gate was not complete).
 
 UI-1 sign-off (1d4a6ed): accepted with the iPad GPU numbers for `menu`, `lobby4`, `ui_juice` and the four map scenarios still open; they are measured in the UI-1b gate (one device session), and `docs/perf/after/` is replaced only when all 15 scenarios are in. The drop-out: after 6 traces Instruments listed the iPad under "Devices Offline" while devicectl still saw it, and xctrace hung until its 120 s kill. `tools/perf_run.sh` now waits up to 10 min for the device (devicectl, and Instruments when `--gpu`), retries a trace 3 times and a failed launch once, and `--resume` continues a run from the first scenario OUTDIR does not yet have from this build; it no longer falls back to the Mac.
+
+## UI-1b stick audit (194b6e9, 2026-11-10, iPad Air 4, CPU side)
+
+Instruments listed the iPad as offline for the whole session (devicectl still reached it), so this round has every scenario's JSON but no GPU trace; `docs/perf/after/` is not replaced. Data in `docs/perf/ui1b/` (Mac Release copies of yard / lobby / interact_npc / lobby4 as `mac_*`).
+
+| Scenario | tick ms (ref -> now) | render ms | passes | UI update / submit ms | UI instances |
+|---|---|---|---|---|---|
+| yard | 0.175 -> 0.183 | 1.28 -> 0.97 | 4 -> 2 | 0.009 / 0.096 | 73 |
+| lobby | 0.180 -> 0.202 | 1.27 -> 1.00 | 4 -> 2 | 0.010 / 0.101 | 73 |
+| corridor_f2 | 0.168 -> 0.191 | 1.32 -> 1.04 | 4 -> 2 | 0.009 / 0.098 | 73 |
+| stress200 | 0.471 -> 0.479 | 1.37 -> 1.09 | 4 -> 2 | 0.009 / 0.098 | 73 |
+| npcs | 0.296 -> 0.320 | 1.43 -> 1.12 | 4 -> 2 | 0.010 / 0.102 | 76 |
+| lift_panel | 0.190 -> 0.192 | 1.36 -> 1.09 | 4 -> 2 | 0.009 / 0.112 | 67 |
+| interact_npc | 0.311 -> 0.297 | 1.41 -> 1.12 | 4 -> 2 | 0.009 / 0.100 | 96 |
+| lobby4 | 0.498 -> 0.514 | 1.40 -> 1.10 | 4 -> 2 | 0.010 / 0.103 | 205 |
+| menu | 0.287 -> 0.310 | 0.85 -> 0.80 | 1 -> 1 | 0.008 / 0.095 | 245 |
+| ui_juice | 0.338 (new) | 0.81 | 1 | 0.015 / 0.099 | 298 |
+| worldmap | 0.220 (new ref) | 0.65 | 1 | 0.008 / 0.095 | 322 |
+| worldmap_travel | 0.153 -> 0.191 | 1.18 -> 0.65 | **4 -> 1** | 0.010 / 0.105 | 142 |
+| island | 0.148 -> 0.184 | 0.59 -> 0.63 | 1 -> 1 | 0.009 / 0.100 | 157 |
+| worldmap_voyage | 0.115 -> 0.121 | 0.61 -> 0.65 | 1 -> 1 | 0.009 / 0.102 | 24 |
+
+References: `docs/perf/after` (pre-UI-1) for the hospital and menu scenarios, `docs/perf/world2` for the map ones. Every scenario: 1 UI draw, 0 heap allocations, no dropped frames, thermal nominal; tick changes are all under the 0.1 ms noise floor. The play scenarios carry the new stick (6 instances idle; the old hint was 2): +3 UI instances, no draw or pass. The `worldmap_travel` "4 passes" from WORLD-1 is gone for good (1 pass). Still open, needs Instruments: GPU for all 14 + `ui_juice`, then `docs/perf/after/` is replaced (`tools/perf_run.sh docs/perf/ui1b --gpu --resume --gate` continues this run).
