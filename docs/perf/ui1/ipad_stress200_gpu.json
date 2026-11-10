@@ -1,0 +1,1 @@
+{"device": "ipad", "scenario": "stress200", "commit": "eaba2e5", "fps": 60, "gpu_frame_ms": 5.2, "busy_pct": 31, "effective_ms": 1.63, "clock": "Minimum", "clock_share_pct": 99}

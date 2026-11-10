@@ -327,3 +327,23 @@ Mac (desktop, labelled sanity, not the gate), 30 s, after the fix: worldmap 17 d
 iPad Air 4, GPU at Minimum clock 91-99 %. Zoomed-in map (`island`, `worldmap_travel`): 6.44 ms frame, 39 % busy, **2.50 ms effective**, against a WORLD-1 estimate of 1.0 ms. Decision: **2.5 ms is the new estimate** for the zoomed-in map (the overview stays 1.5, measured 1.05; the voyage 2.5, measured 0.89). The cost is full-screen toon-lit terrain and props at 2x MSAA where the overview is mostly unlit sea; the hospital card's blur panel was 0.2 ms of it and is gone (flat card, 1 pass, 155 MB).
 
 Deferred: cheaper terrain shading when zoomed in on an island, for when the real hospital models land.
+
+## UI-1 "Jelly Pop" audit (eaba2e5, 2026-11-10)
+
+Data in `docs/perf/ui1/`. The iPad went offline to Instruments after 6 GPU traces (xctrace recorded nothing twice on `interact_npc`), so by the standing rule the remaining scenarios ran on this Mac (Release desktop build, `mac_*.json`): CPU, UI and pass numbers only, no GPU.
+
+iPad Air 4, before (`docs/perf/after`, frosted panels) -> after; GPU = frame ms / busy % / effective ms, all at Minimum clock:
+
+| Scenario | Passes max | render ms | UI update / submit ms | GPU before -> after |
+|---|---|---|---|---|
+| yard | 4 -> 2 | 1.28 -> 1.02 | 0.009 / 0.102 | 5.19/31/1.62 -> 4.78/29/1.38 |
+| lobby | 4 -> 2 | 1.27 -> 1.09 | 0.010 / 0.117 | 5.17/31/1.61 -> 4.64/28/1.30 |
+| corridor_f2 | 4 -> 2 | 1.32 -> 1.10 | 0.010 / 0.116 | 5.48/33/1.81 -> 4.94/30/1.46 |
+| stress200 | 4 -> 2 | 1.37 -> 1.10 | 0.009 / 0.105 | 5.74/35/1.99 -> 5.20/31/1.63 |
+| npcs | 4 -> 2 | 1.43 -> 1.11 | 0.009 / 0.105 | 5.63/34/1.91 -> 5.29/32/1.68 |
+| lift_panel | 4 -> 2 | 1.36 -> 1.15 | 0.010 / 0.122 | 5.35/32/1.73 -> 4.83/29/1.40 |
+| interact_npc (no GPU trace) | 4 -> 2 | 1.41 -> 1.15 | 0.009 / 0.106 | - |
+
+The 2 remaining passes on the iPad are the world's own (main pass + the upscaling UI pass at render scale < 1); the 2 blur passes are gone. 1 UI draw everywhere, 0 heap allocations, no dropped frames, thermal nominal. CPU tick within noise of the reference (+0.01..0.03 ms, under the 0.1 ms noise floor).
+
+Mac (Release): `interact_npc`, `lobby4`, `menu`, `ui_juice`, `worldmap`, `worldmap_travel`, `island`, `worldmap_voyage`: 1 pass, 1 UI draw, 0 allocations, UI update <= 0.005 ms, UI submit 0.029-0.033 ms; `ui_juice` peaks at ~290 UI instances. `lobby4` was 4 passes on the iPad before UI-1 (blur); on the Mac it is 1. Not measured on the iPad this round: `lobby4`, `menu`, `ui_juice`, the four map scenarios, and therefore the "full menu of cards <= 0.4 ms GPU" estimate and the `worldmap_travel` pass re-check. `docs/perf/after` is not replaced (the gate was not complete).
