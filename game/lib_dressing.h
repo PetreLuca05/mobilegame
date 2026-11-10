@@ -3,8 +3,8 @@
  * assignLobby / homeBay with the same order of draws and the same double maths, so `tables_now` reproduces.
  *
  * Frame of every position here: the bay-local table frame of the JSON (`seats`, `table`, the anchors):
- * metres, x along the hall (add the bay's `hall.bx` / `bays[i].x` for world x), z towards the menu camera,
- * on the table top (y = table.top_y). Yaw: radians about +y, 0 faces +z, pi/2 faces +x (three.js rotation.y).
+ * metres, x along the hall, z towards the menu camera, on the table top (y = table.top_y). The hall (mg-library 10)
+ * is 2 x 2 bays: add the bay's `hall.bx` / `bays[i].x` for hall x and `hall.bz` / `bays[i].z` for hall z. Yaw: radians about +y, 0 faces +z, pi/2 faces +x (three.js rotation.y).
  *
  * Draws, in order, from rng(seed):
  *   seat order  Fisher-Yates on {0,1,2,3} from the end; member n (host first) sits in seat_order[n]
@@ -67,7 +67,7 @@ typedef struct LibDressConfig {
     int pool_count;
     int count_min, count_max;
     double clear, jitter;
-    int bays; /* hall.bays */
+    int bays; /* hall.bays (all of them, both rows: the table of a lobby is seed mod bays) */
 } LibDressConfig;
 
 /* Parses `lobby_dressing` and `hall.bays` from the scene root; false (and logs nothing) if anything is missing. */

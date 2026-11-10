@@ -92,7 +92,9 @@ int main(int argc, char **argv)
         int tables = 0;
         for (int k = 0; k < cfg.obst_n; k++) tables += cfg.obst_table[k];
         snprintf(buf, sizeof buf, "%d obstacles, %d study-table rects, bag of %d", cfg.obst_n, tables, cfg.bag_n);
-        check(cfg.obst_n == 76 && tables == cfg.bays && cfg.bag_n == 12, "obstacles and bag", buf);
+        const int nobst = cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(root, "obstacles")); /* 81 in mg-library 10 */
+        check(cfg.obst_n == nobst && nobst > 0 && tables == cfg.bays && cfg.bag_n == 12 && cfg.bays == 4 && cfg.cols == 2,
+              "obstacles and bag", buf);
     }
 
     /* 1. the bag over 1,200 draws */
@@ -279,7 +281,8 @@ int main(int argc, char **argv)
             for (const cJSON *s = seats ? seats->child : NULL; s; s = s->next) {
                 const cJSON *pos = cJSON_GetObjectItemCaseSensitive(s, "pos");
                 const float yaw = (float)cJSON_GetObjectItemCaseSensitive(s, "yaw_deg")->valuedouble * 3.14159265f / 180.0f;
-                const HMM_Vec2 sp = HMM_V2(cfg.bx[bay] + (float)pos->child->valuedouble, (float)pos->child->next->valuedouble);
+                const HMM_Vec2 sp = HMM_V2(cfg.bx[bay] + (float)pos->child->valuedouble, cfg.bz[bay] + (float)pos->child->next->valuedouble);
+                const float zlo = cfg.bz[bay] + cfg.z_back, zhi = cfg.bz[bay] + cfg.z_front;
                 for (int i = 0; i < 40; i++) {
                     LibFidget f;
                     lib_fidget_init(&f, c, 1000u + (uint32_t)(bay * 1000 + i * 7) + (uint32_t)s->child->valueint * 131u);
@@ -291,11 +294,15 @@ int main(int argc, char **argv)
                     }
                     LibBalls bs = {0};
                     lib_balls_throw(&bs, c, lib_seat_to_hall(sp, yaw, r.rel_pos), lib_seat_dir_to_hall(yaw, r.rel_vel));
-                    for (int k = 0; k < 60 * 12; k++) lib_balls_step(&bs, c, DT);
+                    bool in_bay = true; /* the whole flight stays between the bay's back wall and its front */
+                    for (int k = 0; k < 60 * 12; k++) {
+                        lib_balls_step(&bs, c, DT);
+                        in_bay &= bs.n == 1 && bs.b[0].p.Z > zlo && bs.b[0].p.Z < zhi && lib_fidget_bay_of(&cfg, bs.b[0].p.X, bs.b[0].p.Z) / cfg.cols == bay / cfg.cols;
+                    }
                     balls++;
                     const LibBall *b = &bs.b[0];
-                    bool ok = bs.n == 1;
-                    ok &= b->p.X > cfg.x_min && b->p.X < cfg.x_max && fabsf(b->p.Z) < cfg.z_half;
+                    bool ok = bs.n == 1 && in_bay;
+                    ok &= b->p.X > cfg.x_min && b->p.X < cfg.x_max;
                     for (int k = 0; k < cfg.obst_n; k++) {
                         if (inside_rect(cfg.obst[k], b->p) && !(cfg.obst_table[k] && b->p.Y > 0.5f)) ok = false;
                     }
@@ -310,8 +317,30 @@ int main(int argc, char **argv)
                 }
             }
         }
-        snprintf(buf, sizeof buf, "%d balls from 16 seats, %d on a table top, %d still moving, %d bad %s", balls, on_table, moving, bad, where);
-        check(bad == 0 && balls > 0, "balls come to rest inside the hall outside every obstacle", buf);
+        snprintf(buf, sizeof buf, "%d balls from %d seats, %d on a table top, %d still moving, %d bad %s", balls, 4 * cfg.bays, on_table, moving, bad, where);
+        check(bad == 0 && balls > 0, "balls come to rest inside their bay outside every obstacle", buf);
+        /* the middle wall: hard throws at it from either row, along its whole width (its doors too: a ball keeps to
+         * its bay's z range like the prototype's), bounce back and never cross */
+        {
+            int thrown = 0, crossed = 0, front_hits = 0;
+            for (int row = 0; row < 2; row++)
+                for (float x = cfg.x_min + 0.5f; x < cfg.x_max - 0.4f; x += 0.35f) {
+                    const float sgn = row ? 1.0f : -1.0f; /* the front row throws towards -z, the back row towards +z */
+                    LibBalls bw = {0};
+                    lib_balls_throw(&bw, c, HMM_V3(x, 2.5f, cfg.mid_wall_z - sgn * 0.8f), HMM_V3(0.4f, 1.0f, sgn * 6.0f));
+                    bool ok = true, bounced = false;
+                    for (int k = 0; k < 60 * 4 && bw.n; k++) {
+                        lib_balls_step(&bw, c, DT);
+                        ok &= row ? bw.b[0].p.Z < cfg.mid_wall_z : bw.b[0].p.Z > cfg.mid_wall_z;
+                        bounced |= bw.b[0].v.Z * sgn < 0.0f;
+                    }
+                    thrown++;
+                    crossed += !ok;
+                    front_hits += bounced;
+                }
+            snprintf(buf, sizeof buf, "%d throws, %d crossed, %d bounced back", thrown, crossed, front_hits);
+            check(crossed == 0 && front_hits == thrown, "balls: the middle wall holds from both rows", buf);
+        }
         /* at most `max`, gone after life_s */
         LibBalls bs = {0};
         for (int i = 0; i < 10; i++) lib_balls_throw(&bs, c, HMM_V3(0, 1, 3), HMM_V3(0, 0, 0));

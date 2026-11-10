@@ -117,11 +117,11 @@ int main(int argc, char **argv)
                               (float)(cJSON_GetObjectItem(e, "yaw_deg")->valuedouble * 3.141592653589793 / 180.0));
         }
     }
-    const float bxh = cfg.bx[cfg.home];
-    for (int b = 0; b < cfg.bays; b++) lib_life_table_lamp(l, b, HMM_V2(cfg.bx[b] + 0.6f, 1.74f), true);
+    const float bxh = cfg.bx[cfg.home], bzh = cfg.bz[cfg.home];
+    for (int b = 0; b < cfg.bays; b++) lib_life_table_lamp(l, b, HMM_V2(cfg.bx[b] + 0.6f, cfg.bz[b] + 1.74f), true);
     HMM_Vec3 hs[4];
-    for (int i = 0; i < 4; i++) hs[i] = HMM_V3(seats[i].X + bxh, seats[i].Y, seats[i].Z);
-    lib_cat_table(l, HMM_V2(bxh + 0.6f, 1.6f), hs, 0xF);
+    for (int i = 0; i < 4; i++) hs[i] = HMM_V3(seats[i].X + bxh, seats[i].Y + bzh, seats[i].Z);
+    lib_cat_table(l, HMM_V2(bxh + 0.6f, bzh + 1.6f), hs, 0xF);
     const float dt = 1.0f / 60;
     int max_p = 0, frames = 0;
     bool fish_in = true, cap_ok = true;
@@ -134,13 +134,13 @@ int main(int argc, char **argv)
             for (int s = 0; s < 4; s++) { /* 16 mugs */
                 float cs = cosf(seats[s].Z), sn = sinf(seats[s].Z);
                 HMM_Vec3 r = cfg.mug_rest;
-                lib_life_steam(l, HMM_V3(cfg.bx[b] + seats[s].X + r.X * cs + r.Z * sn, r.Y, seats[s].Y - r.X * sn + r.Z * cs),
+                lib_life_steam(l, HMM_V3(cfg.bx[b] + seats[s].X + r.X * cs + r.Z * sn, r.Y, cfg.bz[b] + seats[s].Y - r.X * sn + r.Z * cs),
                                seats[s].Z);
             }
-        lib_life_zees(l, 0, HMM_V3(bxh + 1.8f, 1.0f, -2.5f));
-        lib_life_dots(l, HMM_V3(bxh + 4, 1.78f, 0), 0);
-        lib_life_dots(l, HMM_V3(cfg.bx[0] + 4, 1.78f, 0), 0);
-        lib_life_globe(l, HMM_V3(bxh - 0.4f, 0.74f, 2.0f));
+        lib_life_zees(l, 0, HMM_V3(bxh + 1.8f, 1.0f, bzh - 2.5f));
+        lib_life_dots(l, HMM_V3(bxh + 4, 1.78f, bzh), 0);
+        lib_life_dots(l, HMM_V3(cfg.bx[cfg.bays - 1] + 4, 1.78f, cfg.bz[cfg.bays - 1]), 0);
+        lib_life_globe(l, HMM_V3(bxh - 0.4f, 0.74f, bzh + 2.0f));
         lib_cat_pet_weight(l, lib_cat_petting(l) >= 0 ? 1.0f : 0.0f);
         int ni = lib_life_instances(l, g_inst, LIB_INST_MAX);
         int np = lib_life_puffs(l, g_puffs, LIB_PUFFS_MAX);
@@ -151,7 +151,7 @@ int main(int argc, char **argv)
         if (np > LIB_PUFFS_MAX || l->puffs_n > LIB_PUFFS_MAX) cap_ok = false;
         for (int i = 0; i < ni; i++) {
             if (g_inst[i].kind != LIB_MESH_FISH) continue;
-            float x = g_inst[i].xf.Elements[3][0] - bxh, y = g_inst[i].xf.Elements[3][1], z = g_inst[i].xf.Elements[3][2];
+            float x = g_inst[i].xf.Elements[3][0] - bxh, y = g_inst[i].xf.Elements[3][1], z = g_inst[i].xf.Elements[3][2] - bzh;
             HMM_Vec3 c = cfg.tank_centre, h = cfg.tank_half;
             if (fabsf(x - c.X) > h.X || fabsf(y - c.Y) > h.Y || fabsf(z - c.Z) > h.Z) {
                 if (fish_in) sprintf(fdet, "fish at %.3f %.3f %.3f (t %.1f)", x, y, z, l->time);
@@ -159,28 +159,69 @@ int main(int argc, char **argv)
             }
         }
     }
-    sprintf(det, "max live %d over %d frames (16 mugs, 4 table lamps, 2 talkers, a sleeper)", max_p, frames);
+    sprintf(det, "max live %d over %d frames (%d mugs, %d table lamps, 2 talkers, a sleeper)", max_p, frames, 4 * cfg.bays, cfg.bays);
     check(cap_ok && max_p <= LIB_PUFFS_MAX, "particles <= 320 for 10 min, all bays visible", det);
     check(fish_in, "fish stay inside the tank (origin within centre +- half)", fish_in ? "10 min, 5 fish" : fdet);
     sprintf(det, "avg %.2f us, max %.1f us per frame (step + 16 steam + zees + dots + readout)", tick_sum / frames * 1e6,
             tick_max * 1e6);
     check(tick_sum / frames < 150e-6, "tick time per step (budget 0.15 ms incl. people; this module alone)", det);
 
-    /* visibility: only the home bay -> no particle outside it */
+    /* visibility: one bay at a time (both rows) -> particles only inside that bay, and some from each */
     {
-        lib_life_step(l, &cfg, dt, 1u << cfg.home, 43200);
-        int np = lib_life_puffs(l, g_puffs, LIB_PUFFS_MAX);
         bool ok = true;
-        for (int i = 0; i < np; i++)
-            if (fabsf(g_puffs[i].pos.X - bxh) > cfg.pitch / 2 + 0.01f) ok = false;
-        sprintf(det, "%d puffs with only bay %d visible", np, cfg.home);
-        check(ok && np > 0, "only visible bays emit", det);
+        char vdet[160] = "";
+        int counts[LIB_LIFE_BAYS_MAX] = {0};
+        for (int b = 0; b < cfg.bays; b++) {
+            lib_life_step(l, &cfg, dt, 1u << b, 43200);
+            for (int s2 = 0; s2 < 4; s2++) /* every bay's mugs, only bay b's may show */
+                for (int bb = 0; bb < cfg.bays; bb++)
+                    lib_life_steam(l, HMM_V3(cfg.bx[bb] + seats[s2].X, cfg.mug_rest.Y, cfg.bz[bb] + seats[s2].Y), seats[s2].Z);
+            int np = lib_life_puffs(l, g_puffs, LIB_PUFFS_MAX);
+            counts[b] = np;
+            for (int i = 0; i < np; i++) {
+                const HMM_Vec3 q = g_puffs[i].pos;
+                bool in = lib_life_bay_of(&cfg, q.X, q.Z) == b && fabsf(q.X - cfg.bx[b]) <= cfg.pitch / 2 + 0.01f &&
+                          q.Z > cfg.bz[b] - 5.5f - 0.01f && q.Z < cfg.bz[b] + 10.5f;
+                if (!in && ok) sprintf(vdet, "bay %d: puff at (%.2f, %.2f)", b, q.X, q.Z);
+                ok &= in;
+            }
+            ok &= np > 0;
+        }
+        if (ok) sprintf(vdet, "puffs per bay alone: %d %d %d %d", counts[0], counts[1], cfg.bays > 2 ? counts[2] : 0, cfg.bays > 3 ? counts[3] : 0);
+        check(ok, "only visible bays emit, inside that bay (both rows)", vdet);
+    }
+    /* the sunbeam motes start at their own bay's window: x by the column, z by the row */
+    {
+        bool ok = l->motes_n == cfg.bays * cfg.motes;
+        for (int i = 0; i < l->motes_n && ok; i++) {
+            const LibMote *m = &l->motes[i];
+            const int b = i / cfg.motes;
+            ok &= m->oz == cfg.bz[b] && lib_life_bay_of(&cfg, m->x, m->oz + m->fz) == b &&
+                  lib_life_bay_of(&cfg, m->x, m->oz + cfg.beam_window_z) == b;
+        }
+        sprintf(det, "%d motes, %d per bay", l->motes_n, cfg.motes);
+        check(ok, "beam motes: each bay's motes inside it", det);
+    }
+    /* the clock, skeleton and tank stand in the home bay (x and z) */
+    {
+        lib_life_step(l, &cfg, dt, 0xF, 43200);
+        int ni = lib_life_instances(l, g_inst, LIB_INST_MAX), found = 0;
+        bool ok = true;
+        for (int i = 0; i < ni; i++) {
+            const LibMeshKind k = g_inst[i].kind;
+            if (k != LIB_MESH_CLOCK_M && k != LIB_MESH_PENDULUM && k != LIB_MESH_SKELETON && k != LIB_MESH_FISH) continue;
+            found++;
+            ok &= lib_life_bay_of(&cfg, g_inst[i].xf.Elements[3][0], g_inst[i].xf.Elements[3][2]) == cfg.home;
+        }
+        sprintf(det, "%d instances checked", found);
+        check(ok && found >= 4, "clock, skeleton, fish in the home bay", det);
     }
 
     /* 5. the cat: 20 loops, three seated players at the home table, then at another table */
     lib_life_init(l, &cfg, 12345);
     uint32_t occ = 0xB; /* seats 0, 1, 3 */
-    lib_cat_table(l, HMM_V2(bxh + 0.6f, 1.6f), hs, occ);
+    lib_cat_table(l, HMM_V2(bxh + 0.6f, bzh + 1.6f), hs, occ);
+    bool cat_home = true; /* the cat's own route (no visit) keeps to the home bay */
     int visits[4] = {0}, pets = 0;
     bool pet_late = false, hearts_bad = false, hearts_seen = false;
     double sit_at = -1, worst_delay = 0, pet_left = 0;
@@ -194,6 +235,7 @@ int main(int argc, char **argv)
         lib_life_step(l, &cfg, dt, 0xF, 0);
         steps++;
         const LibCatStep *st = &cfg.route[l->cat.ri];
+        cat_home &= lib_life_bay_of(&cfg, l->cat.pos[0], l->cat.pos[2]) == cfg.home;
         if (st->visit && l->cat.wait > 0 && (prev_wait <= 0 || l->cat.ri != last_ri)) sit_at = l->time; /* just sat */
         if (l->cat.pet_serial != serial) {
             serial = l->cat.pet_serial;
@@ -223,24 +265,32 @@ int main(int argc, char **argv)
     sprintf(det, "worst %.3f s after sitting (pet_delay_s %.1f + 0.5)", worst_delay, cfg.pet_delay_s);
     check(!pet_late && pets > 0, "cat: pet starts within pet_delay_s + 0.5 s", det);
     check(!hearts_bad && hearts_seen, "cat: hearts only while petted", hearts_seen ? "seen during pets, none outside" : "none seen");
+    check(cat_home, "cat: route and home-table visits stay in the home bay", NULL);
 
-    /* the cat follows the players to another table (bay 3) */
-    {
-        int b = 3 < cfg.bays ? 3 : 0;
+    /* the cat follows the players to another table: each other bay, the back row too */
+    for (int b = 0; b < cfg.bays; b++) {
+        if (b == cfg.home) continue;
         HMM_Vec3 s3[4];
-        for (int i = 0; i < 4; i++) s3[i] = HMM_V3(seats[i].X + cfg.bx[b], seats[i].Y, seats[i].Z);
-        lib_cat_table(l, HMM_V2(cfg.bx[b] + 0.6f, 1.6f), s3, 0x4);
+        for (int i = 0; i < 4; i++) s3[i] = HMM_V3(seats[i].X + cfg.bx[b], seats[i].Y + cfg.bz[b], seats[i].Z);
+        lib_cat_table(l, HMM_V2(cfg.bx[b] + 0.6f, cfg.bz[b] + 1.6f), s3, 0x4);
         int got = 0;
         float best = 1e9f;
+        bool app_ok = true, fresh = false; /* fresh: a visit chosen after the move (a visit under way keeps its spot) */
         for (long i = 0; i < 60L * 60 * 30 && !got; i++) {
+            const int ri0 = l->cat.ri;
             lib_life_step(l, &cfg, dt, 0xF, 0);
-            if (lib_cat_petting(l) == 2) {
+            const LibCatStep *st = &cfg.route[l->cat.ri];
+            if (l->cat.ri != ri0 && st->approach && !st->hop) fresh = true;
+            if (fresh && st->approach && l->cat.who == 2)
+                app_ok &= fabsf(l->cat.app.Y - (cfg.bz[b] + cfg.approach_z)) < 1e-4f && lib_life_bay_of(&cfg, l->cat.app.X, l->cat.app.Y) == b;
+            if (fresh && lib_cat_petting(l) == 2) {
                 got = 1;
-                best = fabsf(l->cat.pos[0] - (s3[2].X + sinf(s3[2].Z) * cfg.table_forward));
+                best = hypotf(l->cat.pos[0] - (s3[2].X + sinf(s3[2].Z) * cfg.table_forward),
+                              l->cat.pos[2] - (s3[2].Y + cosf(s3[2].Z) * cfg.table_forward));
             }
         }
-        sprintf(det, "bay %d seat 2: x error %.3f m", b, best);
-        check(got && best < 0.01f, "cat walks to whichever table the players are at", det);
+        sprintf(det, "bay %d (row %d) seat 2: error %.3f m, approach in the bay %s", b, b / cfg.cols, best, app_ok ? "yes" : "no");
+        check(got && best < 0.01f && app_ok, "cat walks to whichever table the players are at", det);
     }
 
     cJSON_Delete(root);

@@ -99,8 +99,8 @@ static HMM_Vec2 random_free(const LibNav *n)
 {
     for (;;) {
         HMM_Vec2 p = HMM_V2(n->x0 + frand() * (float)n->nx * n->cell, n->z0 + frand() * (float)n->nz * n->cell);
-        /* inside the hall proper (not out in a door corridor) and free with its neighbours */
-        if (p.Y < n->back_z + 0.5f) continue;
+        /* inside the hall proper (not out in a door corridor or in a door of the middle wall) and free with its neighbours */
+        if (p.Y < n->z_min + 0.5f || fabsf(p.Y - (n->mid_wall_z - 0.5f * n->wall_t)) < 0.8f) continue;
         if (lib_nav_free(n, p) && lib_nav_free(n, HMM_V2(p.X + 0.25f, p.Y)) && lib_nav_free(n, HMM_V2(p.X - 0.25f, p.Y)) &&
             lib_nav_free(n, HMM_V2(p.X, p.Y + 0.25f)) && lib_nav_free(n, HMM_V2(p.X, p.Y - 0.25f)))
             return p;
@@ -120,6 +120,40 @@ static bool path_sane(const LibNav *n, HMM_Vec2 from, const LibPath *p, HMM_Vec2
         a = p->pts[i];
     }
     return true;
+}
+
+/* walls a polyline may only pass through a door: the band of the wall between the rows and the strip behind the back
+ * row. Samples every 2 cm; a sample in either band must lie in a door column (cells there are free only when their
+ * centre is, so allow half a cell). Counts the middle-wall and outer-wall crossings. */
+typedef struct Crossings { int mid, outer, bad; HMM_Vec2 bad_at; } Crossings;
+static void sample_walls(const LibNav *n, HMM_Vec2 a, HMM_Vec2 b, Crossings *c)
+{
+    const float band0 = n->mid_wall_z - n->wall_t, band1 = n->mid_wall_z;
+    float len = v2len(a, b);
+    int steps = (int)(len / 0.02f) + 1;
+    for (int k = 0; k <= steps; k++) {
+        float t = (float)k / (float)steps;
+        HMM_Vec2 q = HMM_V2(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+        bool in_mid = q.Y > band0 && q.Y < band1, in_outer = q.Y < n->z_min;
+        if (!in_mid && !in_outer) continue;
+        float lx = q.X - n->bx[lib_nav_bay_of(n, q.X, q.Y)];
+        if (lx < n->door_x[0] - 0.5f * n->cell || lx > n->door_x[1] + 0.5f * n->cell) {
+            if (!c->bad) c->bad_at = q;
+            c->bad++;
+        }
+    }
+    if ((a.Y > n->mid_wall_z) != (b.Y > n->mid_wall_z)) c->mid++;
+    if ((a.Y > n->z_min) != (b.Y > n->z_min)) c->outer++;
+}
+static Crossings path_walls(const LibNav *n, HMM_Vec2 from, const LibPath *p)
+{
+    Crossings c = {0};
+    HMM_Vec2 a = from;
+    for (int i = 0; i < p->n; i++) {
+        sample_walls(n, a, p->pts[i], &c);
+        a = p->pts[i];
+    }
+    return c;
 }
 
 typedef struct Walker {
@@ -305,65 +339,148 @@ int main(int argc, char **argv)
           g_nav.free_count, g_nav.nx * g_nav.nz);
 
     /* the grid by hand at a few places */
-    const cJSON *hall = cJSON_GetObjectItemCaseSensitive(root, "hall");
     const cJSON *door = cJSON_GetObjectItemCaseSensitive(root, "door");
     const cJSON *seats = cJSON_GetObjectItemCaseSensitive(root, "seats");
-    const cJSON *bx = cJSON_GetObjectItemCaseSensitive(hall, "bx");
+    const cJSON *table = cJSON_GetObjectItemCaseSensitive(root, "table");
     HMM_Vec2 d_out = jv2(cJSON_GetObjectItemCaseSensitive(door, "outside"));
     HMM_Vec2 d_in = jv2(cJSON_GetObjectItemCaseSensitive(door, "inside"));
-    int nb = cJSON_GetArraySize(bx);
+    HMM_Vec2 d_c = jv2(cJSON_GetObjectItemCaseSensitive(door, "centre"));
+    HMM_Vec2 t_c = jv2(cJSON_GetObjectItemCaseSensitive(table, "centre"));
+    const LibNav *N = &g_nav;
+    const int nb = N->bays;
     {
-        bool g = true;
+        bool g = nb == 4 && N->cols == 2;
+        char why[96] = "";
+#define G(cond, ...) do { if (!(cond) && g) snprintf(why, sizeof why, __VA_ARGS__); g &= (cond); } while (0)
         for (int b = 0; b < nb; b++) {
-            float x = (float)cJSON_GetArrayItem(bx, b)->valuedouble;
-            g &= lib_nav_free(&g_nav, HMM_V2(x + d_out.X, d_out.Y));        /* the door corridor is open */
-            g &= !lib_nav_free(&g_nav, HMM_V2(x + d_out.X - 1.0f, d_out.Y)); /* beside it is wall */
-            g &= !lib_nav_free(&g_nav, HMM_V2(x + 0.6f, 1.2f));              /* the study table */
+            float x = N->bx[b], z = N->bz[b];
+            bool back = b >= N->cols;
+            G(lib_nav_bay_of(N, x, z) == b && lib_nav_bay_of(N, x + 7.9f, z + 10.4f) == b && lib_nav_bay_of(N, x - 7.9f, z - 5.4f) == b,
+              "bay_of bay %d", b);
+            G(lib_nav_free(N, HMM_V2(x + d_c.X, z + d_c.Y)), "bay %d door centre shut", b);          /* the door is open */
+            G(lib_nav_free(N, HMM_V2(x + d_out.X, z + d_out.Y)), "bay %d door outside shut", b);     /* and its far side */
+            G(!lib_nav_free(N, HMM_V2(x + d_c.X - 1.0f, z + d_c.Y)), "bay %d beside door open", b);  /* beside it is wall */
+            G(!lib_nav_free(N, HMM_V2(x + d_c.X + 1.0f, z + d_c.Y)), "bay %d beside door open", b);
+            G(!lib_nav_free(N, HMM_V2(x + t_c.X, z + t_c.Y)), "bay %d table open", b);                 /* the study table */
+            /* the back row's doors lead outside (the strip behind the hall); the front row's into the back row */
+            G(back ? d_out.Y + z < N->z_min : (d_out.Y + z < N->mid_wall_z && d_out.Y + z > N->z_min), "bay %d door side", b);
+            /* the middle wall beside the doors, from both sides of the hall */
+            G(!lib_nav_free(N, HMM_V2(x - 4.0f, N->mid_wall_z - 0.1f)) && !lib_nav_free(N, HMM_V2(x + 1.5f, N->mid_wall_z - 0.1f)),
+              "bay %d middle wall open", b);
+            G(!lib_nav_free(N, HMM_V2(N->x_min + 0.1f, z)) || b % N->cols, "bay %d left side open", b);
+            G(!lib_nav_free(N, HMM_V2(N->x_max - 0.1f, z)) || b % N->cols != N->cols - 1, "bay %d right side open", b);
         }
-        g &= !lib_nav_free(&g_nav, HMM_V2(g_nav.x_min + 0.1f, 0)) && !lib_nav_free(&g_nav, HMM_V2(g_nav.x_max - 0.1f, 0));
-        g &= !lib_nav_free(&g_nav, HMM_V2(0, g_nav.front_z - 0.1f));
-        check(g, "grid: doors open, walls / ends / table shut", "");
+        G(!lib_nav_free(N, HMM_V2(0, N->z_max - 0.1f)) && !lib_nav_free(N, HMM_V2(-16, N->z_max - 0.1f)), "front open");
+        /* the open floor in front of each room (local z 5.5 .. 10.5) and the front of the back row are walkable */
+        G(lib_nav_free(N, HMM_V2(-3, 8)) && lib_nav_free(N, HMM_V2(-13, 8)) && lib_nav_free(N, HMM_V2(-3, -8)), "open floor shut");
+        /* every free cell behind the back row's wall lies in a door column */
+        int strip = 0, strip_bad = 0;
+        for (int c = 0; c < N->nx * N->nz; c++) {
+            HMM_Vec2 p = lib_nav_cell_xz(N, c);
+            if (N->cells[c] || p.Y >= N->z_min) continue;
+            float lx = p.X - N->bx[lib_nav_bay_of(N, p.X, p.Y)];
+            strip++;
+            strip_bad += !(lx > N->door_x[0] && lx < N->door_x[1]);
+        }
+        G(strip > 0 && strip_bad == 0, "outside strip: %d free, %d off a door column", strip, strip_bad);
+#undef G
+        check(g, "grid: doors open, walls / mid wall / table shut", "%s", why);
     }
 
     /* ---- path sanity: each bay's door (outside and inside) to every bay's seat stands ---- */
     {
-        int npaths = 0, bad = 0, straight = 0;
+        int npaths = 0, bad = 0, straight = 0, wall_bad = 0;
         double ms_max = 0, ms_sum = 0;
         char why[96] = "";
         for (int db = 0; db < nb; db++) {
-            float dxb = (float)cJSON_GetArrayItem(bx, db)->valuedouble;
             for (int sb = 0; sb < nb; sb++) {
-                float sxb = (float)cJSON_GetArrayItem(bx, sb)->valuedouble;
                 const cJSON *seat;
                 cJSON_ArrayForEach(seat, seats)
                 {
                     HMM_Vec2 st = jv2(cJSON_GetObjectItemCaseSensitive(seat, "stand"));
-                    HMM_Vec2 to = HMM_V2(st.X + sxb, st.Y);
+                    HMM_Vec2 to = HMM_V2(st.X + N->bx[sb], st.Y + N->bz[sb]);
                     for (int side = 0; side < 2; side++) {
-                        HMM_Vec2 from = side ? HMM_V2(d_in.X + dxb, d_in.Y) : HMM_V2(d_out.X + dxb, d_out.Y);
+                        HMM_Vec2 dd = side ? d_in : d_out;
+                        HMM_Vec2 from = HMM_V2(dd.X + N->bx[db], dd.Y + N->bz[db]);
                         LibPath p;
                         double t0 = mg_time_now();
-                        bool pok = lib_nav_path(&g_nav, from, to, NULL, 0, &p);
+                        bool pok = lib_nav_path(N, from, to, NULL, 0, &p);
                         double ms = (mg_time_now() - t0) * 1000.0;
                         ms_sum += ms;
                         if (ms > ms_max) ms_max = ms;
                         npaths++;
                         straight += p.last_straight;
-                        bool blocked_goal = !lib_nav_free(&g_nav, to);
+                        bool blocked_goal = !lib_nav_free(N, to);
+                        Crossings cr = path_walls(N, from, &p);
+                        wall_bad += cr.bad > 0;
                         char w2[96];
-                        if (!pok || !path_sane(&g_nav, from, &p, to, w2, sizeof w2) || p.last_straight != blocked_goal) {
+                        if (!pok || !path_sane(N, from, &p, to, w2, sizeof w2) || p.last_straight != blocked_goal || cr.bad) {
                             if (!bad)
                                 snprintf(why, sizeof why, "bay %d door -> bay %d seat %d: %s", db, sb,
                                          cJSON_GetObjectItemCaseSensitive(seat, "index")->valueint,
-                                         !pok ? "no path" : (p.last_straight != blocked_goal ? "last_straight flag" : w2));
+                                         !pok ? "no path" : (p.last_straight != blocked_goal ? "last_straight flag" : cr.bad ? "through a wall" : w2));
                             bad++;
                         }
                     }
                 }
             }
         }
-        check(bad == 0, "paths: every door -> every seat stand", "%d paths, %d bad %s; %d end in a straight last stretch; avg %.3f ms, max %.3f ms",
-              npaths, bad, why, straight, ms_sum / npaths, ms_max);
+        check(bad == 0, "paths: every door -> every seat stand", "%d paths, %d bad (%d through a wall) %s; %d end in a straight last stretch; avg %.3f ms, max %.3f ms",
+              npaths, bad, wall_bad, why, straight, ms_sum / npaths, ms_max);
+    }
+    /* the home table to each back-row table: through a door of the middle wall, never through the wall elsewhere */
+    {
+        bool g = true;
+        char why[96] = "";
+        const int home = 1;
+        HMM_Vec2 st0 = jv2(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(seats, 0), "stand"));
+        /* the stand is beside the chair (a blocked cell): start from the free cell nearest it */
+        HMM_Vec2 from = lib_nav_cell_xz(N, lib_nav_near(N, HMM_V2(st0.X + N->bx[home], st0.Y + N->bz[home])));
+        double ms_max = 0;
+        for (int b = N->cols; b < nb; b++) {
+            const cJSON *seat;
+            cJSON_ArrayForEach(seat, seats)
+            {
+                HMM_Vec2 st = jv2(cJSON_GetObjectItemCaseSensitive(seat, "stand"));
+                HMM_Vec2 to = HMM_V2(st.X + N->bx[b], st.Y + N->bz[b]);
+                LibPath p;
+                double t0 = mg_time_now();
+                bool pok = lib_nav_path(N, from, to, NULL, 0, &p);
+                double ms = (mg_time_now() - t0) * 1000.0;
+                if (ms > ms_max) ms_max = ms;
+                Crossings cr = path_walls(N, from, &p);
+                char w2[96] = "";
+                bool sane = pok && path_sane(N, from, &p, to, w2, sizeof w2);
+                if (g && !(sane && cr.mid == 1 && cr.outer == 0 && cr.bad == 0))
+                    snprintf(why, sizeof why, "to bay %d: %s, %d mid crossings, %d outer, %d off a door (%.2f, %.2f)", b,
+                             sane ? "sane" : w2, cr.mid, cr.outer, cr.bad, cr.bad_at.X, cr.bad_at.Y);
+                g &= sane && cr.mid == 1 && cr.outer == 0 && cr.bad == 0;
+            }
+        }
+        check(g, "paths: home table -> back-row tables via a door", "%s slowest %.3f ms", why, ms_max);
+    }
+    /* the strip outside: reachable from inside, only through the back row's doors */
+    {
+        bool g = true;
+        char why[96] = "";
+        for (int b = 0; b < nb; b++) {
+            HMM_Vec2 st0 = jv2(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(seats, 1), "stand"));
+            HMM_Vec2 from = lib_nav_cell_xz(N, lib_nav_near(N, HMM_V2(st0.X + N->bx[b], st0.Y + N->bz[b])));
+            /* a point outside, behind the other column's back room */
+            int ob = N->cols + (N->cols - 1 - b % N->cols);
+            HMM_Vec2 to = HMM_V2(N->bx[ob] + d_out.X, N->bz[ob] + d_out.Y);
+            LibPath p;
+            bool pok = lib_nav_path(N, from, to, NULL, 0, &p);
+            Crossings cr = path_walls(N, from, &p);
+            char w2[96] = "";
+            bool sane = pok && path_sane(N, from, &p, to, w2, sizeof w2);
+            bool want_mid = b < N->cols;
+            bool ok1 = sane && cr.outer == 1 && cr.mid == (want_mid ? 1 : 0) && cr.bad == 0;
+            if (g && !ok1)
+                snprintf(why, sizeof why, "bay %d: %s, %d outer, %d mid, %d off a door", b, sane ? "sane" : w2, cr.outer, cr.mid, cr.bad);
+            g &= ok1;
+        }
+        check(g, "paths: outside strip only via back-row doors", "%s", why);
     }
     /* stamped discs: a disc across a corridor forces a detour, and the path avoids it */
     {

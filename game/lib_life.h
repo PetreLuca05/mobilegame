@@ -5,6 +5,7 @@
  * Output is data for the renderer, all in the hall frame (metres, y up, +z towards the menu camera):
  *   lib_life_instances  mesh instances (transform = translate * rotate * scale of the mesh group as authored)
  *   lib_life_puffs      the particle list for the one instanced `puff` draw (cap LIB_PUFFS_MAX)
+ * The hall (mg-library 10) is cols x rows of bays: a bay's things sit at its (bx, bz) plus their bay-local x, z.
  * Mesh pivots (from library.mgmesh, group bounds):
  *   clock_hand_m / clock_hand_h  origin = the hand's axle, pointing +y, face +z; turned about z (clockwise = -)
  *   clock_pendulum               origin = the pivot at the top, hangs along -y; swings about z
@@ -44,7 +45,7 @@ enum { LIB_POSE_WALK, LIB_POSE_SIT, LIB_POSE_SLEEP, LIB_POSE_COUNT, LIB_POSE_NON
 
 typedef struct LibCatStep {
     bool has_p, approach, visit, hop, watch_pendulum;
-    HMM_Vec2 p;  /* local to the home bay */
+    HMM_Vec2 p;  /* local to the home bay (x and z) */
     float y;     /* 0 when absent (the prototype's `st.y || 0`) */
     float wait;  /* 0 = none */
     int pose;    /* LIB_POSE_NONE = the wait uses sit */
@@ -59,9 +60,9 @@ typedef struct LibLampMotes {
 
 typedef struct LibLifeCfg {
     /* hall */
-    int bays, home;
-    float pitch, x_min;
-    float bx[LIB_LIFE_BAYS_MAX];
+    int bays, cols, home;
+    float pitch, x_min, mid_wall_z; /* bayOf: the column by x, the back row below mid_wall_z */
+    float bx[LIB_LIFE_BAYS_MAX], bz[LIB_LIFE_BAYS_MAX];
     bool has_clock[LIB_LIFE_BAYS_MAX], has_tank[LIB_LIFE_BAYS_MAX], has_skeleton[LIB_LIFE_BAYS_MAX];
     float window_x[LIB_LIFE_BAYS_MAX];
     /* floor lamps (round / round2 with lamp_pos), hall frame */
@@ -102,6 +103,7 @@ typedef struct LibLifeCfg {
 
 /* Parses life / hall / bays from the scene root (library.scene.json). False when a field is missing. */
 bool lib_life_config(LibLifeCfg *c, const cJSON *scene_root);
+int lib_life_bay_of(const LibLifeCfg *c, float x, float z); /* bayOf */
 
 typedef struct LibPuff { HMM_Vec3 pos; float scale; uint32_t rgba; } LibPuff; /* rgba 0xRRGGBBAA */
 
@@ -113,7 +115,7 @@ typedef enum {
 /* rgba: a tint (0xFFFFFFFF = the mesh's own colours; fish carry their fish_colours tint). */
 typedef struct LibInst { LibMeshKind kind; HMM_Mat4 xf; uint32_t rgba; float alpha; } LibInst;
 
-typedef struct LibMote { float x, fz, wy, u, w, ph; } LibMote;
+typedef struct LibMote { float oz, x, fz, wy, u, w, ph; } LibMote; /* oz: its bay's z */
 typedef struct LibFish { float ax, w, ph, y, z; } LibFish;
 
 typedef struct LibCat {

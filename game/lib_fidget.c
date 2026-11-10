@@ -169,10 +169,14 @@ bool lib_fidget_config(LibFidgetCfg *c, const cJSON *root)
     c->study.head_pitch = jf(S, "head_pitch", 0.85f), c->study.head_yaw = jf(S, "head_yaw", 0.2f);
     c->head_up = 0.86f;
 
-    c->x_min = jf(hall, "x_min", -24.0f), c->x_max = jf(hall, "x_max", 40.0f), c->pitch = jf(hall, "pitch", 16.0f);
-    c->z_half = 0.5f * jf(room, "d", 11.0f);
+    c->x_min = jf(hall, "x_min", -24.0f), c->x_max = jf(hall, "x_max", 8.0f), c->pitch = jf(hall, "pitch", 16.0f);
+    c->mid_wall_z = jf(hall, "mid_wall_z", -5.5f);
+    c->z_back = jf(room, "z_back", -5.5f), c->z_front = jf(room, "z_front", 10.5f);
     c->bays = jarr(hall, "bx", c->bx, LIB_FIDGET_BAYS_MAX);
     if (c->bays < 1) ok = false, c->bays = 1;
+    if (jarr(hall, "bz", c->bz, LIB_FIDGET_BAYS_MAX) != c->bays) ok = false;
+    c->cols = (int)jf(hall, "cols", (float)c->bays);
+    if (c->cols < 1 || c->cols > c->bays) ok = false, c->cols = c->bays;
     float tc[2], ts[2];
     ok &= jarr(table, "centre", tc, 2) == 2 && jarr(table, "size", ts, 2) == 2;
     c->table_lo = HMM_V2(tc[0] - 0.5f * ts[0], tc[1] - 0.5f * ts[1]);
@@ -189,8 +193,8 @@ bool lib_fidget_config(LibFidgetCfg *c, const cJSON *root)
         memcpy(c->obst[k], r, sizeof r);
         for (int b = 0; b < c->bays; b++) { /* the rect around a bay's study table and its chairs */
             const float e5 = 0.005f;
-            if (r[0] <= c->bx[b] + c->table_lo.X + e5 && r[2] >= c->bx[b] + c->table_hi.X - e5 && r[1] <= c->table_lo.Y + e5 &&
-                r[3] >= c->table_hi.Y - e5) {
+            if (r[0] <= c->bx[b] + c->table_lo.X + e5 && r[2] >= c->bx[b] + c->table_hi.X - e5 &&
+                r[1] <= c->bz[b] + c->table_lo.Y + e5 && r[3] >= c->bz[b] + c->table_hi.Y - e5) {
                 c->obst_table[k] = true;
             }
         }
@@ -609,15 +613,16 @@ void lib_balls_throw(LibBalls *b, const LibFidgetCfg *c, HMM_Vec3 pos, HMM_Vec3 
     b->b[b->n++] = (LibBall){pos, vel, c->rage.life_s};
 }
 
-static int bay_of(const LibFidgetCfg *c, float x)
+int lib_fidget_bay_of(const LibFidgetCfg *c, float x, float z)
 {
     int i = (int)floorf((x - c->x_min) / c->pitch);
-    return i < 0 ? 0 : i > c->bays - 1 ? c->bays - 1 : i;
+    i = i < 0 ? 0 : i > c->cols - 1 ? c->cols - 1 : i;
+    return (z < c->mid_wall_z ? c->cols : 0) + i;
 }
 
 void lib_balls_step(LibBalls *bs, const LibFidgetCfg *c, float dt)
 {
-    const float r = c->rage.radius, bounce = c->rage.bounce, zw = c->z_half - 0.1f;
+    const float r = c->rage.radius, bounce = c->rage.bounce;
     for (int i = bs->n - 1; i >= 0; i--) {
         LibBall *b = &bs->b[i];
         b->life -= dt;
@@ -629,8 +634,9 @@ void lib_balls_step(LibBalls *bs, const LibFidgetCfg *c, float dt)
         const float ox = b->p.X, oz = b->p.Z;
         b->v.Y -= c->rage.gravity * dt;
         b->p = HMM_AddV3(b->p, HMM_MulV3F(b->v, dt));
-        const float lxb = b->p.X - c->bx[bay_of(c, b->p.X)];
-        const float top = (lxb > c->table_lo.X && lxb < c->table_hi.X && b->p.Z > c->table_lo.Y && b->p.Z < c->table_hi.Y && b->p.Y > 0.6f)
+        const int bb = lib_fidget_bay_of(c, b->p.X, b->p.Z);
+        const float lxb = b->p.X - c->bx[bb], lzb = b->p.Z - c->bz[bb];
+        const float top = (lxb > c->table_lo.X && lxb < c->table_hi.X && lzb > c->table_lo.Y && lzb < c->table_hi.Y && b->p.Y > 0.6f)
                               ? c->table_top_y + r
                               : r;
         if (b->p.Y < top) {
@@ -639,7 +645,9 @@ void lib_balls_step(LibBalls *bs, const LibFidgetCfg *c, float dt)
             b->v.X *= 0.6f, b->v.Z *= 0.6f;
         }
         if (b->p.X < c->x_min + 0.1f + r || b->p.X > c->x_max - 0.1f - r) b->p.X = ox, b->v.X = -b->v.X * bounce;
-        if (b->p.Z < -zw + r || b->p.Z > zw - r) b->p.Z = oz, b->v.Z = -b->v.Z * bounce;
+        /* the z walls of the bay the ball was in: its back wall (the middle wall for the front row) and the front */
+        const float bz0 = c->bz[lib_fidget_bay_of(c, ox, oz)];
+        if (b->p.Z < bz0 + c->z_back + 0.1f + r || b->p.Z > bz0 + c->z_front - 0.1f - r) b->p.Z = oz, b->v.Z = -b->v.Z * bounce;
         int under = -1;
         for (int k = 0; k < c->obst_n; k++) {
             const float *o = c->obst[k];

@@ -14,8 +14,8 @@
 struct cJSON;
 
 #define LIB_NAV_NX_MAX 256
-#define LIB_NAV_NZ_MAX 52
-#define LIB_NAV_CELLS (LIB_NAV_NX_MAX * LIB_NAV_NZ_MAX)
+#define LIB_NAV_NZ_MAX 256
+#define LIB_NAV_CELLS 24576 /* nx * nz must fit (the square hall: 128 x 136); cell ids stay below 32,767 */
 #define LIB_NAV_BAYS_MAX 8
 #define LIB_NAV_OBST_MAX 128
 
@@ -24,7 +24,7 @@ enum { LIB_CELL_FREE = 0, LIB_CELL_BLOCKED = 1, LIB_CELL_STAMP = 2 };
 
 typedef struct LibNavScratch {
     float g[LIB_NAV_CELLS];
-    int16_t came[LIB_NAV_CELLS]; /* -1: none; cell ids fit (13,312 < 32,767) */
+    int16_t came[LIB_NAV_CELLS]; /* -1: none; cell ids fit (< 24,576) */
     uint16_t seen[LIB_NAV_CELLS]; /* == gen: g / came valid this search */
     uint16_t closed[LIB_NAV_CELLS];
     float f[LIB_NAV_CELLS];
@@ -39,9 +39,11 @@ typedef struct LibNav {
     float cell, x0, z0, radius;
     int nx, nz;
     float door_x[2];          /* local to a bay */
-    float x_min, x_max, pitch, back_z, front_z;
-    int bays;
-    float bx[LIB_NAV_BAYS_MAX];
+    float wall_t;             /* the wall between the rows: its thickness, on the back side of mid_wall_z */
+    /* the hall (mg-library 10): cols x rows of bays; the front row (row 0) is bays 0..cols-1, z >= mid_wall_z */
+    float x_min, x_max, z_min, z_max, mid_wall_z, pitch;
+    int bays, cols;
+    float bx[LIB_NAV_BAYS_MAX], bz[LIB_NAV_BAYS_MAX];
     uint8_t cells[LIB_NAV_CELLS]; /* LIB_CELL_* */
     int free_count;
     double bake_ms;
@@ -57,6 +59,7 @@ typedef struct LibPath {
 } LibPath;
 
 bool lib_nav_bake(LibNav *n, const struct cJSON *scene_root); /* logs the time */
+int lib_nav_bay_of(const LibNav *n, float x, float z);         /* bayOf: the column by x, the row by the middle wall */
 int lib_nav_cell(const LibNav *n, HMM_Vec2 p);                 /* -1 outside the grid */
 bool lib_nav_free(const LibNav *n, HMM_Vec2 p);                /* navFree */
 HMM_Vec2 lib_nav_cell_xz(const LibNav *n, int c);

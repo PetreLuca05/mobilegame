@@ -218,7 +218,27 @@ int main(int argc, char **argv)
         snprintf(msg, sizeof msg, "tables_now[%d] reproduces exactly", i++);
         check(table_matches(&c, t, root), msg);
     }
-    check(i == 4, "tables_now has four tables");
+    check(i == 4 && i == c.bays, "tables_now has four tables (one per bay)");
+    /* mg-library 10: two rows of bays, yet every table's lamp and items stay in the bay-local frame, on the table top
+     * (the back row's bz is not baked into them) */
+    {
+        const cJSON *table = obj(root, "table"), *tc = obj(table, "centre"), *ts = obj(table, "size");
+        const double x0 = at(tc, 0) - at(ts, 0) / 2, x1 = at(tc, 0) + at(ts, 0) / 2;
+        const double z0 = at(tc, 1) - at(ts, 1) / 2, z1 = at(tc, 1) + at(ts, 1) / 2;
+        int bays_seen = 0, n = 0, off = 0;
+        cJSON_ArrayForEach(t, obj(root, "tables_now")) {
+            bays_seen |= 1 << (int)num(t, "bay");
+            const cJSON *lamp = obj(t, "lamp"), *it;
+            off += !(at(lamp, 0) > x0 && at(lamp, 0) < x1 && at(lamp, 1) > z0 && at(lamp, 1) < z1);
+            cJSON_ArrayForEach(it, obj(t, "items")) {
+                n++;
+                off += !(num(it, "x") > x0 && num(it, "x") < x1 && num(it, "z") > z0 && num(it, "z") < z1);
+            }
+        }
+        char msg[128];
+        snprintf(msg, sizeof msg, "tables_now: bays 0-3 (both rows), lamps + %d items on the bay-local table top (%d off)", n, off);
+        check(bays_seen == 0xF && off == 0 && n > 0, msg);
+    }
     build_places(root);
     random_seeds(&c);
     seed_strings();

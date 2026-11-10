@@ -100,11 +100,13 @@ typedef struct LibFidgetCfg {
         float seat_y, lean, head_pitch, head_yaw;
     } study;
     float head_up; /* head centre above the body base (avatar rig; 0.86 like the prototype) */
-    /* the hall, for the paper balls (hall frame = library space) */
-    float x_min, x_max, z_half; /* walls at x_min + 0.1, x_max - 0.1, +-z_half */
+    /* the hall, for the paper balls (hall frame = library space; mg-library 10: cols x rows of bays) */
+    float x_min, x_max;     /* side walls at x_min + 0.1, x_max - 0.1 */
+    float z_back, z_front;  /* a bay's back wall and open front, local to the bay: walls at bz + z_back + 0.1 .. bz + z_front - 0.1 */
+    float mid_wall_z;       /* bayOf: z below it is the back row */
     float pitch;
-    int bays;
-    float bx[LIB_FIDGET_BAYS_MAX];
+    int bays, cols;
+    float bx[LIB_FIDGET_BAYS_MAX], bz[LIB_FIDGET_BAYS_MAX];
     HMM_Vec2 table_lo, table_hi; /* the study table top, local to a bay */
     float table_top_y;
     float obst[LIB_FIDGET_OBST_MAX][4]; /* x0, z0, x1, z1 */
@@ -189,7 +191,7 @@ HMM_Vec3 lib_seat_to_hall(HMM_Vec2 seat, float yaw, HMM_Vec3 p);
 HMM_Vec3 lib_seat_dir_to_hall(float yaw, HMM_Vec3 v);
 
 /* Paper balls in the hall frame: at most rage.max, oldest replaced; they bounce off the floor, the study table
- * tops, the walls and the obstacle rects below 2 m, slow down on the ground and vanish after life_s. */
+ * tops, the walls of the bay they are in (its back wall, the middle wall for the front row) and the obstacle rects below 2 m, slow down on the ground and vanish after life_s. */
 typedef struct LibBall {
     HMM_Vec3 p, v;
     float life;
@@ -200,6 +202,7 @@ typedef struct LibBalls {
 } LibBalls;
 void lib_balls_throw(LibBalls *b, const LibFidgetCfg *c, HMM_Vec3 pos, HMM_Vec3 vel);
 void lib_balls_step(LibBalls *b, const LibFidgetCfg *c, float dt);
+int lib_fidget_bay_of(const LibFidgetCfg *c, float x, float z); /* bayOf */
 float lib_ball_size(const LibFidgetCfg *c, const LibBall *b); /* the drawn radius (shrinks over the last 0.4 s) */
 
 #endif

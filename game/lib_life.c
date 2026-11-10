@@ -41,10 +41,11 @@ static float ll_alerp(float a, float b, float t)
 }
 static float ll_ease(float dt, float rate) { return 1.0f - expf(-rate * dt); }
 
-static int ll_bay_of(const LibLifeCfg *c, float x)
+int lib_life_bay_of(const LibLifeCfg *c, float x, float z)
 {
     int b = (int)floorf((x - c->x_min) / c->pitch);
-    return b < 0 ? 0 : b > c->bays - 1 ? c->bays - 1 : b;
+    b = b < 0 ? 0 : b > c->cols - 1 ? c->cols - 1 : b;
+    return (z < c->mid_wall_z ? c->cols : 0) + b;
 }
 
 /* three.js Object3D: T * Rx * Ry * Rz (Euler XYZ) * S */
@@ -124,11 +125,12 @@ bool lib_life_config(LibLifeCfg *c, const cJSON *root)
     memset(c, 0, sizeof *c);
     const cJSON *hall = jget(root, "hall"), *bays = jget(root, "bays"), *life = jget(root, "life");
     if (!hall || !cJSON_IsArray(bays) || !life) return false;
-    if (!jint(hall, "bays", &c->bays) || !jint(hall, "home", &c->home) || !jnum(hall, "pitch", &c->pitch) ||
-        !jnum(hall, "x_min", &c->x_min))
+    if (!jint(hall, "bays", &c->bays) || !jint(hall, "cols", &c->cols) || !jint(hall, "home", &c->home) ||
+        !jnum(hall, "pitch", &c->pitch) || !jnum(hall, "x_min", &c->x_min) || !jnum(hall, "mid_wall_z", &c->mid_wall_z))
         return false;
-    if (c->bays < 1 || c->bays > LIB_LIFE_BAYS_MAX || c->home < 0 || c->home >= c->bays) return false;
-    if (!jvec(hall, "bx", c->bays, c->bx)) return false;
+    if (c->bays < 1 || c->bays > LIB_LIFE_BAYS_MAX || c->cols < 1 || c->cols > c->bays || c->home < 0 || c->home >= c->bays)
+        return false;
+    if (!jvec(hall, "bx", c->bays, c->bx) || !jvec(hall, "bz", c->bays, c->bz)) return false;
 
     const cJSON *lm = jget(life, "lamp_motes");
     if (!cJSON_IsArray(lm) || cJSON_GetArraySize(lm) < 2) return false;
@@ -153,7 +155,7 @@ bool lib_life_config(LibLifeCfg *c, const cJSON *root)
             float lp[2];
             if (!cJSON_IsObject(o) || !jvec(o, "lamp_pos", 2, lp)) continue;
             LibLampMotes m = floor_tpl;
-            m.centre = HMM_V2(c->bx[b] + lp[0], lp[1]);
+            m.centre = HMM_V2(c->bx[b] + lp[0], c->bz[b] + lp[1]);
             c->floor_lamp[c->floor_lamps++] = m;
         }
     }
@@ -252,6 +254,7 @@ void lib_life_init(LibLife *l, const LibLifeCfg *c, uint32_t seed)
         double off = c->bx[b] + c->window_x[b] + 1.75;
         for (int i = 0; i < c->motes; i++) {
             LibMote *m = &l->motes[l->motes_n++];
+            m->oz = c->bz[b];
             m->x = (float)(off + ll_lerp(c->beam_window_x[0], c->beam_window_x[1], ll_rnd(&lr)));
             m->fz = (float)ll_lerp(c->beam_floor_z[0], c->beam_floor_z[1], ll_rnd(&lr));
             m->wy = (float)ll_lerp(c->beam_window_y[0], c->beam_window_y[1], ll_rnd(&lr));
@@ -276,18 +279,18 @@ void lib_life_init(LibLife *l, const LibLifeCfg *c, uint32_t seed)
     k->yaw = (float)(r0->face_deg * LL_DEG);
     k->pos[0] = c->bx[c->home] + r0->p.X;
     k->pos[1] = 0;
-    k->pos[2] = r0->p.Y;
+    k->pos[2] = c->bz[c->home] + r0->p.Y;
     memcpy(k->P, c->pose[r0->pose >= 0 ? r0->pose : LIB_POSE_SLEEP], sizeof k->P);
     k->pose_now = r0->pose >= 0 ? r0->pose : LIB_POSE_SIT;
     k->who = -1;
     /* default table: the home bay's study table, nobody seated (the integrator calls lib_cat_table) */
-    k->table = HMM_V2(c->bx[c->home], 0);
+    k->table = HMM_V2(c->bx[c->home], c->bz[c->home]);
 }
 
 static void add_puff(LibLife *l, double x, double y, double z, double sc, uint32_t rgba)
 {
     if (l->puffs_n >= LIB_PUFFS_MAX || sc <= 0) return;
-    if (!((l->visible >> ll_bay_of(l->cfg, (float)x)) & 1u)) return;
+    if (!((l->visible >> lib_life_bay_of(l->cfg, (float)x, (float)z)) & 1u)) return;
     LibPuff *p = &l->puffs[l->puffs_n++];
     p->pos = HMM_V3((float)x, (float)y, (float)z);
     p->scale = (float)sc;
@@ -316,7 +319,7 @@ static HMM_Vec2 cat_target(const LibLife *l, const LibCatStep *q)
     const LibCat *k = &l->cat;
     if (q->visit) return k->spot;
     if (q->approach) return k->app;
-    return HMM_V2(l->cfg->bx[l->cfg->home] + q->p.X, q->p.Y);
+    return HMM_V2(l->cfg->bx[l->cfg->home] + q->p.X, l->cfg->bz[l->cfg->home] + q->p.Y);
 }
 
 static void cat_next(LibLife *l)
@@ -346,9 +349,10 @@ static void cat_next(LibLife *l)
             sp = k->table;
             k->who_pos = HMM_V2(k->table.X, k->table.Y - 1.0f);
         }
-        float bx = c->bx[ll_bay_of(c, k->table.X)];
+        const int tb = lib_life_bay_of(c, k->table.X, k->table.Y);
+        float bx = c->bx[tb];
         k->spot = sp;
-        k->app = HMM_V2(bx + mg_clampf(sp.X - bx, c->approach_x[0], c->approach_x[1]), c->approach_z);
+        k->app = HMM_V2(bx + mg_clampf(sp.X - bx, c->approach_x[0], c->approach_x[1]), c->bz[tb] + c->approach_z);
         k->done = false;
     }
 }
@@ -412,7 +416,7 @@ static void cat_step(LibLife *l, float dt)
     for (int f = 0; f < LIB_POSE_FIELDS; f++) k->P[f] = mg_lerpf(k->P[f], c->pose[pose][f], e);
 
     l->hearts_n = 0;
-    if (k->pet_k > 0.3f && ((l->visible >> ll_bay_of(c, k->pos[0])) & 1u)) {
+    if (k->pet_k > 0.3f && ((l->visible >> lib_life_bay_of(c, k->pos[0], k->pos[2])) & 1u)) {
         for (int h = 0; h < c->hearts; h++) {
             double hf = ll_frac(time * 0.7 + (double)h / c->hearts);
             double sc = 0.03 * ll_smooth(hf / 0.2) * (1 - ll_smooth((hf - 0.7) / 0.3));
@@ -441,7 +445,7 @@ void lib_life_step(LibLife *l, const LibLifeCfg *c, float dt, uint32_t visible, 
         double f = ll_frac(p->u + time * 0.012 * p->w);
         add_puff(l, p->x + 0.06 * sin(time * p->w + p->ph),
                  ll_lerp(p->wy, 0.15, f) + 0.05 * sin(time * p->w * 0.6 + p->ph * 2),
-                 ll_lerp(c->beam_window_z, p->fz, f) + 0.05 * cos(time * p->w * 0.8 + p->ph),
+                 p->oz + ll_lerp(c->beam_window_z, p->fz, f) + 0.05 * cos(time * p->w * 0.8 + p->ph),
                  0.011 + 0.006 * sin(time * 1.7 + p->ph), COL_MOTE);
     }
     int li = 0; /* the prototype's lampMotes(): floor lamps, then the tables' lamps */
@@ -451,11 +455,11 @@ void lib_life_step(LibLife *l, const LibLifeCfg *c, float dt, uint32_t visible, 
     for (int b = 0; b < c->bays; b++) { /* aquarium bubbles */
         if (!c->has_tank[b]) continue;
         HMM_Vec3 tc = c->tank_centre, th = c->tank_half;
-        double cx = c->bx[b] + tc.X;
+        double cx = c->bx[b] + tc.X, cz = c->bz[b] + tc.Z;
         for (int k = 0; k < c->bubbles; k++) {
             double f = ll_frac(time * 0.16 + (double)k / c->bubbles);
             add_puff(l, cx + th.X * (k % 2 ? 0.7 : -0.55) + 0.012 * sin(time * 5 + k), tc.Y - th.Y + f * th.Y * 2.2,
-                     tc.Z + 0.03 * (k % 3 - 1), 0.006 + 0.004 * f, COL_BUBBLE);
+                     cz + 0.03 * (k % 3 - 1), 0.006 + 0.004 * f, COL_BUBBLE);
         }
     }
     cat_step(l, dt);
@@ -476,7 +480,7 @@ void lib_life_steam(LibLife *l, HMM_Vec3 mug, float seat_yaw)
 void lib_life_zees(LibLife *l, int sleeper_id, HMM_Vec3 head)
 {
     if (l->zees_n >= LIB_ZEES_MAX) return;
-    if (!((l->visible >> ll_bay_of(l->cfg, head.X)) & 1u)) return;
+    if (!((l->visible >> lib_life_bay_of(l->cfg, head.X, head.Z)) & 1u)) return;
     l->zee_head[l->zees_n] = head;
     l->zee_id[l->zees_n] = sleeper_id;
     l->zees_n++;
@@ -495,7 +499,7 @@ void lib_life_dots(LibLife *l, HMM_Vec3 centre, float yaw)
 void lib_life_globe(LibLife *l, HMM_Vec3 base)
 {
     if (l->globes_n >= LIB_GLOBES_MAX) return;
-    if (!((l->visible >> ll_bay_of(l->cfg, base.X)) & 1u)) return;
+    if (!((l->visible >> lib_life_bay_of(l->cfg, base.X, base.Z)) & 1u)) return;
     l->globe[l->globes_n++] = base;
 }
 
@@ -548,7 +552,7 @@ int lib_life_instances(const LibLife *l, LibInst *out, int max)
     int n = 0;
     for (int b = 0; b < c->bays; b++) {
         if (!((l->visible >> b) & 1u)) continue;
-        float bx = c->bx[b];
+        float bx = c->bx[b], bz = c->bz[b];
         if (c->has_clock[b]) {
             double lt = fmod(l->local_time_s, 86400.0);
             if (lt < 0) lt += 86400.0;
@@ -556,16 +560,16 @@ int lib_life_instances(const LibLife *l, LibInst *out, int max)
             double secs = fmod(lt, 60.0);
             float am = (float)(-(mins + secs / 60.0) / 60.0 * LL_TAU);
             float ah = (float)(-((hrs % 12) + mins / 60.0) / 12.0 * LL_TAU);
-            HMM_Mat4 hands = ll_t(bx + c->clock_pos.X, c->hands_y, c->clock_pos.Y + c->hands_z);
+            HMM_Mat4 hands = ll_t(bx + c->clock_pos.X, c->hands_y, bz + c->clock_pos.Y + c->hands_z);
             n = put(out, n, max, LIB_MESH_CLOCK_M, HMM_MulM4(hands, ll_rz(am)), COL_WHITE);
             n = put(out, n, max, LIB_MESH_CLOCK_H, HMM_MulM4(hands, ll_rz(ah)), COL_WHITE);
             float pr = (float)(c->pendulum_rad * sin(time * LL_TAU / c->pendulum_period_s));
             n = put(out, n, max, LIB_MESH_PENDULUM,
-                    HMM_MulM4(ll_t(bx + c->clock_pos.X, c->pendulum_pivot_y, c->clock_pos.Y + c->pendulum_z), ll_rz(pr)),
+                    HMM_MulM4(ll_t(bx + c->clock_pos.X, c->pendulum_pivot_y, bz + c->clock_pos.Y + c->pendulum_z), ll_rz(pr)),
                     COL_WHITE);
         }
         if (c->has_skeleton[b]) {
-            HMM_Mat4 m = ll_t(bx + c->skel_pos.X, c->hang_y, c->skel_pos.Y);
+            HMM_Mat4 m = ll_t(bx + c->skel_pos.X, c->hang_y, bz + c->skel_pos.Y);
             m = HMM_MulM4(m, ll_ry((float)(0.06 * sin(time * 0.37))));
             m = HMM_MulM4(m, ll_rz((float)(c->sway_rad * sin(time * c->sway_rad_s))));
             n = put(out, n, max, LIB_MESH_SKELETON, m, COL_WHITE);
@@ -576,7 +580,7 @@ int lib_life_instances(const LibLife *l, LibInst *out, int max)
                 const LibFish *p = &l->fish[k];
                 double ph = time * p->w + p->ph;
                 HMM_Mat4 m = ll_t((float)(bx + tc.X + p->ax * sin(ph)), (float)(tc.Y + p->y + 0.015 * sin(time * 0.7 + p->ph)),
-                                  tc.Z + p->z);
+                                  bz + tc.Z + p->z);
                 float yaw = (float)(LL_PI / 2 * (1 - tanh(5 * cos(ph))) + 0.25 * sin(time * 6 + k));
                 n = put(out, n, max, LIB_MESH_FISH, HMM_MulM4(m, ll_ry(yaw)), c->fish_colour[k % c->fish_colours]);
             }
@@ -600,7 +604,7 @@ int lib_life_instances(const LibLife *l, LibInst *out, int max)
                 COL_WHITE);
 
     const LibCat *k = &l->cat;
-    if ((l->visible >> ll_bay_of(c, k->pos[0])) & 1u) {
+    if ((l->visible >> lib_life_bay_of(c, k->pos[0], k->pos[2])) & 1u) {
         const float *P = k->P;
         float pk = k->pet_k, pu = (float)(pk * fabs(sin(time * c->stroke_rad_s * 0.5)));
         HMM_Mat4 g = HMM_MulM4(ll_t(k->pos[0], k->pos[1], k->pos[2]), ll_ry(k->yaw));

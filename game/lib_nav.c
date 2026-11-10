@@ -24,10 +24,11 @@ static float jnum(const cJSON *o, const char *k, float def)
     return cJSON_IsNumber(v) ? (float)v->valuedouble : def;
 }
 
-static int bay_of(const LibNav *n, float x)
+int lib_nav_bay_of(const LibNav *n, float x, float z)
 {
-    int b = (int)floorf((x - n->x_min) / n->pitch);
-    return b < 0 ? 0 : (b > n->bays - 1 ? n->bays - 1 : b);
+    int c = (int)floorf((x - n->x_min) / n->pitch);
+    c = c < 0 ? 0 : (c > n->cols - 1 ? n->cols - 1 : c);
+    return (z < n->mid_wall_z ? n->cols : 0) + c;
 }
 
 bool lib_nav_bake(LibNav *n, const cJSON *root)
@@ -37,13 +38,13 @@ bool lib_nav_bake(LibNav *n, const cJSON *root)
     n->scr = &n->scratch;
     const cJSON *nav = cJSON_GetObjectItemCaseSensitive(root, "nav");
     const cJSON *hall = cJSON_GetObjectItemCaseSensitive(root, "hall");
-    const cJSON *room = cJSON_GetObjectItemCaseSensitive(root, "room");
     const cJSON *obst = cJSON_GetObjectItemCaseSensitive(root, "obstacles");
     const cJSON *dx = cJSON_GetObjectItemCaseSensitive(nav, "door_x");
     const cJSON *bx = cJSON_GetObjectItemCaseSensitive(hall, "bx");
-    if (!cJSON_IsObject(nav) || !cJSON_IsObject(hall) || !cJSON_IsObject(room) || !cJSON_IsArray(obst) ||
-        cJSON_GetArraySize(dx) != 2 || !cJSON_IsArray(bx)) {
-        mg_log_error("lib_nav: scene lacks nav / hall / room / obstacles");
+    const cJSON *bz = cJSON_GetObjectItemCaseSensitive(hall, "bz");
+    if (!cJSON_IsObject(nav) || !cJSON_IsObject(hall) || !cJSON_IsArray(obst) ||
+        cJSON_GetArraySize(dx) != 2 || !cJSON_IsArray(bx) || cJSON_GetArraySize(bz) != cJSON_GetArraySize(bx)) {
+        mg_log_error("lib_nav: scene lacks nav / hall (bx, bz) / obstacles (mg-library 10)");
         return false;
     }
     n->cell = jnum(nav, "cell", 0.25f);
@@ -54,31 +55,39 @@ bool lib_nav_bake(LibNav *n, const cJSON *root)
     n->radius = jnum(nav, "radius", 0.3f);
     n->door_x[0] = (float)cJSON_GetArrayItem(dx, 0)->valuedouble;
     n->door_x[1] = (float)cJSON_GetArrayItem(dx, 1)->valuedouble;
+    n->wall_t = jnum(nav, "wall_t", 0.2f);
     n->x_min = jnum(hall, "x_min", 0);
     n->x_max = jnum(hall, "x_max", 0);
+    n->z_min = jnum(hall, "z_min", 0);
+    n->z_max = jnum(hall, "z_max", 0);
+    n->mid_wall_z = jnum(hall, "mid_wall_z", 0);
     n->pitch = jnum(hall, "pitch", 16);
     n->bays = cJSON_GetArraySize(bx);
-    /* the back wall (the doors' line) and the open front are the room's depth either side of z 0 */
-    n->back_z = -0.5f * jnum(room, "d", 11);
-    n->front_z = 0.5f * jnum(room, "d", 11);
-    if (n->nx <= 0 || n->nz <= 0 || n->nx > LIB_NAV_NX_MAX || n->nz > LIB_NAV_NZ_MAX || n->bays < 1 ||
-        n->bays > LIB_NAV_BAYS_MAX || n->cell <= 0 || n->pitch <= 0) {
-        mg_log_error("lib_nav: grid %dx%d / %d bays out of range", n->nx, n->nz, n->bays);
+    n->cols = (int)jnum(hall, "cols", (float)n->bays);
+    if (n->nx <= 0 || n->nz <= 0 || n->nx > LIB_NAV_NX_MAX || n->nz > LIB_NAV_NZ_MAX || n->nx * n->nz > LIB_NAV_CELLS ||
+        n->bays < 1 || n->bays > LIB_NAV_BAYS_MAX || n->cols < 1 || n->cols > n->bays || n->cell <= 0 || n->pitch <= 0) {
+        mg_log_error("lib_nav: grid %dx%d / %d bays in %d columns out of range", n->nx, n->nz, n->bays, n->cols);
         return false;
     }
-    for (int i = 0; i < n->bays; i++) n->bx[i] = (float)cJSON_GetArrayItem(bx, i)->valuedouble;
+    for (int i = 0; i < n->bays; i++) {
+        n->bx[i] = (float)cJSON_GetArrayItem(bx, i)->valuedouble;
+        n->bz[i] = (float)cJSON_GetArrayItem(bz, i)->valuedouble;
+    }
 
     const float r = n->radius;
-    /* walls: behind the back wall only a bay's door corridor; the hall's ends and front */
+    /* walls: behind the back row only a bay's door corridor; the hall's sides and front; the wall between the rows,
+     * open at the front row's doors */
+    const float mw = n->mid_wall_z;
     for (int j = 0; j < n->nz; j++) {
         float z = n->z0 + ((float)j + 0.5f) * n->cell;
         for (int i = 0; i < n->nx; i++) {
             float x = n->x0 + ((float)i + 0.5f) * n->cell;
-            float lx = x - n->bx[bay_of(n, x)];
+            float lx = x - n->bx[lib_nav_bay_of(n, x, z)];
             bool dr = lx > n->door_x[0] && lx < n->door_x[1];
             uint8_t b = 0;
-            if (z < n->back_z + r) b = dr ? 0 : 1;
-            else if (x < n->x_min + r || x > n->x_max - r || z > n->front_z - r) b = 1;
+            if (z < n->z_min + r) b = dr ? 0 : 1;
+            else if (x < n->x_min + r || x > n->x_max - r || z > n->z_max - r) b = 1;
+            else if (z > mw - n->wall_t - r && z < mw + r) b = dr ? 0 : 1;
             n->cells[j * n->nx + i] = b;
         }
     }
