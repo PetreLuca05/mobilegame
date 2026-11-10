@@ -58,7 +58,7 @@ wait_device() { # dev: until both devicectl and Instruments list it as connected
   local udid=$(device_udid $1) name=$(device_name $1) t
   for t in {1..40}; do
     wake $1
-    if xcrun devicectl list devices 2>/dev/null | grep -F "$name" | grep -q "available" &&
+    if xcrun devicectl list devices 2>/dev/null | grep -F "$name" | grep -qE "available|connected" &&
        { (( ! GPU )) || xcrun xctrace list devices 2>/dev/null | sed '/Devices Offline/,$d' | grep -q "$udid"; }; then
       return 0
     fi
