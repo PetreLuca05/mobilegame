@@ -280,6 +280,7 @@ set(MG_GAME_SOURCES
   game/friends_page.c
   game/account_link.c
   game/autotest_friends.c
+  game/autotest_world.c
   game/lobby.c
   game/frontend.c
   game/creator.c

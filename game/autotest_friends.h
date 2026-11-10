@@ -3,6 +3,8 @@
 #ifndef MG_AUTOTEST_FRIENDS_H
 #define MG_AUTOTEST_FRIENDS_H
 
+#include "autotest_world.h"
+
 #include "net/net_transport.h"
 #include "platform/app.h"
 
@@ -10,6 +12,7 @@ struct AutotestProbe;
 struct AutotestOut;
 
 typedef struct FriendsTest {
+    WtTap map_tap;
     char role[8];
     char dir[256];
     const void *ops;

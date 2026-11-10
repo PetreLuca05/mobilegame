@@ -457,6 +457,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         break;
     case OP_PLAYING:
         done = p->playing && p->fe_state == FE_PLAY;
+        wt_map_to_join(&t->map_tap, app, p, now); /* New Game opens the island: drive to Gastro, Join */
         break;
     case OP_MENU:
         done = !p->playing && p->fe_state == FE_MAIN_MENU;

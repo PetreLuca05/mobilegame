@@ -632,7 +632,8 @@ static int draw_labels(WorldMap *m, Ui *ui)
 {
     int tapped = -1;
     const bool far = m->cam.dist > (m->island.follow_dist + overview_dist(m)) * 0.5f;
-    for (int i = 0; i < m->book->level_count; i++) {
+    for (int k = 0; k < m->book->level_count; k++) {
+        const int i = (m->selected + 1 + k) % m->book->level_count; /* the selected one last: on top */
         float x, y;
         if (!project(m, HMM_AddV3(hospital_top(m, i), HMM_V3(0, WM_LABEL_LIFT, 0)), &x, &y)) {
             continue;
@@ -652,7 +653,7 @@ static int draw_labels(WorldMap *m, Ui *ui)
         }
         SDL_snprintf(id, sizeof(id), "wm_lbl%d", i);
         bool held = false;
-        if (ui_hit_area(ui, id, x0 - 6.0f, y0 - 6.0f, w + 12.0f, 2.0f * r + 18.0f, &held)) {
+        if (ui_hit_area(ui, id, x - r - 9.0f, y0 - 6.0f, 2.0f * r + 18.0f, 2.0f * r + 18.0f, &held)) { /* the badge: a chip never covers a neighbour's */
             tapped = i;
         }
         const UiColor bg = ui_rgba(i == m->selected ? 0x1B2B48F0u : 0x101318D0u);

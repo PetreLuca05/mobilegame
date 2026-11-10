@@ -13,7 +13,13 @@ import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
 PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "worldmap", "worldmap_travel", "island"]
+# WORLD-1 estimates (iPad Air 4); a measurement over 2x an estimate fails. Draws counted by the renderer include the
+# HUD batch: <= 16 world + 1 x-ray (a cube hides the parked ambulance) + 1 HUD = 18.
+WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_tick_ms": 0.05},
+                "worldmap_travel": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
+                "island": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05}}
+WORLD_MAX_DRAWS = 18
 TOLERANCE = 1.10
 ABS_NOISE = {"cpu_tick_ms": 0.1, "npc_ms": 0.1, "render_ms": 0.1, "gpu_effective_ms": 0.2, "draws": 5, "memory_mb": 5}
 # name: (budget, stress200 only)
@@ -60,6 +66,13 @@ def main():
                 print(f"{'PASS' if ok else 'FAIL'} {dev:6} {sc:12} {name:18} {m[name]:9.2f} budget {budget}")
                 if not ok:
                     problems.append(f"{dev} {sc}: {name} {m[name]:.2f} over budget {budget}")
+            if sc in WORLD_LIMITS:
+                if d["counters"]["draws"]["max"] > WORLD_MAX_DRAWS:
+                    problems.append(f"{dev} {sc}: {d['counters']['draws']['max']:.0f} draws, the design allows {WORLD_MAX_DRAWS} (16 world + x-ray + HUD)")
+                for name, est in WORLD_LIMITS[sc].items():
+                    print(f"{'PASS' if m[name] <= 2 * est else 'FAIL'} {dev:6} {sc:12} {name:18} {m[name]:9.2f} estimate {est} (fails over 2x)")
+                    if m[name] > 2 * est:
+                        problems.append(f"{dev} {sc}: {name} {m[name]:.2f} is over 2x the estimate {est}")
             if m["thermal"] > 1:
                 problems.append(f"{dev} {sc}: thermal state {m['thermal']} above fair")
             if compare:

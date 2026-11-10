@@ -17,6 +17,7 @@
  *               panel, desktop hover, Pause -> Performance; scan lag against brute force
  *   text        a line with the ten Romanian letters (and the cedilla forms): screenshot
  *   hudclamp    16 markers, every panel forced up, walking: no icon may touch a panel
+ *   worldmap    WORLD-1: the island from New Game to Join, Continue, Maps, completion (autotest_world.h)
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -29,6 +30,7 @@
 
 #include <SDL3/SDL.h>
 #include "autotest_friends.h"
+#include "autotest_world.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
 #include "ui/widgets.h"
@@ -91,6 +93,8 @@ typedef struct AutotestProbe {
     int hud_res_count;
     bool text_ok;              /* --autotest text: every Romanian letter has its glyph */
     struct Frontend *fe;
+    const struct WorldMap *wm; /* WORLD-1: NULL until the island has been opened */
+    int play_level;            /* the level being played (book 0) */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -102,6 +106,8 @@ typedef struct AutotestOut {
     bool nav_go;      /* start auto-nav to nav_pos / nav_to */
     HMM_Vec3 nav_pos;
     int nav_to;
+    char debug_level[24];  /* worldmap: level-progress <level> <debug_pct> */
+    int debug_pct;
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -136,6 +142,8 @@ typedef struct Autotest {
     FriendsTest ft;
     int it_rides, it_hover;
     int clamp_frames, clamp_edge, clamp_hidden;
+    WorldTest wt;
+    WtTap map_tap; /* save / offline: through the island after New Game */
 } Autotest;
 
 void autotest_init(Autotest *t, int argc, char **argv);

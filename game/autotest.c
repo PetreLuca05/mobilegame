@@ -8,14 +8,14 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap"};
     for (int i = 1; i + 1 < argc; i++) {
-        for (int k = 0; k < 13 && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+        for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
                 return AUTOTEST_TOUCH + k;
             }
@@ -575,6 +575,8 @@ static bool run_offline(Autotest *t, MgApp *app, const AutotestProbe *p, double 
             mg_log_info("autotest offline: in play, watching the network for 120 s");
             t->step_start = el;
             t->stage = 3;
+        } else if (wt_map_to_join(&t->map_tap, app, p, app->time)) {
+            /* New Game opens the island: drive to Gastro, Join */
         } else if (p->fe_state == FE_MAIN_MENU && ui_find(p->ui, "ow_new", &x, &y)) {
             t->step = 0;
             t->stage = 2;
@@ -628,6 +630,8 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
             out->start_route = true;
             t->stage = 3;
             t->step_start = app->time;
+        } else if (wt_map_to_join(&t->map_tap, app, p, app->time)) {
+            t->step_start = app->time; /* New Game opens the island: drive to Gastro, Join */
         } else if (p->fe_state == FE_MAIN_MENU && ui_find(p->ui, "ow_new", &x, &y)) {
             t->step = 0; /* a save exists: confirm the overwrite */
             t->stage = 2;
@@ -1109,6 +1113,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     case AUTOTEST_INTERACT:
         finished = run_interact(t, app, p, out, el);
         break;
+    case AUTOTEST_WORLDMAP: {
+        const int r = wt_run(&t->wt, app, p, out, app->time);
+        if (r < 0) {
+            finished = fail(t, "worldmap", t->wt.why);
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
     case AUTOTEST_HUDCLAMP:
         finished = run_hud_clamp(t, p, out, el);
         break;

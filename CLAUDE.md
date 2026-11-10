@@ -1,4 +1,4 @@
-# Mobilegame — engine, hospital, lighting, onboarding (M1-M4)
+# Mobilegame — engine, hospital, lighting, onboarding (M1-M4), world map (WORLD-1)
 
 C11 engine for iOS / Android phones and iPad on SDL3 + SDL3 GPU, with a desktop
 target for fast iteration. Current focus: desktop + iOS (Android code still
@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -311,7 +311,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   Sign-out keeps settings + save, clears the cache and `onboarding_done`.
 - `save_slot0.bin` (offline New Game / Continue): "MGS1", version u32,
   pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
-  visited_rooms u64 (bit = storey * 16 + chunk); every 30 s, on background,
+  visited_rooms u64 (bit = storey * 16 + chunk), npc_seed, npc_tick, (v5) book_id, level_id char[16]; every 30 s, on background,
   exit and "Save & back to menu". Offline play joins no Realtime room.
 
 ## Friends and lobbies (FRIENDS-1)
@@ -345,6 +345,17 @@ The main menu is the lobby. `player_status.state`: 0 none, 1 menu lobby, 2 in ga
 Flow (`game/account_link.c`, stages in `engine/net/supabase_rt.c`, sessions in `supabase_auth.c`): the provider token, then a `link_identity` grant with the guest JWT. Success = Case A, same user. `identity_already_exists` = Case B: dialog, then ticket (as the guest), `status_clear`, sign-in (held in memory, not persisted), redeem. Any failure before the redeem restores the guest. If the connection dies during the redeem, `merge_ticket_used` settles whether it committed. The merge clears `profile_cache`, `friends_cache.bin` and the head atlas; settings and the save slot stay. Menu only; the pause card saves and returns to the menu first. `tools/link_test.sh OUT CLI` runs `--autotest friends l1..l5` from a `-DMG_TEST_AUTH=ON` desktop build (`build/desktop_link`), where email + password stand in for the ID token.
 
 Request shapes and the audit: `docs/ACCOUNT_LINKING.md`. RPCs: `merge_ticket_create` (guest), `merge_ticket_redeem` (existing account), `merge_ticket_used` (did it commit), `link_cleanup` (nightly, `pg_cron`).
+
+## World map (WORLD-1)
+
+Books are islands; a book's levels are hospitals on it (book 1 Kumar, 9 levels, the first Gastro). Nothing is locked.
+
+- Assets (`assets/world/`): `books.json` (books, their island files, levels `{id, name, map_id, scene}`; `map_id: null` = "Coming soon"; `scene` is what Join loads, `hospital_v1` for Gastro as a stand-in for the institute map (MAP-2 changes only that field; while `scene` != `map_id` the card shows "Hartă provizorie")), `<book>.island.json` (format `mg-island 2`: levels with stop sample and hospital, road polyline, prop instance lists, ambulance, camera) and `.mgmesh` text meshes (`c` palette, `g` group, `t` triangle, `i` instance; y-up, CCW outward).
+- `tools/meshgen.py` (build time, CMake): mgmesh -> `.mgmb` (one vertex-coloured mesh per group, flat normals, the `i` lines), embedded as `assets/world/<name>.mgmb`; a malformed line fails the build. `game/world_data.c` loads all three.
+- `game/worldmap.c` = front-end screen `FE_MAP` (the hospital is neither ticked nor drawn while it is up; the map's meshes stay uploaded, ~1 MB, the renderer has no mesh free). States BOOKS / OVERVIEW / TRAVEL / ARRIVED; camera from the JSON (fixed yaw, north up, exponential ease 3.2/s; overview fitted to the safe rect); the ambulance drives the road (distance / speed, clamped, ease in-out; a new target re-routes), wheels, bob, lean, roof lights. Draws: sea, island, road, one per prop group, hospitals (instanced cubes behind `world_hospital_mesh[level]`), rings, body, wheels, lights, disc = 16; +1 x-ray of the body when a cube hides the parked ambulance (5 of 9 stops are north of their hospital). Props: static transforms sorted into an 8 x 5 grid, cells culled against the frustum. Labels, top bar, card in the HUD batch; label taps hit the badge only.
+- `game/world_progress.c`: `world_level_completion(wp, book, level)` -> `{done, total}` (0/0 until content packs exist; test builds, `MG_PROF`, take `--debug level-progress <level> <percent>` and the pause card's "+25 %"). Island = mean of the hospitals' percentages, "—" while every one is 0/0. Per book `{last_level, ambulance_at, updated_ms}` in `prefs.json` `world`; `book_state` on Supabase (owner-only RLS, `book_state_set(p_book, p_level, p_at_ms)`, the newer choice wins, merged in `merge_ticket_redeem`), read with the profile, written on Join / Continue.
+- Menu: New Game (overwrite confirm, clean slot, ambulance on the start pad, island in BOOKS; a tap drives to the last played hospital) / Maps (`menurow4`, tag "Kumar 23%": ARRIVED on the last played one) / Locker / Settings, big Continue (straight into the hospital: level, floor, position; the room's first spawn no longer moves a Continue). Pause card: "Map" (`p_map`, saves, back to the menu, the island). Join: same level as the save -> Continue, else the level from its entrance (save totals carry on); in a lobby `map_id` = the level index. Save v5 adds `book_id`, `level_id` (older saves load as kumar / gastro).
+- Desktop: `--frontend books|map`. Tests: `--autotest worldmap` (steps in `game/autotest_world.h`; screenshots in `docs/autotest/worldmap/`); `save`, `offline` and the friends scripts drive the island after New Game. SQL: `supabase/tests/world_test.sql` (`ALL WORLD SQL TESTS PASSED`). Perf scenarios `worldmap` (overview), `worldmap_travel` (driving round the island), `island` (parked, card up).
 
 ## Networking
 
@@ -468,7 +479,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Developer -> Profiler shows the counters and the top 12 scopes (avg / p95 / max over 120 frames). SDL GPU has no
   timestamps: "GPU approx" is submit -> fence on a helper thread, use Instruments for real GPU time. The heap counter
   sees what goes through SDL_malloc on the main thread, not the OS or the Metal driver.
-- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`) writes `perf_SCENARIO.json` to
+- `--autotest perf SCENARIO SECONDS` (`yard`, `lobby`, `corridor_f2`, `stress200`, `lobby4`, `menu`, `worldmap`, `worldmap_travel`, `island`) writes `perf_SCENARIO.json` to
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu]` (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.

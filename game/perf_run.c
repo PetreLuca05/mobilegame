@@ -33,6 +33,9 @@ static const Scenario k_scenarios[] = {
     {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"lobby4", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2}, /* 3 guests, join panel up, 200 NPCs */
     {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: hospital, roaming NPCs, hero */
+    {"worldmap", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},        /* WORLD-1: the island's overview, labels */
+    {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */
+    {"island", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},          /* parked at a hospital: island, ambulance, the card */
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
 

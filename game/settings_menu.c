@@ -377,23 +377,16 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     SDL_snprintf(label, sizeof(label), "%s##p_perf", str("performance_row"));
     ui_toggle(ui, label, bx, y + 7.0f, bw, &s->show_stats);
     y += row + 8.0f;
-    SDL_snprintf(label, sizeof(label), "%s##p_map", str("map_row"));
+    SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
-        action = MENU_OPEN_MAP;
+        action = MENU_MAIN_MENU;
         m->open = false;
         m->card = false;
     }
     y += row + 8.0f;
-#ifdef MG_PROF
-    SDL_snprintf(label, sizeof(label), "%s##p_progress", str("debug_progress"));
+    SDL_snprintf(label, sizeof(label), "%s##p_map", str("map_row"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
-        action = MENU_DEBUG_PROGRESS; /* the card stays up */
-    }
-    y += row + 8.0f;
-#endif
-    SDL_snprintf(label, sizeof(label), "%s##p_home", str("save_and_menu"));
-    if (ui_button(ui, label, bx, y, bw, row, false)) {
-        action = MENU_MAIN_MENU;
+        action = MENU_OPEN_MAP;
         m->open = false;
         m->card = false;
     }
@@ -407,6 +400,13 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
         }
         y += row + 8.0f;
     }
+#ifdef MG_PROF
+    SDL_snprintf(label, sizeof(label), "%s##p_progress", str("debug_progress"));
+    if (ui_button(ui, label, bx, y, bw, row, false)) {
+        action = MENU_DEBUG_PROGRESS; /* the card stays up */
+    }
+    y += row + 8.0f;
+#endif
     ui_scroll_end(ui, &m->card_scroll, column_view, y + column_off - column_top);
     return action;
 }

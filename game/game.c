@@ -222,6 +222,7 @@ typedef struct Game {
     bool wm_tried;
     int play_level;        /* this game's level in book 0 (the save's level) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
+    bool keep_save_pos;    /* Continue: ignore the room's first spawn */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -563,6 +564,11 @@ bool game_init(MgApp *app)
             g->fe.state = FE_MAIN_MENU;
             open_map(g, app, fe_arg[0] == 'b' ? WM_BOOKS : WM_ARRIVED);
         }
+    }
+    if (g->perf.active && (SDL_strncmp(g->perf.scenario, "worldmap", 8) == 0 || SDL_strcmp(g->perf.scenario, "island") == 0)) {
+        play_now = false; /* the map scene alone: the hospital is never built */
+        g->fe.state = FE_MAIN_MENU;
+        open_map(g, app, g->perf.scenario[0] == 'i' ? WM_ARRIVED : WM_OVERVIEW);
     }
     if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu") == 0) {
         play_now = false;
@@ -1421,6 +1427,7 @@ static void load_step(Game *g, MgApp *app)
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
         g->offline_play = g->pending_play == 0 || g->pending_play == 3 || g->pending_play == 5;
+        g->keep_save_pos = false;
         net_set_quiet(g->net, g->offline_play && !g->friends.signed_in); /* online, a solo game is a lobby */
         g->npc_epoch_ms = g->pending_play == 4 ? g->lobby.grant.start_tick : 0.0;
         g->save_play_base = g->save_rides_base = 0;
@@ -1437,6 +1444,7 @@ static void load_step(Game *g, MgApp *app)
             g->save_play_base = g->save.play_seconds - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = g->save.elevator_rides - (uint32_t)g->stats.rides;
             g->play_level = level_index(g, g->save.level_id);
+            g->keep_save_pos = true;
             world_set_last_level(&g->prefs.world, cur_book(g)->id, cur_book(g)->levels[g->play_level].id, -1.0f, wall_clock_ms());
             push_book_state(g);
         } else if (g->pending_play == 5) { /* Join: the level from its entrance; play time and rides carry on */
@@ -1607,7 +1615,10 @@ static void map_flow(Game *g, MgApp *app)
     (void)menu_world(g, app); /* off: the hospital's crowd stops */
     GfxSceneParams sp = {0};
     scene_defaults(&sp, (float)app->time, &g->day_state);
-    g->wm.join_disabled = g->lobby_visible && !lobby_is_host(&g->lobby); /* only the host starts the game */
+    g->wm.join_disabled = lobby_is_guest(&g->lobby); /* only the host starts the game */
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "worldmap_travel") == 0 && g->wm.state == WM_ARRIVED) {
+        worldmap_go(&g->wm, g->wm.selected + 1); /* on to the next hospital, around the island */
+    }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
     world_book_state(&g->prefs.world, cur_book(g)->id)->ambulance_s = g->wm.amb_s;
     draw_notices(g, app);
@@ -2674,6 +2685,8 @@ static void game_frame_inner(MgApp *app, float alpha)
         probe.active_slot = g->ia_ok ? (int)g->ia.active : -1;
     }
     probe.fe = &g->fe;
+    probe.wm = g->wm.loaded ? &g->wm : NULL;
+    probe.play_level = g->play_level;
     AutotestOut ato;
     autotest_update(&g->autotest, app, &probe, &ato);
     {
@@ -2720,6 +2733,11 @@ static void game_frame_inner(MgApp *app, float alpha)
 #endif
         gfx_request_screenshot(app->gfx, path);
         prof_allocs_exempt(false);
+    }
+    if (ato.debug_level[0]) { /* --autotest worldmap: level-progress */
+        world_debug_progress(&g->prefs.world, ato.debug_level, ato.debug_pct);
+        maps_tag_update(g);
+        mg_log_info("world: test progress %s = %d%%", ato.debug_level, ato.debug_pct);
     }
     if (ato.respawn_markers) {
         marker_clear(&g->markers, MARKER_TEST);
@@ -2770,6 +2788,10 @@ static void game_frame_inner(MgApp *app, float alpha)
                     el->hold_shut[r->sample.floor] = true;
                 }
             }
+        }
+        if (g->session.spawn_pending && g->playing && g->keep_save_pos) { /* Continue: the room's spawn does not move us off the saved spot */
+            g->session.spawn_pending = false;
+            g->keep_save_pos = false;
         }
         if (g->session.spawn_pending && g->playing) {
             g->session.spawn_pending = false;
