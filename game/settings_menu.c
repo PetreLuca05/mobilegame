@@ -75,20 +75,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += 52.0f;
     ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
     cy += 52.0f;
-    { /* TILT-1 Efect 3D la înclinare: Oprit / Fin / Complet */
-        ui_label_caps(ui, cx, cy + 4.0f, str("ui_tilt"));
-        cy += 22.0f;
-        static const char *const tkeys[3] = {"haptics_off", "haptics_fine", "haptics_full"};
-        const float tw3 = (cw - 16.0f) / 3.0f;
-        for (int i = 0; i < 3; i++) {
-            char tl[64];
-            SDL_snprintf(tl, sizeof(tl), "%s##tilt%d", str(tkeys[i]), i);
-            if (ui_button(ui, tl, cx + (float)i * (tw3 + 8.0f), cy, tw3, k_ui.target_min, s->ui_tilt == i)) {
-                s->ui_tilt = i;
-            }
-        }
-        cy += 56.0f;
-    }
     if (ui_haptic_supported()) { /* HAPTIC-1 Vibrații: hidden without a Taptic Engine */
         ui_label_caps(ui, cx, cy + 4.0f, str("haptics"));
         cy += 22.0f;
@@ -101,6 +87,20 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
                 s->haptics = i;
                 ui_haptic_set_level((HapticLevel)i);
                 ui_haptic(HAPTIC_PRIMARY); /* a preview at the new level */
+            }
+        }
+        cy += 56.0f;
+    }
+    { /* TILT-1 Efect 3D la înclinare: Oprit / Fin / Complet */
+        ui_label_caps(ui, cx, cy + 4.0f, str("ui_tilt"));
+        cy += 22.0f;
+        static const char *const tkeys[3] = {"haptics_off", "haptics_fine", "haptics_full"};
+        const float tw3 = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            char tl[64];
+            SDL_snprintf(tl, sizeof(tl), "%s##tilt%d", str(tkeys[i]), i);
+            if (ui_button(ui, tl, cx + (float)i * (tw3 + 8.0f), cy, tw3, k_ui.target_min, s->ui_tilt == i)) {
+                s->ui_tilt = i;
             }
         }
         cy += 56.0f;
