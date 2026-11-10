@@ -1,4 +1,5 @@
 #include "elevator_panel.h"
+#include "ui/ui_style.h"
 
 #include <math.h>
 
@@ -27,7 +28,7 @@
 #define INDICATOR_HALF_H 0.045f
 #define INDICATOR_THICK 0.003f
 #define INDICATOR_EM 0.065f
-#define PRESS_ANIM_S 0.3f
+#define PRESS_ANIM_S 0.57f /* UI-1: press 90 ms + release 480 ms */
 #define FOV_DEG 28.0f
 
 bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *(*name)(int))
@@ -169,26 +170,41 @@ void elevator_panel_draw_3d(const ElevatorPanel *p, GfxContext *g, int current_f
     gfx_inset_begin(g, p->x, p->y, p->w, p->h, &vp, slab_eye(), 0.02f, 0.05f, true);
     const float ease = 1.0f - (1.0f - p->slide) * (1.0f - p->slide);
     const HMM_Mat4 root = slab_root(40.0f * (1.0f - ease)); /* turns inward as it comes in */
-    GfxMaterial steel = mat_toon(mg_rgb(0xCDD5DF), 0.0f);
+    GfxMaterial steel = mat_toon_emissive(mg_rgb(k_ui.surface >> 8), 0.55f); /* the panel body: surface; the glow keeps it white through the toon shade */
     gfx_draw(g, p->slab, &root, &steel, GFX_DRAW_NO_SHADOW);
     const float r = p->button_r;
     for (int i = 0; i < p->floors; i++) {
-        const float t = 1.0f - p->press_anim[i];
-        const float sink = p->press_anim[i] > 0.0f ? BUTTON_SINK * sinf(t * HMM_PI32) : 0.0f; /* down and back up */
-        const float grow = 1.0f - 0.08f * (sink / BUTTON_SINK);
-        const float h = BUTTON_H - sink;
+        /* UI-1 press on the key mesh: squash to (1.07, 0.86) in 90 ms, then the release wobble back to (1, 1) */
+        const float u = (1.0f - p->press_anim[i]) * PRESS_ANIM_S;
+        float sx = 1.0f, sh = 1.0f;
+        if (p->press_anim[i] > 0.0f && u < k_ui.press_s) {
+            const float e = 1.0f - (1.0f - u / k_ui.press_s) * (1.0f - u / k_ui.press_s);
+            sx = 1.0f + (k_ui.press_sx - 1.0f) * e, sh = 1.0f + (k_ui.press_sy - 1.0f) * e;
+        } else if (p->press_anim[i] > 0.0f) {
+            const float v = (u - k_ui.press_s) / k_ui.release_s;
+            int k = 0;
+            while (k + 2 < 5 && v > k_ui.release_t[k + 1]) {
+                k++;
+            }
+            const float span = k_ui.release_t[k + 1] - k_ui.release_t[k], l = mg_saturate((v - k_ui.release_t[k]) / span);
+            const float e = 1.0f - (1.0f - l) * (1.0f - l) * (1.0f - l);
+            sx = k_ui.release_sx[k] + (k_ui.release_sx[k + 1] - k_ui.release_sx[k]) * e;
+            sh = k_ui.release_sy[k] + (k_ui.release_sy[k + 1] - k_ui.release_sy[k]) * e;
+        }
+        const float grow = sx;
+        const float h = BUTTON_H * sh;
         const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(r * grow, r * grow, h))));
-        GfxMaterial btn = p->pressed == i ? mat_toon_emissive(mg_rgb(0xFFD166), 0.9f) : mat_toon(mg_rgb(0xFFFFFF), 0.0f);
+        GfxMaterial btn = p->pressed == i ? mat_toon_emissive(mg_rgb(k_ui.primary >> 8), 0.9f) : mat_toon_emissive(mg_rgb(k_ui.primary >> 8), 0.45f);
         gfx_draw(g, p->button, &m, &btn, GFX_DRAW_NO_SHADOW);
         const float em = r * LABEL_EM * grow; /* printed on the cap: it turns and sinks with it */
         const HMM_Mat4 lm = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[i], SLAB_HALF_D + FACE_LIFT + h + LABEL_LIFT)), HMM_Scale(HMM_V3(em, em, 1.0f))));
-        GfxMaterial ink = mat_text(HMM_V4(0.125f, 0.141f, 0.172f, 1.0f));
+        GfxMaterial ink = mat_text(mg_rgb(k_ui.ink >> 8));
         gfx_draw(g, p->label[i], &lm, &ink, GFX_DRAW_NO_SHADOW);
     }
     const float rr = r * 1.12f;
     if (current_floor >= 0 && current_floor < p->floors && (p->blink_t <= 0.0f || fmodf(p->blink_t, 0.16f) < 0.08f)) { /* where the car is */
         const HMM_Mat4 m = HMM_MulM4(root, HMM_MulM4(HMM_Translate(HMM_V3(0.0f, p->button_y[current_floor], SLAB_HALF_D + FACE_LIFT)), HMM_Scale(HMM_V3(rr, rr, 1.0f))));
-        GfxMaterial dim = mat_toon_emissive(mg_rgb(0x5A7FB0), 0.5f);
+        GfxMaterial dim = mat_toon_emissive(mg_rgb(k_ui.accent >> 8), 0.5f);
         gfx_draw(g, p->ring, &m, &dim, GFX_DRAW_NO_SHADOW);
     }
     if (current_floor >= 0 && current_floor < p->floors) { /* the floor indicator */

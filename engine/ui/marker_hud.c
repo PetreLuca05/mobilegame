@@ -1,4 +1,5 @@
 #include "marker_hud.h"
+#include "ui_style.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -161,23 +162,28 @@ void marker_hud_draw(GfxContext *g, const TextFont *f, const MarkerHudOut *out, 
             continue;
         }
         if (in->ring > 0.01f) {
-            ui_circle(g, f, x, y, r + 3.0f, (UiColor){255, 255, 255, (uint8_t)(230.0f * in->ring)});
+            ui_circle(g, f, x, y, r + 5.0f, (UiColor){0xFF, 0xC9, 0x33, (uint8_t)(242.0f * in->ring)}); /* primary */
         }
-        ui_circle(g, f, x, y, r, in->tint);
+        /* a white disc on its lip, the marker's colour inside (UI-1) */
+        ui_shape(g, &(UiShape){.x = x - r - 3.0f, .y = y - r + 1.0f, .w = 2.0f * r + 6.0f, .h = 2.0f * r + 6.0f, .radius = -1.0f, .color = ui_rgba(k_ui.lip_mint)});
+        ui_shape(g, &(UiShape){.x = x - r - 3.0f, .y = y - r - 3.0f, .w = 2.0f * r + 6.0f, .h = 2.0f * r + 6.0f, .radius = -1.0f, .color = ui_rgba(k_ui.surface)});
+        ui_circle(g, f, x, y, r - 2.0f, in->tint);
         if (o->edge) { /* chevron on the outer side, pointing at the real position */
             const float cx = x + o->dir_x * (r + 8.0f), cy = y + o->dir_y * (r + 8.0f);
             const float px = -o->dir_y, py = o->dir_x;
             const float bx = cx - o->dir_x * 5.0f, by = cy - o->dir_y * 5.0f;
-            ui_line(g, f, bx + px * 5.0f, by + py * 5.0f, cx, cy, 2.5f, in->tint);
-            ui_line(g, f, bx - px * 5.0f, by - py * 5.0f, cx, cy, 2.5f, in->tint);
+            ui_line(g, f, bx + px * 5.0f, by + py * 5.0f, cx, cy, k_ui.icon_stroke, ui_rgba(k_ui.ink));
+            ui_line(g, f, bx - px * 5.0f, by - py * 5.0f, cx, cy, k_ui.icon_stroke, ui_rgba(k_ui.ink));
             char d[16];
             snprintf(d, sizeof(d), "%d m", (int)(in->distance + 0.5f));
-            text_draw_centered(g, f, x, y + r + 10.0f, 11.0f, ui_rgba(0xFFFFFFFF), d);
+            const float dw = text_width(f, d, 11.0f) + 12.0f;
+            ui_shape(g, &(UiShape){.x = x - dw * 0.5f, .y = y + r + 3.0f, .w = dw, .h = 16.0f, .radius = -1.0f, .color = ui_rgba(k_ui.surface)});
+            text_draw_centered(g, f, x, y + r + 11.0f, 11.0f, ui_rgba(k_ui.ink), d);
         }
         if (in->storey != view_floor) { /* floor badge, top right */
             static const char *const names[3] = {"G", "1", "2"};
             const float bx = x + r * 0.75f, by = y - r * 0.75f;
-            ui_round_rect(g, f, bx - 8.0f, by - 7.0f, 16.0f, 14.0f, 7.0f, ui_rgba(0x101318E6));
+            ui_round_rect(g, f, bx - 8.0f, by - 7.0f, 16.0f, 14.0f, 7.0f, ui_rgba(k_ui.ink));
             text_draw_centered(g, f, bx, by, 11.0f, ui_rgba(0xFFFFFFFF), names[in->storey >= 0 && in->storey < 3 ? in->storey : 0]);
         }
     }

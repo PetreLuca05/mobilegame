@@ -1,4 +1,5 @@
 #include "preview_panel.h"
+#include "ui/ui_style.h"
 
 #include <SDL3/SDL_stdinc.h>
 #include <math.h>
@@ -89,9 +90,14 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
     /* background: a rounded card, behind the model */
     if (!head) {
         const HMM_Mat4 ortho = HMM_M4D(1.0f);
-        gfx_inset_begin(g, x, y, s, s, &ortho, HMM_V3(0, 0, 1), 0.01f, 0.02f, false);
-        GfxMaterial bg = mat_unlit(HMM_V4(0.07f, 0.08f, 0.11f, 1.0f));
         const HMM_Mat4 id = HMM_Translate(HMM_V3(0, 0, 0.5f));
+        /* UI-1 card: surface on a lip_mint lip */
+        gfx_inset_begin(g, x, y + k_ui.lip_card, s, s, &ortho, HMM_V3(0, 0, 1), 0.02f, 0.03f, false);
+        GfxMaterial lip = mat_unlit(mg_rgb(k_ui.lip_mint >> 8));
+        gfx_draw(g, p->rounded, &id, &lip, GFX_DRAW_NO_SHADOW);
+        gfx_inset_end(g);
+        gfx_inset_begin(g, x, y, s, s, &ortho, HMM_V3(0, 0, 1), 0.01f, 0.02f, false);
+        GfxMaterial bg = mat_unlit(mg_rgb(k_ui.surface >> 8));
         gfx_draw(g, p->rounded, &id, &bg, GFX_DRAW_NO_SHADOW);
         gfx_inset_end(g);
     }
@@ -138,18 +144,15 @@ void preview_panel_draw_ui(const PreviewPanel *p, const Interact *ia, GfxContext
     if (ia->hot[p->shown].kind == IA_NPC && ia->cold[p->shown].preview.look) {
         return; /* just the head */
     }
-    const UiColor rim = ui_rgba(0xFFFFFF55);
-    const float r = 14.0f, x = p->x, y = p->y, s = p->size;
-    ui_rect(g, f, x + r, y, s - 2.0f * r, 1.0f, rim);
-    ui_rect(g, f, x + r, y + s - 1.0f, s - 2.0f * r, 1.0f, rim);
-    ui_rect(g, f, x, y + r, 1.0f, s - 2.0f * r, rim);
-    ui_rect(g, f, x + s - 1.0f, y + r, 1.0f, s - 2.0f * r, rim);
+    const float x = p->x, y = p->y, s = p->size;
     const ia_hot_t *h = &ia->hot[p->shown];
     const bool disabled = (h->flags & IA_DISABLED) != 0;
-    const UiColor text = disabled ? ui_rgba(0xFFFFFF80) : ui_rgba(0xFFFFFFFF);
+    const UiColor text = ui_rgba(disabled ? k_ui.disabled_text : k_ui.ink);
     const char *label = ia->cold[p->shown].label ? ia->cold[p->shown].label : "";
-    text_draw_centered(g, f, x + s * 0.5f, y + s - 34.0f, 13.0f, text, label);
+    text_draw_centered(g, f, x + s * 0.5f, y + s - 40.0f, 13.0f, text, label);
     const float chip_w = 60.0f, chip_h = 20.0f;
-    ui_round_rect(g, f, x + (s - chip_w) * 0.5f, y + s - 26.0f, chip_w, chip_h, 10.0f, disabled ? ui_rgba(0x55586080) : ui_rgba(0x4A8BFFE6));
-    text_draw_centered(g, f, x + s * 0.5f, y + s - 16.0f, 12.0f, text, ia_chip_text((ia_kind_t)h->kind));
+    const float cx = x + (s - chip_w) * 0.5f, cy = y + s - 28.0f;
+    ui_round_rect(g, f, cx, cy + 3.0f, chip_w, chip_h, 10.0f, ui_rgba(disabled ? k_ui.disabled_lip : k_ui.accent_lip));
+    ui_round_rect(g, f, cx, cy, chip_w, chip_h, 10.0f, ui_rgba(disabled ? k_ui.disabled : k_ui.accent));
+    text_draw_centered(g, f, x + s * 0.5f, cy + 10.0f, 12.0f, ui_rgba(disabled ? k_ui.disabled_text : k_ui.surface), ia_chip_text((ia_kind_t)h->kind));
 }
