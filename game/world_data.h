@@ -104,7 +104,7 @@ typedef struct MgmbGroup {
 
 typedef struct Mgmb {
     int count;
-    MgmbGroup groups[16];
+    MgmbGroup groups[64]; /* LIB-1: the library hall has 42 */
 } Mgmb;
 
 bool mgmb_load(Mgmb *m, const char *asset, Arena *arena);

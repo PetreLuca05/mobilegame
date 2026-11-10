@@ -51,8 +51,8 @@ static bool load_scene(LibScene *s)
     const MgAsset *a = mg_asset_find("assets/menu/library.scene.json");
     cJSON *root = a ? cJSON_ParseWithLength((const char *)a->data, a->size) : NULL;
     const char *fmt = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(root, "format"));
-    if (!root || !fmt || SDL_strcmp(fmt, "mg-library 1") != 0) {
-        mg_log_error("library: assets/menu/library.scene.json is missing or not mg-library 1");
+    if (!root || !fmt || SDL_strcmp(fmt, "mg-library 9") != 0) {
+        mg_log_error("library: assets/menu/library.scene.json is missing or not mg-library 9");
         cJSON_Delete(root);
         return false;
     }
@@ -75,10 +75,18 @@ static bool load_scene(LibScene *s)
         seat->pos = jv2(st, "pos");
         seat->yaw_deg = jnum(st, "yaw_deg", 0.0f);
         seat->stand = jv2(st, "stand");
-        for (const cJSON *p = cJSON_GetObjectItemCaseSensitive(st, "path")->child; p && seat->path_n < LIB_PATH_MAX; p = p->next) {
+        const cJSON *pj = cJSON_GetObjectItemCaseSensitive(st, "path");
+        for (const cJSON *p = pj ? pj->child : NULL; p && seat->path_n < LIB_PATH_MAX; p = p->next) {
             float f[2] = {0, 0};
             jfloats(p, f, 2);
             seat->path[seat->path_n++] = HMM_V2(f[0], f[1]);
+        }
+    }
+    for (int k = 0; k < n; k++) { /* mg-library 9 has no seat paths: until the nav grid, door -> hub -> stand */
+        LibSeat *seat = &s->seats[k];
+        if (seat->path_n == 0) {
+            seat->path[0] = s->door.outside, seat->path[1] = s->door.inside, seat->path[2] = s->hub, seat->path[3] = seat->stand;
+            seat->path_n = 4;
         }
     }
     for (const cJSON *c = cJSON_GetObjectItemCaseSensitive(root, "extra_chairs") ? cJSON_GetObjectItemCaseSensitive(root, "extra_chairs")->child : NULL;
@@ -130,7 +138,11 @@ static bool load_scene(LibScene *s)
             r->face_deg = r->has_face ? (float)face->valuedouble : 0.0f;
             r->outside = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(rj, "outside"));
             const char *act = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(rj, "act"));
-            r->act = act && SDL_strcmp(act, "browse") == 0 ? LIB_ACT_BROWSE : act && SDL_strcmp(act, "post") == 0 ? LIB_ACT_POST : LIB_ACT_NONE;
+            /* until the acts of section 9 are in: anything at a shelf browses, anything else stands */
+            r->act = act && (SDL_strcmp(act, "browse") == 0 || SDL_strcmp(act, "take") == 0 || SDL_strcmp(act, "read") == 0 || SDL_strcmp(act, "shelve") == 0 ||
+                             SDL_strcmp(act, "ladder") == 0)
+                         ? LIB_ACT_BROWSE
+                         : act ? LIB_ACT_POST : LIB_ACT_NONE;
         }
     }
     cJSON_Delete(root);
@@ -224,7 +236,13 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         arena_reset_to(scratch, mark);
         return false;
     }
-    L->room = upload(g, scratch, &mb, "room");
+    bool rooms = true;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        char name[16];
+        SDL_snprintf(name, sizeof(name), "room_%d", b);
+        L->room[b] = upload(g, scratch, &mb, name);
+        rooms = rooms && L->room[b] != GFX_MESH_NONE;
+    }
     L->shell = upload(g, scratch, &mb, "shell");
     L->chair = upload(g, scratch, &mb, "chair");
     L->door = upload(g, scratch, &mb, "door");
@@ -234,7 +252,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->leaf_a = upload(g, scratch, &mb, "book_leaf_a");
     L->leaf_b = upload(g, scratch, &mb, "book_leaf_b");
     arena_reset_to(scratch, mark);
-    L->ok = L->room != GFX_MESH_NONE && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
+    L->ok = rooms && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
             L->leaf_b != GFX_MESH_NONE;
     npc_looks(L);
@@ -422,7 +440,7 @@ static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, 
         const HMM_Mat4 outer = HMM_MulM4(HMM_MulM4(inner, HMM_Translate(HMM_V3(-0.5f * s->book.leaf_len, 0.0f, 0.0f))),
                                          HMM_Rotate_RH(-(st->theta_b - st->theta), HMM_V3(0, 0, 1)));
         gfx_draw(g, L->leaf_a, &inner, &mat, 0);
-        gfx_draw(g, L->leaf_a, &outer, &mat, 0); /* book_leaf_b is the same quad: one instanced draw for both halves */
+        gfx_draw(g, L->leaf_b, &outer, &mat, 0); /* mg-library 9: the halves carry their own text lines */
     }
 }
 
@@ -783,7 +801,9 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
     const LibScene *s = &L->sc;
     if (L->shell_k >= 1.0f) { /* closed: the building alone, nothing inside drawn or simulated */
         const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
-        gfx_draw(g, L->room, &L->xf, &room, 0);
+        for (int b = 0; b < LIB_BAYS; b++) {
+            gfx_draw(g, L->room[b], &L->xf, &room, 0);
+        }
         gfx_draw(g, L->shell, &L->xf, &room, 0);
         const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
         gfx_draw(g, L->door, &door, &room, 0);
@@ -813,7 +833,9 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         L->gone.t_shut = L->clock;
     }
     const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
-    gfx_draw(g, L->room, &L->xf, &room, 0);
+    for (int b = 0; b < LIB_BAYS; b++) {
+        gfx_draw(g, L->room[b], &L->xf, &room, 0);
+    }
     const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
     gfx_draw(g, L->door, &door, &room, 0);
     for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */

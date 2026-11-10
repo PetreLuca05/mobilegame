@@ -15,8 +15,9 @@
 #define LIB_SEATS 4
 #define LIB_PATH_MAX 8
 #define LIB_EXTRA_CHAIRS 4
-#define LIB_NPCS 8
-#define LIB_ROUTE_MAX 10
+#define LIB_NPCS 32
+#define LIB_ROUTE_MAX 12
+#define LIB_BAYS 4
 
 enum { LIB_ACT_NONE, LIB_ACT_BROWSE, LIB_ACT_POST };
 
@@ -123,7 +124,9 @@ typedef struct LibMember {
 typedef struct MenuLibrary {
     bool ok;
     LibScene sc;
-    GfxMeshId room, shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
+    GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
+    float bay_x[LIB_BAYS]; /* hall.bx: each bay's centre (the bay meshes are placed already) */
+    int home_bay;
     HMM_Mat4 xf; /* library -> world */
     HMM_Mat4 rot; /* xf's rotation only (velocities stay in library metres) */
     float scale;  /* 1, or lib_scale once the room stands on the island */
