@@ -192,7 +192,7 @@ struct GfxContext {
     SDL_GPUGraphicsPipeline *panel_pipe;     /* frosted UI panel on the swapchain */
     BlurPanel panels[GFX_MAX_PANELS];
     uint32_t panel_count;
-    bool keep_scaled; /* once a panel needed the offscreen scene, keep it (no target churn) */
+    bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
     UiBatch ui_batches[GFX_MAX_UI_BATCHES];
     uint32_t ui_batch_count;
     /* settings preview: second camera into an offscreen square */
@@ -2348,13 +2348,15 @@ static void frame_end(GfxContext *g)
     rw = rw > 0 ? rw : 1;
     rh = rh > 0 ? rh : 1;
     const bool shot = g->shot_path[0] != 0; /* this frame's 3D + UI go to scene_tex first */
-    g->keep_scaled = g->keep_scaled || g->panel_count > 0 || g->preview_on || shot;
-    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->keep_scaled;
+    /* this frame's pass layout: an offscreen scene only when the frame needs one (a lower render scale, a
+     * blurred panel, the preview, a screenshot); the textures, once made, stay allocated (no target churn) */
+    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->panel_count > 0 || g->preview_on || shot;
+    g->keep_scaled = g->keep_scaled || scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
     g->stats.msaa = sample_count(g->msaa);
 
-    if (!ensure_targets(g, rw, rh, scaled)) {
+    if (!ensure_targets(g, rw, rh, g->keep_scaled)) { /* allocation follows keep_scaled, the passes follow `scaled` */
         SDL_SubmitGPUCommandBuffer(g->cmd);
         g->cmd = NULL;
         return;
