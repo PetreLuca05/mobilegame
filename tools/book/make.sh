@@ -20,10 +20,12 @@ cp build/fixes_merged.json "$PACK/fixes.json"
 python3 -I "$T/atoms.py" "$PACK"
 python3 -I "$T/numbers.py" "$PACK"
 python3 -I "$T/figs.py" "$PACK"
+python3 -I "$T/figlabels.py" "$PACK"     # label boxes (+ fig/label_positions_manual.json)
 [[ -f src/gastro-quests.json ]] || cp "$PACK/gastro-quests.json" src/gastro-quests.json
 [[ -f src/institute.map ]] || cp "$PACK/institute.map" src/institute.map
 python3 -I "$T/quests.py" "$PACK"
 python3 -I "$T/errata.py" "$PACK"
 if ls "$T"/topics/*.py >/dev/null 2>&1; then python3 -I "$T/compile.py" "$PACK"; fi
 python3 -I "$T/report.py" "$PACK"
+python3 -I "$T/leakguard.py" build "$PACK"
 python3 -I "$PACK/check.py" "$PACK" --topics "$(python3 -I -c "import json,sys;print(','.join(sorted({json.loads(l)['topic'] for l in open(sys.argv[1])})))" "$PACK/facts.jsonl")" || true

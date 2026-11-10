@@ -66,8 +66,11 @@ class Topic:
         for e in self.errata:                              # a fact whose span holds a printed erratum is flagged
             if atom in e['atoms']:
                 i = t.find(e['printed'])
-                if i >= 0 and i < span[1] and i + len(e['printed']) > span[0]:
-                    notes.append(f"{e['id']}: {e['issue']}")
+                while i >= 0:                              # every occurrence of the printed snippet
+                    if i < span[1] and i + len(e['printed']) > span[0]:
+                        notes.append(f"{e['id']}: {e['issue']}")
+                        break
+                    i = t.find(e['printed'], i + 1)
         if notes:
             f['needs_review'] = ' | '.join(notes)
         if a.get('unverified_ocr'):
@@ -106,12 +109,15 @@ class Topic:
         """the book's sentence that holds fact fkey, quoted with its page"""
         f = self._f[fkey]
         a = self.atoms[f['atom']]
+        if a['kind'] == 'figure_labels' and f['span'] != [0, len(a['text'])]:
+            fig = (a.get('fig') or '').replace('fig_', 'Fig. ').replace('_', '.')
+            return f'„{f["text"]}” ({self._pg(f["atom"])}, eticheta din {fig})'
         s = None
         for i, (s0, s1) in enumerate(a['sent_spans']):
             if s0 <= f['span'][0] < s1 or (f['span'][0] <= s0 and f['span'][1] >= s1):
                 s = i
                 break
-        return f'„{self._sent(f["atom"], s)}” ({self._pg(f["atom"])})'
+        return f'„{re.sub(r"\s+", " ", self._sent(f["atom"], s))}” ({self._pg(f["atom"])})'
 
     def _expl(self, src, note):
         atom, sent = src

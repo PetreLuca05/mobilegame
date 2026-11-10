@@ -14,3 +14,7 @@ fig/
 topics/
 notes/
 fixes/
+*.mgpack
+*.mgpack.h
+exam_exempt.json
+atoms.lock.json

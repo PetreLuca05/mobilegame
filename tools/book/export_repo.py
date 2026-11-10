@@ -8,7 +8,7 @@ import json, os, re, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACK_FILES = ['README.md', 'STATE.md', 'QUESTIONS.md', 'LAYOUT_GUIDE.md', 'AUTHORING_GUIDE.md', 'check.py', 'institute.map',
               'rules.json', 'topic_rules.json', 'leakguard.txt', 'ENGINE_PROMPT.md']
-TOOL_EXT = ('.py', '.sh', '.html')
+TOOL_EXT = ('.py', '.sh', '.html', '.md')
 
 
 def main(pack, repo):

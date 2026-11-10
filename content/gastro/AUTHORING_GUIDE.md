@@ -88,7 +88,7 @@ a gap, a card answer, an entry / pair / position). Wrong options never count.
 The topic's room is fixed (see `pack/gastro-quests.json`); never move a topic or change a room id. Read
 `roominfo.py pack ROOM`: bounds in metres, x east, **z south**, yaw 0 faces +z (south), 90 east, 180 north, 270 west.
 - Add 2–6 interactable props (`T.prop(floor, room, '<topic>_<name>', model, x, z, yaw, 'Romanian label')`) and NPC slots
-  (`T.slot`) inside the room: ≥ 0.4 m from walls, not within 1 m of a door centre or in front of a window, ≥ 1.2 m apart,
+  (`T.slot`) inside the room: wall-mounted props (poster, plaque, whiteboard, lightbox) 0.15 m off their wall, everything else ≥ 0.4 m from walls, not within 1 m of a door centre or in front of a window, ≥ 1.2 m apart,
   not on existing slots. Models (reuse these names): `poster`, `wall_plaque`, `lectern`, `whiteboard`, `lightbox`
   (X-ray / figure viewer), `monitor`, `scope_tower`, `microscope`, `specimen_shelf`, `pharmacy_shelf`, `dispensing_counter`,
   `bed_chart`, `iv_stand`, `bookshelf`, `filing_cabinet`, `model_stomach`, `or_screen`, `lab_bench`, `breath_analyser`.

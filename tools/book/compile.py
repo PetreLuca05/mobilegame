@@ -24,6 +24,35 @@ def run_topic(pack, name):
           + (f'; facts with no exam item: {noexam}' if noexam else ''))
 
 
+def review_scripts(pack):
+    """Optional review content (never counts toward coverage): pools drawn at run time from the items of finished rooms.
+    Counts and scoring of the final simulation are the author's to set (not hard-coded)."""
+    q = json.load(open(os.path.join(pack, 'gastro-quests.json'), encoding='utf-8'))
+    out = []
+    for ch in q['chapters']:
+        if ch['id'] == 0:
+            continue
+        out.append({'id': f'r-comisie-ch{ch["id"]}', 'topic': None, 'room': 'o_comisie', 'kind': 'exam', 'required': False,
+                    'title': ch.get('boss') or f'Comisia: capitolul {ch["id"]}', 'trigger': 'interact', 'slot': 'table',
+                    'opens_when': f'every room of chapter {ch["id"]} complete',
+                    'pool': {'chapters': [ch['id']], 'types': ['simplu', 'multiplu'], 'count': 'set by the author'},
+                    'steps': [], 'covers': []})
+    out.append({'id': 'r-round', 'topic': None, 'room': 'w_statie', 'kind': 'round', 'required': False,
+                'title': 'Vizita în secție: recapitulare', 'trigger': 'interact', 'slot': 'post',
+                'pool': {'chapters': 'completed rooms', 'types': 'all', 'spacing': 'facts answered longest ago first'},
+                'steps': [], 'covers': []})
+    out.append({'id': 'r-garda', 'topic': None, 'room': 'g_garda', 'kind': 'garda', 'required': False,
+                'title': 'Garda: cazuri din toate capitolele terminate', 'trigger': 'interact', 'slot': 'desk',
+                'pool': {'chapters': 'completed rooms', 'types': ['simplu', 'multiplu', 'card'], 'rooms': ['g_bay1', 'g_bay2', 'g_bay3', 'g_bay4', 'g_bay5', 'g_bay6']},
+                'steps': [], 'covers': []})
+    out.append({'id': 'r-examen', 'topic': None, 'room': 'o_examen', 'kind': 'exam', 'required': False,
+                'title': 'Sala de examen: simulare', 'trigger': 'interact', 'slot': 'desk',
+                'opens_when': 'every chapter exam passed',
+                'pool': {'chapters': [1, 2, 3, 4], 'types': ['simplu', 'multiplu'], 'count': 'set by the author', 'scoring': 'set by the author'},
+                'steps': [], 'covers': []})
+    return out
+
+
 def merge(pack):
     tdir = os.path.join(pack, 'topics')
     facts, items, scripts, props, slots, exempt = [], [], [], [], [], {}
@@ -32,6 +61,7 @@ def merge(pack):
             d = json.load(open(os.path.join(tdir, fn), encoding='utf-8'))
             facts += d['facts']; items += d['items']; scripts += d['scripts']; props += d['props']
             slots += d.get('slots', []); exempt.update(d.get('exam_exempt', {}))
+    scripts += review_scripts(pack)
     with open(os.path.join(pack, 'facts.jsonl'), 'w', encoding='utf-8') as f:
         for x in facts:
             f.write(json.dumps(x, ensure_ascii=False) + '\n')

@@ -284,7 +284,7 @@ def main():
             if t == 'multiplu':
                 for o in wrong:
                     why = o.get('why', '')
-                    if not re.search(r'„.+” \(p\. \d{4}', why):
+                    if not re.search(r'„.+” \(p\. \d{4}', why, re.S):
                         E['items'].append(f"{iid}: false option {o['k']} has no quoted book sentence with its page")
             # (f) cues and form
             lens = sorted((len(o['t']) for o in opts), reverse=True)
@@ -315,7 +315,7 @@ def main():
             if g > 1 and not it.get('list_gap'):
                 E['items'].append(f'{iid}: {g} gaps in a sentence that is not a list')
             for ans in it['answers']:
-                if norm(ans) in FUNCTION or len(norm(ans)) < 2:
+                if norm(ans) in FUNCTION or (len(norm(ans)) < 2 and not norm(ans).isdigit()):
                     E['items'].append(f'{iid}: gap {ans!r} is a function word')
                 if q and norm(ans) not in norm(q):
                     E['items'].append(f'{iid}: gap {ans!r} not in the source sentence')
@@ -360,6 +360,10 @@ def main():
     req = collections.defaultdict(list)
     stations = collections.defaultdict(list)
     for sc in scripts:
+        if sc.get('topic') is None:                 # optional review / exam pools (never count toward coverage)
+            if sc.get('required') or sc['room'] not in map_rooms:
+                E['scripts'].append(f"{sc['id']}: review script must be optional and in a map room")
+            continue
         if not scope(sc.get('topic')):
             if sc.get('required'):
                 for fid in sc['covers']:

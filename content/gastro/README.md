@@ -10,15 +10,18 @@ This repository is public, so **no text of the book is committed**. Git holds th
 | in git | what |
 |---|---|
 | `layout/pNN.txt` | reading order and structure of each PDF page (DSL in `LAYOUT_GUIDE.md`) |
-| `fixes/pNN.json`, `rules.json` | every OCR correction, reproducible (find / replace) |
+| `rules.json` | the global OCR rules (the per-page fixes `fixes/pNN.json` transcribe figure text, so they travel in the zip) |
 | `topic_rules.json` | how each atom is assigned to one of the 50 topics |
-| `gastro-quests.json` | the quest table (v2: headings and pages regenerated from the atoms) |
+| `gastro-quests.json` | the quest table (public copy: heading lists as atom ids) |
 | `institute.map` | MAP-2 layout v3 + the `iprop` records the scripts use |
 | `check.py` | the proof: fails unless every ledger is 100 % |
-| `STATE.md`, `QUESTIONS.md`, `LAYOUT_GUIDE.md` | where the work stands, open questions, the page-layout guide |
+| `STATE.md`, `QUESTIONS.md` | where the work stands; the author's decisions (one line each) |
+| `LAYOUT_GUIDE.md`, `AUTHORING_GUIDE.md` | how pages were laid out and proofread; how topics are written (style rules) |
+| `ENGINE_PROMPT.md` | Phase F: the prompt for the engine work (binary pack, progress bitset, perf budget) |
+| `leakguard.txt` | hashes of every 12-word run of the book (no text); the pre-commit hook refuses a commit that holds one |
 | `../../tools/book/` | the pipeline (extract, build, atoms, numbers, figures, compile, report, reviewer) |
 
-Not in git (generated, or the book's own text — delivered as a zip): `cleaned.txt`, `atoms.jsonl`, `facts.jsonl`,
+Not in git (generated, or the book's own text — delivered as a zip): `fixes/`, `gastro.mgpack`, `cleaned.txt`, `atoms.jsonl`, `facts.jsonl`,
 `items.jsonl`, `scripts.json`, `coverage.json`, `numbers.csv`, `errata.json`, `report.md`, `fig/`, `topics/`, `notes/`,
 the topic sources `tools/book/topics/*.py`, `tools/book/data/`, and `content/src/` (the PDF).
 
