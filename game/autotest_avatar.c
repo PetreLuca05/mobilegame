@@ -5,6 +5,7 @@
 #include "autotest.h"
 #include "avatar.h"
 #include "core/log.h"
+#include "net/replication.h"
 
 #define DT (1.0f / 60.0f)
 
@@ -171,6 +172,66 @@ static int cane(AvatarTest *t, const AvatarMeshes *m)
     return 0;
 }
 
+/* The remote path: the local walk (3 s north, a 90 deg turn, 2 s east) goes through the real sender, packet
+ * and receiver (10 Hz, 100 ms interpolation); the remote avatar is posed from the received velocity and yaw,
+ * like net_session.c does. It must bob, swing and turn like the local one. */
+static int remote(AvatarTest *t, const AvatarMeshes *m)
+{
+    const AvatarLook look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
+    AvatarPose lp = standing(), rp = standing();
+    AvatarAnim la, ra;
+    SDL_zero(la);
+    SDL_zero(ra);
+    RepSender snd;
+    RepReceiver rcv;
+    SDL_zero(snd);
+    rep_receiver_reset(&rcv);
+    float lpeak = 0.0f, rpeak = 0.0f, rstep = 0.0f, rprev = 0.0f, rsettled = -1.0f;
+    const float target = HMM_PI32 * -0.5f; /* facing east */
+    for (int f = 0; f < 300; f++) {
+        const double now = (double)f * DT;
+        const bool east = f >= 180;
+        lp.vel = east ? HMM_V3(4.5f, 0.0f, 0.0f) : HMM_V3(0.0f, 0.0f, -4.5f);
+        lp.yaw = east ? target : 0.0f;
+        lp.feet = HMM_AddV3(lp.feet, HMM_MulV3F(lp.vel, DT));
+        RepState st = {0, (uint32_t)f, lp.feet, lp.vel, lp.yaw, REP_GROUNDED, 0};
+        if (rep_sender_due(&snd, &st, 2, now)) {
+            uint8_t pkt[REP_PACKET_SIZE];
+            RepState got;
+            if (rep_pack(&st, pkt) == REP_PACKET_SIZE && rep_unpack(pkt, REP_PACKET_SIZE, &got)) {
+                rep_receiver_push(&rcv, &got, now);
+            }
+        }
+        const RepSample smp = rep_receiver_sample(&rcv, now);
+        if (smp.valid) {
+            rp.feet = smp.pos, rp.vel = smp.vel, rp.yaw = smp.yaw, rp.grounded = (smp.flags & REP_GROUNDED) != 0;
+        }
+        avatar_animate(m, &la, &lp, DT);
+        avatar_animate(m, &ra, &rp, DT);
+        AvatarSolved ls, rs;
+        avatar_solve(m, &look, &lp, &la, &ls);
+        avatar_solve(m, &look, &rp, &ra, &rs);
+        if (f >= 60 && f < 180) {
+            lpeak = mg_maxf(lpeak, ls.base_y - m->rig.stand_y);
+            rpeak = mg_maxf(rpeak, rs.base_y - m->rig.stand_y);
+        }
+        if (f > 180) {
+            rstep = mg_maxf(rstep, fabsf(wrapf(ra.yaw - rprev)));
+            if (rsettled < 0.0f && fabsf(wrapf(target - ra.yaw)) < HMM_AngleDeg(3.0f)) {
+                rsettled = (float)(f - 180) * DT;
+            }
+        }
+        rprev = ra.yaw;
+    }
+    mg_log_info("autotest avatar: remote: bob peak %.4f m (local %.4f), the turn settles in %.3f s (100 ms behind by design), largest frame step %.2f deg",
+                (double)rpeak, (double)lpeak, (double)rsettled, (double)(rstep * 57.29578f));
+    if (fabsf(rpeak - lpeak) > 0.003f || rsettled < 0.2f || rsettled > 0.65f || rstep > HMM_AngleDeg(15.0f)) {
+        return failf(t, "remote: bob %.4f vs %.4f m, turn settles in %.3f s, step %.1f deg", (double)rpeak, (double)lpeak, (double)rsettled,
+                     (double)(rstep * 57.29578f));
+    }
+    return 0;
+}
+
 static int options(AvatarTest *t, const AvatarMeshes *m)
 {
     uint32_t rng = 0x5EED1A1u;
@@ -247,7 +308,7 @@ int at_run(AvatarTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         return failf(t, "no avatar meshes");
     }
     int r;
-    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = cane(t, m)) || (r = options(t, m)) || (r = skins(t))) {
+    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = cane(t, m)) || (r = remote(t, m)) || (r = options(t, m)) || (r = skins(t))) {
         return r;
     }
     return 1;

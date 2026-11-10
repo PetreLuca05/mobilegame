@@ -31,4 +31,6 @@ shot seat_reception_chair seats 10,0.1,-6 -1.6,1.1,-4.6,90,-8
 shot seat_yard_bench seats 10,0.1,-6 -1.6,1.3,12,90,-14
 shot bed_side bed 8,4.1,-5 -1.4,4.8,-0.25,90,-6
 shot bed_above bed 8,4.1,-5 -1.2,5.9,-0.2,90,-38
+# the x-ray silhouette: the player behind the reception desk (the desk hides the lower body)
+$GAME --offline --play new --spawn -2.6,0.1,-4.9 --cam -2.6,0.8,-1.6,0,-2 --autotest screenshot av_xray > "$OUT/xray.log" 2>&1 && cp "$PREF/av_xray.png" $DOC/xray_behind_desk.png && echo "shot xray_behind_desk"
 exit $RC

@@ -1,9 +1,9 @@
 # Avatar inventory (LIB-1 A1)
 
-What the current limbless avatar is, every state it shows and every place it
-is drawn, and how each maps onto the new avatar (`assets/avatar/avatar.json`
-+ `assets/avatar/avatar.mgmesh`). Written before the model is replaced; no
-code changed. States that do not map cleanly are marked **NOT CLEAN** and
+What the old limbless avatar was, every state it showed and every place it
+was drawn, and how each maps onto the new avatar (`assets/avatar/avatar.json`
++ `assets/avatar/avatar.mgmesh`). Sections 1-7 were written before the model
+was replaced; section 8 is what A1 shipped. States that do not map cleanly are marked **NOT CLEAN** and
 listed again in section 7.
 
 ## 1. Parts, meshes, triangles, LOD
@@ -281,3 +281,58 @@ Other points found:
   at a storey change pops.
 - Head icon cache: the atlas is keyed by skin hash; the model change needs a
   flush (the merge path already clears it, `account_link.c`).
+
+## 8. As shipped (A1)
+
+`game/avatar.c`: one pose function, `avatar_solve(meshes, look, pose, anim, &solved)`, used by every draw
+and by `--autotest avatar`; `avatar_animate` eases `move` (12 /s, full stride from 1 m/s), the heading
+(10 /s, shorter arc), browse / push / look (their rates). The caller API is unchanged except
+`avatar_animate` takes the meshes; new `AvatarPose` fields: `seat_y`, `browse`, `push`, `look`, `lean`,
+`hands_w` + `hand_l` / `hand_r`, `breath_k`.
+
+**Shading** (user decision): smooth + cel. Every part gets smooth normals (70 deg crease, so a cane's cap
+or a hat's brim stays sharp); the suit body takes its lathe profile's normal everywhere, so the suit's
+zone patches shade like the body under them. The shipped 2-step toon ramp; black outlines from
+smooth-normal hulls (the x-ray rim uses the same hulls).
+
+**Suits**: one body mesh (`body_suit`, 419 tris) with the details as zones (vertex alpha = 255 - zone):
+1 V-neck (trim), 2 coat front, 3 buttons, 4 cross (accent), 5 pocket, 6 badge (accent), 7 stethoscope.
+`GfxMaterial.extra` = outfit, trim, accent, zone mask (+ body type 1); the vertex shader colours the
+zones and collapses the ones off the mask (`common.hlsli` `zone_apply`). Body type 1 is the same mesh
+(widest ring x 0.92, top ring x 1.06 in the shader): no extra draw.
+
+**Seats** (user decision): `seat_y` (0.5) is the body base seated on the library chairs. Their seat top
+is read from `library.mgmesh` at load (0.50 m), so the clearance is 0; on any other seat the body base
+goes to that seat's top + the clearance: hospital chairs 0.48 (`HOSP_CHAIR_TOP`), yard benches 0.47
+(`HOSP_BENCH_TOP`). Pictures: `docs/autotest/avatar/seat_*.png`.
+
+**Canes** (user request): an avatar with `AVATAR_EXTRA_CANE` walks in steps: each 0.9 s step the body
+and the cane move together in the first 45 %, then stand planted; bob and swing happen in the step;
+a lean into each step. Drawn only: the sim's position moves evenly and the drawn feet swing round it
+(mean 0, at most 0.275 x speed x step, 0.22 m at 0.9 m/s).
+
+### The nine states that did not map cleanly
+
+All kept; pictures with the old avatar above and the new one below, same camera:
+`docs/autotest/avatar/substitutes/row_old_vs_new.png` (left to right: crouch, mop sway, weight shift x4,
+talk pop, seated stretch, airborne hands, elder, child) and `bed_old_vs_new.png`.
+
+| State | Shipped as |
+|---|---|
+| Lying / bed | root transform before the pose: on the back, the body axis 0.855 m up (its underside on the 0.6 m mattress), raised 7.6 deg so the head rests on the 0.72 m pillow, head towards the pillow end behind the slot's facing; hands beside the body; no contact disc |
+| Crouch (gardener) | body base -0.3 m, +0.3 rad lean, hands -0.3 m: the old numbers on the new parts |
+| Mop sway | root roll, as before; the bucket hangs from the left hand |
+| Weight shift, side lean | body roll after the forward lean (`weight_tilt`, `lean_side` from the velocity) |
+| Talk head pop | **not substituted** (user decision): `head_lift` moves the head along the body's own up axis, the turn to the player is `head_yaw` |
+| Seated stretch | both hands +0.5 m (`stretch`), as before |
+| Airborne hands | `raise`, hands up 0.5 m and 8 cm wider, as before |
+| Elder hand drop | hands -0.08 m; elders lean 0.12 rad (A1) instead of 6 deg |
+| Face details | the new face is two eyes: no nose, mouth, child smile or elder brows; sunglasses / reading glasses still replace the eyes |
+
+### Triangles per avatar, old and new
+
+| | Old (submitted, default doctor) | New |
+|---|---|---|
+| LOD0 | 11 746 (6 938 parts + 4 808 hull) | body_suit 419 + head 80 + hair 90 + 2 hands 160 + 2 eyes 96 + mask 117 = 962 parts (570 for the plain exported body, no extras), + hulls 144 + 80 + 90 + 160 = 474: **1 436** |
+| LOD1 | 1 110 | 154 parts + 84 hull |
+| LOD2 | 128 | 70 body + 56 head |

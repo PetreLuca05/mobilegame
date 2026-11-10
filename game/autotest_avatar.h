@@ -4,6 +4,8 @@
  *             settles (within 3 deg) in 0.2 .. 0.5 s with no frame turning more than 15 deg
  *   cane      an elder with a cane at 0.9 m/s: planted between steps (< 10 % of the speed), each step faster
  *             than 1.5 x the speed, the drawn feet within 0.275 x speed x step (+ 2 cm) of the sim's
+ *   remote    the same walk through the real replication sender / packet / receiver: the remote avatar bobs
+ *             like the local one (+- 3 mm) and turns without a snap, settling within 0.65 s (100 ms of interpolation)
  *   options   200 samples of 2 x 8 x 6 x 8 x 8 x 5: every part drawn exists, hair and head extras reach the head (nearest vertex <= 3 cm outside it)
  *   skins     old profiles.skin rows (M2 palette-only, v2 partial, v2 full) parse to the same choices
  * The pictures (option sheet, ages, seats, bed, poses, x-ray, previews) come from tools/avatar_test.sh. */
