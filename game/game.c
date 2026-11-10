@@ -1684,7 +1684,8 @@ static bool menu_world(Game *g, MgApp *app)
         menu_library_hero_walk_in(&g->lib);
     }
     const bool panel = st == FE_MAIN_MENU && g->lobby_visible;
-    const float free_l = frontend_menu_right(app, (FeState)st) + 8.0f, free_r = frontend_menu_free_right(app, panel) - 8.0f;
+    menu_library_set_creator(&g->lib, st == FE_CREATOR, frontend_menu_right(app, FE_CREATOR));
+    const float free_l = frontend_menu_right(app, st == FE_CREATOR ? FE_MAIN_MENU : (FeState)st) + 8.0f, free_r = frontend_menu_free_right(app, panel) - 8.0f;
     GfxSceneParams sp = {0};
     menu_library_camera(&g->lib, app, free_l, free_r, 12.0f, app->height_pt - 12.0f, &sp);
     { /* TILT-1: the backdrop sways around its framing point, opposite to the UI's shift (the gameplay camera never does) */

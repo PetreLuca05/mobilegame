@@ -299,6 +299,15 @@ static void project_box(const HMM_Mat4 *vp, const HMM_Vec3 *pts, int n, float w,
     }
 }
 
+#define CREATOR_RATE 5.0f
+#define CREATOR_STUDY_W 0.15f
+
+void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l)
+{
+    L->creator = on;
+    L->creator_l = creator_l;
+}
+
 void menu_library_fit_box(const MenuLibrary *L, const HMM_Mat4 *vp, float w, float h, float box[4])
 {
     HMM_Vec3 pts[FIT_POINTS];
@@ -343,8 +352,32 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * mg_minf(app->frame_dt * 6.0f, 1.0f);
     const HMM_Vec3 target = HMM_AddV3(c->target, HMM_MulV3F(right, L->shift));
     const HMM_Vec3 eye = orbit_eye(target, L->dist, c->pitch_deg, c->yaw_deg);
-    L->eye = lib_point(L, eye);
-    L->target = lib_point(L, target);
+    L->creator_t += ((L->creator ? 1.0f : 0.0f) - L->creator_t) * (1.0f - expf(-CREATOR_RATE * mg_minf(app->frame_dt, 0.1f)));
+    HMM_Vec3 eye_l = eye, target_l = target;
+    if (L->creator_t > 1e-4f) { /* towards the Locker camera, the hero re-centred right of the creator panel */
+        const LibCam *cc = &s->cam_creator;
+        const float cy = HMM_AngleDeg(cc->yaw_deg);
+        const HMM_Vec3 cright = HMM_V3(HMM_CosF(cy), 0.0f, -HMM_SinF(cy));
+        const HMM_Vec3 hero = HMM_V3(s->seats[0].pos.X, 1.0f, s->seats[0].pos.Y);
+        float sh = L->creator_shift;
+        for (int it = 0; it < 30; it++) {
+            const HMM_Vec3 tg = HMM_AddV3(cc->target, HMM_MulV3F(cright, sh));
+            const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cc->pitch_deg, cc->yaw_deg), tg, HMM_V3(0, 1, 0)));
+            const HMM_Vec4 hc = HMM_MulM4V4(vp, HMM_V4V(hero, 1.0f));
+            const float hx = (hc.X / hc.W * 0.5f + 0.5f) * w, want = (L->creator_l + w) * 0.5f;
+            if (fabsf(hx - want) < 1.0f) {
+                break;
+            }
+            sh -= (want - hx) * 2.0f * cc->dist * HMM_TanF(HMM_AngleDeg(s->fov_deg) * 0.5f) / h * 0.8f;
+        }
+        L->creator_shift = sh;
+        const HMM_Vec3 ctg = HMM_AddV3(cc->target, HMM_MulV3F(cright, sh));
+        const HMM_Vec3 ceye = orbit_eye(ctg, cc->dist, cc->pitch_deg, cc->yaw_deg);
+        eye_l = HMM_LerpV3(eye, L->creator_t, ceye);
+        target_l = HMM_LerpV3(target, L->creator_t, ctg);
+    }
+    L->eye = lib_point(L, eye_l);
+    L->target = lib_point(L, target_l);
     if (L->closeup) { /* seat 0's book from its front left, 2.7 m away */
         const LibSeat *s0 = &s->seats[0];
         const float yw = HMM_AngleDeg(s0->yaw_deg);
@@ -574,6 +607,10 @@ static void member_step(MenuLibrary *L, int i, float dt)
         break;
     case LM_STUDY:
         mb->pos = seat->pos;
+        if (i == 0 && L->creator_t > 0.0f) { /* the Locker: sits up to 0.15 and the loop pauses */
+            mb->study_w = 1.0f - (1.0f - CREATOR_STUDY_W) * L->creator_t;
+            break;
+        }
         mb->study_w = approach(mb->study_w, 1.0f, STUDY_IN_RATE, dt);
         if (L->debug_turns && i == 0 && !mb->study.turning && mb->study.t >= 2.5f - s->study.turn_s) {
             lib_study_force_turn(&mb->study);
@@ -604,6 +641,11 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
     const HMM_Vec3 v = HMM_MulM4V4(L->xf, HMM_V4(mb->vel.X, 0.0f, mb->vel.Y, 0.0f)).XYZ;
     p->vel = v;
     p->sit = mb->blend;
+    if (i == 0) { /* the Locker: looks at the camera, both hands on the table (avatar.json creator_look) */
+        p->look = L->creator ? 1.0f : 0.0f;
+        p->head_yaw *= 1.0f - L->creator_t, p->head_pitch *= 1.0f - L->creator_t, p->body_yaw *= 1.0f - L->creator_t;
+        p->hands_w *= 1.0f - L->creator_t;
+    }
 }
 
 /* ------------------------------------------------------------------ background NPCs */

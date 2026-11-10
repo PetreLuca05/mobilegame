@@ -127,6 +127,10 @@ typedef struct MenuLibrary {
     LibMember seat[LIB_SEATS];
     LibNpc npc[LIB_NPCS];
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
+    bool creator;      /* the Locker is open */
+    float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
+    float creator_l;   /* pt: the creator panel's right edge */
+    float creator_shift;
     bool debug_turns; /* --debug turn-page: a page every 2.5 s */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
 } MenuLibrary;
@@ -135,6 +139,10 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
 /* The menu camera: the JSON's, backed off until the table and its four seats fit in the free rect
  * (pt: left, right, top, bottom), the table centred in it. Fills eye / view / proj of `sp`. */
 void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float free_r, float top, float bottom, GfxSceneParams *sp);
+/* The Locker: the camera eases to camera.creator (the hero centred between creator_l and the right edge),
+ * the hero sits up (study blend 0.15), looks at the camera and rests both hands on the table; the page loop
+ * pauses. Off: back the same way. */
+void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l);
 /* The lobby's members (rows without `me`, in list order) into seats 1..3: new ones walk in through the door,
  * missing ones stand and walk out. `snap`: everyone listed is seated at once (the menu just opened). */
 void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap);
