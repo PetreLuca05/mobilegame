@@ -1,0 +1,168 @@
+{
+ "format": "mg-avatar 1",
+ "units": "m",
+ "axes": "y up, forward +z, the avatar's left is +x",
+ "parts": {
+  "body": {
+   "pivot": "base, y 0 to 0.64",
+   "max_radius": 0.255
+  },
+  "head": {
+   "radius": 0.25,
+   "centre_above_body_base": 0.86
+  },
+  "hair": {
+   "note": "head space, tilt already applied"
+  },
+  "hand": {
+   "radius": 0.085
+  },
+  "eye": {
+   "radius": 0.032,
+   "pos_in_head": [
+    0.095,
+    0,
+    0.225
+   ],
+   "mirror_x": true,
+   "colour": "1b2a2a",
+   "unlit": true
+  }
+ },
+ "stand_y": 0.42,
+ "seat_y": 0.5,
+ "hands_rest": {
+  "x": 0.34,
+  "y_above_body_base": 0.28,
+  "z": 0.04
+ },
+ "idle": {
+  "bob_m": 0.015,
+  "bob_rad_s": 2.1,
+  "breath_scale": 0.012,
+  "breath_rad_s": 1.6
+ },
+ "walk": {
+  "phase_rad_s": 9,
+  "bob_m": 0.035,
+  "hand_swing_m": 0.16,
+  "lean_rad": 0.05,
+  "turn_rate": 10,
+  "move_ease_rate": 12
+ },
+ "browse": {
+  "hand_right": [
+   -0.16,
+   1.2,
+   0.44
+  ],
+  "hand_bob_m": 0.1,
+  "hand_bob_rad_s": 1.3,
+  "head_pitch_rad": -0.2,
+  "head_yaw_rad": 0.25,
+  "head_yaw_rad_s": 0.7,
+  "ease_rate": 5
+ },
+ "push": {
+  "hands": [
+   0.2,
+   0.95,
+   0.3
+  ],
+  "cart_ahead_m": 0.75,
+  "ease_rate": 6
+ },
+ "creator_look": {
+  "lean_factor": 0.15,
+  "head_pitch_rad": -0.06,
+  "head_yaw_rad": 0.12,
+  "head_yaw_rad_s": 0.8,
+  "hands": [
+   0.22,
+   0.84,
+   0.46
+  ],
+  "ease_rate": 6
+ },
+ "shadow": {
+  "radius": 0.3,
+  "alpha": 0.16,
+  "y": 0.02
+ },
+ "name_tag_y": {
+  "standing": 1.72,
+  "seated": 1.62
+ },
+ "shading": {
+  "ambient": 0.5,
+  "key": 0.5,
+  "shade_step": 0.41,
+  "key_dir": [
+   -0.55,
+   1,
+   0.5
+  ]
+ },
+ "demo_looks": [
+  {
+   "name": "Luca",
+   "suit": "12a594",
+   "skin": "f2c9a5",
+   "hair": "5a3a22"
+  },
+  {
+   "name": "Ana",
+   "suit": "e76f9a",
+   "skin": "f0c4a0",
+   "hair": "2a1c16"
+  },
+  {
+   "name": "Mihai",
+   "suit": "4a78d0",
+   "skin": "d9a77c",
+   "hair": "1e1a18"
+  },
+  {
+   "name": "Ioana",
+   "suit": "f0a030",
+   "skin": "f6d2b4",
+   "hair": "b5562e"
+  },
+  {
+   "name": "bibliotecara",
+   "suit": "8a5a9c",
+   "skin": "f0c4a0",
+   "hair": "3a2a22"
+  },
+  {
+   "name": "carucior",
+   "suit": "e0a030",
+   "skin": "d9a77c",
+   "hair": "22201e"
+  },
+  {
+   "name": "student_a",
+   "suit": "3f7fd0",
+   "skin": "f2c9a5",
+   "hair": "7a4a22"
+  },
+  {
+   "name": "vizitator",
+   "suit": "4c9f6a",
+   "skin": "c68e62",
+   "hair": "1e1a18"
+  },
+  {
+   "name": "student_b",
+   "suit": "e76f6f",
+   "skin": "f0c4a0",
+   "hair": "c9a24a"
+  },
+  {
+   "name": "batran",
+   "suit": "8b95a1",
+   "skin": "eec3a2",
+   "hair": "e8e8e8"
+  }
+ ]
+}
