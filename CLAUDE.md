@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -375,6 +375,10 @@ Details, motion table, tiers and how to add a widget: [docs/UI.md](docs/UI.md).
 - Input: `ui_press` = press motion + T0 + the action on the touch-up frame; targets >= 44 pt; `ui_remember` for rects that are not targets. Screens enter (layer slides in, rows stagger); toasts and notices also exit.
 - Settings -> Animații interfață (`ui_motion` 0 full / 1 reduced; iOS Reduce Motion forces 1); `ui_sounds` (was `marker_sounds`, migrated), `haptics`.
 - `--autotest ui` (all windows incl. `MG_WINDOW=iphone|iphone-flip|ipad`), perf scenario `ui_juice`; the perf gate checks `ui.anim` + `ui.fx` and `render.ui` against the UI-1 estimates and at most 3 UI draws.
+
+## Tilt (TILT-1)
+
+- Visual only. Core Motion gravity (`platform/ios/motion.m`) -> `engine/ui/tilt.c` on the fixed tick -> one UI uniform; depths and lips per instance, shifts in the shaders, clamped to the safe rect. Default depth = the card layer (4 pt); widgets set theirs with `ui_depth` / `ui_depth_end`; world-anchored UI at 0. Pref `ui_tilt` (Efect 3D la înclinare). `--debug tilt tx ty`, T + mouse on desktop, `--tilt-circle` for perf, `--autotest tilt`. Details: docs/UI.md.
 
 ## Haptics (HAPTIC-1)
 
