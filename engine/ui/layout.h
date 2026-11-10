@@ -12,7 +12,7 @@ typedef struct ui_frame_t {
 } ui_frame_t;
 
 #define UI_MARGIN 12.0f      /* gap between an element and the safe rect */
-#define UI_PAUSE_SIZE 34.0f
+#define UI_PAUSE_SIZE 54.0f /* UI-1: an icon button (54 x 54 with its lip) */
 
 static inline float ui_safe_left(const ui_frame_t *f) { return f->inset_l; }
 static inline float ui_safe_top(const ui_frame_t *f) { return f->inset_t; }
