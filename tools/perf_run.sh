@@ -4,6 +4,7 @@
 #                     [--seconds N] [--gpu] [--gate] [--no-json] [--tag NAME] [--extra "app args"] [--resume]
 # A device that drops off (devicectl or Instruments) is waited for, up to 10 min, and the
 # scenario retried (3 tries); --resume skips scenarios OUTDIR already has from this build.
+# With --gpu a 60 s smoke trace runs first and the gate refuses to start if it records nothing.
 # Fails (non-zero, naming the file) if a run produced no new output: every file
 # must be newer than its run, carry that run's id and the commit at HEAD.
 # Never falls back to an earlier file.
@@ -99,8 +100,24 @@ gpu_trace() { # device scenario; returns non-zero and sets GPU_ERROR
   cat "$base.json"
   rm -rf "$base.trace" "$base.xml" "$base.st.xml" "$base.log" "$base.stamp"
 }
+smoke_trace() { # dev: a 60 s Metal System Trace before the gate; no gate without working GPU traces
+  local dev=$1 udid=$(device_udid $1) base="$OUT/${1}_smoke" transport
+  transport=$(xcrun devicectl device info details --device "$(device_name $dev)" 2>/dev/null | sed -n 's/.*transportType: //p' | head -1)
+  echo "$dev: GPU smoke trace (60 s, link: ${transport:-unknown})"
+  rm -rf "$base.trace"
+  timeout -s KILL 150 xcrun xctrace record --template 'Metal System Trace' --device $udid --time-limit 60s --output "$base.trace" \
+    --launch -- $BID --autotest perf yard 60 --quit-after 75 > "$base.log" 2>&1
+  if ! grep -q "Output file saved" "$base.log" || [[ ! -e "$base.trace/Trace1.run" ]] ||
+     [[ ! -s $(timeout 200 xcrun xctrace export --input "$base.trace" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="metal-gpu-intervals"]' > "$base.xml" 2>/dev/null; echo "$base.xml") ]]; then
+    rm -rf "$base.trace" "$base.xml"
+    fail "$dev: the GPU smoke trace recorded nothing (link: ${transport:-unknown}). Instruments needs the device on USB: plug it in, unlock it, tap Trust if asked, set Auto-Lock to Never; xcrun xctrace list devices must list it under Devices, not Devices Offline"
+  fi
+  rm -rf "$base.trace" "$base.xml" "$base.log"
+  echo "$dev: GPU smoke trace ok"
+}
 for dev in $DEVICES; do
   name=$(device_name $dev)
+  (( GPU )) && { wait_device $dev; smoke_trace $dev }
   for s in $SCEN; do
     secs=60; [[ $s == stress200 ]] && secs=180; (( SECONDS_OVERRIDE > 0 )) && secs=$SECONDS_OVERRIDE
     wait_device $dev
