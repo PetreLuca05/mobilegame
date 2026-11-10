@@ -32,7 +32,8 @@ static const Scenario k_scenarios[] = {
     {"interact_npc", 3.3f, 0.1f, -2.2f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* near a talker, preview up */
     {"npcs", 0.0f, 0.1f, -3.0f, 0, 0.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
     {"lobby4", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2}, /* 3 guests, join panel up, 200 NPCs */
-    {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: hospital, roaming NPCs, hero */
+    {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: the library, 4 players seated, 6 NPCs */
+    {"menu_to_map", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* LIB-1: the Maps camera move looped, forward and back */
     {"ui_juice", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},       /* UI-1: menu + lobby panel, a toast and a T3 reward every 2 s */
     {"worldmap", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},        /* WORLD-1: the island's overview, labels */
     {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */

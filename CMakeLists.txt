@@ -282,6 +282,7 @@ set(MG_GAME_SOURCES
   game/avatar_gallery.c
   game/menu_library.c
   game/lib_study.c
+  game/lib_move.c
   game/autotest_avatar.c
   game/autotest_library.c
   game/scenery.c

@@ -213,7 +213,8 @@ static void npcs_reset(MenuLibrary *L)
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
 {
     SDL_zerop(L);
-    L->xf = HMM_M4D(1.0f);
+    L->xf = L->rot = HMM_M4D(1.0f);
+    L->scale = 1.0f;
     if (!load_scene(&L->sc)) {
         return false;
     }
@@ -249,6 +250,16 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
 /* ------------------------------------------------------------------ camera */
 
 static HMM_Vec3 lib_point(const MenuLibrary *L, HMM_Vec3 p) { return HMM_MulM4V4(L->xf, HMM_V4V(p, 1.0f)).XYZ; }
+
+/* the room's yaw in the world (radians, about +y) */
+static float lib_yaw(const MenuLibrary *L) { return atan2f(L->rot.Columns[2].X, L->rot.Columns[2].Z); }
+
+void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg)
+{
+    L->rot = HMM_Rotate_RH(HMM_AngleDeg(yaw_deg), HMM_V3(0, 1, 0));
+    L->scale = L->sc.lib_scale;
+    L->xf = HMM_MulM4(HMM_MulM4(HMM_Translate(pos), L->rot), HMM_Scale(HMM_V3(L->scale, L->scale, L->scale)));
+}
 
 HMM_Vec3 menu_library_seat_point(const MenuLibrary *L, int i, HMM_Vec3 p)
 {
@@ -420,7 +431,8 @@ static void study_pose_at(const MenuLibrary *L, HMM_Vec2 pos, float yaw_deg, con
     const LibScene *s = &L->sc;
     SDL_zerop(p);
     p->feet = lib_point(L, HMM_V3(pos.X, 0.0f, pos.Y));
-    p->yaw = HMM_AngleDeg(yaw_deg) + HMM_PI32; /* library yaw 0 faces +z; avatar yaw 0 looks along -Z */
+    p->yaw = HMM_AngleDeg(yaw_deg) + HMM_PI32 + lib_yaw(L); /* library yaw 0 faces +z; avatar yaw 0 looks along -Z */
+    p->scale = L->scale;
     p->grounded = true;
     p->flat_ground = true;
     p->sit = 1.0f;
@@ -637,8 +649,8 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
     const LibMember *mb = &L->seat[i];
     menu_library_study_pose(L, i, &mb->study, mb->study_w, p);
     p->feet = lib_point(L, HMM_V3(mb->pos.X, 0.0f, mb->pos.Y));
-    p->yaw = HMM_AngleDeg(mb->yaw_deg) + HMM_PI32;
-    const HMM_Vec3 v = HMM_MulM4V4(L->xf, HMM_V4(mb->vel.X, 0.0f, mb->vel.Y, 0.0f)).XYZ;
+    p->yaw = HMM_AngleDeg(mb->yaw_deg) + HMM_PI32 + lib_yaw(L);
+    const HMM_Vec3 v = HMM_MulM4V4(L->rot, HMM_V4(mb->vel.X, 0.0f, mb->vel.Y, 0.0f)).XYZ;
     p->vel = v;
     p->sit = mb->blend;
     if (i == 0) { /* the Locker: looks at the camera, both hands on the table (avatar.json creator_look) */
@@ -715,8 +727,9 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
     } else {
         SDL_zero(p);
         p.feet = lib_point(L, HMM_V3(n->pos.X, 0.0f, n->pos.Y));
-        p.yaw = HMM_AngleDeg(n->yaw_deg) + HMM_PI32;
-        p.vel = HMM_MulM4V4(L->xf, HMM_V4(n->vel.X, 0.0f, n->vel.Y, 0.0f)).XYZ;
+        p.yaw = HMM_AngleDeg(n->yaw_deg) + HMM_PI32 + lib_yaw(L);
+        p.scale = L->scale;
+        p.vel = HMM_MulM4V4(L->rot, HMM_V4(n->vel.X, 0.0f, n->vel.Y, 0.0f)).XYZ;
         p.grounded = true;
         p.flat_ground = true;
         const bool browsing = st && n->waiting && st->act == LIB_ACT_BROWSE;
@@ -739,12 +752,33 @@ bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_V
     return true;
 }
 
+LibCamPose menu_library_cam_pose(const MenuLibrary *L)
+{
+    const HMM_Vec3 d = HMM_SubV3(L->eye, L->target);
+    const float dist = HMM_LenV3(d);
+    LibCamPose c = {L->target, dist, asinf(d.Y / fmaxf(dist, 1e-5f)) * 57.29578f, atan2f(d.X, d.Z) * 57.29578f, L->sc.fov_deg};
+    return c;
+}
+
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     if (!L->ok) {
         return;
     }
     const LibScene *s = &L->sc;
+    if (L->shell_k >= 1.0f) { /* closed: the building alone, nothing inside drawn or simulated */
+        const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+        gfx_draw(g, L->room, &L->xf, &room, 0);
+        gfx_draw(g, L->shell, &L->xf, &room, 0);
+        const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
+        gfx_draw(g, L->door, &door, &room, 0);
+        return;
+    }
+    if (L->shell_k > 0.0f) { /* fading in over the cutaway */
+        GfxMaterial shell = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+        shell.hide = 1.0f - L->shell_k;
+        gfx_draw(g, L->shell, &L->xf, &shell, 0);
+    }
     L->avatar_push_ahead = m->rig.push_ahead_m;
     bool walker_at_door = false;
     for (int i = 0; i < s->npc_n; i++) {

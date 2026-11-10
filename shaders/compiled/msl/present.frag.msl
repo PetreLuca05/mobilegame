@@ -3,6 +3,11 @@
 
 using namespace metal;
 
+struct PresentFS
+{
+    float4 u_mix;
+};
+
 struct PSMain_out
 {
     float4 _entryPointOutput [[color(0)]];
@@ -13,10 +18,22 @@ struct PSMain_in
     float2 i_uv [[user(locn0)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], texture2d<float> u_src [[texture(0)]], sampler u_src_sampler [[sampler(0)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant PresentFS& _35 [[buffer(0)]], texture2d<float> u_src [[texture(0)]], texture2d<float> u_prev [[texture(1)]], sampler u_src_sampler [[sampler(0)]], sampler u_prev_sampler [[sampler(1)]])
 {
     PSMain_out out = {};
-    out._entryPointOutput = u_src.sample(u_src_sampler, in.i_uv);
+    float4 _125;
+    do
+    {
+        float4 _97 = u_src.sample(u_src_sampler, in.i_uv);
+        if (_35.u_mix.x <= 0.0)
+        {
+            _125 = _97;
+            break;
+        }
+        _125 = mix(_97, u_prev.sample(u_prev_sampler, in.i_uv), float4(_35.u_mix.x));
+        break;
+    } while(false);
+    out._entryPointOutput = _125;
     return out;
 }
 

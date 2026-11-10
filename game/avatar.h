@@ -123,6 +123,7 @@ typedef struct AvatarPose {
     HMM_Vec3 hand_l, hand_r;
     float breath_k;   /* 0 = 1 */
     float body_yaw;   /* the body and head turn about the body base (+ to its left); the hands stay */
+    float scale;      /* the whole avatar, 0 = 1 (the library on the island: lib_scale) */
 } AvatarPose;
 
 /* The solved pose: what the draw uses, what tests measure. */

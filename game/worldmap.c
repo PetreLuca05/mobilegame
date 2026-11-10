@@ -16,6 +16,7 @@
 #define WM_SEA 0x3FB6D8u
 #define WM_SEA_Y (-0.55f) /* under the shallow water in the terrain */
 #define WM_ROAD 0xF0E2B6u
+#define WM_LIBRARY_PAD 0xD2CBBDu /* LIB-1: the library's paving */
 #define WM_RING_GREY 0xC9D0D6u
 #define WM_RING_YELLOW 0xFFD166u
 #define WM_RING_GREEN 0x3ECF8Eu
@@ -86,11 +87,34 @@ static GfxMeshId build_road(const WorldIsland *w, GfxContext *g, Arena *arena)
 {
     MeshBuilder mb;
     const int n = w->road_count;
-    if (!mb_init(&mb, arena, (uint32_t)(n * 2 + n * 2), (uint32_t)(n * 6 + n * 2))) {
+    if (!mb_init(&mb, arena, (uint32_t)(n * 2 + n * 2 + 8), (uint32_t)(n * 6 + n * 2 + 12))) {
         return GFX_MESH_NONE;
     }
     const HMM_Vec3 up = HMM_V3(0, 1, 0);
     const HMM_Vec4 sand = rgb(WM_ROAD), white = rgb(0xFFFFFF);
+    if (w->has_library) { /* LIB-1: the library's paved pad and the path from its front to the road */
+        const float yw = HMM_AngleDeg(w->library_yaw_deg);
+        const HMM_Vec2 ax = HMM_V2(HMM_CosF(yw), -HMM_SinF(yw)), az = HMM_V2(HMM_SinF(yw), HMM_CosF(yw));
+        const HMM_Vec4 stone = rgb(WM_LIBRARY_PAD);
+        const float py = w->pad_y + 0.03f;
+        uint32_t b = 0;
+        for (int k = 0; k < 4; k++) {
+            const float sx = (k == 1 || k == 2) ? 0.5f : -0.5f, sz = k >= 2 ? 0.5f : -0.5f;
+            const HMM_Vec2 p = HMM_AddV2(w->library, HMM_AddV2(HMM_MulV2F(ax, sx * w->pad_w), HMM_MulV2F(az, sz * w->pad_d)));
+            const uint32_t v = mb_vertex(&mb, HMM_V3(p.X, py, p.Y), up, stone);
+            b = k == 0 ? v : b;
+        }
+        mb_triangle_idx(&mb, b, b + 2, b + 1); /* counter-clockwise seen from above */
+        mb_triangle_idx(&mb, b, b + 3, b + 2);
+        const HMM_Vec2 d = HMM_NormV2(HMM_SubV2(w->path_to, w->path_from)), sd = HMM_MulV2F(HMM_V2(-d.Y, d.X), w->path_w * 0.5f);
+        const float ry = w->path_y + 0.025f;
+        const uint32_t q = mb_vertex(&mb, HMM_V3(w->path_from.X + sd.X, ry, w->path_from.Y + sd.Y), up, sand);
+        mb_vertex(&mb, HMM_V3(w->path_from.X - sd.X, ry, w->path_from.Y - sd.Y), up, sand);
+        mb_vertex(&mb, HMM_V3(w->path_to.X - sd.X, ry, w->path_to.Y - sd.Y), up, sand);
+        mb_vertex(&mb, HMM_V3(w->path_to.X + sd.X, ry, w->path_to.Y + sd.Y), up, sand);
+        mb_triangle_idx(&mb, q, q + 1, q + 2);
+        mb_triangle_idx(&mb, q, q + 2, q + 3);
+    }
     HMM_Vec2 side[512 + 1];
     for (int i = 0; i < n && i < 512; i++) {
         const HMM_Vec2 a = w->road[i > 0 ? i - 1 : i], b = w->road[i + 1 < n ? i + 1 : i];
@@ -288,13 +312,27 @@ static HMM_Vec2 coast_point(const WmIsland *a, const WmIsland *b)
 
 bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *perm)
 {
-    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    int r;
     SDL_zerop(m);
-    for (int b = 0; b < books->count && m->count < WORLD_MAX_BOOKS; b++) {
+    while ((r = worldmap_load_step(m, books, g, perm)) == 0) {
+    }
+    return r > 0;
+}
+
+int worldmap_load_step(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *perm)
+{
+    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    if (m->loaded) {
+        return 1;
+    }
+    if (m->load_step < books->count && m->count < WORLD_MAX_BOOKS) { /* one island per call */
+        const int b = m->load_step++;
         if (!load_island(&m->isles[m->count], &books->books[b], g, perm)) {
-            return false;
+            return -1;
         }
         m->count++;
+        m->load_ms += (double)SDL_GetTicksNS() * 1e-6 - t0;
+        return 0;
     }
     for (int i = 0; i < m->count; i++) {
         for (int j = 0; j < m->count; j++) {
@@ -303,12 +341,12 @@ bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *p
     }
     Mgmb amb, veh;
     if (!mgmb_load(&amb, books->ambulance, perm) || !mgmb_load(&veh, books->vehicles, perm)) {
-        return false;
+        return -1;
     }
     const MgmbGroup *body = mgmb_group(&amb, "ambulance_body"), *wheel = mgmb_group(&amb, "ambulance_wheel");
     if (!body || !wheel) {
         mg_log_error("world: %s needs ambulance_body and ambulance_wheel", books->ambulance);
-        return false;
+        return -1;
     }
     m->body_mesh = upload_group(g, perm, body);
     m->wheel_mesh = upload_group(g, perm, wheel);
@@ -326,7 +364,7 @@ bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *p
         const MgmbGroup *vb = mgmb_group(&veh, k_vehicles[v].body);
         if (!vb) {
             mg_log_error("world: %s has no %s", books->vehicles, k_vehicles[v].body);
-            return false;
+            return -1;
         }
         vh->body = upload_group(g, perm, vb);
         vh->scale = k_vehicles[v].scale;
@@ -336,7 +374,7 @@ bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *p
             const MgmbGroup *sg = mgmb_group(&veh, k_vehicles[v].spin[s]);
             if (!sg) {
                 mg_log_error("world: %s has no %s", books->vehicles, k_vehicles[v].spin[s]);
-                return false;
+                return -1;
             }
             const GfxMeshId mesh = upload_group(g, perm, sg);
             for (uint32_t k = 0; k < sg->inst_count && vh->spin_count < WM_SPIN_MAX; k++) {
@@ -362,8 +400,9 @@ bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *p
         }
     }
     m->loaded = m->count > 0 && m->body_mesh != GFX_MESH_NONE;
-    mg_log_info("world: %d islands, ambulance %u tris, 4 vehicles, loaded in %.1f ms", m->count, m->tris_ambulance, (double)SDL_GetTicksNS() * 1e-6 - t0);
-    return m->loaded;
+    m->load_ms += (double)SDL_GetTicksNS() * 1e-6 - t0;
+    mg_log_info("world: %d islands, ambulance %u tris, 4 vehicles, loaded in %.1f ms (%d steps)", m->count, m->tris_ambulance, m->load_ms, m->load_step + 1);
+    return m->loaded ? 1 : -1;
 }
 
 /* ----------------------------------------------------------------- state */
@@ -1184,6 +1223,21 @@ static bool text_button(Ui *ui, const char *label, const char *id, float x, floa
     return ui_button_v(ui, key, x, y, w, 48.0f, UI_V_SECONDARY, UI_F_SMALL);
 }
 
+void worldmap_view_goal(WorldMap *m, const MgApp *app, HMM_Vec3 *target, float *dist, float *pitch_deg, float *fov_deg)
+{
+    const float safe[4] = {app->safe_left, app->safe_top, app->safe_right, app->safe_bottom};
+    m->view_w = app->width_pt;
+    m->view_h = app->height_pt;
+    m->card_w = mg_minf(WM_CARD_W, m->view_w * 0.42f);
+    m->card_x = m->view_w - safe[2] - WM_EDGE - m->card_w;
+    for (int i = 0; i < m->count; i++) {
+        m->isles[i].overview_fit = fit_overview(m, &m->isles[i], safe);
+    }
+    const WmCam c = cam_goal(m);
+    *target = c.target, *dist = c.dist, *pitch_deg = c.pitch_deg;
+    *fov_deg = wm_cur_c(m)->island.fov_deg;
+}
+
 WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, float alpha)
 {
     if (!m->loaded) {
@@ -1211,15 +1265,21 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
     c.dist = mg_lerpf(m->cam_prev.dist, m->cam.dist, alpha);
     HMM_Vec3 eye;
     sp->view = view_of(&c, &eye);
+    sp->proj = proj_of(m);
+    if (m->cam_override) { /* LIB-1: the menu's camera move */
+        sp->view = m->ov_view, sp->proj = m->ov_proj, eye = m->ov_eye;
+    }
     sp->eye = eye;
     m->eye = eye;
-    sp->proj = proj_of(m);
     sp->sky_horizon = sp->sky_zenith = rgb(WM_SEA); /* the clear colour is the sea */
     sp->fog_density = 0.0f;
     sp->sun_disc.W = 0.0f;
     m->view_proj = HMM_MulM4(sp->proj, sp->view);
     gfx_set_scene(g, sp);
     draw_world(m, g, alpha);
+    if (m->hud_off) {
+        return WM_NONE;
+    }
 
     /* HUD */
     WmAction act = WM_NONE;

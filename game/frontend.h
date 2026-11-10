@@ -73,6 +73,7 @@ typedef struct FrontendCtx {
     int row_count;
     HMM_Vec3 slots[LOBBY_MAX_PLAYERS];
     const char *maps_tag; /* WORLD-1: the Maps row's island completion, "Kumar 23%" */
+    bool maps_ready;      /* LIB-1: the map is preloaded; the Maps row waits for it */
 } FrontendCtx;
 
 /* A player standing in the menu scene; goes on fading out after they have left the list */

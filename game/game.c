@@ -30,6 +30,7 @@
 #include "avatar.h"
 #include "avatar_gallery.h"
 #include "menu_library.h"
+#include "lib_move.h"
 #include "camera_td.h"
 #include "gfx/floorfade.h"
 #include "camera_tp.h"
@@ -246,6 +247,15 @@ typedef struct Game {
     WorldBooks books;      /* WORLD-1: assets/world/books.json */
     WorldMap wm;           /* the island; loaded on first open */
     bool wm_tried;
+    /* LIB-1 step 6: Maps / Back / New Game as one camera move */
+    LibMove move;
+    int move_state;        /* 0 none, 1 to the map, 2 back to the menu */
+    double move_t0;
+    bool move_entered;     /* the map's screen is up (t >= 0.9) */
+    bool lib_placed;
+    bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
+    double dissolve_t0;    /* Reduced motion: the 300 ms cross-dissolve's start (0 none) */
+    int move_demo;         /* --lib-move-demo: Maps at 3 s, Back at 9 s (pictures); 1 armed, 2 out, 3 back; 4 perf menu_to_map (looped) */
     int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
@@ -538,6 +548,10 @@ bool game_init(MgApp *app)
     {
         const char *cu = arg_value(app->argc, app->argv, "--lib-closeup");
         const char *at = arg_value(app->argc, app->argv, "--autotest");
+        g->move_demo = has_flag(app->argc, app->argv, "--lib-move-demo") ? 1 : 0;
+        if (arg_value(app->argc, app->argv, "--ui-motion") && SDL_strcmp(arg_value(app->argc, app->argv, "--ui-motion"), "reduced") == 0) {
+            g->settings.ui_motion = 1; /* tests: Animații interfață = Reduse for this run (not saved) */
+        }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
     }
@@ -635,10 +649,15 @@ bool game_init(MgApp *app)
         const char *sc = g->perf.scenario;
         open_map(g, app, SDL_strcmp(sc, "worldmap") == 0 ? WM_OVERVIEW : SDL_strcmp(sc, "worldmap_voyage") == 0 ? WM_BOOKS : WM_ARRIVED); /* travel starts parked, then drives on */
     }
-    if (g->perf.active && (SDL_strcmp(g->perf.scenario, "menu") == 0 || SDL_strcmp(g->perf.scenario, "ui_juice") == 0)) {
+    if (g->perf.active && (SDL_strcmp(g->perf.scenario, "menu") == 0 || SDL_strcmp(g->perf.scenario, "ui_juice") == 0 ||
+                           SDL_strcmp(g->perf.scenario, "menu_to_map") == 0)) {
         play_now = false;
         g->fe.state = FE_MAIN_MENU;
         g->demo_lobby = true;
+        if (SDL_strcmp(g->perf.scenario, "menu_to_map") == 0) { /* the move itself, looped (not the Reduse cross-dissolve) */
+            g->move_demo = 4;
+            g->settings.ui_motion = 0;
+        }
     }
     if (arg_value(app->argc, app->argv, "--autotest") && SDL_strcmp(arg_value(app->argc, app->argv, "--autotest"), "lobbylayout") == 0) {
         play_now = false;
@@ -1034,10 +1053,12 @@ static int level_index(const Game *g, const char *id)
 static bool open_map(Game *g, MgApp *app, WmState state)
 {
     const double t0 = (double)SDL_GetTicksNS() * 1e-6;
-    if (!g->wm.loaded && !g->wm_tried) {
-        g->wm_tried = true;
+    if (!g->wm.loaded && !g->wm_tried) { /* finish the menu's preload (or the whole load) now */
         prof_allocs_exempt(true); /* once: the islands' meshes */
-        worldmap_load(&g->wm, &g->books, app->gfx, &app->perm);
+        int r;
+        while ((r = worldmap_load_step(&g->wm, &g->books, app->gfx, &app->perm)) == 0) {
+        }
+        g->wm_tried = r < 0;
         prof_allocs_exempt(false);
         arena_release_unused(&app->perm);
     }
@@ -1187,6 +1208,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         break;
     case MENU_OPEN_MAP:
         leave_play(g, app);
+        g->move_from_pause = true; /* LIB-1: from a hospital the map keeps its scene switch */
         open_map(g, app, WM_ARRIVED);
         break;
     case MENU_DEBUG_PROGRESS: {
@@ -1734,6 +1756,153 @@ static void lobby_layout_check(Game *g, MgApp *app, const FrontendCtx *ctx)
     app->quit_requested = true;
 }
 
+/* LIB-1 step 6: the map preloads behind the menu, one island per frame; the library stands on the island
+ * played last. */
+static void map_preload(Game *g, MgApp *app)
+{
+    if (!g->wm.loaded && !g->wm_tried) {
+        prof_allocs_exempt(true); /* once: the islands' meshes */
+        const int r = worldmap_load_step(&g->wm, &g->books, app->gfx, &app->perm);
+        prof_allocs_exempt(false);
+        g->wm_tried = r < 0;
+        if (r != 0) {
+            arena_release_unused(&app->perm);
+        }
+    }
+    if (g->wm.loaded && g->move_state == 0) {
+        const WmIsland *is = &g->wm.isles[last_book_index(g)];
+        const WorldIsland *w = &is->island;
+        if (w->has_library) {
+            menu_library_place(&g->lib, HMM_V3(is->off.X + w->library.X, w->pad_y, is->off.Z + w->library.Y), w->library_yaw_deg);
+            g->lib_placed = true;
+        }
+    }
+}
+
+#define MOVE_ISLAND_SIZE 400.0f /* the far plane's margin */
+#define MOVE_MAP_UI_AT 0.9f
+
+/* Maps / New Game from the menu: the camera leaves the table and lands on the map's camera, no cut. */
+#define DISSOLVE_S 0.3f
+
+static bool motion_reduced(const Game *g) { return g->settings.ui_motion == 1 || g->sys_reduce_motion; }
+
+static bool begin_map_move(Game *g, MgApp *app, WmState state)
+{
+    if (!g->wm.loaded || !g->lib_placed) {
+        return open_map(g, app, state);
+    }
+    if (motion_reduced(g)) { /* Animații interfață = Reduse: a 300 ms cross-dissolve instead of the move */
+        gfx_dissolve_capture(app->gfx);
+        g->dissolve_t0 = app->time;
+        g->lib.shell_k = 1.0f;
+        return open_map(g, app, state);
+    }
+    g->wm.rides = &g->prefs.world.rides;
+    worldmap_open(&g->wm, state, last_book_index(g), &g->prefs.world);
+    maps_tag_update(g);
+    LibCamPose map;
+    worldmap_view_goal(&g->wm, app, &map.target, &map.dist, &map.pitch_deg, &map.fov_deg);
+    map.yaw_deg = 0.0f;
+    const LibScene *sc = &g->lib.sc;
+    lib_move_begin(&g->move, menu_library_cam_pose(&g->lib), map, sc->transition.duration_s, sc->transition.hump, sc->transition.shell_fade[0],
+                   sc->transition.shell_fade[1], true);
+    g->move_state = 1;
+    g->move_t0 = app->time;
+    g->move_entered = false;
+    mg_log_info("library: move to the map (%s) over %.1f s", state == WM_BOOKS ? "books" : "arrived", (double)sc->transition.duration_s);
+    return true;
+}
+
+/* Back on the map: the same path, reversed, onto the studying hero. */
+static void begin_back_move(Game *g, MgApp *app)
+{
+    const WmCam c = g->wm.cam;
+    LibCamPose map = {c.target, c.dist, c.pitch_deg, 0.0f, wm_cur(&g->wm)->island.fov_deg};
+    g->move_state = 0; /* places the library on the island played last */
+    map_preload(g, app);
+    const FeState saved = g->fe.state;
+    g->fe.state = FE_MAIN_MENU; /* the menu camera for the menu's layout */
+    GfxSceneParams sp = {0};
+    menu_library_set_creator(&g->lib, false, 0.0f);
+    g->lib.creator_t = 0.0f;
+    const bool panel = g->lobby_visible;
+    menu_library_camera(&g->lib, app, frontend_menu_right(app, FE_MAIN_MENU) + 8.0f, frontend_menu_free_right(app, panel) - 8.0f, 12.0f,
+                        app->height_pt - 12.0f, &sp);
+    g->fe.state = saved;
+    const LibScene *sc = &g->lib.sc;
+    lib_move_begin(&g->move, menu_library_cam_pose(&g->lib), map, sc->transition.duration_s, sc->transition.hump, sc->transition.shell_fade[0],
+                   sc->transition.shell_fade[1], false);
+    g->move_state = 2;
+    g->move_t0 = app->time;
+    prof_allocs_exempt(true); /* one prefs.json write per Back (cJSON): a user action's I/O, like the map's one load */
+    save_prefs(g);
+    prof_allocs_exempt(false);
+    mg_log_info("library: move back to the menu over %.1f s", (double)sc->transition.duration_s);
+}
+
+/* One frame of the move: the map's world and the library, the shell fading in / out, no input. */
+static void move_frame(Game *g, MgApp *app)
+{
+    const float dt = mg_minf(app->frame_dt, 0.1f);
+    const bool done = lib_move_step(&g->move, dt);
+    const float e = done ? (g->move_state == 1 ? 1.0f : 0.0f) : lib_move_e(&g->move);
+    const LibCamPose c = lib_move_pose(&g->move, e);
+    HMM_Mat4 view, proj;
+    HMM_Vec3 eye;
+    lib_cam_matrices(&c, app->width_pt / app->height_pt, MOVE_ISLAND_SIZE, &view, &proj, &eye);
+    g->lib.shell_k = lib_move_shell(&g->move, e);
+    g->wm.cam_override = true;
+    g->wm.ov_view = view, g->wm.ov_proj = proj, g->wm.ov_eye = eye;
+    g->ui.input_off = true;
+    if (g->move_state == 1 && g->move.t >= MOVE_MAP_UI_AT && !g->move_entered) { /* the map's UI enters for the last tenth */
+        g->move_entered = true;
+        g->fe.depth = 0;
+        g->fe.state = FE_MAIN_MENU;
+        frontend_go(&g->fe, FE_MAP);
+    }
+    g->wm.hud_off = !(g->move_state == 1 && g->move_entered);
+    GfxSceneParams sp = {0};
+    scene_defaults(&sp, (float)app->time, &g->day_state);
+    const HMM_Vec4 sky_h = sp.sky_horizon, sky_z = sp.sky_zenith;
+    (void)worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    { /* the sky becomes the sea's clear colour on the way out (and back) */
+        const float k = e * e * (3.0f - 2.0f * e);
+        sp.sky_horizon = HMM_LerpV4(sky_h, k, sp.sky_horizon);
+        sp.sky_zenith = HMM_LerpV4(sky_z, k, sp.sky_zenith);
+        gfx_set_scene(app->gfx, &sp);
+    }
+    g->view_proj = HMM_MulM4(proj, view);
+    const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
+    menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
+    const double age = app->time - g->move_t0;
+    if (age < k_ui.exit_s) { /* the screen we left plays its exit: slides back, fades */
+        const float u = (float)(age / k_ui.exit_s);
+        gfx_ui_screen(app->gfx, -24.0f * u, 0.0f, 1.0f - u);
+        if (g->move_state == 1) {
+            FrontendCtx ctx;
+            SDL_zero(ctx);
+            ctx.name = g->profile.display_name, ctx.skin = &g->profile.skin, ctx.world_behind = true, ctx.heads = &g->heads, ctx.version = MG_VERSION;
+            ctx.lobby_visible = g->lobby_visible, ctx.rows = g->menu_rows, ctx.row_count = g->menu_row_count, ctx.maps_tag = g->maps_tag, ctx.has_save = g->has_save;
+            ctx.maps_ready = true;
+            (void)frontend_frame(&g->fe, &g->ui, app, &ctx, &g->avatar_meshes);
+        }
+    }
+    if (done) {
+        g->wm.cam_override = false;
+        g->wm.hud_off = false;
+        if (g->move_state == 1) {
+            g->wm.cam_snap = true; /* lands exactly on the map's own camera */
+            g->lib.shell_k = 1.0f;
+        } else {
+            g->lib.shell_k = 0.0f;
+            g->ui_screen_key = -1; /* the menu's UI enters */
+        }
+        mg_log_info("library: move %s done in %.2f s", g->move_state == 1 ? "to the map" : "back", age);
+        g->move_state = 0;
+    }
+}
+
 /* FE_MAP: the island instead of the menu's backdrop */
 static void map_flow(Game *g, MgApp *app)
 {
@@ -1749,6 +1918,10 @@ static void map_flow(Game *g, MgApp *app)
         worldmap_voyage(&g->wm, (g->wm.cur + 1) % g->wm.count);
     }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    if (g->lib_placed) { /* the library stands on the island played last: the closed building */
+        g->lib.shell_k = 1.0f;
+        menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
+    }
     if (g->prefs.world.rides.unsynced) { /* a trip drew a vehicle: the account's copy follows */
         g->prefs.world.rides.updated_ms = wall_clock_ms();
         push_rides(g);
@@ -1758,7 +1931,16 @@ static void map_flow(Game *g, MgApp *app)
     }
     draw_notices(g, app);
     frontend_toast_draw(&g->fe, &g->ui, app);
-    if (a == WM_BACK) {
+    if (a == WM_BACK && g->lib_placed && !g->move_from_pause && motion_reduced(g)) { /* Reduse: the cross-dissolve */
+        save_prefs(g);
+        gfx_dissolve_capture(app->gfx);
+        g->dissolve_t0 = app->time;
+        g->lib.shell_k = 0.0f;
+        frontend_back(&g->fe);
+    } else if (a == WM_BACK && g->lib_placed && !g->move_from_pause) { /* the same path back onto the studying hero */
+        begin_back_move(g, app);
+        frontend_back(&g->fe);
+    } else if (a == WM_BACK) {
         save_prefs(g);
         frontend_back(&g->fe);
     } else if (a == WM_JOIN) {
@@ -1800,6 +1982,40 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         return;
     }
     poll_sign_in(g, app);
+    if (g->dissolve_t0 > 0.0) { /* LIB-1 Reduse: the captured frame fades out over the new one */
+        const float a = 1.0f - (float)((app->time - g->dissolve_t0) / DISSOLVE_S);
+        gfx_dissolve(app->gfx, a);
+        if (a <= 0.0f) {
+            g->dissolve_t0 = 0.0;
+        }
+    }
+    if (g->move_state != 0) { /* LIB-1: the camera move between the library and the map */
+        move_frame(g, app);
+        return;
+    }
+    if (f->state != FE_MAP) {
+        map_preload(g, app);
+    }
+    if (g->move_demo == 4 && g->wm.loaded && app->time - g->move_t0 > (double)g->lib.sc.transition.duration_s + 0.5) { /* menu_to_map */
+        if (f->state == FE_MAIN_MENU) {
+            begin_map_move(g, app, WM_ARRIVED);
+        } else if (f->state == FE_MAP) {
+            begin_back_move(g, app);
+            frontend_back(f);
+        }
+        return;
+    }
+    if (g->move_demo == 1 && f->state == FE_MAIN_MENU && g->wm.loaded && app->time > 3.0) {
+        g->move_demo = 2;
+        begin_map_move(g, app, WM_ARRIVED);
+        return;
+    }
+    if (g->move_demo == 2 && f->state == FE_MAP && app->time > 9.0) {
+        g->move_demo = 3;
+        begin_back_move(g, app);
+        frontend_back(f);
+        return;
+    }
     g->ui.input_off = account_link_active(&g->link); /* the screens underneath take no touches */
     g->lobby_visible = lobby_in_menu(&g->lobby) && g->friends.signed_in;
     g->menu_row_count = g->lobby_visible ? lobby_roster(&g->lobby, g->menu_rows) : 0;
@@ -1856,6 +2072,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        g->load_step / 2.0f,
                        MG_VERSION};
     ctx.maps_tag = g->maps_tag;
+    ctx.maps_ready = g->wm.loaded || g->wm_tried; /* LIB-1: preloaded (or failed: Maps says so) */
     ctx.lobby_visible = g->lobby_visible;
     ctx.lobby_host = g->demo_lobby || lobby_is_host(&g->lobby);
     ctx.lobby_open = g->lobby.open;
@@ -1972,10 +2189,12 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         }
         SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", g->books.books[0].id);
         save_prefs(g);
-        open_map(g, app, WM_BOOKS);
+        g->move_from_pause = false;
+        begin_map_move(g, app, WM_BOOKS); /* LIB-1: the same camera move, onto the island's overview */
         break;
     case FE_OPEN_MAPS:
-        open_map(g, app, WM_ARRIVED);
+        g->move_from_pause = false;
+        begin_map_move(g, app, WM_ARRIVED);
         break;
     case FE_CONTINUE:
         start_loading(g, 3);

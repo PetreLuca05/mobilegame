@@ -540,7 +540,8 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
 {
     const AvatarRig *r = &m->rig;
     const bool child = look->age == AVATAR_CHILD, elder = look->age == AVATAR_ELDER;
-    const float k = child ? CHILD_SCALE : 1.0f;
+    const float ps = p->scale > 0.0f ? p->scale : 1.0f;
+    const float kc = child ? CHILD_SCALE : 1.0f, k = kc * ps; /* seat_y, hands, the pop: in the avatar's metres before `scale` */
     const float t = a->t, sit = smooth01(p->sit), lying = mg_saturate(p->lying);
     const float yaw = p->head_only ? p->yaw : a->yaw;
     /* a cane gait: the walk phase advances half a cycle per step, the drawn feet lead / trail the sim's */
@@ -569,8 +570,8 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     s->root = root;
     s->scale = k;
 
-    /* body base: floats at stand_y; seated on the seat's top (world metres, so / k); bobs; lying: on the frame */
-    const float seat = (p->seat_y > 0.0f ? p->seat_y : r->seat_y) / k;
+    /* body base: floats at stand_y; seated on the seat's top (the avatar's metres, / the child factor); bobs; lying: on the frame */
+    const float seat = (p->seat_y > 0.0f ? p->seat_y : r->seat_y) / kc;
     /* idle bob (fades out as the walk's bob comes in: a full stride peaks at exactly walk_bob_m) */
     const float bob = r->idle_bob_m * HMM_SinF(r->idle_bob_rad_s * t + a->seed) * (elder ? 0.5f : 1.0f) * (1.0f - 0.7f * sit) * (1.0f - a->move) +
                       r->walk_bob_m * fabsf(HMM_SinF(phase)) * a->move;
@@ -594,7 +595,7 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     hpitch -= a->browse * r->browse_head_pitch;
     hyaw += a->look * r->look_head_yaw * HMM_SinF(r->look_head_yaw_rad_s * t);
     hpitch -= a->look * r->look_head_pitch;
-    HMM_Mat4 head = p->head_only ? root : HMM_MulM4(body, HMM_Translate(HMM_V3(0, r->head_up * breath + p->head_lift / k, 0)));
+    HMM_Mat4 head = p->head_only ? root : HMM_MulM4(body, HMM_Translate(HMM_V3(0, r->head_up * breath + p->head_lift / kc, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(hyaw, HMM_V3(0, 1, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(-hpitch, HMM_V3(1, 0, 0))); /* + looks up */
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hk, hk, hk)));
@@ -616,8 +617,8 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     const float lb = seat + bob;
     HMM_Vec3 seated[2] = {HMM_V3(LAP_X, lb + LAP_Y + up, LAP_Z), HMM_V3(-LAP_X, lb + LAP_Y + up, LAP_Z)};
     if (p->hands_w > 0.0f) {
-        seated[0] = HMM_LerpV3(seated[0], p->hands_w, HMM_MulV3F(p->hand_l, 1.0f / k));
-        seated[1] = HMM_LerpV3(seated[1], p->hands_w, HMM_MulV3F(p->hand_r, 1.0f / k));
+        seated[0] = HMM_LerpV3(seated[0], p->hands_w, HMM_MulV3F(p->hand_l, 1.0f / kc));
+        seated[1] = HMM_LerpV3(seated[1], p->hands_w, HMM_MulV3F(p->hand_r, 1.0f / kc));
     }
     if (a->look > 0.0f) {
         seated[0] = HMM_LerpV3(seated[0], a->look, r->look_hands);
@@ -743,7 +744,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     avatar_solve(m, look, p, a, &s);
     const HMM_Vec4 extra = suit_extra(look);
     const HMM_Vec4 none = HMM_V4(0, 0, 0, 0);
-    const float shadow_k = look->age == AVATAR_CHILD ? CHILD_SCALE : 1.0f;
+    const float shadow_k = (look->age == AVATAR_CHILD ? CHILD_SCALE : 1.0f) * (p->scale > 0.0f ? p->scale : 1.0f);
     AvatarPose shadow_pose = *p; /* the disc under where it is drawn (a cane gait leads / trails the feet) */
     shadow_pose.feet = s.feet;
     /* hands: spheres, the root's rotation and scale */

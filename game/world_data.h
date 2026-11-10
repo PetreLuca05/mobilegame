@@ -72,6 +72,13 @@ typedef struct WorldIsland {
     WorldPropGroup props[WORLD_PROP_GROUPS];
     float amb_scale, amb_speed, amb_min_s, amb_max_s, wheel_radius;
     float fov_deg, overview_pitch, follow_pitch, follow_dist, arrive_pitch, arrive_dist;
+    /* LIB-1: the library building (tools/place_library.py), its pad and the path to the road */
+    bool has_library;
+    HMM_Vec2 library;  /* x, z */
+    float library_yaw_deg; /* its front (+z) faces (sin yaw, cos yaw) */
+    float pad_w, pad_d, pad_y;
+    HMM_Vec2 path_from, path_to;
+    float path_w, path_y;
 } WorldIsland;
 
 bool world_island_load(WorldIsland *w, const char *asset, Arena *arena);

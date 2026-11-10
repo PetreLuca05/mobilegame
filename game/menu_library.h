@@ -9,6 +9,7 @@
 #include "avatar.h"
 #include "lib_study.h"
 #include "lobby.h"
+#include "lib_move.h"
 #include "platform/app.h"
 
 #define LIB_SEATS 4
@@ -119,6 +120,8 @@ typedef struct MenuLibrary {
     LibScene sc;
     GfxMeshId room, shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
     HMM_Mat4 xf; /* library -> world */
+    HMM_Mat4 rot; /* xf's rotation only (velocities stay in library metres) */
+    float scale;  /* 1, or lib_scale once the room stands on the island */
     float dist;  /* the menu camera's distance, eased; fitted to the free rect */
     float shift; /* sideways target shift (m) that centres the table in the free rect */
     HMM_Vec3 eye, target;
@@ -131,11 +134,15 @@ typedef struct MenuLibrary {
     float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
     float creator_l;   /* pt: the creator panel's right edge */
     float creator_shift;
+    float shell_k; /* 0 the cutaway .. 1 the shell closed: nothing inside is drawn or simulated (the map) */
     bool debug_turns; /* --debug turn-page: a page every 2.5 s */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
+/* LIB-1 step 6: the room stands on the island at `pos` (world, the pad's surface), its front (+z) facing
+ * yaw_deg, at lib_scale map units per metre. Everything in the room follows, the menu camera included. */
+void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg);
 /* The menu camera: the JSON's, backed off until the table and its four seats fit in the free rect
  * (pt: left, right, top, bottom), the table centred in it. Fills eye / view / proj of `sp`. */
 void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float free_r, float top, float bottom, GfxSceneParams *sp);
@@ -148,7 +155,10 @@ void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l);
 void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap);
 /* The hero comes in through the door and sits (the first onboarding screen after a fresh install). */
 void menu_library_hero_walk_in(MenuLibrary *L);
-/* The room, its furniture and everyone at a seat; `hero` is the local player's look (seat 0). */
+/* The menu camera as a world pose (LIB-1 step 6: the move's library end). */
+LibCamPose menu_library_cam_pose(const MenuLibrary *L);
+/* The room, its furniture and everyone at a seat; `hero` is the local player's look (seat 0). With shell_k > 0
+ * the front wall and roof fade in (dithered); at 1 only the closed building is drawn. */
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt);
 /* Seat i's (1..3) member for its name chip: false if nobody is drawn there. `top` is above the head. */
 bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_Vec3 *top, const char **name, bool *host);

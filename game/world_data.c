@@ -116,6 +116,18 @@ bool world_island_load(WorldIsland *w, const char *asset, Arena *arena)
     w->plot_size = num(root, "plot_size", 26);
     const cJSON *st = cJSON_GetObjectItemCaseSensitive(root, "start");
     w->start = HMM_V2(num(st, "x", 0), num(st, "z", 0));
+    const cJSON *lib = cJSON_GetObjectItemCaseSensitive(root, "library");
+    const cJSON *pad = cJSON_GetObjectItemCaseSensitive(root, "library_pad");
+    const cJSON *path = cJSON_GetObjectItemCaseSensitive(root, "library_path");
+    w->has_library = cJSON_IsObject(lib) && cJSON_IsObject(pad) && cJSON_IsObject(path);
+    if (w->has_library) {
+        w->library = HMM_V2(num(lib, "x", 0), num(lib, "z", 0));
+        w->library_yaw_deg = num(lib, "yaw_deg", 0);
+        w->pad_w = num(pad, "w", 13), w->pad_d = num(pad, "d", 10.5f), w->pad_y = num(pad, "y", w->ground_y);
+        w->path_from = pair(cJSON_GetObjectItemCaseSensitive(path, "from"));
+        w->path_to = pair(cJSON_GetObjectItemCaseSensitive(path, "to"));
+        w->path_w = num(path, "width", 3.4f), w->path_y = num(path, "y", w->ground_y);
+    }
 
     const cJSON *road = cJSON_GetObjectItemCaseSensitive(root, "road");
     w->road_count = cJSON_GetArraySize(road);

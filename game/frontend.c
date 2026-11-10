@@ -522,7 +522,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
     }
     y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, false, guest, ctx->maps_tag) && !guest) {
+    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, false, guest || !ctx->maps_ready, ctx->maps_tag) && !guest && ctx->maps_ready) {
         a = FE_OPEN_MAPS;
     }
     y += ROW_H + 8.0f;

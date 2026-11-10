@@ -22,7 +22,7 @@ island's terrain mesh (<book>_island.mgmesh, group "terrain"), then picks
     facing (+z of the building) the nearest point of the road polyline:
     yaw_deg 0 faces +z, 90 faces +x, i.e. front = (sin yaw, cos yaw).
 
-Then it removes every prop instance (props.<group>[] = [x, y, z, scale, yaw]) within 9 units
+Then it removes every prop instance (props.<group>[] = [x, y, z, scale, yaw]) within 10.5 units
 (x/z distance) of the point and writes, after "levels":
 
     "library":      {"x", "z", "yaw_deg"}
@@ -50,7 +50,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STEP = 0.5
 MIN_HOSPITAL = 30.0
 MIN_ROAD = 8.0
-PROP_CLEAR = 9.0
+PROP_CLEAR = 10.5  # LIB-1 asked for 9; 10.5 clears two pines whose canopies touched the Kumar pad
 PAD_W = 13.0
 PAD_D = 10.5
 PATH_W = 3.4

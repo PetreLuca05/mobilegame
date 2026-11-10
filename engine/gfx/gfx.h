@@ -173,6 +173,10 @@ void gfx_shutdown(GfxContext *g);
 /* Mesh upload; init-time only (uses a transfer buffer + copy pass). */
 GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_count,
                           const uint32_t *indices, uint32_t index_count);
+/* LIB-1 cross-dissolve: keep this frame's 3D image (copied at the end of the main pass); then blend it over
+ * the live 3D image by `alpha` (1 = all captured, 0 = off) until set back to 0. */
+void gfx_dissolve_capture(GfxContext *g);
+void gfx_dissolve(GfxContext *g, float alpha);
 /* Upload the single-channel SDF UI atlas (font + shapes). */
 bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t h);
 

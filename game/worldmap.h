@@ -97,6 +97,12 @@ typedef struct WmVoyage {
 
 typedef struct WorldMap {
     bool loaded;
+    int load_step;  /* worldmap_load_step: islands done */
+    double load_ms; /* all the steps */
+    /* LIB-1: the menu's camera move drives the view; no HUD until it is on the map */
+    bool cam_override, hud_off;
+    HMM_Mat4 ov_view, ov_proj;
+    HMM_Vec3 ov_eye;
     int count, cur;
     WmIsland isles[WORLD_MAX_BOOKS];
     HMM_Vec2 coast[WORLD_MAX_BOOKS][WORLD_MAX_BOOKS]; /* local: island i's coast facing island j */
@@ -133,6 +139,12 @@ static inline WmIsland *wm_cur(WorldMap *m) { return &m->isles[m->cur]; }
 static inline const WmIsland *wm_cur_c(const WorldMap *m) { return &m->isles[m->cur]; }
 
 bool worldmap_load(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *perm);
+/* The same in slices (LIB-1: preloaded behind the menu): one island per call, then the rest. Start on a
+ * zeroed map. 0 more to do, 1 loaded, -1 failed. */
+int worldmap_load_step(WorldMap *m, const WorldBooks *books, GfxContext *g, Arena *perm);
+/* The camera the map settles on in its current state (after worldmap_open), for this screen: target,
+ * distance, pitch (yaw is 0: from the south, north up) and the island's vertical FOV. */
+void worldmap_view_goal(WorldMap *m, const MgApp *app, HMM_Vec3 *target, float *dist, float *pitch_deg, float *fov_deg);
 /* Every island takes its last hospital and parked ambulance from wp; `island` becomes current.
  * BOOKS: the ambulance where it was (New Game: the start pad); ARRIVED: parked at the last hospital. */
 void worldmap_open(WorldMap *m, WmState state, int island, const WorldProgress *wp);

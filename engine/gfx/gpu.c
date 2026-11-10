@@ -177,6 +177,11 @@ struct GfxContext {
     SDL_GPUGraphicsPipeline *ui_pipe;        /* UI inside the MSAA main pass */
     SDL_GPUGraphicsPipeline *ui_pipe_direct; /* UI pass on the swapchain (render scale < 1) */
     SDL_GPUGraphicsPipeline *present_pipe;   /* upscales the 3D image inside the UI pass */
+    /* LIB-1: a cross-dissolve from a captured frame (Reduced motion's Maps / Back) */
+    SDL_GPUTexture *dissolve_tex;
+    uint32_t dissolve_w, dissolve_h;
+    bool dissolve_capture;  /* copy this frame's 3D image at the end of the main pass */
+    float dissolve_alpha;   /* > 0: present blends the captured image over the live one */
     bool passes_logged;
     SDL_GPUGraphicsPipeline *panel_pipe;     /* the settings preview composite (rounded, on the swapchain) */
     bool keep_scaled; /* once a frame needed the offscreen scene, keep its textures (no target churn); passes stay per frame */
@@ -595,7 +600,7 @@ static bool create_pipelines(GfxContext *g)
     g->ui_pipe_direct = make_pipeline(g, &ui);
     PipeDesc present = {
         .vs = load_shader(g, "fullscreen.vert", 0, 0),
-        .fs = load_shader(g, "present.frag", 0, 1),
+        .fs = load_shader(g, "present.frag", 1, 2),
         .layout = LAYOUT_NONE,
         .cull = SDL_GPU_CULLMODE_NONE,
         .front = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
@@ -709,6 +714,10 @@ static void release_pipelines(GfxContext *g)
     }
     RELEASE_PIPE(g->floor_dither);
     RELEASE_PIPE(g->present_pipe);
+    if (g->dissolve_tex) {
+        SDL_ReleaseGPUTexture(g->dev, g->dissolve_tex);
+        g->dissolve_tex = NULL;
+    }
     RELEASE_PIPE(g->ui_pipe);
     RELEASE_PIPE(g->panel_pipe);
     RELEASE_PIPE(g->ui_pipe_direct);
@@ -1021,15 +1030,19 @@ void gfx_set_gpu_timing(GfxContext *g, bool on)
  * needs one more: do that now, several command buffers at once, not during play. */
 static void prewarm_gpu_pools(GfxContext *g)
 {
-    enum { PREWARM_CMDS = 8 };
+    enum { PREWARM_CMDS = 8, PREWARM_PUSHES = 128 * 6 };
     SDL_GPUCommandBuffer *cmd[PREWARM_CMDS];
     SDL_GPUFence *fence[PREWARM_CMDS];
     const uint8_t blank[64] = {0};
     for (int i = 0; i < PREWARM_CMDS; i++) {
         cmd[i] = SDL_AcquireGPUCommandBuffer(g->dev);
-        for (uint32_t slot = 0; slot < 2 && cmd[i]; slot++) {
-            SDL_PushGPUVertexUniformData(cmd[i], slot, blank, sizeof(blank));
-            SDL_PushGPUFragmentUniformData(cmd[i], slot, blank, sizeof(blank));
+        /* enough pushes to fill several uniform blocks per slot (32 KB each, 256-byte aligned pushes): each command
+         * buffer's "used uniform buffers" list grows now, not on the first busy frame (LIB-1's camera move) */
+        for (int k = 0; k < PREWARM_PUSHES && cmd[i]; k++) {
+            for (uint32_t slot = 0; slot < 2; slot++) {
+                SDL_PushGPUVertexUniformData(cmd[i], slot, blank, sizeof(blank));
+                SDL_PushGPUFragmentUniformData(cmd[i], slot, blank, sizeof(blank));
+            }
         }
     }
     int fences = 0;
@@ -1225,6 +1238,10 @@ void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t coun
         g->draws[before].range_count = count;
     }
 }
+
+void gfx_dissolve_capture(GfxContext *g) { g->dissolve_capture = true; }
+
+void gfx_dissolve(GfxContext *g, float alpha) { g->dissolve_alpha = alpha < 0.0f ? 0.0f : alpha > 1.0f ? 1.0f : alpha; }
 
 bool gfx_ui_push(GfxContext *g, const GfxUiInst *inst)
 {
@@ -2305,7 +2322,7 @@ static void frame_end(GfxContext *g)
     const bool shot = g->shot_path[0] != 0; /* this frame's 3D + UI go to scene_tex first */
     /* this frame's pass layout: an offscreen scene only when the frame needs one (a lower render scale, the
      * preview, a screenshot); the textures, once made, stay allocated (no target churn). No blur since UI-1. */
-    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->preview_on || shot;
+    const bool scaled = rw != g->swap_w || rh != g->swap_h || g->preview_on || shot || g->dissolve_capture || g->dissolve_alpha > 0.0f;
     g->keep_scaled = g->keep_scaled || scaled;
     g->stats.width_px = rw;
     g->stats.height_px = rh;
@@ -2439,6 +2456,22 @@ static void frame_end(GfxContext *g)
     if (scaled) {
         /* upscale the 3D image to the swapchain, then draw UI at native size */
         SDL_EndGPURenderPass(pass);
+        if (g->dissolve_capture) { /* LIB-1: keep this frame's 3D image for the cross-dissolve */
+            g->dissolve_capture = false;
+            if (!g->dissolve_tex || g->dissolve_w != rw || g->dissolve_h != rh) {
+                if (g->dissolve_tex) {
+                    SDL_ReleaseGPUTexture(g->dev, g->dissolve_tex);
+                }
+                g->dissolve_tex = make_texture(g, g->color_fmt, rw, rh, SDL_GPU_TEXTUREUSAGE_SAMPLER, SDL_GPU_SAMPLECOUNT_1);
+                g->dissolve_w = rw, g->dissolve_h = rh;
+            }
+            if (g->dissolve_tex) {
+                SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+                SDL_GPUTextureLocation src = {g->scene_tex, 0, 0, 0, 0, 0}, dst = {g->dissolve_tex, 0, 0, 0, 0, 0};
+                SDL_CopyGPUTextureToTexture(cp, &src, &dst, rw, rh, 1, false);
+                SDL_EndGPUCopyPass(cp);
+            }
+        }
         SDL_GPUFence *main_fence = NULL;
         double main_submit = 0.0;
         if (swap_cmd) {
@@ -2456,8 +2489,11 @@ static void frame_end(GfxContext *g)
         g->stats.passes++;
         if (!shot) {
             SDL_BindGPUGraphicsPipeline(pass, g->present_pipe);
-            SDL_GPUTextureSamplerBinding present_src = {g->scene_tex, g->linear_clamp};
-            SDL_BindGPUFragmentSamplers(pass, 0, &present_src, 1);
+            const bool dissolve = g->dissolve_alpha > 0.0f && g->dissolve_tex;
+            SDL_GPUTextureSamplerBinding present_src[2] = {{g->scene_tex, g->linear_clamp}, {dissolve ? g->dissolve_tex : g->dummy_tex, g->linear_clamp}};
+            SDL_BindGPUFragmentSamplers(pass, 0, present_src, 2);
+            const HMM_Vec4 mix = HMM_V4(dissolve ? g->dissolve_alpha : 0.0f, 0.0f, 0.0f, 0.0f);
+            SDL_PushGPUFragmentUniformData(g->cmd, 0, &mix, sizeof(mix));
             SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
             g->stats.pipe_binds++;
             g->stats.tex_binds++;
