@@ -107,5 +107,8 @@
   "haptics_full": "Complet",
   "ui_tilt": "Efect 3D la înclinare",
   "ui_motion_full": "Complete",
-  "ui_motion_reduced": "Reduse"
+  "ui_motion_reduced": "Reduse",
+  "erase_progress": "Șterge progresul",
+  "erase_progress_q": "Ștergi tot progresul?",
+  "progress_erased": "Progres șters"
 }

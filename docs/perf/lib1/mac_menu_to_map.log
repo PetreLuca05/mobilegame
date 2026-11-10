@@ -1,0 +1,131 @@
+2026-11-10 23:00:36.487 mobilegame[97099:11265623] render thread priority: 0
+2026-11-10 23:00:36.528 mobilegame[97099:11265623] gfx: backend metal, shaders msl, color fmt 12, depth fmt 60, msaa 4x
+2026-11-10 23:00:36.539 mobilegame[97099:11265623] avatar: library seat top 0.500 m, seat clearance 0.000 m
+2026-11-10 23:00:36.542 mobilegame[97099:11265623] library: loaded (4 seats, 1 extra chairs)
+2026-11-10 23:00:36.542 mobilegame[97099:11265623] net: realtime backend ready (offline.invalid, the platform's TLS)
+2026-11-10 23:00:36.543 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:00:36.547 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:00:36.628 mobilegame[97099:11265623] app: 844x390 pt @ 2.00x, safe insets l0 t0 r0 b0, perm arena 11021 KB used
+2026-11-10 23:00:36.647 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:00:36.647 mobilegame[97099:11265623] ui: system Reduce Motion off
+2026-11-10 23:00:36.649 mobilegame[97099:11265623] world: kumar at (0, 0): island 7362 tris, props 17766 tris, road 426 m, 9 hospitals
+2026-11-10 23:00:36.651 mobilegame[97099:11265623] gfx: MSAA 2x
+2026-11-10 23:00:36.651 mobilegame[97099:11265623] gfx: targets 1688x780: depth, msaa colour
+2026-11-10 23:00:36.672 mobilegame[97099:11265623] world: lawrance at (700, -60): island 6882 tris, props 15672 tris, road 350 m, 7 hospitals
+2026-11-10 23:00:36.676 mobilegame[97099:11265623] world: 2 islands, ambulance 646 tris, 4 vehicles, loaded in 4.1 ms (3 steps)
+2026-11-10 23:00:39.937 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:00:41.671 mobilegame[97099:11265623] perf: recording menu_to_map for 60 s
+2026-11-10 23:00:42.654 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:00:42.954 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:00:43.454 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:00:43.470 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:00:46.454 mobilegame[97099:11265623] library: move back done in 3.00 s
+2026-11-10 23:00:46.552 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:00:46.556 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:00:46.971 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:00:49.704 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:00:49.987 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:00:50.489 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:00:50.504 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:00:53.487 mobilegame[97099:11265623] library: move back done in 3.00 s
+2026-11-10 23:00:54.004 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:00:56.565 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:00:56.568 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:00:56.737 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:00:57.020 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:00:57.505 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:00:57.520 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:00.520 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:01.020 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:03.754 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:04.037 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:01:04.521 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:04.537 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:06.576 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:01:06.581 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:01:07.537 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:08.037 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:10.770 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:11.054 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:01:11.555 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:11.570 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:14.570 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:15.070 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:16.590 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:01:16.592 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:01:17.804 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:18.087 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:01:18.571 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:18.587 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:21.587 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:22.087 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:24.820 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:25.104 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:01:25.588 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:25.604 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:26.603 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:01:26.606 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:01:28.604 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:29.104 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:31.837 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:32.120 mobilegame[97099:11265623] library: move to the map done in 3.02 s
+2026-11-10 23:01:32.604 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:32.620 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:35.620 mobilegame[97099:11265623] library: move back done in 3.02 s
+2026-11-10 23:01:36.120 mobilegame[97099:11265623] library: move to the map (arrived) over 3.0 s
+2026-11-10 23:01:36.611 mobilegame[97099:11265670] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-10 23:01:36.614 mobilegame[97099:11265670] WARNING: auth: failed: network error
+2026-11-10 23:01:38.837 mobilegame[97099:11265623] frontend: MAP
+2026-11-10 23:01:39.120 mobilegame[97099:11265623] library: move to the map done in 3.00 s
+2026-11-10 23:01:39.638 mobilegame[97099:11265623] library: move back to the menu over 3.0 s
+2026-11-10 23:01:39.653 mobilegame[97099:11265623] frontend: MAIN_MENU
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> {
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "commit": "b21665a-dirty",
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "run_id": "",
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "scenario": "menu_to_map",
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "seconds": 60,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "backend": "metal",
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "render": [1688, 780],
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "frames": 3601,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "interval_16ms": 3601,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "interval_33ms": 0,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "interval_50ms_plus": 0,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "dropped": 0,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "thermal_worst": 0,
+2026-11-10 23:01:41.688 mobilegame[97099:11265623] perf> "resident_mb_max": 192,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "heap_allocs": 0,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "frames_with_heap_allocs": 0,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "heap_allocs_screenshot": 99,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "heap_alloc_sites": [],
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "entities_sim_max": 1,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "entities_rendered_max": 1,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "route_failures": 0,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "memory_mb": {"footprint": 191.6, "msaa_color": 10.0, "depth": 10.0, "scene": 0.0, "blur": 0.0, "preview": 0.0, "swapchain_est": 15.1, "ui_atlas": 2.0, "mesh_vb_reserved": 4.0, "mesh_ib_reserved": 2.0, "mesh_vb_used": 2.3, "mesh_ib_used": 0.4, "ui_buffers": 7.0, "instance_buffers": 3.0, "perm_arena_size": 96.0, "perm_arena_used": 12.3, "perm_arena_peak": 12.7, "frame_arena_peak": 0.00, "nav": 0.0, "npc": 0.9},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "panel_samples": 0,
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "counters": {
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "draws": {"avg": 26.10, "max": 40.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "tris": {"avg": 27741.25, "max": 36891.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "instances": {"avg": 205.74, "max": 273.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "pipe_binds": {"avg": 4.41, "max": 6.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "tex_binds": {"avg": 0.21, "max": 1.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "uniform_bytes": {"avg": 19760.72, "max": 26208.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "passes": {"avg": 1.00, "max": 1.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "gpu_main_ms_approx": {"avg": 0.00, "max": 0.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "gpu_ui_ms_approx": {"avg": 0.00, "max": 0.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "ui_draws": {"avg": 0.21, "max": 1.00},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   "ui_instances": {"avg": 32.60, "max": 197.00}
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> },
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf> "scopes": [
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "tick", "depth": 0, "avg": 0.002, "p95": 0.05, "max": 0.01},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "frame", "depth": 0, "avg": 0.064, "p95": 0.15, "max": 2.49},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "net.poll", "depth": 1, "avg": 0.005, "p95": 0.05, "max": 0.02},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "ui.anim", "depth": 1, "avg": 0.002, "p95": 0.05, "max": 0.03},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "ui.fx", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.03},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "render", "depth": 0, "avg": 0.199, "p95": 0.30, "max": 0.46},
+2026-11-10 23:01:41.689 mobilegame[97099:11265623] perf>   {"name": "render.ui", "depth": 1, "avg": 0.009, "p95": 0.10, "max": 0.11},
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] perf>   {"name": "render.sort", "depth": 1, "avg": 0.008, "p95": 0.05, "max": 0.03},
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] perf>   {"name": "render.encode", "depth": 1, "avg": 0.022, "p95": 0.05, "max": 0.06}
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] perf> ]
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] perf> }
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] perf: wrote /Users/petreluca/Library/Application Support/docvex/mobilegame/perf_menu_to_map.json
+2026-11-10 23:01:41.690 mobilegame[97099:11265623] AUTOTEST PASSED

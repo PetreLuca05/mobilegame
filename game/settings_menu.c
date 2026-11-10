@@ -313,6 +313,13 @@ static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, floa
         *action = MENU_SIGN_OUT;
     }
     y += 52.0f;
+    if (acct->can_erase) { /* what New Game was: destructive, behind a confirmation */
+        SDL_snprintf(label, sizeof(label), "%s##erase_progress", str("erase_progress"));
+        if (ui_button_v(ui, label, x, y, cw, 44.0f, UI_V_DESTRUCTIVE, UI_F_SMALL) && !m->confirm_erase) {
+            m->confirm_erase = true;
+        }
+        y += 52.0f;
+    }
     if (acct->message && acct->message[0]) {
         ui_label(ui, x, y, 13.0f, k_ui_theme.text_dim, acct->message);
         y += 20.0f;
@@ -579,8 +586,26 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         float used = skin_tab(m, ui, acct, x, y - off, w, &action);
         ui_scroll_end(ui, &m->skin_scroll, h, used);
     }
+    if (m->confirm_erase) { /* Erase progress: confirm */
+        float dw = 360.0f, dh = 170.0f, dx, dy;
+        ui_modal_warning(ui, "erase", dw, dh, &dx, &dy);
+        ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 40.0f, 22.0f, ui_rgba(k_ui.ink), str("erase_progress_q"));
+        const float bw = (dw - 48.0f) * 0.5f;
+        char c1[48], c2[48];
+        SDL_snprintf(c1, sizeof(c1), "%s##erase_no", str("cancel"));
+        SDL_snprintf(c2, sizeof(c2), "%s##erase_yes", str("erase_progress"));
+        if (ui_button_v(ui, c1, dx + 16.0f, dy + dh - 66.0f, bw, 50.0f, UI_V_SECONDARY, UI_F_SMALL)) {
+            m->confirm_erase = false;
+        }
+        if (ui_button_v(ui, c2, dx + 32.0f + bw, dy + dh - 66.0f, bw, 50.0f, UI_V_DESTRUCTIVE, UI_F_SMALL | UI_F_CONFIRM)) {
+            m->confirm_erase = false;
+            action = MENU_ERASE_PROGRESS;
+        }
+        ui_modal_end(ui);
+    }
     if (!m->open) {
         m->editing_name = false;
+        m->confirm_erase = false;
     }
 #ifndef NDEBUG
     if (lab) {

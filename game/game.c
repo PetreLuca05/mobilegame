@@ -420,6 +420,7 @@ static void on_net_event(void *user, const NetEvent *e)
 static double wall_clock_ms(void);
 static void maps_tag_update(Game *g);
 static bool open_map(Game *g, MgApp *app, WmState state);
+static void erase_progress(Game *g);
 
 /* One head icon, for ui/head_icons.c: the interact preview's floating head, turned 15 degrees */
 static void draw_head_icon(void *user, GfxContext *gfx, const NetSkin *skin)
@@ -1154,6 +1155,10 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
 #endif
         g->google_busy = google_auth_start(g->google, app->window);
         break;
+    case MENU_ERASE_PROGRESS:
+        erase_progress(g);
+        frontend_toast(&g->fe, str("progress_erased"), app->time);
+        break;
     case MENU_SIGN_OUT:
         /* device settings and the save stay; the account cache does not */
         g->prefs.has_profile_cache = false;
@@ -1332,7 +1337,8 @@ static SettingsAccount account_view(Game *g)
                          g->net && apple_auth_available(g->google),
                          g->prefs.auth_provider,
                          g->google_busy,
-                         g->session.account_error[0] ? g->session.account_error : g->account_msg};
+                         g->session.account_error[0] ? g->session.account_error : g->account_msg,
+                         !g->playing && !g->play_paused};
     return a;
 }
 
@@ -1690,6 +1696,22 @@ static void start_loading(Game *g, int what)
 
 #define MENU_NPC_SEED 0x4D454E55u /* a fixed crowd: nothing here is shared or saved */
 
+/* LIB-1: the library prototype's light: sea-blue clear colour, ambient 0.5 + a 0.5 key from (-0.55, 1, 0.5), the
+ * two-band toon ramp, no fog (three.js r128 AmbientLight / DirectionalLight / MeshToonMaterial in the prototype). */
+#define LIB_SEA 0x3FB6D8u
+static void library_lighting(GfxSceneParams *sp, float time)
+{
+    sp->sun_dir = HMM_NormV3(HMM_V3(-0.55f, 1.0f, 0.5f));
+    sp->sun_color = HMM_V3(0.5f, 0.5f, 0.5f);
+    sp->ambient = HMM_V3(0.5f, 0.5f, 0.5f);
+    sp->sky_horizon = sp->sky_zenith = mg_rgb(LIB_SEA);
+    sp->fog_density = 0.0f;
+    sp->sun_disc.W = sp->moon_disc.W = 0.0f;
+    sp->stars = 0.0f;
+    sp->two_band = true;
+    sp->time = time;
+}
+
 /* The main menu's backdrop (LIB-1): the library reading room, the hero studying in seat 0. Also behind
  * onboarding, Settings and Friends. The hospital is no longer loaded for the menu: a game builds it while
  * loading. */
@@ -1723,7 +1745,7 @@ static bool menu_world(Game *g, MgApp *app)
     }
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     g->last_eye = sp.eye;
-    scene_defaults(&sp, (float)app->time, &g->day_state);
+    library_lighting(&sp, (float)app->time);
     gfx_set_scene(app->gfx, &sp);
     for (int i = 0; i < LOBBY_MAX_PLAYERS; i++) {
         g->menu_slots[i] = menu_library_seat_world(&g->lib, i < LIB_SEATS ? i : 0);
@@ -1760,6 +1782,25 @@ static void lobby_layout_check(Game *g, MgApp *app, const FrontendCtx *ctx)
     app->quit_requested = true;
 }
 
+/* Settings -> Erase progress (what New Game was): a clean slot, every island's ambulance on its start pad,
+ * no last hospital, the first island current. */
+static void erase_progress(Game *g)
+{
+    save_delete(g->profile_name);
+    g->has_save = false;
+    SDL_zero(g->save);
+    for (int i = 0; i < g->books.count; i++) {
+        world_progress_reset(&g->prefs.world, g->books.books[i].id, wall_clock_ms());
+    }
+    SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", g->books.books[0].id);
+    save_prefs(g);
+    maps_tag_update(g);
+    mg_log_info("settings: progress erased");
+}
+
+/* the building stands on its pad (the pad is drawn 0.03 above the ground; the prototype lifts the library 0.07) */
+#define LIB_ABOVE_PAD 0.07f
+
 /* LIB-1 step 6: the map preloads behind the menu, one island per frame; the library stands on the island
  * played last. */
 static void map_preload(Game *g, MgApp *app)
@@ -1777,7 +1818,7 @@ static void map_preload(Game *g, MgApp *app)
         const WmIsland *is = &g->wm.isles[last_book_index(g)];
         const WorldIsland *w = &is->island;
         if (w->has_library) {
-            menu_library_place(&g->lib, HMM_V3(is->off.X + w->library.X, w->pad_y, is->off.Z + w->library.Y), w->library_yaw_deg);
+            menu_library_place(&g->lib, HMM_V3(is->off.X + w->library.X, w->pad_y + LIB_ABOVE_PAD, is->off.Z + w->library.Y), w->library_yaw_deg);
             g->lib_placed = true;
         }
     }
@@ -2186,22 +2227,12 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             f->state = FE_MAIN_MENU;
         }
         break;
-    case FE_NEW_GAME: /* a clean slot, the ambulance on the start pad, the island's title */
-        save_delete(g->profile_name);
-        g->has_save = false;
-        SDL_zero(g->save);
-        for (int i = 0; i < g->books.count; i++) { /* every island: no last hospital, the ambulance on its start pad */
-            world_progress_reset(&g->prefs.world, g->books.books[i].id, wall_clock_ms());
-        }
-        SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", g->books.books[0].id);
-        save_prefs(g);
+    case FE_OPEN_MAPS: { /* the island's overview after an Erase progress (no hospital played yet), else parked at the last one */
         g->move_from_pause = false;
-        begin_map_move(g, app, WM_BOOKS); /* LIB-1: the same camera move, onto the island's overview */
+        const WorldBookState *bs = world_book_state(&g->prefs.world, g->books.books[last_book_index(g)].id);
+        begin_map_move(g, app, bs->last_level[0] ? WM_ARRIVED : WM_BOOKS);
         break;
-    case FE_OPEN_MAPS:
-        g->move_from_pause = false;
-        begin_map_move(g, app, WM_ARRIVED);
-        break;
+    }
     case FE_CONTINUE:
         start_loading(g, 3);
         break;

@@ -56,6 +56,24 @@ bool wt_map_to_join(WtTap *tap, MgApp *app, const AutotestProbe *p, double now)
     return true;
 }
 
+/* What New Game was: Settings -> the account tab -> Erase progress -> confirm -> back -> Maps (the island's overview).
+ * One step per call; true once Maps has been tapped. `sub` counts the steps. */
+static bool erase_then_maps(WtTap *tap, MgApp *app, const AutotestProbe *p, double now, int *sub)
+{
+    static const char *const keys[] = {"menurow2", "tab1", "erase_progress", "erase_yes", "menu", "menurow4"};
+    const bool busy = tap_busy(tap, app, now); /* first, always: it lifts the finger of the last tap */
+    if (*sub >= 6 || busy || now < tap->up_at + 0.5) {
+        return *sub >= 6 && !busy; /* half a second between taps: screens and dialogs settle */
+    }
+    if (*sub == 5 && (p->fe_state != FE_MAIN_MENU || now < tap->up_at + 1.5)) {
+        return false; /* the settings page closing, the menu entering */
+    }
+    if (tap_key(tap, app, p, now, keys[*sub])) {
+        (*sub)++;
+    }
+    return *sub >= 6;
+}
+
 static int fail(WorldTest *w, const char *why)
 {
     SDL_snprintf(w->why, sizeof(w->why), "%s", why);
@@ -92,13 +110,11 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
     }
     float x, y;
     switch (w->stage) {
-    case 1: /* New Game (confirm the overwrite if there is a save) */
-        if (p->fe_state == FE_MAP && m && m->state == WM_BOOKS) {
+    case 1: /* Erase progress (Settings), then Maps: the island's overview */
+        if (p->fe_state == FE_MAP && m && m->state == WM_BOOKS && p->move_state == 0) {
             next_stage(w, now);
-        } else if (p->fe_state == FE_MAIN_MENU && in > 1.0) {
-            if (!tap_key(&w->tap, app, p, now, "ow_new")) {
-                tap_key(&w->tap, app, p, now, "menurow0");
-            }
+        } else if ((p->fe_state == FE_MAIN_MENU || p->fe_state == FE_SETTINGS) && in > 1.0) {
+            erase_then_maps(&w->tap, app, p, now, &w->count);
         } else {
             tap_busy(&w->tap, app, now);
         }
@@ -350,9 +366,9 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
         if (p->fe_state != FE_MAIN_MENU || p->move_state != 0 || in < 4.2) {
             return 0;
         }
-        static const char *const rows[] = {"menurow0", "menurow4", "menurow31", "menurow2"};
+        static const char *const rows[] = {"menurow4", "menurow31", "menurow2"}; /* New Game moved to Settings */
         float last = 0.0f, cx, cy;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             if (!ui_find(p->ui, rows[i], &x, &y) || y <= last) {
                 return fail(w, "a menu row is missing, out of order or scrolled away");
             }
@@ -361,7 +377,7 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
         if (!ui_find(p->ui, "menurow1", &cx, &cy) || cy - 32.0f < last + 23.0f || cy + 32.0f > app->height_pt) {
             return fail(w, "Continue overlaps the rows or leaves the screen");
         }
-        mg_log_info("autotest worldmap: 7 layout %.0f x %.0f: the card and its 3 buttons in the safe rect, 4 rows + Continue without scrolling (ok)", (double)app->width_pt,
+        mg_log_info("autotest worldmap: 7 layout %.0f x %.0f: the card and its 3 buttons in the safe rect, 3 rows + Continue without scrolling (ok)", (double)app->width_pt,
                     (double)app->height_pt);
         return 1;
     }
@@ -441,10 +457,8 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
             }
             mg_log_info("autotest worldmap2: 1 BOOKS on %s: right button \"%s\", no left button (ok)", m->isles[0].book->name, m->isles[1].book->name);
             next_stage(w, now);
-        } else if (p->fe_state == FE_MAIN_MENU && in > 1.0) {
-            if (!tap_key(&w->tap, app, p, now, "ow_new")) {
-                tap_key(&w->tap, app, p, now, "menurow0");
-            }
+        } else if ((p->fe_state == FE_MAIN_MENU || p->fe_state == FE_SETTINGS) && in > 1.0) {
+            erase_then_maps(&w->tap, app, p, now, &w->count);
         } else {
             tap_busy(&w->tap, app, now);
         }
@@ -643,7 +657,8 @@ int wt2_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         } else if (w->count == 2 && tap_key(&w->tap, app, p, now, "menurow4")) {
             w->count = 3;
         } else if (w->count == 3 && p->fe_state == FE_MAP && in > 1.5) {
-            if (m->cur != 1 || m->state != WM_ARRIVED) {
+            /* Lawrance, parked at its hospital, or its overview while none has been played there (after Erase progress) */
+            if (m->cur != 1 || (m->state != WM_ARRIVED && m->state != WM_BOOKS)) {
                 return fail(w, "Maps did not open Lawrance");
             }
             mg_log_info("autotest worldmap2: 6 Maps after Lawrance -> Lawrance, %s selected (ok)", wm_cur_c(m)->book->levels[wm_cur_c(m)->selected].name);

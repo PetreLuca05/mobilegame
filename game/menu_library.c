@@ -67,6 +67,9 @@ static bool load_scene(LibScene *s)
     s->door.open_rad = jnum(door, "open_rad", 1.75f), s->door.open_radius = jnum(door, "open_radius", 1.7f);
     s->door.rate = jnum(door, "rate", 8.0f);
     s->hub = jv2(root, "hub");
+    const cJSON *hall = cJSON_GetObjectItemCaseSensitive(root, "hall");
+    s->home_bay = (int)jnum(hall, "home", 1);
+    jfloats(cJSON_GetObjectItemCaseSensitive(hall, "bx"), s->bay_x, LIB_BAYS);
     const cJSON *table = cJSON_GetObjectItemCaseSensitive(root, "table");
     s->table.centre = jv2(table, "centre"), s->table.size = jv2(table, "size"), s->table.top_y = jnum(table, "top_y", 0.74f);
     int n = 0;
@@ -257,9 +260,14 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
             L->leaf_b != GFX_MESH_NONE;
     npc_looks(L);
     npcs_reset(L);
+    for (int b = 0; b < LIB_BAYS; b++) {
+        L->bay_x[b] = L->sc.bay_x[b];
+    }
+    L->home_bay = L->sc.home_bay;
+    menu_library_set_table(L, L->home_bay);
     L->seat[0].state = LM_STUDY; /* the hero: always at seat 0 */
     L->seat[0].blend = L->seat[0].study_w = 1.0f;
-    L->seat[0].pos = L->sc.seats[0].pos, L->seat[0].yaw_deg = L->sc.seats[0].yaw_deg;
+    L->seat[0].pos = L->tseats[0].pos, L->seat[0].yaw_deg = L->tseats[0].yaw_deg;
     lib_study_init(&L->seat[0].study, &L->sc, 1u);
     mg_log_info("library: %s (%d seats, %d extra chairs)", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n);
     return L->ok;
@@ -268,6 +276,27 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
 /* ------------------------------------------------------------------ camera */
 
 static HMM_Vec3 lib_point(const MenuLibrary *L, HMM_Vec3 p) { return HMM_MulM4V4(L->xf, HMM_V4V(p, 1.0f)).XYZ; }
+
+/* bay b's door centre (hall frame) */
+static HMM_Vec2 door_c(const MenuLibrary *L, int b) { return HMM_V2(L->bay_x[b] + L->sc.door.centre.X, L->sc.door.centre.Y); }
+
+void menu_library_set_table(MenuLibrary *L, int bay)
+{
+    bay = bay < 0 ? 0 : bay >= LIB_BAYS ? LIB_BAYS - 1 : bay;
+    L->table_bay = bay;
+    L->table_x = L->bay_x[bay];
+    const HMM_Vec2 dx = HMM_V2(L->table_x, 0.0f);
+    for (int i = 0; i < LIB_SEATS; i++) {
+        LibSeat *t = &L->tseats[i];
+        *t = L->sc.seats[i];
+        t->pos = HMM_AddV2(t->pos, dx);
+        t->stand = HMM_AddV2(t->stand, dx);
+        for (int k = 0; k < t->path_n; k++) {
+            t->path[k] = HMM_AddV2(t->path[k], dx);
+        }
+    }
+    L->tcentre = HMM_AddV2(L->sc.table.centre, dx);
+}
 
 /* the room's yaw in the world (radians, about +y) */
 static float lib_yaw(const MenuLibrary *L) { return atan2f(L->rot.Columns[2].X, L->rot.Columns[2].Z); }
@@ -281,14 +310,14 @@ void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg)
 
 HMM_Vec3 menu_library_seat_point(const MenuLibrary *L, int i, HMM_Vec3 p)
 {
-    const LibSeat *s = &L->sc.seats[i < 0 || i >= LIB_SEATS ? 0 : i];
+    const LibSeat *s = &L->tseats[i < 0 || i >= LIB_SEATS ? 0 : i];
     const float yw = HMM_AngleDeg(s->yaw_deg), c = HMM_CosF(yw), sn = HMM_SinF(yw);
     return lib_point(L, HMM_V3(s->pos.X + c * p.X + sn * p.Z, p.Y, s->pos.Y - sn * p.X + c * p.Z));
 }
 
 HMM_Vec3 menu_library_seat_world(const MenuLibrary *L, int i)
 {
-    const LibSeat *s = &L->sc.seats[i < 0 || i >= LIB_SEATS ? 0 : i];
+    const LibSeat *s = &L->tseats[i < 0 || i >= LIB_SEATS ? 0 : i];
     return lib_point(L, HMM_V3(s->pos.X, 0.0f, s->pos.Y));
 }
 
@@ -306,13 +335,13 @@ static int fit_points(const MenuLibrary *L, HMM_Vec3 *out)
     const LibScene *s = &L->sc;
     int n = 0;
     for (int i = 0; i < 4; i++) {
-        const float x = s->table.centre.X + (i & 1 ? 0.5f : -0.5f) * s->table.size.X, z = s->table.centre.Y + (i & 2 ? 0.5f : -0.5f) * s->table.size.Y;
+        const float x = L->tcentre.X + (i & 1 ? 0.5f : -0.5f) * s->table.size.X, z = L->tcentre.Y + (i & 2 ? 0.5f : -0.5f) * s->table.size.Y;
         out[n++] = HMM_V3(x, 0.0f, z);
         out[n++] = HMM_V3(x, s->table.top_y, z);
     }
     for (int i = 0; i < LIB_SEATS; i++) {
-        out[n++] = HMM_V3(s->seats[i].pos.X, 0.0f, s->seats[i].pos.Y);
-        out[n++] = HMM_V3(s->seats[i].pos.X, 1.65f, s->seats[i].pos.Y);
+        out[n++] = HMM_V3(L->tseats[i].pos.X, 0.0f, L->tseats[i].pos.Y);
+        out[n++] = HMM_V3(L->tseats[i].pos.X, 1.65f, L->tseats[i].pos.Y);
     }
     return n;
 }
@@ -360,7 +389,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     const HMM_Vec3 right = HMM_V3(HMM_CosF(y), 0.0f, -HMM_SinF(y));
     float dist = c->dist, shift = 0.0f;
     for (int it = 0; it < 60; it++) { /* back off and re-centre until the box fits the free rect */
-        const HMM_Vec3 target = HMM_AddV3(c->target, HMM_MulV3F(right, shift));
+        const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->table_x, 0, 0)), HMM_MulV3F(right, shift));
         const HMM_Vec3 eye = orbit_eye(target, dist, c->pitch_deg, c->yaw_deg);
         const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(eye, target, HMM_V3(0, 1, 0)));
         float x0, x1, y0, y1;
@@ -379,7 +408,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     }
     L->dist = L->dist <= 0.0f ? dist : L->dist + (dist - L->dist) * mg_minf(app->frame_dt * 6.0f, 1.0f);
     L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * mg_minf(app->frame_dt * 6.0f, 1.0f);
-    const HMM_Vec3 target = HMM_AddV3(c->target, HMM_MulV3F(right, L->shift));
+    const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->table_x, 0, 0)), HMM_MulV3F(right, L->shift));
     const HMM_Vec3 eye = orbit_eye(target, L->dist, c->pitch_deg, c->yaw_deg);
     L->creator_t += ((L->creator ? 1.0f : 0.0f) - L->creator_t) * (1.0f - expf(-CREATOR_RATE * mg_minf(app->frame_dt, 0.1f)));
     HMM_Vec3 eye_l = eye, target_l = target;
@@ -387,10 +416,10 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
         const LibCam *cc = &s->cam_creator;
         const float cy = HMM_AngleDeg(cc->yaw_deg);
         const HMM_Vec3 cright = HMM_V3(HMM_CosF(cy), 0.0f, -HMM_SinF(cy));
-        const HMM_Vec3 hero = HMM_V3(s->seats[0].pos.X, 1.0f, s->seats[0].pos.Y);
+        const HMM_Vec3 hero = HMM_V3(L->tseats[0].pos.X, 1.0f, L->tseats[0].pos.Y);
         float sh = L->creator_shift;
         for (int it = 0; it < 30; it++) {
-            const HMM_Vec3 tg = HMM_AddV3(cc->target, HMM_MulV3F(cright, sh));
+            const HMM_Vec3 tg = HMM_AddV3(HMM_AddV3(cc->target, HMM_V3(L->table_x, 0, 0)), HMM_MulV3F(cright, sh));
             const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cc->pitch_deg, cc->yaw_deg), tg, HMM_V3(0, 1, 0)));
             const HMM_Vec4 hc = HMM_MulM4V4(vp, HMM_V4V(hero, 1.0f));
             const float hx = (hc.X / hc.W * 0.5f + 0.5f) * w, want = (L->creator_l + w) * 0.5f;
@@ -400,7 +429,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
             sh -= (want - hx) * 2.0f * cc->dist * HMM_TanF(HMM_AngleDeg(s->fov_deg) * 0.5f) / h * 0.8f;
         }
         L->creator_shift = sh;
-        const HMM_Vec3 ctg = HMM_AddV3(cc->target, HMM_MulV3F(cright, sh));
+        const HMM_Vec3 ctg = HMM_AddV3(HMM_AddV3(cc->target, HMM_V3(L->table_x, 0, 0)), HMM_MulV3F(cright, sh));
         const HMM_Vec3 ceye = orbit_eye(ctg, cc->dist, cc->pitch_deg, cc->yaw_deg);
         eye_l = HMM_LerpV3(eye, L->creator_t, ceye);
         target_l = HMM_LerpV3(target, L->creator_t, ctg);
@@ -408,7 +437,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     L->eye = lib_point(L, eye_l);
     L->target = lib_point(L, target_l);
     if (L->closeup) { /* seat 0's book from its front left, 2.7 m away */
-        const LibSeat *s0 = &s->seats[0];
+        const LibSeat *s0 = &L->tseats[0];
         const float yw = HMM_AngleDeg(s0->yaw_deg);
         const HMM_Vec3 book = HMM_V3(s0->pos.X + HMM_SinF(yw) * s->book.forward * 0.6f, 0.85f, s0->pos.Y + HMM_CosF(yw) * s->book.forward * 0.6f);
         L->target = lib_point(L, book);
@@ -466,7 +495,7 @@ static void study_pose_at(const MenuLibrary *L, HMM_Vec2 pos, float yaw_deg, con
 
 void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, float w, AvatarPose *p)
 {
-    const LibSeat *seat = &L->sc.seats[i < 0 || i >= LIB_SEATS ? 0 : i];
+    const LibSeat *seat = &L->tseats[i < 0 || i >= LIB_SEATS ? 0 : i];
     study_pose_at(L, seat->pos, seat->yaw_deg, st, w, p);
 }
 
@@ -518,7 +547,7 @@ static uint32_t id_hash(const char *id)
 static void member_start(MenuLibrary *L, int i, const LobbyRow *r, bool seated)
 {
     LibMember *mb = &L->seat[i];
-    const LibSeat *seat = &L->sc.seats[i];
+    const LibSeat *seat = &L->tseats[i];
     SDL_zerop(mb);
     SDL_snprintf(mb->id, sizeof(mb->id), "%s", r->id);
     SDL_snprintf(mb->name, sizeof(mb->name), "%s", r->name);
@@ -595,7 +624,7 @@ void menu_library_hero_walk_in(MenuLibrary *L)
     HMM_Vec2 dir;
     mb->state = LM_WALK_IN;
     mb->s = mb->blend = mb->study_w = mb->chair = 0.0f;
-    mb->pos = path_at(&L->sc.seats[0], 0.0f, &dir);
+    mb->pos = path_at(&L->tseats[0], 0.0f, &dir);
     mb->yaw_deg = yaw_of(dir);
     SDL_zero(mb->anim);
 }
@@ -603,7 +632,7 @@ void menu_library_hero_walk_in(MenuLibrary *L)
 static void member_step(MenuLibrary *L, int i, float dt)
 {
     LibMember *mb = &L->seat[i];
-    const LibSeat *seat = &L->sc.seats[i];
+    const LibSeat *seat = &L->tseats[i];
     const LibScene *s = &L->sc;
     const float total = path_len(seat), speed = s->study.walk_speed;
     const HMM_Vec2 fwd = HMM_V2(HMM_SinF(HMM_AngleDeg(seat->yaw_deg)), HMM_CosF(HMM_AngleDeg(seat->yaw_deg)));
@@ -623,7 +652,7 @@ static void member_step(MenuLibrary *L, int i, float dt)
         mb->yaw_deg = yaw_of(dir);
         const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
         mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
-        if (HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < 0.5f) {
+        if (HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, L->table_bay))) < 0.5f) {
             mb->door_max = fmaxf(mb->door_max, L->door_angle);
         }
         if (in && mb->s >= total) {
@@ -740,10 +769,12 @@ static void npc_step(MenuLibrary *L, int i, float dt)
 }
 
 /* Walking NPCs near the door count for it, like the lobby's walkers */
-static bool npc_at_door(const MenuLibrary *L, int i)
+
+/* A walking NPC near bay b's door opens it */
+static bool npc_at_door(const MenuLibrary *L, int i, int b)
 {
     const LibNpc *n = &L->npc[i];
-    return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, L->sc.door.centre)) < L->sc.door.open_radius;
+    return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, door_c(L, b))) < L->sc.door.open_radius;
 }
 
 static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i, float dt)
@@ -805,8 +836,10 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
             gfx_draw(g, L->room[b], &L->xf, &room, 0);
         }
         gfx_draw(g, L->shell, &L->xf, &room, 0);
-        const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
-        gfx_draw(g, L->door, &door, &room, 0);
+        for (int b = 0; b < LIB_BAYS; b++) {
+            const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
+            gfx_draw(g, L->door, &door, &room, 0);
+        }
         return;
     }
     if (L->shell_k > 0.0f) { /* fading in over the cutaway */
@@ -815,19 +848,24 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         gfx_draw(g, L->shell, &L->xf, &shell, 0);
     }
     L->avatar_push_ahead = m->rig.push_ahead_m;
-    bool walker_at_door = false;
     for (int i = 0; i < s->npc_n; i++) {
         npc_step(L, i, dt);
-        walker_at_door |= npc_at_door(L, i);
     }
     for (int i = 0; i < LIB_SEATS; i++) {
         member_step(L, i, dt);
-        const LibMember *mb = &L->seat[i];
-        if ((mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < s->door.open_radius) {
-            walker_at_door = true;
-        }
     }
-    L->door_angle = approach(L->door_angle, walker_at_door ? s->door.open_rad : 0.0f, s->door.rate, dt);
+    for (int b = 0; b < LIB_BAYS; b++) { /* each bay's door: open while a walker is near it */
+        bool walker = false;
+        for (int i = 0; i < s->npc_n && !walker; i++) {
+            walker = npc_at_door(L, i, b);
+        }
+        for (int i = 0; i < LIB_SEATS && !walker; i++) {
+            const LibMember *mb = &L->seat[i];
+            walker = (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, b))) < s->door.open_radius;
+        }
+        L->door_open[b] = approach(L->door_open[b], walker ? s->door.open_rad : 0.0f, s->door.rate, dt);
+    }
+    L->door_angle = L->door_open[L->table_bay]; /* my table's door (tests) */
     L->clock += dt;
     if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && L->door_angle < 0.05f) {
         L->gone.t_shut = L->clock;
@@ -836,10 +874,12 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
     for (int b = 0; b < LIB_BAYS; b++) {
         gfx_draw(g, L->room[b], &L->xf, &room, 0);
     }
-    const HMM_Mat4 door = HMM_MulM4(placed(L, s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_angle, HMM_V3(0, 1, 0)));
-    gfx_draw(g, L->door, &door, &room, 0);
+    for (int b = 0; b < LIB_BAYS; b++) { /* one door per bay */
+        const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
+        gfx_draw(g, L->door, &door, &room, 0);
+    }
     for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */
-        const LibSeat *seat = &s->seats[i];
+        const LibSeat *seat = &L->tseats[i];
         const float yw = HMM_AngleDeg(seat->yaw_deg), back = s->study.chair_slide * L->seat[i].chair;
         const HMM_Mat4 cm = placed(L, seat->pos.X - HMM_SinF(yw) * back, seat->pos.Y - HMM_CosF(yw) * back, seat->yaw_deg);
         gfx_draw(g, L->chair, &cm, &room, 0);
@@ -865,7 +905,7 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         LibMember *mb = &L->seat[i];
         /* the book: closed until its reader's sit blend passes 0.9 */
         const bool open = mb->state != LM_EMPTY && mb->blend > 0.9f;
-        draw_book(L, g, &s->seats[i], open, open && mb->state == LM_STUDY ? &mb->study : NULL);
+        draw_book(L, g, &L->tseats[i], open, open && mb->state == LM_STUDY ? &mb->study : NULL);
         if (mb->state == LM_EMPTY) {
             continue;
         }

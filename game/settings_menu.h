@@ -24,6 +24,7 @@ typedef enum MenuAction {
     MENU_NAME,         /* name edited and valid (SettingsMenu.name) */
     MENU_GOOGLE,       /* "Continue with Google" */
     MENU_SIGN_OUT,
+    MENU_ERASE_PROGRESS, /* confirmed: the save and every island's progress go */
 #ifdef MG_DAYCYCLE_CONTINUOUS
     MENU_TIME,         /* time-of-day slider moved */
 #endif
@@ -46,6 +47,7 @@ typedef struct SettingsAccount {
     const char *provider; /* "google", "apple", "guest" */
     bool busy;           /* sign-in in progress */
     const char *message; /* last account error / hint, may be "" */
+    bool can_erase;      /* the menu's Settings (not during a game): "Erase progress" */
 } SettingsAccount;
 
 typedef struct SettingsMenu {
@@ -67,6 +69,7 @@ typedef struct SettingsMenu {
     UiScroll game_scroll, skin_scroll, rows[3];
     char name[NET_NAME_LEN];
     bool editing_name; /* keep the on-screen keyboard up while true */
+    bool confirm_erase; /* the Erase progress dialog is up */
     /* where the live preview goes this frame (valid when preview_visible) */
     bool preview_visible;
     float preview_x, preview_y, preview_size;

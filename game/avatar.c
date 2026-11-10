@@ -14,7 +14,6 @@
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 
-#define OUTLINE_COLOR 0x000000 /* pure black: unlit, so day, night and shading never change it */
 #define MASK_COLOR 0x9FD3EE
 /* elders: forward lean (A1), grey hair is in their look; children: the whole avatar x 0.72, the head x 1.18 */
 #define ELDER_LEAN 0.12f
@@ -667,7 +666,7 @@ static void part(const DrawCtx *dc, GfxMeshId mesh, HMM_Mat4 m, uint32_t color, 
     part_mat(dc, mesh, m, surf == SURF_FLAT ? mat_toon_flat(c) : surf == SURF_GLOSSY ? mat_toon_glossy(c, 0.35f, 1.0f) : mat_toon(c, 0.3f));
 }
 
-/* A part with a toon outline round its silhouette (drawn with the smooth-normal hull). */
+/* A part; under the x-ray rim material it is drawn with its smooth-normal hull. */
 static void outlined(const DrawCtx *dc, GfxMeshId mesh, GfxMeshId hull, HMM_Mat4 m, uint32_t color, HMM_Vec4 extra)
 {
     if (mesh == GFX_MESH_NONE) {
@@ -681,12 +680,7 @@ static void outlined(const DrawCtx *dc, GfxMeshId mesh, GfxMeshId hull, HMM_Mat4
     c.W = dc->outdoor;
     GfxMaterial mat = mat_toon(c, 0.3f);
     mat.extra = extra;
-    part_mat(dc, mesh, m, mat);
-    if (hull != GFX_MESH_NONE) {
-        GfxMaterial ol = mat_outline(mg_rgb(OUTLINE_COLOR));
-        ol.extra = HMM_V4(0, 0, 0, extra.W != 0.0f ? (float)(1u | ((uint32_t)extra.W & GFX_ZONE_BODY1)) : 0.0f);
-        part_mat(dc, hull, m, ol);
-    }
+    part_mat(dc, mesh, m, mat); /* no toon outline (user decision): smooth + cel shaded only; the hull stays for the x-ray rim */
 }
 
 /* The suit as zones of one body mesh: which details show, in which colours. */

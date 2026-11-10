@@ -137,6 +137,7 @@ typedef struct GfxSceneParams {
     HMM_Vec4 sun_disc;    /* xyz direction, w visibility (sky) */
     HMM_Vec4 moon_disc;
     float stars;          /* 0..1 */
+    bool two_band;        /* LIB-1: the library prototype's toon ramp: lit (n.l >= 0) or 105/255 of the sun, no half band */
 #ifdef MG_RENDER_FULL
     float reflection_y;   /* height of the mirror plane */
     float shadow_focus;   /* eye-to-player distance for the cascade splits, 0 = fixed 12 / 45 m */

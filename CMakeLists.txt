@@ -283,6 +283,10 @@ set(MG_GAME_SOURCES
   game/menu_library.c
   game/lib_study.c
   game/lib_move.c
+  game/lib_dressing.c
+  game/lib_nav.c
+  game/lib_fidget.c
+  game/lib_life.c
   game/autotest_avatar.c
   game/autotest_library.c
   game/scenery.c
@@ -323,6 +327,14 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(mg_tests PRIVATE mg_physics SDL3::Headers) # headers only: the stick test drives touch_controls without SDL
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
+  # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
+  foreach(lib dressing nav fidget life)
+    add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c)
+    target_include_directories(lib_${lib}_test PRIVATE game engine)
+    target_link_libraries(lib_${lib}_test PRIVATE mg_thirdparty m)
+    target_compile_options(lib_${lib}_test PRIVATE ${MG_WARNINGS})
+    add_test(NAME lib_${lib} COMMAND lib_${lib}_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  endforeach()
 
   add_executable(mg_nettest tools/nettest.c)
   target_link_libraries(mg_nettest PRIVATE mg_engine)

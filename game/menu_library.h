@@ -94,6 +94,8 @@ typedef struct LibScene {
     } transition;
     LibNpcDef npcs[LIB_NPCS];
     int npc_n;
+    int home_bay;
+    float bay_x[LIB_BAYS];
 } LibScene;
 
 /* Who is at a seat: seat 0 is always the local player, 1..3 the lobby's other members (presentation only). */
@@ -127,6 +129,12 @@ typedef struct MenuLibrary {
     GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
     float bay_x[LIB_BAYS]; /* hall.bx: each bay's centre (the bay meshes are placed already) */
     int home_bay;
+    /* my table: the scene's seats and table (local to a bay) shifted to its bay */
+    int table_bay;
+    float table_x;
+    LibSeat tseats[LIB_SEATS];
+    HMM_Vec2 tcentre;
+    float door_open[LIB_BAYS]; /* each bay's door angle */
     HMM_Mat4 xf; /* library -> world */
     HMM_Mat4 rot; /* xf's rotation only (velocities stay in library metres) */
     float scale;  /* 1, or lib_scale once the room stands on the island */
@@ -150,6 +158,8 @@ typedef struct MenuLibrary {
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
+/* My table is in this bay (LIB-1 §5: my seed's bay): seats, table, books and the menu camera move there. */
+void menu_library_set_table(MenuLibrary *L, int bay);
 /* LIB-1 step 6: the room stands on the island at `pos` (world, the pad's surface), its front (+z) facing
  * yaw_deg, at lib_scale map units per metre. Everything in the room follows, the menu camera included. */
 void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg);

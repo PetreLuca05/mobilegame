@@ -42,27 +42,28 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _117 [[buffer(0)]], constant FrameFS& _66 [[buffer(1)]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _135 [[buffer(0)]], constant FrameFS& _66 [[buffer(1)]])
 {
     PSMain_out out = {};
-    float3 _270 = in.i_col.xyz * _117.u_tint.xyz;
-    float3 _429;
-    if (_117.u_params.x > 0.0)
+    float3 _284 = in.i_col.xyz * _135.u_tint.xyz;
+    float3 _469;
+    if (_135.u_params.x > 0.0)
     {
-        float2 _281 = in.i_wpos.xz / float2(_117.u_params.x);
-        float2 _253 = smoothstep(float2(0.4880000054836273193359375) - fast::max(fwidth(_281), float2(9.9999997473787516355514526367188e-05)), float2(0.4880000054836273193359375), abs(fract(_281) - float2(0.5)));
-        float2 _255 = floor(_281);
-        _429 = _270 * ((1.0 - (_117.u_params.y * fast::max(_253.x, _253.y))) * (1.0 - (_117.u_params.z * mod(abs(_255.x + _255.y), 2.0))));
+        float2 _295 = in.i_wpos.xz / float2(_135.u_params.x);
+        float2 _267 = smoothstep(float2(0.4880000054836273193359375) - fast::max(fwidth(_295), float2(9.9999997473787516355514526367188e-05)), float2(0.4880000054836273193359375), abs(fract(_295) - float2(0.5)));
+        float2 _269 = floor(_295);
+        _469 = _284 * ((1.0 - (_135.u_params.y * fast::max(_267.x, _267.y))) * (1.0 - (_135.u_params.z * mod(abs(_269.x + _269.y), 2.0))));
     }
     else
     {
-        _429 = _270;
+        _469 = _284;
     }
-    float _352 = dot(fast::normalize(in.i_nrm), _66.u_sun_dir.xyz);
-    float _389 = fast::max(fwidth(_352), 9.9999997473787516355514526367188e-05);
-    float _403 = fast::max(fwidth(_352), 9.9999997473787516355514526367188e-05);
-    float _383 = (0.550000011920928955078125 * smoothstep(-_389, _389, _352)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _403, 0.449999988079071044921875 + _403, _352));
-    out._entryPointOutput = float4(_429 * mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _383), _66.u_ambient.xyz + (_66.u_sun_color.xyz * _383), float3(fast::clamp(in.i_col.w * _117.u_tint.w, 0.0, 1.0))), 1.0);
+    float _369 = dot(fast::normalize(in.i_nrm), _66.u_sun_dir.xyz);
+    float _402 = fast::max(fwidth(_369), 9.9999997473787516355514526367188e-05);
+    float _429 = fast::max(fwidth(_369), 9.9999997473787516355514526367188e-05);
+    float _443 = fast::max(fwidth(_369), 9.9999997473787516355514526367188e-05);
+    float _379 = (_66.u_ambient.w > 0.5) ? (0.4099999964237213134765625 + (0.589999973773956298828125 * smoothstep(-_402, _402, _369))) : ((0.550000011920928955078125 * smoothstep(-_429, _429, _369)) + (0.449999988079071044921875 * smoothstep(0.449999988079071044921875 - _443, 0.449999988079071044921875 + _443, _369)));
+    out._entryPointOutput = float4(_469 * mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _379), _66.u_ambient.xyz + (_66.u_sun_color.xyz * _379), float3(fast::clamp(in.i_col.w * _135.u_tint.w, 0.0, 1.0))), 1.0);
     return out;
 }
 

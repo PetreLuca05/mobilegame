@@ -514,15 +514,10 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     y -= rows_off;
     if (guest) {
         menu_row(f, ui, app, 0, str("lobby_wait_host"), x, y, cw, false, true, NULL);
-    } else if (menu_row(f, ui, app, 0, str("new_game"), x, y, cw, !show_continue, false, NULL)) { /* the main button when there is no save */
-        if (ctx->has_save) {
-            f->confirm_new = true;
-        } else {
-            a = FE_NEW_GAME;
-        }
+        y += ROW_H + 8.0f;
     }
-    y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, false, guest || !ctx->maps_ready, ctx->maps_tag) && !guest && ctx->maps_ready) {
+    /* New Game is Settings -> Erase progress now; Maps is the main button when there is no save */
+    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, !show_continue && !guest, guest || !ctx->maps_ready, ctx->maps_tag) && !guest && ctx->maps_ready) {
         a = FE_OPEN_MAPS;
     }
     y += ROW_H + 8.0f;
@@ -545,23 +540,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     float vw = text_width(ui->font, ctx->version, 13.0f);
     ui_text(ui, TEXT_FACE_BOLD, w - EDGE - vw, fy, 13.0f, ui_rgba(k_ui.white_soft), ctx->version);
 
-    if (f->confirm_new) { /* overwrite dialog */
-        float dw = 360.0f, dh = 160.0f, dx, dy;
-        ui_modal_warning(ui, "overwrite", dw, dh, &dx, &dy);
-        ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 40.0f, 22.0f, ui_rgba(k_ui.ink), str("overwrite_q"));
-        float bw = (dw - 48.0f) * 0.5f;
-        char c1[48], c2[48];
-        SDL_snprintf(c1, sizeof(c1), "%s##ow_cancel", str("cancel"));
-        SDL_snprintf(c2, sizeof(c2), "%s##ow_new", str("new_game"));
-        if (ui_button_v(ui, c1, dx + 16.0f, dy + dh - 66.0f, bw, 50.0f, UI_V_SECONDARY, UI_F_SMALL)) {
-            f->confirm_new = false;
-        }
-        if (ui_button_v(ui, c2, dx + 32.0f + bw, dy + dh - 66.0f, bw, 50.0f, UI_V_DESTRUCTIVE, UI_F_SMALL | UI_F_CONFIRM)) { /* it overwrites */
-            f->confirm_new = false;
-            a = FE_NEW_GAME;
-        }
-        ui_modal_end(ui);
-    }
     return a;
 }
 

@@ -37,7 +37,9 @@ float3 cel_light(float3 n, float outdoor, float shadow)
 // direction too, so rooms read as boxes from the fixed camera.
 float3 cel_light_day(float3 n, float outdoor)
 {
-    float lit = cel_lit(dot(n, u_sun_dir.xyz));
+    float ndl = dot(n, u_sun_dir.xyz);
+    // u_ambient.w: the library prototype's ramp (three.js MeshToonMaterial, gradient 105 / 255): two bands
+    float lit = u_ambient.w > 0.5 ? 0.41 + 0.59 * cel_step(ndl, 0.0) : cel_lit(ndl);
     float3 sun = u_ambient.rgb + u_sun_color.rgb * lit;
     float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * lit;
     return lerp(inside, sun, outdoor);

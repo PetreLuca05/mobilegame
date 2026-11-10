@@ -36,7 +36,7 @@ typedef struct FtOp {
 #define WAIT(x) {OP_WAIT, x, 0}
 #define SLEEP(x) {OP_SLEEP, NULL, x}
 #define SHOT(x) {OP_SHOT, x, 0}, SLEEP(0.3) /* a capture stalls its frame */
-#define NEW_GAME TAP("menurow0"), {OP_TAP_OPT, "ow_new", 0}, {OP_PLAYING, NULL, 0}, {OP_TOKEN, NULL, 0}
+#define NEW_GAME TAP("menurow4"), {OP_PLAYING, NULL, 0}, {OP_TOKEN, NULL, 0} /* Maps, then Join on the island */
 #define BACK_TO_MENU TAP("gear"), TAP("p_home"), {OP_MENU, NULL, 0}
 #define ST(x) {OP_ST, NULL, x}
 #define PLAYERS(x) {OP_PLAYERS, NULL, x}
@@ -159,7 +159,7 @@ static const FtOp k_reinstall[] = {
 
 /* a short screen: the menu's last row is reached by dragging the list */
 static const FtOp k_scroll[] = {
-    {OP_READY, NULL, 0}, {OP_FE_STATE, NULL, FE_MAIN_MENU}, SLEEP(1.0), {OP_DRAG_UP, "menurow0", 0}, SLEEP(0.5), TAP("menurow2"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_END, NULL, 0},
+    {OP_READY, NULL, 0}, {OP_FE_STATE, NULL, FE_MAIN_MENU}, SLEEP(1.0), {OP_DRAG_UP, "menurow4", 0}, SLEEP(0.5), TAP("menurow2"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_END, NULL, 0},
 };
 
 /* --autotest link: the identity is $MG_LT_EMAIL (see tools/link_test.sh). Starts on Settings. */
@@ -239,7 +239,7 @@ static const FtOp k_dguest[] = {
 
 /* no network: the game plays, the switch is off, the list is the cached one */
 static const FtOp k_offline[] = {
-    {OP_NET_DOWN, NULL, 0}, TAP("menurow0"), {OP_TAP_OPT, "ow_new", 0}, {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(1.0),
+    {OP_NET_DOWN, NULL, 0}, TAP("menurow4"), {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(1.0),
     TAP("gear"), {OP_NO_TOGGLE, NULL, 0}, TAP("p_friends"), SLEEP(1.0), {OP_STALE, NULL, 0}, TAP("friends"), TAP("p_resume"), {OP_END, NULL, 0},
 };
 

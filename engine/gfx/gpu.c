@@ -1489,7 +1489,7 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     FrameFSUniforms f;
     f.sun_dir = HMM_V4V(g->scene.sun_dir, 0.0f);
     f.sun_color = HMM_V4V(g->scene.sun_color, 0.0f);
-    f.ambient = HMM_V4V(g->scene.ambient, 0.0f);
+    f.ambient = HMM_V4V(g->scene.ambient, g->scene.two_band ? 1.0f : 0.0f); /* w: the two-band ramp */
     f.eye = HMM_V4V(eye, 1.0f);
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
     f.fog = HMM_V4V(g->scene.fog_color, g->scene.fog_density);

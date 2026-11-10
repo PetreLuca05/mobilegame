@@ -494,7 +494,11 @@ static const TapStep k_onboarding[] = {
     {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
     {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */
 };
-static const TapStep k_new_game[] = {{FE_MAIN_MENU, "menurow0", false}};
+/* New Game = Settings -> Account -> Erase progress, back, Maps (the first island, no last hospital) */
+static const TapStep k_new_game[] = {
+    {FE_MAIN_MENU, "menurow2", false}, {FE_SETTINGS, "tab1", false},  {FE_SETTINGS, "erase_progress", false},
+    {FE_SETTINGS, "erase_yes", false}, {FE_SETTINGS, "menu", false},  {FE_MAIN_MENU, "menurow4", false},
+};
 static const TapStep k_overwrite[] = {{FE_MAIN_MENU, "ow_new", false}};
 static const TapStep k_continue[] = {{FE_MAIN_MENU, "menurow1", false}};
 
@@ -569,7 +573,7 @@ static bool run_offline(Autotest *t, MgApp *app, const AutotestProbe *p, double 
     float x, y;
     switch (t->stage) {
     case 0:
-        if (!run_taps(t, app, p, k_new_game, 1, "offline", &failed)) {
+        if (!run_taps(t, app, p, k_new_game, (int)MG_ARRAY_COUNT(k_new_game), "offline", &failed)) {
             return failed;
         }
         t->stage = 1;
@@ -624,7 +628,7 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     float x, y;
     switch (t->stage) {
     case 0: /* New Game */
-        if (!run_taps(t, app, p, k_new_game, 1, "save", &failed)) {
+        if (!run_taps(t, app, p, k_new_game, (int)MG_ARRAY_COUNT(k_new_game), "save", &failed)) {
             return failed;
         }
         t->stage = 1;

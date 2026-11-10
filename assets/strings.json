@@ -188,5 +188,8 @@
   "haptics_full": "Full",
   "ui_tilt": "3D tilt effect",
   "ui_motion_full": "Full",
-  "ui_motion_reduced": "Reduced"
+  "ui_motion_reduced": "Reduced",
+  "erase_progress": "Erase progress",
+  "erase_progress_q": "Erase all your progress?",
+  "progress_erased": "Progress erased"
 }
