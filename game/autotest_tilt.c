@@ -76,86 +76,181 @@ static int check_ref(TiltTest *t, const AutotestProbe *p, int r, const char *nam
     return 0;
 }
 
-/* pure maths on a private Tilt: steps, noise, the neutral pose, both rotations, the strength rules */
-static int check_math(TiltTest *t)
+/* A1 maths on a private Tilt: the angle (deg) about the screen's vertical axis as a function of time, run at 60 Hz.
+ * Offsets are the nearest layer's (14 pt). Fills peak / when / the trace for the report. */
+typedef float (*AngleFn)(float t);
+typedef struct Run {
+    float peak, peak_t, max_abs_after, mean, rest_t;
+    int overshoots;
+    float trace[8];   /* offset (pt) at 0, 0.1, 0.25, 0.5, 0.75, 1.2, 1.5, 2.0 s */
+} Run;
+
+static float g_amp, g_end; /* the shapes' parameters */
+static float step_hold(float t) { (void)t; return g_amp; }
+static float ramp(float t) { return t < g_end ? g_amp * t / g_end : g_amp; }
+static float sine(float t) { return t < g_end ? g_amp * sinf(6.2831853f * t) : 0.0f; }
+
+static Run run_shape(AngleFn f, float seconds, float still_from, bool flipped, float noise_deg)
 {
     const float dt = 1.0f / 60.0f;
+    static const float marks[8] = {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 1.2f, 1.5f, 2.0f};
+    Run r = {0};
+    r.rest_t = -1.0f;
     Tilt a;
-    /* 4: right edge 10 deg away, as Core Motion reports it in each rotation */
-    float sx1, sy1, sx2, sy2;
-    const float s10 = sinf(10.0f * 0.0174533f), c10 = cosf(10.0f * 0.0174533f);
-    tilt_screen_gravity(0.0f, -s10, -c10, false, &sx1, &sy1); /* the device's long axis runs one way ... */
-    tilt_screen_gravity(0.0f, s10, -c10, true, &sx2, &sy2);   /* ... and the other way when flipped */
-    float txs[2];
-    for (int k = 0; k < 2; k++) {
+    tilt_init(&a);
+    tilt_snap(&a);
+    uint32_t rng = 777u;
+    float sum = 0.0f;
+    int n = 0, sign = 0;
+    const float lead = 0.25f; /* level and still first: the reference settles on 0 deg before the shape starts */
+    for (int i = 0; i * dt < seconds + lead; i++) {
+        const float t = (float)i * dt - lead;
+        float deg = t < 0.0f ? 0.0f : f(t);
+        if (noise_deg > 0.0f) {
+            rng = rng * 1664525u + 1013904223u;
+            deg += ((float)(rng >> 8) / 16777216.0f * 2.0f - 1.0f) * noise_deg;
+        }
+        const float rad = deg * 0.0174533f;
+        /* as Core Motion would report it in this rotation, through the game's own mapping */
+        float sx, sy;
+        tilt_screen_gravity(0.0f, flipped ? sinf(rad) : -sinf(rad), -cosf(rad), flipped, &sx, &sy);
+        tilt_tick(&a, dt, true, sx, sy, -1.0f, (double)t + 10.0);
+        if (t < 0.0f) {
+            continue;
+        }
+        const float off = a.tx * k_ui.tilt_depth[4];
+        if (fabsf(a.tx) > fabsf(r.peak)) {
+            r.peak = a.tx, r.peak_t = t;
+        }
+        if (t >= still_from) {
+            r.max_abs_after = fmaxf(r.max_abs_after, fabsf(a.tx));
+            const int sg = a.tx > 0.0f ? 1 : a.tx < 0.0f ? -1 : 0;
+            if (sg && sign && sg != sign) {
+                r.overshoots++;
+            }
+            if (sg) {
+                sign = sg;
+            }
+            if (r.rest_t < 0.0f && a.tx == 0.0f && a.vx == 0.0f) {
+                r.rest_t = t - still_from;
+            }
+            if (a.tx != 0.0f) {
+                r.rest_t = -1.0f; /* rest means staying there */
+            }
+        } else if (t >= 1.0f) { /* the mean over whole cycles after the first (its start-up is not drift) */
+            sum += off, n++;
+        }
+        for (int m = 0; m < 8; m++) {
+            if (fabsf(t - marks[m]) < dt * 0.5f) {
+                r.trace[m] = off;
+            }
+        }
+    }
+    r.mean = n ? sum / (float)n : 0.0f;
+    return r;
+}
+
+static int check_math(TiltTest *t)
+{
+    /* Hold: 0 -> 20 deg at once, held */
+    g_amp = 20.0f;
+    const Run hold = run_shape(step_hold, 2.5f, 0.0f, false, 0.0f);
+    const float hp = fabsf(hold.peak) * k_ui.tilt_depth[4];
+    if (hold.peak_t > 0.25f || fabsf(hold.trace[5]) > 0.1f * hp || hold.trace[7] != 0.0f) {
+        return failf(t, "hold: peak %.2f pt at %.0f ms, %.2f pt at 1.2 s, %.3f pt at 2 s", (double)hp, (double)(hold.peak_t * 1000.0f), (double)hold.trace[5],
+                     (double)hold.trace[7]);
+    }
+    mg_log_info("autotest tilt: hold 20 deg, offset (pt) at 0 / 0.1 / 0.25 / 0.5 / 0.75 / 1.2 / 1.5 / 2.0 s: %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f (peak %.2f at %.0f ms)",
+                (double)hold.trace[0], (double)hold.trace[1], (double)hold.trace[2], (double)hold.trace[3], (double)hold.trace[4], (double)hold.trace[5],
+                (double)hold.trace[6], (double)hold.trace[7], (double)hp, (double)(hold.peak_t * 1000.0f));
+    /* still at an angle: 10, 30, 60 deg held 3 s: exactly 0 from second 2 */
+    static const float angles[3] = {10.0f, 30.0f, 60.0f};
+    for (int k = 0; k < 3; k++) {
+        g_amp = angles[k];
+        const Run st = run_shape(step_hold, 3.0f, 2.0f, false, 0.0f);
+        if (st.max_abs_after != 0.0f) {
+            return failf(t, "held still at %.0f deg: offset %.4f after 2 s (want exactly 0)", (double)angles[k], (double)(st.max_abs_after * k_ui.tilt_depth[4]));
+        }
+    }
+    /* during the tilt: a 2 s ramp to 20 deg (10 deg/s): under 35 %, rest within 500 ms of the end */
+    g_amp = 20.0f, g_end = 2.0f;
+    const Run rp = run_shape(ramp, 3.0f, 2.0f, false, 0.0f);
+    if (fabsf(rp.peak) >= 0.35f || rp.rest_t < 0.0f || rp.rest_t > 0.5f) {
+        return failf(t, "ramp: peak %.3f (max 0.35), rest %.0f ms after the end (max 500)", (double)rp.peak, (double)(rp.rest_t * 1000.0f));
+    }
+    /* quick flick: 20 deg in 0.3 s, then still */
+    g_amp = 20.0f, g_end = 0.3f;
+    const Run fl = run_shape(ramp, 2.0f, 0.3f, false, 0.0f);
+    const float back = 0.0f; /* how far it went past rest (the other sign) */
+    (void)back;
+    if (fabsf(fl.peak) < 0.55f || fabsf(fl.peak) > 0.85f || fl.overshoots > 1 || fl.rest_t < 0.0f || fl.rest_t > 0.5f) {
+        return failf(t, "flick: peak %.3f (0.55..0.85), %d overshoots, rest %.0f ms after going still", (double)fl.peak, fl.overshoots, (double)(fl.rest_t * 1000.0f));
+    }
+    /* how far past rest: the most negative value after going still */
+    {
+        Tilt a;
         tilt_init(&a);
-        tilt_snap(&a, 0.0f, 0.0f);
-        for (int i = 0; i < 60; i++) {
-            tilt_tick(&a, dt, true, k ? sx2 : sx1, k ? sy2 : sy1, i * dt);
+        tilt_snap(&a);
+        float under = 0.0f;
+        for (int i = 0; i < 135; i++) {
+            const float tt = (float)i / 60.0f - 0.25f, rad = (tt < 0.0f ? 0.0f : ramp(tt)) * 0.0174533f;
+            float sx, sy;
+            tilt_screen_gravity(0.0f, -sinf(rad), -cosf(rad), false, &sx, &sy);
+            tilt_tick(&a, 1.0f / 60.0f, true, sx, sy, -1.0f, tt);
+            under = fminf(under, a.tx);
         }
-        txs[k] = a.tx;
-    }
-    if (fabsf(txs[0] - txs[1]) > 1e-4f || fabsf(txs[0]) < 0.3f) {
-        return failf(t, "the same tilt in both landscape rotations gave tx %.3f and %.3f", (double)txs[0], (double)txs[1]);
-    }
-    /* 5: a constant tilt (10 deg) held 12 s */
-    tilt_init(&a);
-    tilt_snap(&a, 0.0f, 0.0f);
-    float first = 0.0f;
-    for (int i = 0; i < 12 * 60; i++) {
-        tilt_tick(&a, dt, true, s10, 0.0f, i * dt);
-        if (i == 30) {
-            first = fabsf(a.tx);
+        if (-under > 0.1f * fabsf(fl.peak)) {
+            return failf(t, "flick: passed rest by %.1f %% of the peak (max 10)", (double)(-under / fabsf(fl.peak) * 100.0f));
         }
+        mg_log_info("autotest tilt: flick 20 deg / 0.3 s, offset (pt) at 0 / 0.1 / 0.25 / 0.5 / 0.75 / 1.2 / 1.5 / 2.0 s: %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f (peak %.3f at %.0f ms, past rest %.1f %%, at rest %.0f ms after going still)",
+                    (double)fl.trace[0], (double)fl.trace[1], (double)fl.trace[2], (double)fl.trace[3], (double)fl.trace[4], (double)fl.trace[5], (double)fl.trace[6],
+                    (double)fl.trace[7], (double)fl.peak, (double)(fl.peak_t * 1000.0f), (double)(-under / fabsf(fl.peak) * 100.0f), (double)(fl.rest_t * 1000.0f));
     }
-    if (fabsf(a.tx) > 0.05f * first) {
-        return failf(t, "after 12 s at a constant tilt the offset is %.1f %% of its start (max 5 %%)", (double)(100.0f * fabsf(a.tx) / first));
+    /* both rotations: the same flick gives the same tilt */
+    const Run fl2 = run_shape(ramp, 2.0f, 0.3f, true, 0.0f);
+    if (fabsf(fl.peak - fl2.peak) > 1e-4f) {
+        return failf(t, "the same flick in both landscape rotations: peak %.3f / %.3f", (double)fl.peak, (double)fl2.peak);
     }
-    const float held = 100.0f * fabsf(a.tx) / first;
-    /* 6: +-0.5 deg noise at 60 Hz: under 0.3 pt anywhere (the nearest layer is 14 pt) */
-    tilt_init(&a);
-    tilt_snap(&a, 0.0f, 0.0f);
-    float worst = 0.0f;
-    uint32_t rng = 12345u;
-    for (int i = 0; i < 10 * 60; i++) {
-        rng = rng * 1664525u + 1013904223u;
-        const float n = ((float)(rng >> 8) / 16777216.0f * 2.0f - 1.0f) * 0.5f * 0.0174533f;
-        rng = rng * 1664525u + 1013904223u;
-        const float m = ((float)(rng >> 8) / 16777216.0f * 2.0f - 1.0f) * 0.5f * 0.0174533f;
-        tilt_tick(&a, dt, true, sinf(n), sinf(m), i * dt);
-        worst = fmaxf(worst, fmaxf(fabsf(a.tx), fabsf(a.ty)) * k_ui.tilt_depth[4]);
+    /* back and forth: a 1 Hz +-15 deg sine for 5 s */
+    g_amp = 15.0f, g_end = 5.0f;
+    const Run sn = run_shape(sine, 6.0f, 5.0f, false, 0.0f);
+    if (fabsf(sn.mean) > 0.3f || sn.rest_t < 0.0f || sn.rest_t > 0.5f) {
+        return failf(t, "sine: mean offset %.2f pt (max 0.3), rest %.0f ms after stopping", (double)sn.mean, (double)(sn.rest_t * 1000.0f));
     }
-    if (worst >= 0.3f) {
-        return failf(t, "+-0.5 deg noise moved the nearest layer %.3f pt (max 0.3)", (double)worst);
+    /* noise: +-0.5 deg moves nothing more than 0.3 pt */
+    g_amp = 0.0f;
+    const Run nz = run_shape(step_hold, 10.0f, 10.0f, false, 0.5f);
+    if (fabsf(nz.peak) * k_ui.tilt_depth[4] >= 0.3f) {
+        return failf(t, "+-0.5 deg noise moved the nearest layer %.3f pt", (double)(fabsf(nz.peak) * k_ui.tilt_depth[4]));
     }
-    /* 7: a step to 1: one overshoot, settled within 600 ms */
-    tilt_init(&a);
-    a.forced = true;
-    a.target_x = 1.0f;
-    float peak = 0.0f;
-    int overs = 0;
-    bool above = false;
-    float at600 = 0.0f;
-    for (int i = 0; i < 90; i++) {
-        tilt_tick(&a, dt, false, 0.0f, 0.0f, i * dt);
-        peak = fmaxf(peak, a.tx);
-        const bool now_above = a.tx > 1.01f;
-        overs += now_above && !above;
-        above = now_above;
-        if (i == 35) { /* 600 ms */
-            at600 = a.tx;
+    /* the ceiling: a stuck target with the sensor still */
+    {
+        Tilt a;
+        tilt_init(&a);
+        tilt_snap(&a);
+        a.fault = true, a.fault_x = 1.0f;
+        float zero_at = -1.0f;
+        for (int i = 0; i < 180; i++) {
+            float sx, sy;
+            tilt_screen_gravity(0.0f, 0.0f, -1.0f, false, &sx, &sy);
+            tilt_tick(&a, 1.0f / 60.0f, true, sx, sy, 0.0f, i / 60.0);
+            if (zero_at < 0.0f && a.tx == 0.0f && i > 10) {
+                zero_at = (float)i / 60.0f;
+            }
         }
-    }
-    if (peak <= 1.0f || overs != 1 || fabsf(at600 - 1.0f) > 0.03f) {
-        return failf(t, "step: peak %.3f, %d overshoots above 1 %%, %.3f at 600 ms", (double)peak, overs, (double)at600);
+        if (zero_at < 0.0f || zero_at > 1.5f || a.ceilings != 1 || !a.ceiling_logged) {
+            return failf(t, "ceiling: back to 0 at %.2f s (max 1.5), fired %d times", (double)zero_at, a.ceilings);
+        }
+        mg_log_info("autotest tilt: ceiling: a stuck target is back to 0 at %.2f s, logged once", (double)zero_at);
     }
     /* 11 */
     const float off = tilt_strength(0, false, false), red = tilt_strength(2, true, false), low = tilt_strength(2, false, true);
     if (off != 0.0f || red != 0.0f || low > 0.5f) {
         return failf(t, "strength: Oprit %.2f, reduced %.2f, Low Power %.2f", (double)off, (double)red, (double)low);
     }
-    mg_log_info("autotest tilt: both rotations tx %.3f / %.3f; held 12 s -> %.1f %%; noise -> %.3f pt; step peak %.3f, 1 overshoot, %.3f at 600 ms; S Oprit %.1f, reduced %.1f, Low Power %.1f",
-                (double)txs[0], (double)txs[1], (double)held, (double)worst, (double)peak, (double)at600, (double)off, (double)red, (double)low);
+    mg_log_info("autotest tilt: still at 10 / 30 / 60 deg: exactly 0 from 2 s; ramp peak %.3f, rest %.0f ms after; flick in both rotations %.3f / %.3f; sine mean %.2f pt, rest %.0f ms after; noise %.3f pt; S Oprit %.1f, reduced %.1f, Low Power %.1f",
+                (double)rp.peak, (double)(rp.rest_t * 1000.0f), (double)fl.peak, (double)fl2.peak, (double)sn.mean, (double)(sn.rest_t * 1000.0f),
+                (double)(fabsf(nz.peak) * k_ui.tilt_depth[4]), (double)off, (double)red, (double)low);
     return 0;
 }
 

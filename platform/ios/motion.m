@@ -10,7 +10,7 @@
 
 static CMMotionManager *g_mm;
 static NSOperationQueue *g_queue;
-static atomic_uint g_gx, g_gy, g_gz;
+static atomic_uint g_gx, g_gy, g_gz, g_rate;
 static atomic_bool g_have;
 
 static unsigned bits(double v)
@@ -54,6 +54,8 @@ void motion_start(void)
                                   atomic_store(&g_gx, bits(m.gravity.x));
                                   atomic_store(&g_gy, bits(m.gravity.y));
                                   atomic_store(&g_gz, bits(m.gravity.z));
+                                  /* turning about the screen's axes (x, y); spinning flat (z) does not tilt */
+                                  atomic_store(&g_rate, bits(sqrt(m.rotationRate.x * m.rotationRate.x + m.rotationRate.y * m.rotationRate.y) * 57.29578));
                                   atomic_store(&g_have, true);
                               }];
 }
@@ -72,6 +74,15 @@ bool motion_gravity(float *x, float *y, float *z)
         return false;
     }
     *x = flt(atomic_load(&g_gx)), *y = flt(atomic_load(&g_gy)), *z = flt(atomic_load(&g_gz));
+    return true;
+}
+
+bool motion_rotation_rate(float *dps)
+{
+    if (!atomic_load(&g_have)) {
+        return false;
+    }
+    *dps = flt(atomic_load(&g_rate));
     return true;
 }
 

@@ -1,14 +1,14 @@
-/* --autotest tilt (TILT-1), tilt injected (no sensor). The UI test screen's card, primary button and counter
+/* --autotest tilt (TILT-1 + A1), tilt injected (no sensor). The UI test screen's card, primary button and counter
  * report the instances they emit; the shifts below are those instances run through the shader's formulas.
- *   1 tilt (0, 0): the setting on and off emit the same instances with a zero tilt (every effect term is x tilt)
- *   2 (+1, 0) (-1, 0) (0, +1) (0, -1): card 4 pt, button 7 pt, badge 10 pt shifts and the lip swing (-0.7 L tx,
- *     L (1 - 0.4 ty)) within 0.5 pt; menu screenshots to docs/autotest/tilt/
- *   3 at each: a tap on the rest centre fires; the menu's hit rects are the rest ones
- *   4 the same physical tilt in both landscape rotations gives the same (tx, ty)
- *   5 a constant tilt held 12 s falls below 5 %;  6 +-0.5 deg noise moves nothing more than 0.3 pt
- *   7 a step: one overshoot, settled within 600 ms;  8 shake: one staggered wobble, none again within 2 s
- *   9 the references stay inside the safe rect at all four extremes;  10 a held button's shift does not change
- *  11 Oprit, reduced motion and Low Power Mode give S = 0, 0 and <= 0.5 */
+ *   A1 maths (private Tilt, angles through the game's own mapping): hold (step to 20 deg), still at 10 / 30 / 60 deg
+ *   (exactly 0 from 2 s), a 10 deg/s ramp (under 35 %, rest within 500 ms), a flick (20 deg / 0.3 s: peak 0.55..0.85,
+ *   at most one overshoot of <= 10 %, rest within 500 ms; the same in both rotations), a 1 Hz +-15 deg sine (no drift,
+ *   rest within 500 ms), the ceiling (a stuck target: 0 within 1.5 s, logged once), +-0.5 deg noise (< 0.3 pt),
+ *   Oprit / reduced motion / Low Power Mode give S = 0, 0, <= 0.5
+ *   tilt (0, 0): the setting on and off emit the same instances with a zero tilt (every effect term is x tilt)
+ *   (+1, 0) (-1, 0) (0, +1) (0, -1) held (forced): card 4 pt, button 7 pt, badge 10 pt and the lips within 0.5 pt,
+ *   inside the safe rect; a tap on the rest centre fires; the menu's hit rects are the rest ones; screenshots
+ *   a held button's shift does not change; shake: one staggered wobble, none again within 2 s */
 #ifndef MG_AUTOTEST_TILT_H
 #define MG_AUTOTEST_TILT_H
 

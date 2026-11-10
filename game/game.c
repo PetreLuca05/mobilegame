@@ -457,7 +457,7 @@ bool game_init(MgApp *app)
         }
     }
     tilt_init(&g->tilt);
-    g->tilt_circle = has_flag(app->argc, app->argv, "--tilt-circle");
+    g->tilt_circle = has_flag(app->argc, app->argv, "--tilt-sine");
     g->settings.show_tilt_debug = has_flag(app->argc, app->argv, "--tilt-debug"); /* desktop: the overlay on */
     for (int i = 1; i + 3 < app->argc; i++) { /* --debug tilt <tx> <ty>: the tilt target, no sensor */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "tilt") == 0) {
@@ -694,11 +694,19 @@ static void tilt_step(Game *g, MgApp *app)
         } else {
             motion_stop();
         }
-        g->tilt.have_neutral = false;
+        tilt_snap(&g->tilt); /* activation: offsets start at 0 */
     }
     float sx = 0.0f, sy = 0.0f, gx, gy, gz;
     const bool have = g->motion_on && motion_gravity(&gx, &gy, &gz);
-    g->tilt_flipped = SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay()) == SDL_ORIENTATION_LANDSCAPE_FLIPPED;
+    const bool flipped = SDL_GetCurrentDisplayOrientation(SDL_GetPrimaryDisplay()) == SDL_ORIENTATION_LANDSCAPE_FLIPPED;
+    if (flipped != g->tilt_flipped) { /* the interface rotated: start from rest */
+        g->tilt_flipped = flipped;
+        tilt_snap(&g->tilt);
+    }
+    float rate = -1.0f;
+    if (g->motion_on && !motion_rotation_rate(&rate)) {
+        rate = -1.0f;
+    }
     if (have) {
         tilt_screen_gravity(gx, gy, gz, g->tilt_flipped, &sx, &sy);
         g->tilt_raw[0] = gx, g->tilt_raw[1] = gy, g->tilt_raw[2] = gz, g->tilt_screen[0] = sx, g->tilt_screen[1] = sy;
@@ -711,11 +719,11 @@ static void tilt_step(Game *g, MgApp *app)
         g->tilt.target_y = mg_clampf((app->input.mouse_y - app->height_pt * 0.5f) / (app->height_pt * 0.5f), -1.0f, 1.0f);
     } else if (g->tilt_debug) {
         g->tilt.target_x = g->tilt_debug_x, g->tilt.target_y = g->tilt_debug_y;
-    } else if (g->tilt_circle) { /* --tilt-circle (perf): a slow circle at full tilt, no sensor */
+    } else if (g->tilt_circle) { /* --tilt-sine (perf): a 1 Hz sine at full strength, no sensor */
         g->tilt.forced = true;
-        g->tilt.target_x = cosf((float)app->time * 0.6f), g->tilt.target_y = sinf((float)app->time * 0.6f);
+        g->tilt.target_x = sinf((float)app->time * 6.2831853f), g->tilt.target_y = 0.0f;
     }
-    tilt_tick(&g->tilt, MG_TICK_DT, have, sx, sy, app->time);
+    tilt_tick(&g->tilt, MG_TICK_DT, have, sx, sy, rate, app->time);
     if (g->tilt.shaken && g->tilt_s > 0.0f) { /* the frame plays the jiggle */
         g->tilt_shake_dir = g->tilt.shake_dir;
         g->tilt_shake_pending = true;
@@ -2768,8 +2776,8 @@ static void tilt_debug_draw(Game *g, MgApp *app)
         SDL_snprintf(line, sizeof(line), "gravity  none (%s)", g->tilt.forced ? "forced: --debug tilt / T + mouse" : "no sensor or S = 0");
     }
     text_draw(gfx, &app->font, x0, y0, 13.0f, ui_rgba(0xFFFFFFFF), line);
-    SDL_snprintf(line, sizeof(line), "screen   x %+.3f  y %+.3f   neutral %+.3f %+.3f", (double)g->tilt_screen[0], (double)g->tilt_screen[1], (double)g->tilt.nx,
-                 (double)g->tilt.ny);
+    SDL_snprintf(line, sizeof(line), "angle %+.1f %+.1f  ref %+.1f %+.1f  still %.2f s%s", (double)g->tilt.ax, (double)g->tilt.ay, (double)g->tilt.refx,
+                 (double)g->tilt.refy, (double)g->tilt.still_s, g->tilt.at_rest ? "  at rest" : "");
     text_draw(gfx, &app->font, x0, y0 + 22.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
     SDL_snprintf(line, sizeof(line), "target   %+.2f %+.2f   tilt %+.2f %+.2f   S %.1f   signs %+.0f %+.0f", (double)g->tilt.target_x, (double)g->tilt.target_y,
                  (double)g->tilt.tx, (double)g->tilt.ty, (double)g->tilt_s, (double)k_ui.tilt_sign_x, (double)k_ui.tilt_sign_y);
@@ -3171,6 +3179,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         if (key != g->ui_screen_key) {
             g->ui_screen_key = key;
             g->ui_screen_t0 = app->time;
+            tilt_snap(&g->tilt); /* TILT-1 A1: a screen opens at rest */
         }
         ui_screen_enter(&g->ui, (float)(app->time - g->ui_screen_t0), ui_fx_shake_x(&g->ui_fx));
     }

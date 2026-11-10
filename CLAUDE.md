@@ -378,7 +378,7 @@ Details, motion table, tiers and how to add a widget: [docs/UI.md](docs/UI.md).
 
 ## Tilt (TILT-1)
 
-- Visual only. Core Motion gravity (`platform/ios/motion.m`) -> `engine/ui/tilt.c` on the fixed tick -> one UI uniform; depths and lips per instance, shifts in the shaders, clamped to the safe rect. Default depth = the card layer (4 pt); widgets set theirs with `ui_depth` / `ui_depth_end`; world-anchored UI at 0. Pref `ui_tilt` (Efect 3D la înclinare). `--debug tilt tx ty`, T + mouse on desktop, `--tilt-circle` for perf, `--autotest tilt`. Details: docs/UI.md.
+- Visual only. Core Motion gravity (`platform/ios/motion.m`) -> `engine/ui/tilt.c` on the fixed tick -> one UI uniform; depths and lips per instance, shifts in the shaders, clamped to the safe rect. Default depth = the card layer (4 pt); widgets set theirs with `ui_depth` / `ui_depth_end`; world-anchored UI at 0. Pref `ui_tilt` (Efect 3D la înclinare). `--debug tilt tx ty`, T + mouse on desktop, `--tilt-sine` for perf, `--autotest tilt`. A1: tilt reacts to motion and returns to rest (0.35 s leaky reference, 4 Hz / 0.7 spring, exact 0 when still, 1.1 s ceiling). Details: docs/UI.md.
 
 ## Haptics (HAPTIC-1)
 
