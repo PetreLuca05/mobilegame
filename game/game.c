@@ -579,6 +579,17 @@ static int lift_nearest(Game *g, HMM_Vec3 p)
     return best;
 }
 
+/* The player's own ride: the car they stand in is busy (closing, moving, opening), or they are being carried. Another car
+ * moving (called from a landing, or a remote rider's) must not lock the player's input. */
+static bool player_lift_busy(Game *g)
+{
+    if (g->riding) {
+        return true;
+    }
+    const int i = lift_containing(g, g->player.kin.pos, g->kparams.radius);
+    return i >= 0 && elevator_busy(lift_get(g, i));
+}
+
 static bool any_lift_busy(Game *g)
 {
     for (int i = 0; i < lift_count(g); i++) {
@@ -3963,7 +3974,7 @@ static void game_frame_inner(MgApp *app, float alpha)
                            (int)g->fe.state,
                            g->playing,
                            g->playing ? scene_floor_of(g->scene, g->player.kin.pos) : 0,
-                           g->playing && any_lift_busy(g),
+                           g->playing && player_lift_busy(g),
                            SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
                            g->route.active && !g->route.done ? g->route.step : -1,
                            (int)g->autonav.state,
@@ -4179,7 +4190,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         const KinematicState *k = &g->player.kin;
         uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
                                   (g->player.sprint ? REP_SPRINTING : 0) |
-                                  (g->playing && any_lift_busy(g) ? REP_RIDING : 0));
+                                  (g->playing && player_lift_busy(g) ? REP_RIDING : 0));
         PROF_SCOPE("net.poll");
         friends_tick(&g->friends, app->time);
         {
@@ -4402,7 +4413,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->panel_lift = lift_nearest(g, g->player.kin.pos);
     }
     Elevator *el = lift_get(g, g->panel_lift);
-    const bool riding = any_lift_busy(g);
+    const bool riding = player_lift_busy(g); /* only the player's own car locks the input (several lifts: others run on calls) */
     /* auto-nav rides on its own: no panel unless the player cancels */
     const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && (!autonav_active(&g->autonav) || s->force_lift_panel) &&
                             (lift_here >= 0 || s->force_lift_panel);
