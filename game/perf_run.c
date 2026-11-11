@@ -42,6 +42,8 @@ static const Scenario k_scenarios[] = {
     {"island", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},          /* parked at a hospital: island, ambulance, the card */
     /* MAP-2: the institute: the G lobby, both wings, a ride to floor 2 (3 lifts, 5 floors, no ambient NPCs) */
     {"institute", 0.0f, 0.1f, 4.0f, 0, 0.0f, {{-17.5f, -6.0f, 0}, {6.0f, -9.5f, 2}, {17.5f, -9.5f, 0}, {0.0f, 4.0f, 0}}, 4, "institute"},
+    /* BOOK-ENGINE: the busiest storey (2: 36 of the pack's people) walked with a script card open the whole time */
+    {"book", -0.125f, 8.1f, 12.875f, 0, 0.0f, {{-12.375f, -12.875f, 2}, {6.0f, -9.5f, 2}, {-0.125f, 12.875f, 2}}, 3, "institute"},
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
 

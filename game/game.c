@@ -84,9 +84,7 @@
 #include "book_check.h"
 #include "missions.h"
 #include "missions_ui.h"
-#ifdef MG_SCRIPT_PLAYER_STUB
-#include "script_player_stub.h" /* STUB: until game/script_player.c lands */
-#endif
+#include "script_player.h"
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/tilt.h"
@@ -310,9 +308,9 @@ typedef struct Game {
     Missions missions;
     MissionUi mui;
     BookPeople *people;    /* the pack's people (level arena) */
-    ScriptPlayer *sp;      /* the script player (level arena) */
     uint32_t mission_marker; /* the objective marker, 0 none */
     BookCheck bcheck;      /* the load-time data check of the last institute load */
+    ScriptPlayer sp;       /* BOOK-ENGINE S5: the script player (a modal card over play) */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -424,7 +422,6 @@ static void unload_level(Game *g, MgApp *app)
     const char *name = scene_name(g->scene);
     missions_shutdown(&g->missions); /* BOOK-ENGINE S4: its people and player live in the level arena */
     g->people = NULL;
-    g->sp = NULL;
     g->mission_marker = 0;
     g->mui.journal = false;
     g->menu.journal_row = false;
@@ -828,6 +825,11 @@ bool game_init(MgApp *app)
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     g->has_save = save_exists(g->profile_name);
     book_pack_load(&g->book); /* BOOK-1: logs its summary or its problems; the game runs either way */
+    script_player_init(&g->sp, app->gfx); /* BOOK-ENGINE: the figures embedded, the GPU texture for the largest reserved */
+    {
+        const char *at = arg_value(app->argc, app->argv, "--autotest");
+        g->sp.autoplay = at && (SDL_strcmp(at, "missions") == 0 || SDL_strcmp(at, "book") == 0); /* answered by the pack's key */
+    }
     if (!world_books_load(&g->books)) {
         mg_log_error("world: assets/world/books.json has no book");
         return false;
@@ -969,7 +971,7 @@ bool game_init(MgApp *app)
     for (int i = 1; atest && SDL_strcmp(atest, "friends") == 0 && i + 2 < app->argc; i++) {
         ft_role = SDL_strcmp(app->argv[i], "--autotest") == 0 ? app->argv[i + 2] : ft_role;
     }
-    const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || g->perf.active || (ft_role && SDL_strcmp(ft_role, "offline") == 0));
+    const bool no_network = atest && (SDL_strcmp(atest, "offline") == 0 || SDL_strcmp(atest, "book") == 0 || g->perf.active || (ft_role && SDL_strcmp(ft_role, "offline") == 0));
     NetConfig ncfg = {no_network ? "offline.invalid" : MG_SUPABASE_HOST, MG_SUPABASE_ANON_KEY, profile ? profile : "", 25, 3, false};
 #ifdef MG_TEST_AUTH
     { /* a device has one keychain: set its session aside for a new-install run, and put it back after */
@@ -1060,7 +1062,7 @@ bool game_init(MgApp *app)
     g->scene_override = -1;
     g->panel_lift = g->ride_lift = -1;
     g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
-    if ((atest && (SDL_strcmp(atest, "institute") == 0 || SDL_strcmp(atest, "bookpeople") == 0 || SDL_strcmp(atest, "missions") == 0)) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario; BOOK-ENGINE: people, missions */
+    if ((atest && (SDL_strcmp(atest, "institute") == 0 || SDL_strcmp(atest, "bookpeople") == 0 || SDL_strcmp(atest, "missions") == 0 || SDL_strcmp(atest, "book_ui") == 0 || SDL_strcmp(atest, "book") == 0)) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario; BOOK-ENGINE: people, missions, book_ui */
         g->scene_override = (int)scene_kind_from_id(perf_run_scene(&g->perf) ? perf_run_scene(&g->perf) : "institute");
     }
     {
@@ -3283,7 +3285,6 @@ static void missions_setup(Game *g, MgApp *app)
     missions_ui_init(&g->mui);
     g->mission_marker = 0;
     g->people = NULL;
-    g->sp = NULL;
     g->menu.journal_row = false;
     if (!g->scene || scene_kind(g->scene) != SCENE_INSTITUTE || !g->book.ok || g->book.mission_count == 0 || !g->progress_uid[0]) {
         return;
@@ -3294,10 +3295,7 @@ static void missions_setup(Game *g, MgApp *app)
         g->bcheck = book_check(&g->book, &map, g->nav, at, scene_indoors(g->scene, at) ? scene_floor_of(g->scene, at) : -1);
     }
     g->people = g->bp_ok ? &g->bp : NULL; /* the pack's people (book_people.c) */
-#ifdef MG_SCRIPT_PLAYER_STUB
-    g->sp = script_player_stub_create(&g->level);
-#endif
-    missions_init(&g->missions, &g->book, &g->progress, g->people, g->sp, &g->level);
+    missions_init(&g->missions, &g->book, &g->progress, g->people, &g->sp, &g->level);
     g->menu.journal_row = g->missions.on;
     for (uint32_t c = 0; g->missions.on && c < g->book.cast_count && c < HEAD_ICON_CELLS / 2; c++) { /* portraits: rendered in the first frames */
         const NetSkin skin = missions_cast_skin(&g->book, (int)c);
@@ -3401,7 +3399,7 @@ static void missions_overlays(Game *g, MgApp *app)
     if (g->menu.open || g->fpage.open) {
         return;
     }
-    missions_script_frame(&g->missions, &g->ui, app);
+    missions_script_frame(&g->missions, &g->ui, app); /* a mission step's script (it replies and commits when it ends: ME_COMMIT) */
     missions_dialogue_card(&g->mui, &g->missions, &g->ui, app, &g->heads);
     g->mui.pill[2] = 0.0f;
     if (!book_modal(g)) { /* the objective pill under the account chip (under the stats when they show); drawn before the stick takes
@@ -3996,6 +3994,15 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.missions = g->missions.on ? &g->missions : NULL;
     probe.journal_open = g->mui.journal;
     probe.menu_open = g->menu.open;
+    probe.sp = &g->sp;
+    probe.book = &g->book;
+    probe.progress = g->progress_uid[0] ? &g->progress : NULL;
+    {
+        GfxStats gs;
+        gfx_get_stats(app->gfx, &gs);
+        probe.ui_draws = gs.ui_draws;
+        probe.passes = gs.passes;
+    }
     probe.hud_res = g->hud_res;
     probe.hud_res_count = g->hud_res_count;
     if (g->text_test) {
@@ -4140,11 +4147,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     if (ato.missions_go && g->mission_marker && g->nav) {
         marker_tapped(g, app, g->mission_marker);
     }
-#ifdef MG_SCRIPT_PLAYER_STUB
-    if (ato.missions_skip_fact > 0) {
-        script_player_stub_skip_fact(g->sp, ato.missions_skip_fact - 1);
+    if (ato.missions_skip_fact > 0) { /* the next script played leaves this fact unset (answers its items wrong) */
+        g->sp.skip_fact = ato.missions_skip_fact - 1;
     }
-#endif
     if (ato.nav_go && g->nav) {
         AutonavCtx ac = {g->player.kin.pos, probe.nav_storey, app->time, false, false, 0};
         autonav_go(&g->autonav, g->nav, &ac, ato.nav_pos, ato.nav_to, 0);
@@ -4315,6 +4320,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         frontend_flow(g, app, back);
         return;
     }
+    const bool sp_on = script_player_active(&g->sp); /* BOOK-ENGINE: the script card is a modal over everything in play */
+    if (back && sp_on) {
+        script_player_close(&g->sp);
+        progress_commit(g, true);
+        back = false;
+    }
+    g->ui.input_off = g->ui.input_off || sp_on; /* what is under the card takes no touches */
     if (back && g->mui.journal) { /* the journal goes back to the pause card */
         g->mui.journal = false;
         back = false;
@@ -4409,9 +4421,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
 #else
 #endif
-    if (g->menu.open || riding || book_modal(g)) {
+    if (g->menu.open || riding || book_modal(g) || sp_on) {
         touch_controls_reset(&g->touch);
-        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open || book_modal(g), g->ui_anim.reduced); /* fades out under a menu */
+        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open || book_modal(g) || sp_on, g->ui_anim.reduced); /* fades out under a menu */
     } else {
         /* iPad: bigger controls so thumbs reach them */
         float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
@@ -4849,6 +4861,16 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
 #endif
     draw_net_badge(g, app);
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "book") == 0 && !script_player_active(&g->sp) && g->book.ok && g->book.script_count > 0) {
+        script_player_open(&g->sp, &g->book, 0, "perf"); /* perf "book": a card open all the time */
+    }
+    if (!missions_playing(&g->missions) && script_player_active(&g->sp)) { /* BOOK-ENGINE S5: a script opened on its own (book_ui, perf
+                                                                            * book), last, on top; mission steps play in missions_overlays */
+        g->ui.input_off = false;
+        if (script_player_frame(&g->sp, &g->ui, app, &g->progress, wall_clock_ms())) {
+            progress_commit(g, true); /* a script ended (finished or closed): the file now, the server when online */
+        }
+    }
 }
 
 /* Window point -> the horizontal plane at height y. */
@@ -4981,7 +5003,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         float x, z;
         int st;
         const char *at = arg_value(app->argc, app->argv, "--autotest");
-        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && (SDL_strcmp(at, "interact") == 0 || SDL_strcmp(at, "missions") == 0)) ? 0 : (at && SDL_strcmp(at, "hudclamp") == 0 ? 16 : -1)));
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && (SDL_strcmp(at, "interact") == 0 || SDL_strcmp(at, "missions") == 0 || SDL_strcmp(at, "book") == 0)) ? 0 : (at && SDL_strcmp(at, "hudclamp") == 0 ? 16 : -1)));
         if (at && SDL_strcmp(at, "interact") == 0) {
             marker_add(ms, HMM_V3(10.4f, scene_floor_y(g->scene, 0), -3.0f), 0, MARKER_OBJECTIVE, 0xFF9F0AFF);
         }

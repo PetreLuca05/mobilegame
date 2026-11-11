@@ -84,6 +84,7 @@ enum { F_PX = 1, F_NX = 2, F_PY = 4, F_NY = 8, F_PZ = 16, F_NZ = 32, F_ALL = 63 
 #define CAR_H 2.3f
 #define DOOR_Z 7.88f /* the towers' south wall centre line */
 #define LEAF_OPEN_RAD 1.25f /* 72 degrees */
+#define INST_DOOR_LEAVES 0  /* 0: the map's door leaves are not built (no leaf, no collider): open doorways in their frames */
 #define SEG_POOL 64
 
 typedef struct Tower {
@@ -872,6 +873,9 @@ static void build_furniture(IBuild *b, int f)
             continue;
         }
         if (p->kind == IMF_DOOR_LEAF) {
+            if (!INST_DOOR_LEAVES) { /* doorways stay open: only the frames are built (user decision) */
+                continue;
+            }
             if (in->leaf_count >= INST_MAX_LEAVES) {
                 b->ok = false;
                 continue;

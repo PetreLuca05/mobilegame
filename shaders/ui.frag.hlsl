@@ -1,8 +1,10 @@
-// UI-1: glyphs, rounded shapes and head icons in one instanced draw (ui.vert.hlsl). Premultiplied alpha out.
+// UI-1: glyphs, rounded shapes, head icons and the book figure in one instanced draw (ui.vert.hlsl). Premultiplied alpha out.
 Texture2D u_atlas : register(t0, space2);
 SamplerState u_sampler : register(s0, space2);
 Texture2D u_heads : register(t1, space2);
 SamplerState u_heads_sampler : register(s1, space2);
+Texture2D u_figure : register(t2, space2); // BOOK-ENGINE: the one resident figure (gfx_set_figure), straight alpha
+SamplerState u_figure_sampler : register(s2, space2);
 
 struct UiOut
 {
@@ -49,6 +51,11 @@ float4 PSMain(UiOut i) : SV_Target0
 float4 shade(UiOut i)
 {
     float kind = i.ptk.z;
+    if (kind > 2.5) // book figure: the texture times the colour
+    {
+        float4 f = u_figure.Sample(u_figure_sampler, i.uv) * i.col;
+        return float4(f.rgb * f.a, f.a);
+    }
     if (kind > 1.5) // head icon: 8 x 8 cells, a circle with a ring of the colour
     {
         float2 uv = i.uv;

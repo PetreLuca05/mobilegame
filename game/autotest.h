@@ -48,6 +48,7 @@
 #include "autotest_library.h"
 #include "autotest_missions.h"
 #include "autotest_ui.h"
+#include "autotest_book_ui.h"
 #include "autotest_world.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
@@ -146,6 +147,11 @@ typedef struct AutotestProbe {
     /* BOOK-ENGINE S4: --autotest missions */
     const struct Missions *missions; /* NULL outside the institute / without a pack */
     bool journal_open, menu_open;
+    /* BOOK-ENGINE: --autotest book_ui */
+    struct ScriptPlayer *sp;
+    const struct BookPack *book;
+    struct BookProgress *progress; /* NULL: no progress file open */
+    uint32_t ui_draws, passes;     /* last frame's */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -217,6 +223,7 @@ typedef struct Autotest {
     LibraryTest lt;
     BookTest bt;
     MissionsTest mt;
+    BookUiTest bu;
     struct {
         int cycles, worst_ms, total_ms;
         double dropped_at, next_drop;

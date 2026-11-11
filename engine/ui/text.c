@@ -178,6 +178,16 @@ void ui_textured_quad(GfxContext *g, float x0, float y0, float x1, float y1, flo
     }
 }
 
+bool ui_figure_quad(GfxContext *g, float x, float y, float w, float h, UiColor c)
+{
+    float u1, v1;
+    if (!gfx_figure_uv(g, &u1, &v1)) {
+        return false;
+    }
+    put_inst(g, GFX_UI_FIGURE, x, y, x + w, y + h, 0.0f, 0.0f, u1, v1, c);
+    return true;
+}
+
 void ui_shape(GfxContext *g, const UiShape *sh)
 {
     const float r = sh->radius < 0.0f ? mg_minf(sh->w, sh->h) * 0.5f : sh->radius; /* -1 = fully round */

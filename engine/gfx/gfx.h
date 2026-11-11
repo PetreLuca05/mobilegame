@@ -34,8 +34,9 @@ typedef struct GfxVertex {
  *   GFX_UI_GLYPH  `uv` is the SDF atlas rect, colour = face
  *   GFX_UI_SHAPE  rounded rectangle by signed distance: shape.x radius, shape.y stroke width (0 = filled),
  *                 shape.z top highlight band (pt, colour2 over the face), shape.w dashes around a circle (0 none)
- *   GFX_UI_HEAD   `uv` + 2 in the head atlas, a circle with a colour ring (head_icons.c) */
-enum { GFX_UI_GLYPH, GFX_UI_SHAPE, GFX_UI_HEAD };
+ *   GFX_UI_HEAD   `uv` + 2 in the head atlas, a circle with a colour ring (head_icons.c)
+ *   GFX_UI_FIGURE `uv` in the resident book figure (gfx_set_figure, gfx_figure_uv), times the colour */
+enum { GFX_UI_GLYPH, GFX_UI_SHAPE, GFX_UI_HEAD, GFX_UI_FIGURE };
 
 typedef struct GfxUiInst {
     float rect[4];  /* x, y, w, h */
@@ -257,6 +258,17 @@ void gfx_ui_size(const GfxContext *g, float *w_pt, float *h_pt);
 #define GFX_HEADS_PER_FRAME 2
 void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM_Vec3 eye);
 #define gfx_head_cell_end gfx_inset_end
+/* BOOK-ENGINE figures (decision 7): one figure texture resident at a time, sampled by GFX_UI_FIGURE quads inside the one
+ * UI draw (a third texture of ui.frag). The texture is made once at its largest size (gfx_figure_reserve, at startup) and a
+ * figure goes into its top-left corner through a fixed 2 MB staging buffer (RGBA8 larger than that goes up in strips of
+ * rows): no allocation when the figure changes. Data is top row first; ASTC 4x4 = ceil(w/4) x ceil(h/4) blocks of 16 bytes.
+ * gfx_figure_reserve returns false (and logs) when the GPU cannot sample the format: draw a placeholder instead. */
+enum { GFX_FIG_RGBA8 = 0, GFX_FIG_ASTC4 = 1 };
+#define GFX_FIG_STAGING_BYTES (2u * 1024u * 1024u)
+bool gfx_figure_reserve(GfxContext *g, int max_w, int max_h, int format);
+bool gfx_set_figure(GfxContext *g, int w, int h, int format, const void *data, uint32_t size);
+/* The resident figure's corner in uv (u1, v1: its share of the texture); false when none is resident. */
+bool gfx_figure_uv(const GfxContext *g, float *u1, float *v1);
 /* Clip the UI instances that follow to a rect (pt) until gfx_ui_clip_off (in the shader: no extra draw). */
 void gfx_ui_clip(GfxContext *g, float x, float y, float w, float h);
 void gfx_ui_clip_off(GfxContext *g);
@@ -294,6 +306,7 @@ typedef struct GfxMemory {
     uint64_t msaa_color, depth, scene, blur, preview, swapchain, ui_atlas;
     uint64_t mesh_vb_reserved, mesh_ib_reserved, mesh_vb_used, mesh_ib_used;
     uint64_t ui_buffers, instance_buffers;
+    uint64_t figure, figure_staging; /* BOOK-ENGINE: the resident figure texture and its staging buffer */
 } GfxMemory;
 void gfx_get_memory(const GfxContext *g, GfxMemory *out);
 /* Submit 3D and UI separately with fences to time them (profiler / perf runs). */
