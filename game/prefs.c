@@ -108,6 +108,7 @@ void prefs_load(Prefs *p, const char *profile)
         p->has_profile_cache = true;
         p->profile_stale = flag(pc, "stale", false);
         text(pc, "name", p->cache_name, sizeof(p->cache_name));
+        text(pc, "user_id", p->cache_user_id, sizeof(p->cache_user_id));
         read_skin(cJSON_GetObjectItemCaseSensitive(pc, "skin"), &p->cache_skin);
     }
     const cJSON *q = cJSON_GetObjectItemCaseSensitive(j, "stats_queue");
@@ -178,6 +179,7 @@ bool prefs_save(const Prefs *p, const char *profile)
     if (p->has_profile_cache) {
         cJSON *pc = cJSON_AddObjectToObject(j, "profile_cache");
         cJSON_AddStringToObject(pc, "name", p->cache_name);
+        cJSON_AddStringToObject(pc, "user_id", p->cache_user_id);
         cJSON_AddItemToObject(pc, "skin", skin_json(&p->cache_skin));
         cJSON_AddBoolToObject(pc, "stale", p->profile_stale);
     }

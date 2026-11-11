@@ -1503,6 +1503,7 @@ static void account_loaded(Game *g, MgApp *app)
     }
     g->prefs.has_profile_cache = true;
     SDL_snprintf(g->prefs.cache_name, sizeof(g->prefs.cache_name), "%s", g->profile.display_name);
+    SDL_snprintf(g->prefs.cache_user_id, sizeof(g->prefs.cache_user_id), "%s", g->profile.user_id);
     g->prefs.cache_skin = g->profile.skin;
     if (g->profile.guest && !g->prefs.auth_provider[0]) {
         SDL_snprintf(g->prefs.auth_provider, sizeof(g->prefs.auth_provider), "guest");
@@ -1794,6 +1795,11 @@ static bool menu_world(Game *g, MgApp *app)
     }
     const bool opened = !g->menu_world_on; /* members already in the lobby are seated on this frame */
     g->menu_world_on = true;
+    { /* §5: my table is dressed from my lobby's seed: my user id (cached for the first frame), the name before any sign-in */
+        const char *id = g->profile.user_id[0] ? g->profile.user_id : g->prefs.cache_user_id[0] ? g->prefs.cache_user_id
+                         : g->profile.display_name[0] ? g->profile.display_name : g->prefs.cache_name;
+        menu_library_set_lobby_seed(&g->lib, lib_seed_of(id));
+    }
     menu_library_roster(&g->lib, g->menu_rows, g->lobby_visible ? g->menu_row_count : 0, opened);
     if (st == FE_WELCOME && !g->lib_hero_walked) { /* a fresh install: the hero comes in once */
         g->lib_hero_walked = true;

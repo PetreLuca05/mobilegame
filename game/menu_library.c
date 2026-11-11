@@ -124,6 +124,8 @@ static bool load_scene(LibScene *s)
     const cJSON *life = cJSON_GetObjectItemCaseSensitive(root, "life");
     const cJSON *mug = cJSON_GetObjectItemCaseSensitive(life, "mug");
     s->mug_rest = jv3(mug, "rest"), s->mug_grip = jv3(mug, "grip");
+    s->lamp_light_alpha = jnum(cJSON_GetObjectItemCaseSensitive(life, "alpha"), "lamp_cone", 0.13f) + 0.05f;
+    s->globe_spin = jnum(cJSON_GetObjectItemCaseSensitive(life, "globe"), "spin_rad_s", 0.45f);
     s->pencil_rest = jv3(cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(life, "fidget"), "notes"), "pencil_rest");
     const cJSON *cam = cJSON_GetObjectItemCaseSensitive(root, "camera");
     s->fov_deg = jnum(cam, "fov_deg", 32.0f);
@@ -187,6 +189,45 @@ static GfxMeshId upload(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb 
     return id;
 }
 
+/* §5 covers: a book whose cover takes any colour. The cover's vertices (the prototype's palette b2, #1F6F8B) become white
+ * zone 0, everything else zone 3 (own colour), so a draw with extra = (cover rgb, 0, 0, 1 << 3) colours just the cover. */
+#define LIB_COVER_SRC 0x1F6F8Bu
+static const uint32_t k_cover_rgb[LIB_COVER_COUNT] = {0xC0392B, 0x1F6F8B, 0xE0A030, 0x2F8A6A, 0x6A4C93, 0xD96C4A, 0x34495E, 0xF2E2C0, 0x8E2F33};
+
+static GfxMeshId upload_cover(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
+{
+    const MgmbGroup *gr = mgmb_group(mb, name);
+    if (!gr || gr->vert_count == 0) {
+        mg_log_error("library: group %s missing from library.mgmesh", name);
+        return GFX_MESH_NONE;
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, gr->vert_count);
+    if (!v) {
+        arena_reset_to(arena, mark);
+        return GFX_MESH_NONE;
+    }
+    for (uint32_t i = 0; i < gr->vert_count; i++) {
+        v[i] = gr->verts[i];
+        const uint32_t rgb = (uint32_t)v[i].r << 16 | (uint32_t)v[i].g << 8 | v[i].b;
+        if (rgb == LIB_COVER_SRC) {
+            v[i].r = v[i].g = v[i].b = 255, v[i].a = 255; /* zone 0: takes the cover colour */
+        } else {
+            v[i].a = 255 - 3; /* zone 3: its own colour */
+        }
+    }
+    uint32_t kept = 0;
+    const GfxMeshId id = mesh_upload_welded(g, arena, v, gr->vert_count, &kept);
+    L->weld_in += gr->vert_count, L->weld_out += kept;
+    arena_reset_to(arena, mark);
+    return id;
+}
+
+static HMM_Vec4 cover_extra(int cover)
+{
+    return HMM_V4((float)k_cover_rgb[cover < 0 || cover >= LIB_COVER_COUNT ? 1 : cover], 0.0f, 0.0f, (float)(1u << 3));
+}
+
 /* The NPCs' looks: assets/avatar/avatar.json demo_looks by id (suit, skin, hair colours); plain clothes,
  * the short cap. The elder ("batran", Romanian for old man) takes the elder age class. */
 static void npc_looks(MenuLibrary *L)
@@ -238,6 +279,115 @@ static void npcs_reset(MenuLibrary *L)
     }
 }
 
+/* §5 merged dressing: the lamp, its light pool and the clutter soups are kept (copies in the persistent arena: the
+ * mgmb is loaded twice, once to measure and once to copy, as the arena is a stack); each row of bays gets a reserved
+ * toon mesh and a reserved light mesh, sized for its two tables at the most clutter. */
+static void dressing_init(MenuLibrary *L, GfxContext *g, Arena *arena)
+{
+    if (!L->dress_ok) {
+        return;
+    }
+    Mgmb mb;
+    uint32_t n_lamp = 0, n_light = 0, n_item[LIB_DRESS_MAX_POOL] = {0}, item_max = 0;
+    size_t mark = arena_mark(arena);
+    if (!mgmb_load(&mb, "assets/menu/library.mgmb", arena)) {
+        arena_reset_to(arena, mark);
+        L->dress_ok = false;
+        return;
+    }
+    const MgmbGroup *gl = mgmb_group(&mb, "table_lamp"), *gp = mgmb_group(&mb, "table_lamp_light");
+    n_lamp = gl ? gl->vert_count : 0, n_light = gp ? gp->vert_count : 0;
+    for (int k = 0; k < L->dress_cfg.pool_count; k++) {
+        const MgmbGroup *gi = SDL_strcmp(L->dress_cfg.pool[k], "globe") == 0 ? NULL : mgmb_group(&mb, L->dress_cfg.pool[k]);
+        n_item[k] = gi ? gi->vert_count : 0;
+        item_max = n_item[k] > item_max ? n_item[k] : item_max;
+    }
+    arena_reset_to(arena, mark);
+    L->dress_cap = 2u * (n_lamp + (uint32_t)L->dress_cfg.count_max * item_max);
+    L->light_cap = 2u * n_light;
+    const uint32_t build_cap = L->dress_cap > L->light_cap ? L->dress_cap : L->light_cap;
+    L->src_lamp.v = ARENA_PUSH(arena, GfxVertex, n_lamp), L->src_lamp.n = n_lamp;
+    L->src_light.v = ARENA_PUSH(arena, GfxVertex, n_light), L->src_light.n = n_light;
+    for (int k = 0; k < L->dress_cfg.pool_count; k++) {
+        L->src_item[k].v = n_item[k] ? ARENA_PUSH(arena, GfxVertex, n_item[k]) : NULL, L->src_item[k].n = n_item[k];
+    }
+    L->build = ARENA_PUSH(arena, GfxVertex, build_cap);
+    L->build_idx = ARENA_PUSH(arena, uint32_t, build_cap);
+    if (!L->build || !L->build_idx) {
+        L->dress_ok = false;
+        return;
+    }
+    for (uint32_t i = 0; i < build_cap; i++) {
+        L->build_idx[i] = i;
+    }
+    mark = arena_mark(arena);
+    if (mgmb_load(&mb, "assets/menu/library.mgmb", arena)) {
+        if ((gl = mgmb_group(&mb, "table_lamp")) != NULL) SDL_memcpy(L->src_lamp.v, gl->verts, sizeof(GfxVertex) * n_lamp);
+        if ((gp = mgmb_group(&mb, "table_lamp_light")) != NULL) SDL_memcpy(L->src_light.v, gp->verts, sizeof(GfxVertex) * n_light);
+        for (int k = 0; k < L->dress_cfg.pool_count; k++) {
+            const MgmbGroup *gi = n_item[k] ? mgmb_group(&mb, L->dress_cfg.pool[k]) : NULL;
+            if (gi) {
+                SDL_memcpy(L->src_item[k].v, gi->verts, sizeof(GfxVertex) * n_item[k]);
+            }
+        }
+    }
+    arena_reset_to(arena, mark);
+    for (int r = 0; r < 2; r++) {
+        L->dress_mesh[r] = gfx_mesh_reserve(g, L->dress_cap, L->dress_cap);
+        L->light_mesh[r] = gfx_mesh_reserve(g, L->light_cap, L->light_cap);
+    }
+}
+
+/* a soup into the build buffer, turned by yaw (radians, about +y) and moved to (x, y, z): library space */
+static uint32_t put_soup(GfxVertex *out, uint32_t at, uint32_t cap, const GfxVertex *v, uint32_t n, float x, float y, float z, float yaw)
+{
+    const float c = HMM_CosF(yaw), s = HMM_SinF(yaw);
+    for (uint32_t i = 0; i < n && at < cap; i++, at++) {
+        GfxVertex o = v[i];
+        o.px = v[i].px * c + v[i].pz * s + x, o.py = v[i].py + y, o.pz = -v[i].px * s + v[i].pz * c + z; /* HMM_Rotate_RH about +y */
+        o.nx = v[i].nx * c + v[i].nz * s, o.nz = -v[i].nx * s + v[i].nz * c;
+        out[at] = o;
+    }
+    return at;
+}
+
+static int bay_row(const MenuLibrary *L, int b) { return L->bay_z[b] < L->sc.mid_wall_z ? 1 : 0; }
+
+/* After a seed change: each row's tables (lamps and clutter but the globes; the light pools) into its meshes */
+static void dressing_rebuild(MenuLibrary *L)
+{
+    if (!L->dress_ok || !L->gfx) {
+        return;
+    }
+    const float top = L->sc.table.top_y;
+    for (int r = 0; r < 2; r++) {
+        uint32_t n = 0, nl = 0;
+        for (int b = 0; b < LIB_BAYS; b++) {
+            if (bay_row(L, b) != r) {
+                continue;
+            }
+            const LibDressing *d = &L->dress[b];
+            n = put_soup(L->build, n, L->dress_cap, L->src_lamp.v, L->src_lamp.n, L->bay_x[b] + d->lamp_x, top, L->bay_z[b] + d->lamp_z, d->lamp_yaw);
+            for (int k = 0; k < d->item_count; k++) {
+                for (int p = 0; p < L->dress_cfg.pool_count; p++) {
+                    if (L->src_item[p].n && SDL_strcmp(L->dress_cfg.pool[p], d->items[k].name) == 0) {
+                        n = put_soup(L->build, n, L->dress_cap, L->src_item[p].v, L->src_item[p].n, L->bay_x[b] + d->items[k].x, top,
+                                     L->bay_z[b] + d->items[k].z, d->items[k].yaw);
+                    }
+                }
+            }
+        }
+        gfx_mesh_update(L->gfx, L->dress_mesh[r], L->build, n, L->build_idx, n);
+        for (int b = 0; b < LIB_BAYS; b++) {
+            if (bay_row(L, b) == r) {
+                const LibDressing *d = &L->dress[b];
+                nl = put_soup(L->build, nl, L->light_cap, L->src_light.v, L->src_light.n, L->bay_x[b] + d->lamp_x, top, L->bay_z[b] + d->lamp_z, d->lamp_yaw);
+            }
+        }
+        gfx_mesh_update(L->gfx, L->light_mesh[r], L->build, nl, L->build_idx, nl);
+    }
+}
+
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
 {
     SDL_zerop(L);
@@ -250,6 +400,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         const MgAsset *a = mg_asset_find("assets/menu/library.scene.json");
         cJSON *root = cJSON_ParseWithLength((const char *)a->data, a->size);
         L->nav = ARENA_PUSH(scratch, LibNav, 1);
+        L->dress_ok = lib_dressing_config(&L->dress_cfg, root);
         if (!lib_nav_bake(L->nav, root)) {
             L->nav = NULL;
         } else {
@@ -275,8 +426,11 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->chair = upload(L, g, scratch, &mb, "chair");
     L->door = upload(L, g, scratch, &mb, "door");
     L->cart = upload(L, g, scratch, &mb, "cart");
-    L->book_open = upload(L, g, scratch, &mb, "book_open");
-    L->book_closed = upload(L, g, scratch, &mb, "book_closed");
+    L->book_open = upload_cover(L, g, scratch, &mb, "book_open");
+    L->book_closed = upload_cover(L, g, scratch, &mb, "book_closed");
+    for (int k = 0; L->dress_ok && k < L->dress_cfg.pool_count; k++) { /* §5 clutter: the globe on its own (it spins); the rest is merged */
+        L->clutter[k] = SDL_strcmp(L->dress_cfg.pool[k], "globe") == 0 ? upload(L, g, scratch, &mb, "globe") : GFX_MESH_NONE;
+    }
     L->leaf_a = upload(L, g, scratch, &mb, "book_leaf_a");
     L->leaf_b = upload(L, g, scratch, &mb, "book_leaf_b");
     L->mug = upload(L, g, scratch, &mb, "mug");
@@ -292,11 +446,16 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         L->bay_z[b] = L->sc.bay_z[b];
     }
     L->home_bay = L->sc.home_bay;
+    for (int i = 0; i < LIB_SEATS; i++) {
+        L->member_n[i] = L->seat_phys[i] = i; /* until a lobby seed orders the seats */
+    }
     menu_library_set_table(L, L->home_bay);
     L->seat[0].state = LM_STUDY; /* the hero: always at seat 0 */
     L->seat[0].blend = L->seat[0].study_w = L->seat[0].place = 1.0f;
     L->seat[0].pos = L->tseats[0].pos, L->seat[0].yaw_deg = L->tseats[0].yaw_deg;
     lib_study_init(&L->seat[0].study, &L->sc, 1u);
+    L->gfx = g;
+    dressing_init(L, g, scratch);
     mg_log_info("library: %s (%d seats, %d extra chairs), %u vertices welded to %u", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n, L->weld_in,
                 L->weld_out);
     return L->ok;
@@ -354,9 +513,9 @@ void menu_library_set_table(MenuLibrary *L, int bay)
     L->table_x = L->bay_x[bay];
     L->table_z = L->bay_z[bay];
     const HMM_Vec2 dx = HMM_V2(L->table_x, L->table_z);
-    for (int i = 0; i < LIB_SEATS; i++) {
+    for (int i = 0; i < LIB_SEATS; i++) { /* member slot i sits in seat seat_phys[i] (the table's seat order) */
         LibSeat *t = &L->tseats[i];
-        *t = L->sc.seats[i];
+        *t = L->sc.seats[L->seat_phys[i] >= 0 && L->seat_phys[i] < LIB_SEATS ? L->seat_phys[i] : i];
         t->pos = HMM_AddV2(t->pos, dx);
         t->stand = HMM_AddV2(t->stand, dx);
         for (int k = 0; k < t->path_n; k++) {
@@ -364,6 +523,32 @@ void menu_library_set_table(MenuLibrary *L, int bay)
         }
     }
     L->tcentre = HMM_AddV2(L->sc.table.centre, dx);
+}
+
+void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed)
+{
+    if (!L->dress_ok || (seed == L->my_seed && L->dress[L->table_bay].seed == seed)) {
+        return;
+    }
+    L->my_seed = seed;
+    for (int b = 0; b < LIB_BAYS; b++) { /* the empty tables, then mine */
+        lib_dress(&L->dress_cfg, b == L->table_bay ? seed : lib_empty_table_seed(b), &L->dress[b]);
+        L->dress[b].bay = b;
+    }
+    for (int i = 0; i < LIB_SEATS; i++) {
+        L->seat_phys[i] = L->dress[L->table_bay].seat_order[L->member_n[i] >= 0 && L->member_n[i] < LIB_SEATS ? L->member_n[i] : i];
+    }
+    menu_library_set_table(L, L->table_bay);
+    dressing_rebuild(L);
+    for (int i = 0; i < LIB_SEATS; i++) { /* whoever is seated sits in its (new) seat at once */
+        LibMember *mb = &L->seat[i];
+        if (mb->state == LM_STUDY || mb->state == LM_SETTLE || mb->state == LM_PACK) {
+            mb->pos = L->tseats[i].pos, mb->yaw_deg = L->tseats[i].yaw_deg;
+        }
+    }
+    mg_log_info("library: my lobby's seed %08x -> table in bay %d, seats %d %d %d %d, %d things on it", seed, L->table_bay,
+                L->dress[L->table_bay].seat_order[0], L->dress[L->table_bay].seat_order[1], L->dress[L->table_bay].seat_order[2],
+                L->dress[L->table_bay].seat_order[3], L->dress[L->table_bay].item_count);
 }
 
 /* the room's yaw in the world (radians, about +y) */
@@ -526,7 +711,7 @@ static HMM_Mat4 placed(const MenuLibrary *L, float x, float z, float yaw_deg)
 
 /* A seat's book on the table: closed, or open with the turning leaf (two halves about the spine). pop: its width
  * (§4: the open book pops from 30 % to full width as it is put down). */
-static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, bool open, const LibStudy *st, float pop)
+static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, bool open, const LibStudy *st, float pop, int cover)
 {
     const LibScene *s = &L->sc;
     const float yw = HMM_AngleDeg(seat->yaw_deg);
@@ -534,7 +719,9 @@ static void draw_book(const MenuLibrary *L, GfxContext *g, const LibSeat *seat, 
                                             HMM_Translate(HMM_V3(0.0f, s->book.y, 0.0f))),
                                   HMM_Scale(HMM_V3(pop, 1.0f, 1.0f)));
     const GfxMaterial mat = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
-    gfx_draw(g, open ? L->book_open : L->book_closed, &bm, &mat, 0);
+    GfxMaterial cm = mat;
+    cm.extra = cover_extra(cover);
+    gfx_draw(g, open ? L->book_open : L->book_closed, &bm, &cm, 0);
     if (open && st && st->theta > 0.0f) {
         const HMM_Mat4 inner = HMM_MulM4(HMM_MulM4(bm, HMM_Translate(HMM_V3(0.0f, s->book.leaf_y, 0.0f))), HMM_Rotate_RH(-st->theta, HMM_V3(0, 0, 1)));
         const HMM_Mat4 outer = HMM_MulM4(HMM_MulM4(inner, HMM_Translate(HMM_V3(-0.5f * s->book.leaf_len, 0.0f, 0.0f))),
@@ -627,8 +814,11 @@ static uint32_t id_hash(const char *id)
     return h;
 }
 
-static void member_start(MenuLibrary *L, int i, const LobbyRow *r, bool seated)
+static void member_start(MenuLibrary *L, int i, const LobbyRow *r, int place, bool seated)
 {
+    L->member_n[i] = place; /* §5: member n (host first, by join time) sits in seat_order[n] */
+    L->seat_phys[i] = L->dress_ok ? L->dress[L->table_bay].seat_order[place >= 0 && place < LIB_SEATS ? place : i] : i;
+    menu_library_set_table(L, L->table_bay);
     LibMember *mb = &L->seat[i];
     const LibSeat *seat = &L->tseats[i];
     SDL_zerop(mb);
@@ -686,7 +876,7 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
                 mb->t_left = 0.0;
             }
         } else if (free_at >= 0) {
-            member_start(L, free_at, &rows[r], snap);
+            member_start(L, free_at, &rows[r], r, snap);
         }
     }
     for (int i = 1; i < LIB_SEATS; i++) {
@@ -935,6 +1125,16 @@ static bool npc_at_door(const MenuLibrary *L, int i, int b)
     return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, door_c(L, b))) < L->sc.door.open_radius;
 }
 
+bool menu_library_npc_at_door(const MenuLibrary *L, int b)
+{
+    for (int i = 0; i < L->sc.npc_n; i++) {
+        if (npc_at_door(L, i, b)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* LOD for the NPCs (the menu draws 26 people): by size on screen only, as a fraction of the view's height (the same
  * people on every device), with hysteresis; a switch is a LOD_FADE_S dithered crossfade of the two meshes, so it never
  * pops. Nobody switches because of a ranking or a bay. My table's members are drawn by member_* at LOD0 always. */
@@ -1043,6 +1243,59 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
     gfx_set_category(g, cat);
 }
 
+/* §5: what is not in the merged row meshes: a bay's globe (it spins) and the other tables' four chairs (mine are the seats'
+ * own, drawn with their walkers). hide: the bay's fade (bay_hide). */
+static void draw_table_extras(MenuLibrary *L, GfxContext *g, int b, float hide)
+{
+    const LibScene *s = &L->sc;
+    if (!L->dress_ok || hide >= 0.98f) {
+        return;
+    }
+    const LibDressing *d = &L->dress[b];
+    const float bx = L->bay_x[b], bz = L->bay_z[b], top = s->table.top_y;
+    GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    toon.hide = hide;
+    for (int k = 0; k < d->item_count; k++) {
+        const LibDressItem *it = &d->items[k];
+        for (int p = 0; p < L->dress_cfg.pool_count; p++) {
+            if (L->clutter[p] != GFX_MESH_NONE && SDL_strcmp(L->dress_cfg.pool[p], it->name) == 0) {
+                const float spin = s->globe_spin * (float)L->clock;
+                const HMM_Mat4 im = HMM_MulM4(placed(L, bx + it->x, bz + it->z, (it->yaw + spin) * 57.29578f), HMM_Translate(HMM_V3(0, top, 0)));
+                gfx_draw(g, L->clutter[p], &im, &toon, 0);
+            }
+        }
+    }
+    if (b != L->table_bay) {
+        for (int i = 0; i < LIB_SEATS; i++) {
+            const LibSeat *seat = &s->seats[i];
+            const HMM_Mat4 cm = placed(L, bx + seat->pos.X, bz + seat->pos.Y, seat->yaw_deg);
+            gfx_draw(g, L->chair, &cm, &toon, 0);
+        }
+    }
+}
+
+/* The merged dressing: per row of bays one toon draw (lamps, clutter) and one light-pool draw (translucent: it goes with
+ * its row rather than dithering). hide: per bay; a row's bays share their fade. */
+static void draw_dressing_rows(MenuLibrary *L, GfxContext *g, const float *hide)
+{
+    if (!L->dress_ok) {
+        return;
+    }
+    for (int r = 0; r < 2; r++) {
+        float h = 0.0f;
+        for (int b = 0; b < LIB_BAYS; b++) {
+            h = bay_row(L, b) == r ? mg_maxf(h, hide[b]) : h;
+        }
+        GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+        toon.hide = h;
+        gfx_draw(g, L->dress_mesh[r], &L->xf, &toon, 0);
+        if (h <= 0.0f) {
+            const GfxMaterial light = mat_alpha(HMM_V4(1, 1, 1, L->sc.lamp_light_alpha));
+            gfx_draw(g, L->light_mesh[r], &L->xf, &light, 0);
+        }
+    }
+}
+
 static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     if (!L->ok) {
@@ -1108,6 +1361,9 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     }
     L->door_angle = L->door_open[L->table_bay]; /* my table's door (tests) */
     L->clock += dt;
+    if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && menu_library_npc_at_door(L, L->table_bay)) {
+        L->gone.t_door_clear = L->clock;
+    }
     if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && L->door_angle < 0.05f) {
         L->gone.t_shut = L->clock;
     }
@@ -1126,7 +1382,9 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         dm.hide = hide[b];
         const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, L->bay_z[b] + s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
         gfx_draw(g, L->door, &door, &dm, 0);
+        draw_table_extras(L, g, b, hide[b]);
     }
+    draw_dressing_rows(L, g, hide);
     for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */
         const LibSeat *seat = &L->tseats[i];
         const float yw = HMM_AngleDeg(seat->yaw_deg), back = s->study.chair_slide * L->seat[i].chair;
@@ -1143,7 +1401,7 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             const HMM_Mat4 cm = placed(L, d->seat_pos.X, d->seat_pos.Y, d->seat_yaw_deg);
             gfx_draw(g, L->chair, &cm, &room, 0);
             const LibSeat at = {d->seat_pos, d->seat_yaw_deg, d->seat_pos, {{{0}}}, 0};
-            draw_book(L, g, &at, true, &L->npc[i].study, 1.0f);
+            draw_book(L, g, &at, true, &L->npc[i].study, 1.0f, 8); /* the readers' books: the prototype's b9 */
         }
         if (d->push_cart) {
             const HMM_Mat4 cart = placed(L, L->npc[i].cart.X, L->npc[i].cart.Y, L->npc[i].cart_yaw_deg);
@@ -1160,7 +1418,7 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         const bool on_table = mb->place >= swap && (mb->state == LM_SETTLE || mb->state == LM_STUDY || mb->state == LM_PACK);
         if (on_table) { /* the open book (popping to full width over 0.15 of the settle), the mug, the pencil */
             const float pop = mb->state == LM_SETTLE ? mg_lerpf(0.3f, 1.0f, mg_clampf((mb->place - swap) / 0.15f, 0.0f, 1.0f)) : 1.0f;
-            draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop);
+            draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop, L->dress[L->table_bay].cover[L->seat_phys[i]]);
             const HMM_Mat4 mm = at_seat(L, seat, s->mug_rest), pm = at_seat(L, seat, s->pencil_rest);
             gfx_draw(g, L->mug, &mm, &room, 0);
             gfx_draw(g, L->pencil, &pm, &room, 0);
@@ -1176,7 +1434,9 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             HMM_Mat4 bk = sv.root, mg = sv.root;
             bk.Columns[3] = HMM_V4V(HMM_SubV3(sv.hand[1], HMM_MulM4V4(sv.root, HMM_V4(0.0f, 0.075f, 0.0f, 0.0f)).XYZ), 1.0f);
             mg.Columns[3] = HMM_V4V(HMM_SubV3(sv.hand[0], HMM_MulM4V4(sv.root, HMM_V4V(s->mug_grip, 0.0f)).XYZ), 1.0f);
-            gfx_draw(g, L->book_closed, &bk, &room, 0);
+            GfxMaterial bc = room;
+            bc.extra = cover_extra(L->dress[L->table_bay].cover[L->seat_phys[i]]);
+            gfx_draw(g, L->book_closed, &bk, &bc, 0);
             gfx_draw(g, L->mug, &mg, &room, 0);
         }
     }

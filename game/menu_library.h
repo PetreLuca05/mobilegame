@@ -11,6 +11,7 @@
 #include "lobby.h"
 #include "lib_move.h"
 #include "lib_nav.h"
+#include "lib_dressing.h"
 #include "platform/app.h"
 
 #define LIB_SEATS 4
@@ -98,6 +99,8 @@ typedef struct LibScene {
     } study;
     HMM_Vec3 mug_rest, mug_grip; /* life.mug: on the table (seat frame) and the handle from the hand */
     HMM_Vec3 pencil_rest;        /* life.fidget.notes.pencil_rest (seat frame) */
+    float lamp_light_alpha;      /* the table lamp's light pool: life.alpha.lamp_cone + 0.05 (the prototype) */
+    float globe_spin;            /* life.globe.spin_rad_s */
     float fov_deg;
     LibCam cam_menu, cam_creator;
     struct {
@@ -132,6 +135,7 @@ typedef struct LibMember {
     LibStudy study;
     /* what tests check (the library's clock, s): the walk in and the walk out */
     double t_join, t_seated, t_left, t_gone, t_shut;
+    double t_door_clear; /* after t_gone: the last moment a background NPC held the door (the shut is timed from then) */
     float door_max;      /* the door's angle while this walker passed it */
     float blend_seated;  /* its sit blend when it started studying (> 0.9: the book is open) */
     bool outside_first;  /* it appeared at door.outside */
@@ -161,6 +165,22 @@ typedef struct MenuLibrary {
     LibNpc npc[LIB_NPCS];
     LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
     uint32_t weld_in, weld_out; /* the meshes' vertices before / after welding at load (log) */
+    /* §5: every table is dressed from a seed (its lobby's host, or 9000 + 131 x bay with nobody at it) */
+    LibDressConfig dress_cfg;
+    bool dress_ok;
+    LibDressing dress[LIB_BAYS];
+    uint32_t my_seed;            /* my lobby's seed (my user id; the name before the first sign-in) */
+    int seat_phys[LIB_SEATS];    /* each member slot's seat at my table: seat_order[its place in the member list] */
+    int member_n[LIB_SEATS];     /* that place (host first) */
+    GfxMeshId table_lamp, table_lamp_light, clutter[LIB_DRESS_MAX_POOL]; /* clutter by dress_cfg.pool index (the globe: it spins) */
+    /* The tables' static dressing merged per row of bays (one toon draw and one light-pool draw per row), rebuilt into
+     * reserved meshes when a seed changes: the source soups, kept from the load */
+    struct { GfxVertex *v; uint32_t n; } src_lamp, src_light, src_item[LIB_DRESS_MAX_POOL];
+    GfxMeshId dress_mesh[2], light_mesh[2];
+    uint32_t dress_cap, light_cap;
+    GfxVertex *build;    /* the rebuild's buffer (max of the caps) */
+    uint32_t *build_idx; /* 0 1 2 ... */
+    GfxContext *gfx;
     LibNavQueue *queue; /* the NPCs' path requests, serviced once a frame within LIB_NAV_BUDGET_MS */
     bool no_nav;        /* --lib-no-nav: straight legs (the runner before the grid; perf A/B only) */
     HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */
@@ -186,6 +206,10 @@ typedef struct MenuLibrary {
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
 /* My table is in this bay (LIB-1 §5: my seed's bay): seats, table, books and the menu camera move there. */
 void menu_library_set_table(MenuLibrary *L, int bay);
+/* My lobby's seed (lib_seed_of the host's user id): dresses my table and orders its seats; the other tables keep theirs */
+void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed);
+/* A background NPC is walking through bay b's door (it holds the door open): tests */
+bool menu_library_npc_at_door(const MenuLibrary *L, int b);
 /* desktop pictures (--lib-guest B): a player seated at bay B's table, seat 1 (drawn like a seated reader, a player's skin) */
 void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look);
 /* LIB-1 step 6: the room stands on the island at `pos` (world, the pad's surface), its front (+z) facing

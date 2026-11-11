@@ -276,6 +276,9 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     p->rendered_max = s->rendered > p->rendered_max ? s->rendered : p->rendered_max;
     int th = device_thermal_state();
     p->thermal_worst = th > p->thermal_worst ? th : p->thermal_worst;
+    if (app->frame_dt > 0.025) { /* a late frame: when, to line up with the rest of the log */
+        mg_log_info("perf: late frame %.1f ms at %.2f s", (double)app->frame_dt * 1000.0, app->time - p->record_start);
+    }
     float mb = device_resident_mb();
     if (mb > p->resident_max + 0.5f && app->time - p->record_start > 1.0) { /* a new peak during the run: when, and the frame's time */
         mg_log_info("perf: footprint %.1f MB (was %.1f) at %.2f s, frame %.1f ms", (double)mb, (double)p->resident_max, app->time - p->record_start,

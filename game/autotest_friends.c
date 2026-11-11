@@ -659,7 +659,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (!g || g->t_gone <= 0.0 || g->t_shut <= 0.0) {
             return 0;
         }
-        if (g->t_shut - g->t_gone > 2.0) {
+        if (g->t_shut - SDL_max(g->t_gone, g->t_door_clear) > 2.0) { /* from when no background NPC holds the door */
             return fail_now(t, "library: the door did not shut within 2 s of the walk out");
         }
         mg_log_info("autotest friends: library: the kicked friend walked out in %.2f s, the door shut %.2f s after", g->t_gone - g->t_left, g->t_shut - g->t_gone);

@@ -1,0 +1,31 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct DrawFS
+{
+    float4 u_tint;
+    float4 u_params;
+    float4 u_light_index[2];
+    float4 u_draw_misc;
+};
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float4 i_col [[user(locn2)]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _22 [[buffer(0)]])
+{
+    PSMain_out out = {};
+    float _92 = fast::clamp(_22.u_tint.w, 0.0, 1.0);
+    out._entryPointOutput = float4((in.i_col.xyz * _22.u_tint.xyz) * _92, _92);
+    return out;
+}
+

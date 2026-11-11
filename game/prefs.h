@@ -20,6 +20,7 @@ typedef struct Prefs {
     bool has_profile_cache;
     bool profile_stale;     /* edited offline: push on the next sign-in */
     char cache_name[NET_NAME_LEN];
+    char cache_user_id[NET_ID_LEN]; /* LIB-1: my lobby's seed (its table's dressing) from the first menu frame */
     NetSkin cache_skin;
     /* stats that could not be flushed (offline) */
     bool has_stats_queue;

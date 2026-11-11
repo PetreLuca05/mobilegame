@@ -29,6 +29,7 @@ GfxMaterial mat_xray(HMM_Vec4 color, bool rim, bool always);
 GfxMaterial mat_toon(HMM_Vec4 color, float rim); /* matte */
 /* A whole-object fade (draw the mesh with both, same transform): its depth, then its colour at `alpha` over it */
 GfxMaterial mat_depth_only(void);
+GfxMaterial mat_alpha(HMM_Vec4 color); /* GFX_MAT_ALPHA: color.a is the opacity */
 GfxMaterial mat_toon_fade(HMM_Vec4 color, float alpha);
 GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss); /* gloss 0..1: specular spot */
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */

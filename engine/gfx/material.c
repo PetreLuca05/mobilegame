@@ -17,6 +17,7 @@ static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_XRAY] = {"mesh.vert", "xray.frag", 2, 1, 0, false, false, true, false, true},
     [GFX_MAT_DEPTH] = {"mesh.vert", "unlit.frag", 2, 1, 0, false, true, true, false, false, true},
     [GFX_MAT_TOON_FADE] = {"mesh.vert", "toon_fade.frag", 2, 2, 0, true, false, true},
+    [GFX_MAT_ALPHA] = {"mesh.vert", "alpha.frag", 2, 1, 0, true, false, false},
 };
 
 const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_programs[kind]; }
@@ -24,6 +25,12 @@ const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_progra
 GfxMaterial mat_unlit(HMM_Vec4 color)
 {
     GfxMaterial m = {GFX_MAT_UNLIT, color, HMM_V4(0, 0, 0, 0)};
+    return m;
+}
+
+GfxMaterial mat_alpha(HMM_Vec4 color)
+{
+    GfxMaterial m = {GFX_MAT_ALPHA, color, HMM_V4(0, 0, 0, 0)};
     return m;
 }
 

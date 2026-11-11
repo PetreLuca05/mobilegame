@@ -35,6 +35,7 @@ typedef struct GfxMeshRec {
     uint32_t index_count;
     int32_t vertex_offset;
     HMM_Vec3 bmin, bmax; /* model-space bounds, for light selection */
+    uint32_t vcap, icap; /* gfx_mesh_reserve: the room it may be updated into (0 = an ordinary mesh) */
 } GfxMeshRec;
 
 #define GFX_LIGHTS_PER_DRAW 8
@@ -1123,6 +1124,44 @@ void gfx_shutdown(GfxContext *g)
     g->dev = NULL;
 }
 
+GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indices)
+{
+    const uint32_t vbytes = max_verts * (uint32_t)sizeof(GfxVertex), ibytes = max_indices * (uint32_t)sizeof(uint32_t);
+    if (g->mesh_count >= GFX_MAX_MESHES || g->vb_used + vbytes > GFX_VB_BYTES || g->ib_used + ibytes > GFX_IB_BYTES || max_indices == 0) {
+        mg_log_error("gfx: mesh pool full reserving %u vertices (%u/%u vb bytes)", max_verts, g->vb_used, GFX_VB_BYTES);
+        return GFX_MESH_NONE;
+    }
+    GfxMeshRec *m = &g->meshes[g->mesh_count];
+    SDL_zerop(m);
+    m->vertex_offset = (int32_t)(g->vb_used / sizeof(GfxVertex));
+    m->first_index = g->ib_used / (uint32_t)sizeof(uint32_t);
+    m->index_count = 0; /* nothing to draw until the first update */
+    m->vcap = max_verts, m->icap = max_indices;
+    g->vb_used += vbytes;
+    g->ib_used += ibytes;
+    return (GfxMeshId)g->mesh_count++;
+}
+
+bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices, uint32_t index_count)
+{
+    if (id == GFX_MESH_NONE || id >= g->mesh_count) {
+        return false;
+    }
+    GfxMeshRec *m = &g->meshes[id];
+    if (vert_count > m->vcap || index_count > m->icap) {
+        mg_log_error("gfx: mesh %u update of %u vertices / %u indices over its reserve (%u / %u)", id, vert_count, index_count, m->vcap, m->icap);
+        return false;
+    }
+    SDL_WaitForGPUIdle(g->dev); /* no frame in flight still reads the old contents */
+    if (vert_count > 0 && (!upload_bytes(g, g->vb, (uint32_t)m->vertex_offset * (uint32_t)sizeof(GfxVertex), verts, vert_count * (uint32_t)sizeof(GfxVertex)) ||
+                           !upload_bytes(g, g->ib, m->first_index * (uint32_t)sizeof(uint32_t), indices, index_count * (uint32_t)sizeof(uint32_t)))) {
+        return false;
+    }
+    SDL_WaitForGPUIdle(g->dev); /* the staging buffers go now (gfx_settle_uploads) */
+    m->index_count = vert_count > 0 ? index_count : 0;
+    return true;
+}
+
 GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices,
                           uint32_t index_count)
 {
@@ -1223,8 +1262,9 @@ void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene) { g->scene = *sce
 
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat, uint32_t flags)
 {
-    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f) {
-        return; /* fully faded draws cost nothing */
+    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f ||
+        g->meshes[mesh].index_count == 0) {
+        return; /* fully faded draws (and an empty reserved mesh) cost nothing */
     }
     if (mat->kind == GFX_MAT_DEPTH || mat->kind == GFX_MAT_TOON_FADE) { /* the blended pipeline: the Maps move's shell only */
         if (!g->fade_allowed) {
@@ -1415,7 +1455,7 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
     const float dist = sqrtf(d->sort);
     const uint64_t near_first = (uint64_t)mg_clampf(dist * 256.0f, 0.0f, 65535.0f);
     uint64_t a, b;
-    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST) {
+    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_ALPHA) {
         a = (d->flags & GFX_DRAW_GROUND) ? 0u : 65535u - near_first;
         b = d->mesh;
     } else {

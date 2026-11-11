@@ -216,6 +216,9 @@ static void watch(LibraryTest *t, const MenuLibrary *L, double now)
     if (t->left > 0.0 && t->gone <= 0.0 && mb->state == LM_EMPTY) {
         t->gone = now;
     }
+    if (t->gone > 0.0 && menu_library_npc_at_door(L, L->table_bay)) { /* a background NPC walking through holds it open: */
+        t->door_clear = now;                                          /* the 2 s count from when the door is clear */
+    }
     if (t->gone > 0.0 && t->shut <= 0.0 && L->door_angle < 0.05f) {
         t->shut = now;
     }
@@ -344,6 +347,26 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             return failf(t, "menu: %d NPCs present, %d loaded, %d in library.scene.json (want all, >= 20)", npcs, L->sc.npc_n, s_scene_npcs);
         }
         mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0, %d NPCs present (ok)", npcs);
+        { /* §5: my table from my lobby's seed: the generator's result, the hero in seat_order[0], every other table dressed */
+            const LibDressing *d = &L->dress[L->table_bay];
+            LibDressing want;
+            lib_dress(&L->dress_cfg, L->my_seed, &want);
+            if (!L->dress_ok || d->seed != L->my_seed || SDL_memcmp(d->seat_order, want.seat_order, sizeof(want.seat_order)) != 0 ||
+                d->item_count != want.item_count || d->item_count < L->dress_cfg.count_min || d->item_count > L->dress_cfg.count_max) {
+                return failf(t, "dressing: my table is not the seed's (seed %08x, %d things)", L->my_seed, d->item_count);
+            }
+            const LibSeat *hero_seat = &L->sc.seats[d->seat_order[0]];
+            if (HMM_LenV2(HMM_SubV2(L->tseats[0].pos, HMM_AddV2(hero_seat->pos, HMM_V2(L->table_x, L->table_z)))) > 1e-3f) {
+                return failf(t, "dressing: the hero is not in seat_order[0] (%d)", d->seat_order[0]);
+            }
+            for (int b = 0; b < LIB_BAYS; b++) {
+                if (b != L->table_bay && L->dress[b].seed != lib_empty_table_seed(b)) {
+                    return failf(t, "dressing: bay %d's empty table has seed %08x (want %08x)", b, L->dress[b].seed, lib_empty_table_seed(b));
+                }
+            }
+            mg_log_info("autotest library: 3 dressing: my table (bay %d) from seed %08x: seats %d %d %d %d, %d things, the hero in seat %d; the other tables from 9000 + 131 x bay (ok)",
+                        L->table_bay, L->my_seed, d->seat_order[0], d->seat_order[1], d->seat_order[2], d->seat_order[3], d->item_count, d->seat_order[0]);
+        }
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_menu");
         t->stage = 2;
         return 0;
@@ -373,8 +396,8 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         return 0;
     case 4: /* ... and leaves */
         if (t->shut <= 0.0) {
-            if (t->gone > 0.0 && now - t->gone > 2.0) {
-                return failf(t, "leave: the door still open (%.2f rad) 2 s after the friend left", (double)L->door_angle);
+            if (t->gone > 0.0 && now - fmax(t->gone, t->door_clear) > 2.0) {
+                return failf(t, "leave: the door still open (%.2f rad) 2 s after the friend left (and no NPC at it)", (double)L->door_angle);
             }
             if (t->left > 0.0 && now - t->left > 15.0) {
                 return failf(t, "leave: not gone 15 s after leaving");

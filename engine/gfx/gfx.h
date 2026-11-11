@@ -61,6 +61,8 @@ typedef enum GfxMaterialKind {
     GFX_MAT_DEPTH,    /* depth only, no colour: the first half of a whole-object fade (drawn after everything opaque) */
     GFX_MAT_TOON_FADE, /* toon, alpha-blended at 1 - hide over the depth GFX_MAT_DEPTH left: each pixel blends the object's
                         * nearest surface once (a true fade, no screen-door pattern) */
+    GFX_MAT_ALPHA,    /* unlit vertex colour x tint, alpha tint.a, blended (premultiplied), no depth write, back to front:
+                       * light pools and cones, glass (LIB-1 alpha meshes); not lit, so no band to flip */
     GFX_MAT_COUNT
 } GfxMaterialKind;
 
@@ -205,6 +207,10 @@ void gfx_allow_fade(GfxContext *g, bool on);
  * (0.2-0.8 ms on the Mac) so the uploads' staging buffers are freed now. Otherwise Metal keeps them as reclaimable
  * driver memory that still counts in the footprint for a while: 5-12 MB, run to run. */
 void gfx_settle_uploads(GfxContext *g);
+/* A mesh that is rebuilt now and then (LIB-1: a lobby's table dressing) without growing the pools: reserve room once,
+ * then update it in place (it waits for the GPU: not for every frame). Draws nothing until the first update. */
+GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indices);
+bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices, uint32_t index_count);
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat,
               uint32_t flags);
 /* A slice of a mesh: `first` and `count` are indices inside it. */
