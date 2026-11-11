@@ -206,11 +206,11 @@ static void watch(LibraryTest *t, const MenuLibrary *L, double now)
     if (walking && HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < 0.5f) {
         t->door_max = fmaxf(t->door_max, L->door_angle);
     }
-    if (mb->state == LM_STUDY && t->seated <= 0.0) {
+    if ((mb->state == LM_SETTLE || mb->state == LM_STUDY) && t->seated <= 0.0) { /* seated: the sit done (then it settles) */
         t->seated = now;
         t->open_at_seat = mb->blend;
     }
-    if (t->seated > 0.0 && t->left <= 0.0 && (mb->state == LM_STAND || mb->state == LM_WALK_OUT)) {
+    if (t->seated > 0.0 && t->left <= 0.0 && (mb->state == LM_PACK || mb->state == LM_STAND || mb->state == LM_WALK_OUT)) {
         t->left = now;
     }
     if (t->left > 0.0 && t->gone <= 0.0 && mb->state == LM_EMPTY) {
@@ -248,16 +248,33 @@ static bool tap(LibraryTest *t, MgApp *app, const AutotestProbe *p, const char *
 static int move_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out)
 {
     const float dt = (p->move_t - t->prev_t) * L->sc.transition.duration_s;
-    if (t->frames > 0 && dt > 1e-5f) {
-        const float speed = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)) / dt;
-        if (t->frames > 1 && speed > 1.5f * t->prev_speed + 0.6f) {
+    if (p->move_state == 2 && t->frames < 10) { /* the first frames of every Back: what the camera and the clocks did */
+        mg_log_info("autotest library: back frame %d: frame_dt %.4f move t %.4f eye %.3f %.3f %.3f d %.4f m", t->frames, (double)p->frame_dt,
+                    (double)p->move_t, (double)p->cam_eye.X, (double)p->cam_eye.Y, (double)p->cam_eye.Z,
+                    t->frames ? (double)HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)) : 0.0);
+    }
+    /* a step is judged over at least half a frame of the move's clock: the frame after a screenshot stall and the last
+     * frame (the clock clamped to 1) can advance it by 0.3 ms, and float noise on an eye 700 m out over that reads as speed */
+    const float min_step = 0.5f / 60.0f;
+    /* a picture's capture stalls a frame (CLAUDE.md): the two frames after it are not judged, and the first step after
+     * them only sets the new baseline speed; the timed pass takes no pictures and judges every frame */
+    const bool after_shot = t->shots > 0 && t->frames - t->shot_frame <= 2;
+    if (after_shot) {
+        t->rebase = true;
+    }
+    if (t->frames > 0 && dt >= min_step && !after_shot) {
+        /* in camera distances per second: the same smooth curve moves 8x the metres from an island's overview (800 m out)
+         * as from a hospital (100 m); a stale eye or a long frame still spikes at any distance. 0.06 = 0.6 m/s at the menu's 10 m */
+        const float speed = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)) / dt / fmaxf(p->cam_dist, 1e-3f);
+        if (t->frames > 1 && !t->rebase && speed > 1.5f * t->prev_speed + 0.06f) {
             t->worst_jump = fmaxf(t->worst_jump, speed - 1.5f * t->prev_speed);
-            mg_log_info("autotest library: jump at frame %d (t %.3f): %.4f m in %.4f s, %.2f m/s after %.2f", t->frames, (double)p->move_t,
+            mg_log_info("autotest library: jump at frame %d (t %.3f): %.4f m in %.4f s, %.4f dist/s after %.4f", t->frames, (double)p->move_t,
                         (double)HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)), (double)dt, (double)speed, (double)t->prev_speed);
         }
         t->prev_speed = speed;
+        t->rebase = false;
     }
-    if (dt > 1e-5f || t->frames == 0) {
+    if (dt >= min_step || t->frames == 0) {
         t->prev_eye = p->cam_eye;
         t->prev_t = p->move_t;
     }
@@ -269,6 +286,7 @@ static int move_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary 
     if (t->shots < 5 && p->move_t >= marks[t->shots] && p->move_state == 1) {
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_move_%03d", (int)(marks[t->shots] * 100.0f + 0.5f));
         t->shots++;
+        t->shot_frame = t->frames;
     }
     return 0;
 }
@@ -374,7 +392,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             return now - (t->second ? t->at : t->shut) > 10.0 ? failf(t, "maps: the row did not take the tap (preloaded? %d)", p->wm != NULL) : 0;
         }
         t->rows_before = p->ui ? 1 : 0;
-        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f;
+        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f, t->shot_frame = -100;
         t->shots = t->second ? 5 : 0; /* the second Maps takes no pictures: its wall-clock time is measured */
         t->back_took = 0.0;
         t->stage = 6;
@@ -411,7 +429,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         { /* the frame after: the map's own camera */
             const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
             const double took = now - t->move_start;
-            mg_log_info("autotest library: 7 Maps%s: %d frames in %.3f s%s, landing step %.4f, worst jump %.3f m/s, %d frames without the island",
+            mg_log_info("autotest library: 7 Maps%s: %d frames in %.3f s%s, landing step %.4f, worst jump %.4f camera distances/s, %d frames without the island",
                         t->second ? " (timed)" : " (pictures)", t->frames, took, t->second ? " (want 3.0 +- 1 frame)" : "", (double)land, (double)t->worst_jump,
                         t->empty_frames);
             if ((t->second && fabs(took - L->sc.transition.duration_s) > 1.5 / 60.0) || t->worst_jump > 0.0f || t->empty_frames > 0 || land > 0.05f ||
@@ -430,7 +448,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (!tap(t, app, p, "wm_back", now)) {
             return now - t->at > 6.0 ? failf(t, "back: the map's Back did not take the tap") : 0;
         }
-        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f;
+        t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f, t->shot_frame = -100;
         t->stage = 8;
         return 0;
     case 8:
@@ -452,7 +470,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         {
             const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
             const double took = t->back_took;
-            mg_log_info("autotest library: 8 Back: %d frames in %.3f s (want %.1f +- 1 frame), worst jump %.3f m/s, the menu camera %.4f from where the move ended, hero %s, %d friends seated",
+            mg_log_info("autotest library: 8 Back: %d frames in %.3f s (want %.1f +- 1 frame), worst jump %.4f camera distances/s, the menu camera %.4f from where the move ended, hero %s, %d friends seated",
                         t->frames, took, (double)L->sc.transition.duration_s, (double)t->worst_jump, (double)land, L->seat[0].state == LM_STUDY ? "studying" : "NOT studying",
                         (L->seat[1].state == LM_STUDY) + (L->seat[2].state == LM_STUDY) + (L->seat[3].state == LM_STUDY));
             if (fabs(took - L->sc.transition.duration_s) > 1.5 / 60.0 || t->worst_jump > 0.0f || land > 0.05f || L->seat[0].state != LM_STUDY ||

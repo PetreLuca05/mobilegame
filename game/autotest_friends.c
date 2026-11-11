@@ -622,7 +622,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         int n = 0;
         for (int k = 0; k < LIB_SEATS && p->library; k++) {
             const int st = p->library->seat[k].state;
-            n += st == LM_WALK_IN || st == LM_SIT || st == LM_STUDY ? 1 : 0;
+            n += st == LM_WALK_IN || st == LM_SIT || st == LM_SETTLE || st == LM_STUDY ? 1 : 0;
         }
         done = n == (int)o->n;
         break;
@@ -633,7 +633,7 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             if (mb->state == LM_EMPTY) {
                 continue;
             }
-            if (mb->state != LM_STUDY) {
+            if (mb->state != LM_STUDY && mb->state != LM_SETTLE) { /* seated (settling counts) */
                 if (mb->t_join > 0.0 && p->library->clock - mb->t_join > 6.0) {
                     return fail_now(t, "library: a friend is not seated 6 s after joining");
                 }

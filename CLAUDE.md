@@ -531,6 +531,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
 
 - `tools/hooks/pre-commit` (`git config core.hooksPath tools/hooks`) runs `tools/precommit.sh`: it builds exactly what is staged for desktop and refuses the commit on any error or warning. Never use `--no-verify`.
 - Before any `checkout`, `reset`, `stash drop`, `clean` or branch switch, commit the working tree as `wip: <step>` (squash later).
+- Every background agent works in its own git worktree and branch, no exceptions (never in the main tree); merge them one at a time and run the affected autotests + ctest after each merge.
 
 ## Conventions
 

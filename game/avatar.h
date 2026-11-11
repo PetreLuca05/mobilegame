@@ -120,6 +120,8 @@ typedef struct AvatarPose {
     float browse, push, look;   /* targets 0 / 1, eased by avatar_animate */
     float lean;       /* extra forward lean of the body about its base, radians (seated activities) */
     float hands_w;    /* 0 .. 1: the seated hands go to hand_l / hand_r (avatar frame) */
+    float carry_w;    /* 0 .. 1: the standing hands go to carry_l / carry_r (avatar frame, y above the body base), no swing */
+    HMM_Vec3 carry_l, carry_r;
     HMM_Vec3 hand_l, hand_r;
     float breath_k;   /* 0 = 1 */
     float body_yaw;   /* the body and head turn about the body base (+ to its left); the hands stay */

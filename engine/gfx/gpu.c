@@ -24,8 +24,8 @@
 
 #define GFX_MAX_MESHES 512
 #define GFX_MAX_DRAWS 16384
-#define GFX_VB_BYTES (12u << 20) /* LIB-1: the library hall is ~2.9 MB of flat-shaded vertices */
-#define GFX_IB_BYTES (6u << 20)
+#define GFX_VB_BYTES (7u << 20) /* the menu holds 4.4 MB (the 2 x 2 library hall 3.1, the islands, the avatar); a game adds the hospital */
+#define GFX_IB_BYTES (2u << 20) /* 0.7 MB in the menu */
 #define GFX_MAX_UI 8192 /* UI instances per frame (glyphs + shapes + heads) */
 #define GFX_MAX_SHADERS 32
 #define GFX_PREVIEW_PX 512

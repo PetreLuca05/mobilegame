@@ -254,11 +254,17 @@ typedef struct Game {
     bool move_entered;     /* the map's screen is up (t >= 0.9) */
     bool lib_placed;
     HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
+    float last_cam_dist;   /* the move's camera distance to its target (tests) */
     bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
     double dissolve_t0;    /* Reduced motion: the 300 ms cross-dissolve's start (0 none) */
     bool force_reduced;    /* --ui-motion reduced (not saved) */
     bool force_full;       /* perf menu_to_map: the move, whatever the profile says (not saved) */
     int move_demo;         /* --lib-move-demo: Maps at 3 s, Back at 9 s (pictures); 1 armed, 2 out, 3 back; 4 perf menu_to_map (looped) */
+    struct {               /* --lib-back-loop N: Maps + Back N times, every Back's camera checked (the library test's jump rule) */
+        int want, done, bad, frame;
+        HMM_Vec3 prev_eye;
+        float prev_t, prev_speed, worst;
+    } back_loop;
     int play_book, play_level; /* this game's island and level (the save's) */
     char maps_tag[48];     /* "Kumar 23%", recomputed when the map opens and when a hospital is left */
     bool keep_save_pos;    /* Continue: ignore the room's first spawn */
@@ -560,6 +566,12 @@ bool game_init(MgApp *app)
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
         if (arg_value(app->argc, app->argv, "--lib-bay")) { /* desktop: my table in another bay of the hall (pictures) */
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
+        }
+        g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
+        if (arg_value(app->argc, app->argv, "--lib-back-loop")) { /* Maps + Back N times, every Back checked */
+            g->back_loop.want = SDL_atoi(arg_value(app->argc, app->argv, "--lib-back-loop"));
+            g->move_demo = 4;
+            g->force_full = true;
         }
         if (arg_value(app->argc, app->argv, "--lib-guest")) { /* desktop: a second player seated at another bay's table (pictures) */
             const AvatarLook guest = avatar_look_from_skin((NetSkin){.skin = 2, .hair = HAIR_SHORT, .hair_color = 3, .suit = 5});
@@ -1927,9 +1939,35 @@ static void move_frame(Game *g, MgApp *app)
     }
     g->view_proj = HMM_MulM4(proj, view);
     g->last_eye = eye;
+    g->last_cam_dist = c.dist;
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
+    if (g->back_loop.want > 0 && g->move_state == 2) { /* --lib-back-loop: the camera per frame of the move's own clock */
+        const int f = g->back_loop.frame++;
+        const float mdt = (g->move.t - g->back_loop.prev_t) * g->move.duration;
+        /* the move's continuity in camera distances per second: a start 800 m out (an island's overview) moves 8x the
+         * metres of one 100 m out on the same smooth curve; the 0.6 margin of the menu's ~10 m becomes 0.06 */
+        const float speed = f > 0 && mdt > 1e-5f ? HMM_LenV3(HMM_SubV3(eye, g->back_loop.prev_eye)) / mdt / mg_maxf(c.dist, 1e-3f) : 0.0f;
+        if (f < 10) {
+            mg_log_info("back %d frame %d: frame_dt %.4f move t %.4f e %.4f eye %.3f %.3f %.3f dist %.1f speed %.4f dist/s", g->back_loop.done, f, (double)app->frame_dt,
+                        (double)g->move.t, (double)e, (double)eye.X, (double)eye.Y, (double)eye.Z, (double)c.dist, (double)speed);
+        }
+        const bool judged = f == 0 || mdt >= 0.5f / 60.0f; /* as the library test: at least half a frame of the move's clock */
+        if (judged && f > 1 && speed > 1.5f * g->back_loop.prev_speed + 0.06f) {
+            const float jump = speed - 1.5f * g->back_loop.prev_speed;
+            g->back_loop.worst = mg_maxf(g->back_loop.worst, jump);
+            mg_log_info("back %d: JUMP at frame %d: %.4f dist/s after %.4f (frame_dt %.4f)", g->back_loop.done, f, (double)speed, (double)g->back_loop.prev_speed,
+                        (double)app->frame_dt);
+            g->back_loop.bad |= 1 << 30;
+        }
+        if (judged) {
+            g->back_loop.prev_eye = eye, g->back_loop.prev_t = g->move.t;
+            if (f > 0) {
+                g->back_loop.prev_speed = speed;
+            }
+        }
+    }
     const double age = app->time - g->move_t0;
     if (age < k_ui.exit_s) { /* the screen we left plays its exit: slides back, fades */
         const float u = (float)(age / k_ui.exit_s);
@@ -1954,6 +1992,17 @@ static void move_frame(Game *g, MgApp *app)
             g->ui_screen_key = -1; /* the menu's UI enters */
         }
         mg_log_info("library: move %s done in %.2f s", g->move_state == 1 ? "to the map" : "back", age);
+        if (g->back_loop.want > 0 && g->move_state == 2) {
+            const bool jumped = (g->back_loop.bad & (1 << 30)) != 0;
+            g->back_loop.bad = (g->back_loop.bad & ~(1 << 30)) + (jumped ? 1 : 0);
+            g->back_loop.done++;
+            g->back_loop.frame = 0, g->back_loop.prev_speed = 0.0f;
+            if (g->back_loop.done >= g->back_loop.want) {
+                mg_log_info("back loop: %d of %d Back moves clean, worst jump %.4f camera distances/s", g->back_loop.done - g->back_loop.bad, g->back_loop.done,
+                            (double)g->back_loop.worst);
+                app->quit_requested = true;
+            }
+        }
         g->move_state = 0;
     }
 }
@@ -3233,6 +3282,7 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.move_state = g->move_state;
     probe.move_t = g->move.t;
     probe.cam_eye = g->last_eye;
+    probe.cam_dist = g->last_cam_dist;
     probe.islands_drawn = g->wm.islands_drawn;
     probe.frame_dt = (float)app->frame_dt;
     probe.dissolve = g->dissolve_t0 > 0.0 ? 1.0f - (float)((app->time - g->dissolve_t0) / DISSOLVE_S) : 0.0f;

@@ -50,8 +50,10 @@ typedef struct LibNpc {
     float yaw_deg, cart_yaw_deg;
     AvatarAnim anim;
     LibStudy study;
-    LibPath path; /* this leg on the hall's walk grid (n 0: not searched yet) */
+    LibPath path; /* the leg being walked, or the next one (searched while waiting at a post) */
     int pi;       /* the waypoint walked to */
+    uint32_t ticket; /* the next leg's pending path request, 0 none */
+    bool next_ready; /* path holds the next leg */
 } LibNpc;
 
 typedef struct LibSeat {
@@ -89,7 +91,13 @@ typedef struct LibScene {
         float seat_y, stand_y, lean, head_pitch, head_yaw, read_s[2], turn_s, reach_end, leaf_start, leaf_end, release_theta,
             leaf_lag, grab_z, grab_lift, sit_s, stand_s, walk_speed, chair_slide;
         HMM_Vec3 hand_left, hand_right;
+        struct { /* §4: carried things, settle and pack (avatar frame) */
+            HMM_Vec3 carry_left, carry_right, seated_left, seated_right, book_hand;
+            float place_s, pack_s, hands_arrive, swap_at, hands_leave;
+        } items;
     } study;
+    HMM_Vec3 mug_rest, mug_grip; /* life.mug: on the table (seat frame) and the handle from the hand */
+    HMM_Vec3 pencil_rest;        /* life.fidget.notes.pencil_rest (seat frame) */
     float fov_deg;
     LibCam cam_menu, cam_creator;
     struct {
@@ -103,7 +111,8 @@ typedef struct LibScene {
 } LibScene;
 
 /* Who is at a seat: seat 0 is always the local player, 1..3 the lobby's other members (presentation only). */
-typedef enum { LM_EMPTY, LM_WALK_IN, LM_SIT, LM_STUDY, LM_STAND, LM_WALK_OUT } LibMemberState;
+/* LM_SETTLE (after the sit) puts the book, mug and pencil on the table; LM_PACK (before standing) takes them (§4) */
+typedef enum { LM_EMPTY, LM_WALK_IN, LM_SIT, LM_STUDY, LM_STAND, LM_WALK_OUT, LM_SETTLE, LM_PACK } LibMemberState;
 
 typedef struct LibMember {
     LibMemberState state;
@@ -115,6 +124,7 @@ typedef struct LibMember {
     float blend;   /* sit blend 0 standing at `stand` .. 1 seated */
     float chair;   /* the chair slid back 0 .. 1 x chair_slide */
     float study_w; /* 0 sits up .. 1 bent over the book */
+    float place;   /* settle / pack progress: 0 the things are carried .. 1 on the table */
     HMM_Vec2 pos;  /* library x z */
     HMM_Vec2 vel;
     float yaw_deg;
@@ -130,7 +140,7 @@ typedef struct LibMember {
 typedef struct MenuLibrary {
     bool ok;
     LibScene sc;
-    GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b;
+    GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b, mug, pencil;
     float bay_x[LIB_BAYS], bay_z[LIB_BAYS]; /* hall.bx / bz: each bay's origin (the bay meshes are placed already) */
     int home_bay;
     /* my table: the scene's seats and table (local to a bay) shifted to its bay */
@@ -150,8 +160,13 @@ typedef struct MenuLibrary {
     LibMember seat[LIB_SEATS];
     LibNpc npc[LIB_NPCS];
     LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
+    LibNavQueue *queue; /* the NPCs' path requests, serviced once a frame within LIB_NAV_BUDGET_MS */
+    bool no_nav;        /* --lib-no-nav: straight legs (the runner before the grid; perf A/B only) */
     HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
+    float screen_h_pt;        /* the menu camera's view height (pt), for the NPCs' LOD */
+    uint8_t npc_lod[LIB_NPCS]; /* this frame: 0 full, 1 coarse (npc_lods) */
+    int lod_counts[2];        /* NPCs drawn at LOD0 / LOD1 this frame (perf, tests) */
     bool creator;      /* the Locker is open */
     float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
     float creator_l;   /* pt: the creator panel's right edge */

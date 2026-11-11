@@ -48,6 +48,8 @@ typedef struct LibraryTest {
     float dissolve_first;
     /* every NPC, every menu frame: on a walkable cell, moving or posted as its route says */
     int npc_frames, npc_bad;
+    int shot_frame; /* the move frame a picture was taken on (its capture stalls the next frame: not judged) */
+    bool rebase;    /* the next judged step only sets the baseline speed (after a picture) */
     char npc_why[160];
     char why[200];
 } LibraryTest;

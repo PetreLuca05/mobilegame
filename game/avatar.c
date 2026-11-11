@@ -613,6 +613,11 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     stand[1] = HMM_LerpV3(stand[1], a->browse, bh);
     stand[0] = HMM_LerpV3(stand[0], a->push, HMM_V3(r->push_hands.X, r->push_hands.Y, r->push_hands.Z));
     stand[1] = HMM_LerpV3(stand[1], a->push, HMM_V3(-r->push_hands.X, r->push_hands.Y, r->push_hands.Z));
+    if (p->carry_w > 0.0f) { /* LIB-1 §4: a book and a mug carried, no swing */
+        const float cb = r->stand_y + bob;
+        stand[0] = HMM_LerpV3(stand[0], p->carry_w, HMM_V3(p->carry_l.X / kc, cb + p->carry_l.Y / kc, p->carry_l.Z / kc));
+        stand[1] = HMM_LerpV3(stand[1], p->carry_w, HMM_V3(p->carry_r.X / kc, cb + p->carry_r.Y / kc, p->carry_r.Z / kc));
+    }
     const float lb = seat + bob;
     HMM_Vec3 seated[2] = {HMM_V3(LAP_X, lb + LAP_Y + up, LAP_Z), HMM_V3(-LAP_X, lb + LAP_Y + up, LAP_Z)};
     if (p->hands_w > 0.0f) {
