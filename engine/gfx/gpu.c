@@ -214,6 +214,7 @@ struct GfxContext {
     SDL_GPUTexture *preview_color, *preview_msaa, *preview_depth;
     SDL_GPUTexture *head_atlas;                  /* 8 x 8 cells of GFX_HEAD_PX */
     SDL_GPUTexture *head_color, *head_msaa, *head_depth; /* room for GFX_HEADS_PER_FRAME cells */
+    bool head_atlas_cleared;                     /* the atlas is cleared on the first frame, before anything samples it */
     ShaderCacheEntry shaders[GFX_MAX_SHADERS];
     uint32_t shader_count;
 
@@ -740,6 +741,25 @@ void gfx_set_msaa(GfxContext *g, int samples) { g->msaa_wanted = samples; }
 void gfx_set_instancing(GfxContext *g, bool on) { g->no_instancing = !on; }
 
 /* Between frames' GPU work: pipelines and targets depend on the sample count. */
+/* The head-icon targets, made outside the frame loop (at init and after an MSAA change): a portrait asked for in a
+ * level's first frames must not allocate there. */
+static void ensure_head_targets(GfxContext *g)
+{
+    const uint32_t tw = GFX_HEAD_PX * GFX_HEADS_PER_FRAME, th = GFX_HEAD_PX;
+    const SDL_GPUTextureUsageFlags rt = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    if (!g->head_atlas) {
+        g->head_atlas = make_texture(g, g->color_fmt, GFX_HEAD_PX * 8, GFX_HEAD_PX * 8, rt, SDL_GPU_SAMPLECOUNT_1);
+        g->head_atlas_cleared = false;
+    }
+    if (!g->head_color) {
+        g->head_color = make_texture(g, g->color_fmt, tw, th, rt, SDL_GPU_SAMPLECOUNT_1);
+        if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
+            g->head_msaa = make_texture(g, g->color_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
+        }
+        g->head_depth = make_texture(g, g->depth_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
+    }
+}
+
 static void apply_msaa(GfxContext *g)
 {
     SDL_GPUSampleCount want = SDL_GPU_SAMPLECOUNT_1;
@@ -767,6 +787,7 @@ static void apply_msaa(GfxContext *g)
     if (!create_pipelines(g)) {
         mg_log_error("gfx: pipelines failed after an MSAA change");
     }
+    ensure_head_targets(g);
     mg_log_info("gfx: MSAA %dx", sample_count(want));
 }
 
@@ -938,6 +959,7 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     if (!create_pipelines(g)) {
         return false;
     }
+    ensure_head_targets(g);
 
     SDL_GPUBufferCreateInfo vbci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_VB_BYTES, 0};
     SDL_GPUBufferCreateInfo ibci = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_IB_BYTES, 0};
@@ -2251,32 +2273,21 @@ static void render_preview(GfxContext *g)
 /* Head icons waiting this frame: one small pass, then each is copied to its atlas cell. Returns the draws. */
 static uint32_t render_heads(GfxContext *g)
 {
+    if (g->head_atlas && !g->head_atlas_cleared) { /* never sampled before it is clear */
+        SDL_GPUColorTargetInfo clear;
+        SDL_zero(clear);
+        clear.texture = g->head_atlas;
+        clear.load_op = SDL_GPU_LOADOP_CLEAR;
+        clear.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_EndGPURenderPass(SDL_BeginGPURenderPass(g->cmd, &clear, 1, NULL));
+        g->head_atlas_cleared = true;
+    }
     int jobs = 0;
     for (int i = 0; i < g->inset_count; i++) {
         jobs += g->insets[i].head_cell >= 0 ? 1 : 0;
     }
     if (jobs == 0) {
         return 0;
-    }
-    const uint32_t tw = GFX_HEAD_PX * GFX_HEADS_PER_FRAME, th = GFX_HEAD_PX;
-    const SDL_GPUTextureUsageFlags rt = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    if (!g->head_atlas) {
-        g->head_atlas = make_texture(g, g->color_fmt, GFX_HEAD_PX * 8, GFX_HEAD_PX * 8, rt, SDL_GPU_SAMPLECOUNT_1);
-        if (g->head_atlas) { /* never sampled before it is clear */
-            SDL_GPUColorTargetInfo clear;
-            SDL_zero(clear);
-            clear.texture = g->head_atlas;
-            clear.load_op = SDL_GPU_LOADOP_CLEAR;
-            clear.store_op = SDL_GPU_STOREOP_STORE;
-            SDL_EndGPURenderPass(SDL_BeginGPURenderPass(g->cmd, &clear, 1, NULL));
-        }
-    }
-    if (!g->head_color) {
-        g->head_color = make_texture(g, g->color_fmt, tw, th, rt, SDL_GPU_SAMPLECOUNT_1);
-        if (g->msaa != SDL_GPU_SAMPLECOUNT_1) {
-            g->head_msaa = make_texture(g, g->color_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, g->msaa);
-        }
-        g->head_depth = make_texture(g, g->depth_fmt, tw, th, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, g->msaa);
     }
     if (!g->head_atlas || !g->head_color || !g->head_depth || (g->msaa != SDL_GPU_SAMPLECOUNT_1 && !g->head_msaa)) {
         return 0;
@@ -2661,15 +2672,14 @@ static void frame_end(GfxContext *g)
 
 void gfx_frame_end(GfxContext *g)
 {
-    const bool shot = g->shot_path[0] != 0; /* readback, PNG and its target texture may allocate */
-    if (shot) {
-        prof_allocs_exempt(true);
-    }
+    /* Exempt from the frame-loop allocation count (still counted apart, prof_allocs_exempt_run): a screenshot's readback
+     * and PNG, and SDL GPU's own bookkeeping: Metal's per-command-buffer tracking arrays (buffers, uniform buffers,
+     * textures bound) grow with realloc the first time a frame binds more than any frame before, a bounded one-off
+     * growth inside SDL. The encoding here draws from arenas and allocates nothing itself. */
+    prof_allocs_exempt(true);
     frame_end(g);
     g->ring++;
-    if (shot) {
-        prof_allocs_exempt(false);
-    }
+    prof_allocs_exempt(false);
 }
 
 void gfx_request_screenshot(GfxContext *g, const char *path)
