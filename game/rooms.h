@@ -29,9 +29,9 @@ enum { SLOT_TAGS(X) };
 #define SLOT_NONE 0xFFFFu
 #define SLOT_PAEDIATRIC 1u /* a child may use it */
 
-#define ROOMS_MAX 48
-#define ROOM_DOORS_MAX 48
-#define SLOTS_MAX 192
+#define ROOMS_MAX 128     /* MAP-2 institute: 85 rooms + 27 corridors + the yard */
+#define ROOM_DOORS_MAX 192 /* its 86 doors + corridor passages */
+#define SLOTS_MAX 384
 
 typedef struct Slot {
     float x, z;           /* the walkable point an NPC goes to */

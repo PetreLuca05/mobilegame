@@ -9,7 +9,8 @@
 #include "physics/collide.h"
 
 #define NAV_CELL 0.25f
-#define NAV_MAX_GRIDS 4
+#define NAV_MAX_GRIDS 5 /* MAP-2 institute: G (+ yard), 1, 2, 3, roof */
+#define NAV_MAX_CARS 4  /* lift cars flagged NAV_ELEVATOR (paths ride `car`) */
 #define NAV_MAX_POINTS 128
 #define NAV_UNREACHABLE (-1)
 
@@ -31,7 +32,9 @@ typedef struct NavBakeDesc {
     NavGridDesc grids[NAV_MAX_GRIDS];
     int grid_count;
     float footprint[4]; /* x0, z0, x1, z1: inside it is not outdoors */
-    float car[4];       /* x0, z0, x1, z1 of the elevator car */
+    float car[4];       /* x0, z0, x1, z1 of the elevator car the paths ride */
+    float cars[NAV_MAX_CARS][4]; /* every car (several lifts): their cells are NAV_ELEVATOR too */
+    int car_count;
     float radius, height, step;
 } NavBakeDesc;
 

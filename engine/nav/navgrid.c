@@ -83,6 +83,12 @@ static void bake_grid(NavGrid *g, Cell *cells, const ColWorld *world, const NavB
                 if (wx >= nb->car[0] && wx <= nb->car[2] && wz >= nb->car[1] && wz <= nb->car[3]) {
                     f |= NAV_ELEVATOR;
                 }
+                for (int k = 0; k < nb->car_count && k < NAV_MAX_CARS; k++) {
+                    const float *cr = nb->cars[k];
+                    if (wx >= cr[0] && wx <= cr[2] && wz >= cr[1] && wz <= cr[3]) {
+                        f |= NAV_ELEVATOR;
+                    }
+                }
             }
             g->flags[z * d->cols + x] = f;
         }

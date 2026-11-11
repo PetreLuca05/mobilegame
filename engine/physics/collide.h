@@ -5,7 +5,7 @@
 
 #include "core/mg_types.h"
 
-#define COL_MAX_BOXES 1024
+#define COL_MAX_BOXES 4096 /* MAP-2 institute: walls, furniture, site (~3,000); 4096 x 84 B = 344 KB */
 
 typedef struct ColBox {
     HMM_Vec3 center;

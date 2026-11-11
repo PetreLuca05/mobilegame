@@ -16,8 +16,8 @@ option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store buil
 # without it the provisioning profile rejects the entitlement.
 option(MG_TEST_AUTH "--autotest link: email + password stand in for the ID-token grant (Debug test builds only)" OFF)
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
-set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
-set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
+set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room) | institute (MAP-2, from content/gastro/institute.map)")
+set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom institute)
 set(MG_RENDER "minimal" CACHE STRING
     "Renderer: minimal (one directional light, no shadows/lights/reflection) | full (M3 path, reference only)")
 set_property(CACHE MG_RENDER PROPERTY STRINGS minimal full)
@@ -122,6 +122,19 @@ foreach(mesh world/kumar_island world/lawrance_island world/ambulance world/vehi
   )
   list(APPEND MG_EMBED_FILES ${out})
 endforeach()
+# MAP-2: institute.map -> fixed-size records read in place (tools/mapc.py); a malformed line fails the build
+set(MG_MAPB ${MG_GEN_DIR}/assets/world/institute.mapb)
+add_custom_command(
+  OUTPUT ${MG_MAPB}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/world
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mapc.py ${CMAKE_SOURCE_DIR}/content/gastro/institute.map
+          ${CMAKE_SOURCE_DIR}/content/gastro/prop_kinds.json ${CMAKE_SOURCE_DIR}/content/gastro/institute_geometry.js ${MG_MAPB}
+  DEPENDS ${CMAKE_SOURCE_DIR}/content/gastro/institute.map ${CMAKE_SOURCE_DIR}/content/gastro/prop_kinds.json
+          ${CMAKE_SOURCE_DIR}/content/gastro/institute_geometry.js ${CMAKE_SOURCE_DIR}/tools/mapc.py
+  COMMENT "mapc institute.map"
+  VERBATIM
+)
+list(APPEND MG_EMBED_FILES ${MG_MAPB})
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
 endif()
@@ -260,6 +273,10 @@ set(MG_GAME_SOURCES
   game/devroom.c
   game/devroom_layout.c
   game/hospital.c
+  game/imap.c
+  game/institute.c
+  game/institute_furniture.c
+  game/nav_check.c
   game/elevator.c
   game/elevator_panel.c
   game/route_test.c
