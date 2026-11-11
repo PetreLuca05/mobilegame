@@ -6,11 +6,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BUILD=${BUILD:-build/linux}
+mkdir -p "$(dirname "$BUILD")" # a fresh checkout has no build/
 
 if [[ "${1:-}" == "--deps" ]]; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq --no-install-recommends build-essential cmake ninja-build python3 git pkg-config \
+    apt-get -o Acquire::Retries=5 update -qq
+    apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends build-essential cmake ninja-build python3 git pkg-config \
         libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev \
         libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libvulkan-dev mesa-vulkan-drivers \
         libasound2-dev libpulse-dev libdbus-1-dev libudev-dev xvfb xauth > /dev/null
