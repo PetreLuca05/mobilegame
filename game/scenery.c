@@ -4,6 +4,7 @@
 
 #include "gfx/material.h"
 #include "gfx/mesh.h"
+#include "inst_patterns.h"
 
 #define TERRAIN_EXTENT 130.0f
 #define TERRAIN_QUADS 104
@@ -57,7 +58,11 @@ bool scenery_init(Scenery *s, const SceneryShape *shape, GfxContext *g, Arena *s
             float dx = scenery_terrain_height(shape, x + e, z) - scenery_terrain_height(shape, x - e, z);
             float dz = scenery_terrain_height(shape, x, z + e) - scenery_terrain_height(shape, x, z - e);
             HMM_Vec3 nrm = HMM_NormV3(HMM_V3(-dx, 2.0f * e, -dz));
-            mb_vertex(&mb, HMM_V3(x, h, z), nrm, terrain_color(h));
+            HMM_Vec4 col = terrain_color(h);
+            if (shape->grass_pattern) { /* vertex alpha = pattern id | lit (inst_patterns.h), not the outdoor flag */
+                col.W = (float)(INST_PAT_GRASS | INST_PAT_LIT) / 255.0f;
+            }
+            mb_vertex(&mb, HMM_V3(x, h, z), nrm, col);
         }
     }
     for (int j = 0; j < n; j++) {
@@ -95,7 +100,7 @@ static HMM_Mat4 billboard(const GfxSceneParams *sc, HMM_Vec3 pos, float sx, floa
 void scenery_draw(const Scenery *s, GfxContext *g, const GfxSceneParams *sc, float time, HMM_Vec3 cloud_tint)
 {
     HMM_Mat4 id = HMM_M4D(1.0f);
-    GfxMaterial ground = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    GfxMaterial ground = s->shape.grass_pattern && gfx_has_patterns(g) ? mat_pattern(HMM_V4(1, 1, 1, 1)) : mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
     gfx_draw(g, s->terrain, &id, &ground, GFX_DRAW_REFLECT | GFX_DRAW_NO_SHADOW);
 
     /* glow around the sun / moon (additive), fades with them */

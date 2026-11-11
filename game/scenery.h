@@ -10,6 +10,7 @@ typedef struct SceneryShape {
     float half_x, half_z; /* flat area, metres from the origin */
     float base_y;         /* terrain height inside it */
     float bank;           /* height of the berm hugging its edge (0 = none) */
+    bool grass_pattern;   /* the institute: the reference page's grass pattern, lit by its light set (GFX_MAT_PATTERN) */
 } SceneryShape;
 
 typedef struct Scenery {

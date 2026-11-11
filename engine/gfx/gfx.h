@@ -56,8 +56,8 @@ typedef enum GfxMaterialKind {
     GFX_MAT_OUTLINE, /* inverted-hull toon outline: flat colour, mesh pushed out, front faces culled */
     GFX_MAT_FLOOR,  /* grid slab with planar reflection */
     GFX_MAT_PATTERN,  /* the institute's building: vertex colour x tint x a detail pattern (gfx_set_patterns), world-scale UVs
-                       * from the face's dominant axis; vertex alpha = pattern id | 16 lit (game/inst_patterns.h): unlit, or
-                       * the reference page's two-step toon light (hemisphere + sun). Opaque; instanced; dithered when hide > 0.
+                       * from the face's dominant axis; vertex alpha = pattern id | 16 lit (game/inst_patterns.h): the
+                       * reference page's two-step toon light (hemisphere + sun, no shadows), or unlit without the bit. Opaque; instanced; dithered when hide > 0.
                        * Before TEXT: the main pass sorts by kind, so opaque floors go down before the blended labels and discs */
     GFX_MAT_TEXT,   /* world-space SDF glyph quads (signs), UV in the normal, alpha-blended */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */

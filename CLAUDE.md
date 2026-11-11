@@ -710,3 +710,16 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - `--autotest book_ui` (`tools/book_ui_test.sh`: default, iphone, iphone-flip, ipad; pictures `docs/autotest/book/`): every
   item type answered wrong (facts stay unset), then right (facts set), by taps and real drags; fails on a target < 44 pt or
   outside the safe rect, > 3 UI draws, a frame allocation with the card up. `MG_BOOK_UI_FROM=N` starts at run N.
+
+## Institute look (INST-LIGHT)
+
+- The Gastro institute takes the reference page's materials, lit by its light set, no shadows (user decision: "lit, but don't cast
+  shadows"): `GFX_MAT_PATTERN` = vertex colour x one sample of a detail pattern x (hemisphere 0xffffff / 0xb8d6a0 at 0.5 + sun
+  0xfff6e0 x 0.62 from (-45, 85, 55) through the two-step ramp 165 / 255 -> 1). Building, wall pieces, furniture, props, lifts,
+  site, roof and the terrain beyond the fence (`SceneryShape.grass_pattern`); avatars keep the day light (`cel_light_day`).
+- Patterns: `tools/gen_patterns.py` at build time (the page's seeded canvas drawing, + mips) -> embedded
+  `assets/world/inst_patterns.bin`, one R8 2D array (873 KB), uploaded once (`gfx_set_patterns`). Vertex alpha = pattern id
+  (`inst_pattern_of`, KIND_OF by palette colour) | 16 lit; UVs from the face's dominant axis over the pattern's size (pattern.hlsli).
+- Glass (COL.glass triangles, blankets included as on the page): `GFX_MAT_GLASS`, the page's glass shader, blended, drawn in
+  bucket 3 (after the avatars). The groups merge by draw condition (slab with the facade, floors + furniture with the interior),
+  so the institute draws fewer calls than before. Sky #BFE6F5, no fog. Pictures: docs/autotest/institute/lighting/.

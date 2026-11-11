@@ -44,7 +44,7 @@ const char *scene_institute_name(const Scene *s)
 SceneryShape scene_institute_scenery_shape(const Scene *s)
 {
     (void)s;
-    SceneryShape sh = {56.0f, 47.0f, -0.3f, 0.0f};
+    SceneryShape sh = {56.0f, 47.0f, -0.3f, 0.0f, true}; /* the terrain beyond the fence: the site's grass pattern */
     return sh;
 }
 
