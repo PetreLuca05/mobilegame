@@ -211,9 +211,12 @@ def main(pack, out):
         put('furniture', 'IIHbBHbbfffff', S(fid), S(kind), room_ix.get(room, 0xFFFF), int(fl), ['free', 'wall', 'floor', 'door'].index(mount),
             int(float(yaw)) % 360, int(float(ox or 0)), int(float(oz or 0)), float(x), float(z), float(w), float(d), float(h))
     figs = json.load(open(os.path.join(pack, 'fig', 'figures.json'), encoding='utf-8'))
-    from PIL import Image
     for f in figs:
-        w, h = Image.open(os.path.join(pack, f['file'])).size
+        with open(os.path.join(pack, f['file']), 'rb') as fh:   # the PNG's own size (IHDR), no Pillow needed
+            head = fh.read(24)
+        if head[:8] != b'\x89PNG\r\n\x1a\n' or head[12:16] != b'IHDR':
+            sys.exit(f"packbin: {f['file']} is not a PNG")
+        w, h = struct.unpack('>II', head[16:24])
         for l in f.get('labels', []):
             b = l['bbox'] or [0, 0, 0, 0]
             put('figlabels', 'IIHHHHHH', S(f['id']), S(l['t']), *[max(0, min(65535, int(v))) for v in b], w, h)

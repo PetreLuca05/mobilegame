@@ -4,7 +4,9 @@
  *   mg_tests                    compare
  *   mg_tests --record-stick F   write the recording to F */
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ui/touch_controls.h"
@@ -33,6 +35,34 @@ typedef struct Sim {
     int line, mismatches;
 } Sim;
 
+/* A recorded line against this run's: every field equal, except that a decimal may differ by up to ten units in its last
+ * printed digit (the C library's sinf / atan2f round differently on Linux than on the Mac; the mapping is the same). */
+static bool same_line(const char *want, const char *got, float sprint_d)
+{
+    int field = 0;
+    char a[256], b[256];
+    snprintf(a, sizeof(a), "%s", want);
+    snprintf(b, sizeof(b), "%s", got);
+    char *sa = NULL, *sb = NULL;
+    for (char *ta = strtok_r(a, " \n", &sa), *tb = strtok_r(b, " \n", &sb);; ta = strtok_r(NULL, " \n", &sa), tb = strtok_r(NULL, " \n", &sb)) {
+        if (!ta || !tb) {
+            return !ta && !tb;
+        }
+        const char *dot = strchr(ta, '.');
+        field++;
+        if (!dot || !strchr(tb, '.')) {
+            if (strcmp(ta, tb) != 0 && !(field == 5 && sprint_d >= 0.0f)) {
+                return false; /* integers, ids, the tag: exact (the sprint flag too, unless the knob sits on its threshold) */
+            }
+            continue;
+        }
+        const double ulp = pow(10.0, -(double)strlen(dot + 1)); /* one unit in the last printed digit */
+        if (fabs(atof(ta) - atof(tb)) > 10.0 * ulp) { /* rounding that accumulates over the spring's ticks; a mapping change is far bigger */
+            return false;
+        }
+    }
+}
+
 static void emit(Sim *s, const char *tag)
 {
     char buf[256];
@@ -44,7 +74,9 @@ static void emit(Sim *s, const char *tag)
         fputs(buf, s->out);
     } else if (s->gold) {
         char want[256];
-        if (!fgets(want, sizeof(want), s->gold) || strcmp(want, buf) != 0) {
+        /* the knob exactly on the sprint threshold (r x sprint_at): either side is right, the C library decides */
+        const float d = sqrtf(t->knob_dx * t->knob_dx + t->knob_dy * t->knob_dy), at = s->cfg.radius_pt * s->cfg.sprint_at;
+        if (!fgets(want, sizeof(want), s->gold) || !same_line(want, buf, fabsf(d - at) < 2e-3f ? d : -1.0f)) {
             if (s->mismatches++ < 5) {
                 printf("  [FAIL] stick golden line %d: got %s", s->line, buf);
             }

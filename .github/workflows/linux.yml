@@ -1,0 +1,28 @@
+# Linux CI (BOOK-1 decision 6): builds the desktop target on the dummy content pack (the public repository never holds
+# the real one), runs ctest and the headless desktop autotests (Xvfb + Mesa lavapipe). Same script as a local Docker
+# run: docker run --rm -v "$PWD":/src -w /src ubuntu:24.04 bash tools/ci_linux.sh --deps
+name: linux
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build, ctest, headless autotests
+        run: sudo -E env "PATH=$PATH" bash tools/ci_linux.sh --deps
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-logs
+          path: build/linux.*.log

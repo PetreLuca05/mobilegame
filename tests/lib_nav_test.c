@@ -350,7 +350,7 @@ int main(int argc, char **argv)
     const int nb = N->bays;
     {
         bool g = nb == 4 && N->cols == 2;
-        char why[96] = "";
+        char why[192] = "";
 #define G(cond, ...) do { if (!(cond) && g) snprintf(why, sizeof why, __VA_ARGS__); g &= (cond); } while (0)
         for (int b = 0; b < nb; b++) {
             float x = N->bx[b], z = N->bz[b];
@@ -391,7 +391,7 @@ int main(int argc, char **argv)
     {
         int npaths = 0, bad = 0, straight = 0, wall_bad = 0;
         double ms_max = 0, ms_sum = 0;
-        char why[96] = "";
+        char why[192] = "";
         for (int db = 0; db < nb; db++) {
             for (int sb = 0; sb < nb; sb++) {
                 const cJSON *seat;
@@ -431,7 +431,7 @@ int main(int argc, char **argv)
     /* the home table to each back-row table: through a door of the middle wall, never through the wall elsewhere */
     {
         bool g = true;
-        char why[96] = "";
+        char why[192] = "";
         const int home = 1;
         HMM_Vec2 st0 = jv2(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(seats, 0), "stand"));
         /* the stand is beside the chair (a blocked cell): start from the free cell nearest it */
@@ -462,7 +462,7 @@ int main(int argc, char **argv)
     /* the strip outside: reachable from inside, only through the back row's doors */
     {
         bool g = true;
-        char why[96] = "";
+        char why[192] = "";
         for (int b = 0; b < nb; b++) {
             HMM_Vec2 st0 = jv2(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(seats, 1), "stand"));
             HMM_Vec2 from = lib_nav_cell_xz(N, lib_nav_near(N, HMM_V2(st0.X + N->bx[b], st0.Y + N->bz[b])));

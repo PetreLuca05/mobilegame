@@ -49,6 +49,10 @@ endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # glibc hides POSIX / BSD names (M_PI in engine/audio/audio_sdl.c, ...) under -std=c11
+  add_compile_definitions(_DEFAULT_SOURCE)
+endif()
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
