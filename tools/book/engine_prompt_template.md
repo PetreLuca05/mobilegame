@@ -149,49 +149,85 @@ kinds of one family share a mesh (`mesh_groups` in `prop_kinds.json`):
 MAP-2 draws them (instanced per kind: one draw per kind per visible storey, at most {MAX_KINDS_STOREY} iprop kinds on one
 storey). BOOK-ENGINE only needs the prop / slot index → world position and storey, from the pack's `props` / `slots` tables.
 
-### S4. Missions: the book is reached only through NPCs (`content/gastro/missions.json`)
+### S4. Missions: the book is reached only through NPCs (pack v4 tables)
 
-The author's rule: **per mission, never per room**. No room card or prop lists the scripts; every script is a step of a
-mission (a hospital case) and is played by talking to an NPC. `missions.json` is built by `tools/book/missions.py` from the
-authored `missions_src.json` and is checked by `check.py` (every required script in exactly one step, book order, the
-logic rules below). Compile it into the pack next to the scripts (a v4 table) or load it at build time; it is content
-(zip only, never in git).
+The author's rule: **per mission, never per room**. No room card or prop lists the scripts; every required script is one
+step of a case and is played by talking to an NPC. `tools/book/missions.py` builds `missions.json` from the authored
+`missions_src.json`; `packbin.py` writes it into `gastro.mgpack` **v4** (the v3 header had 16 table slots, 14 used; v4 has
+32): `cast` (36 B), `arcs` (16 B), `missions` (32 B), `quests` (20 B), `msteps` (60 B), `lines` (8 B: text, speaker, role),
+`people` (44 B), all fixed-size records with string offsets; `mgpack_read.c` checks every index, that each required script
+is in exactly one step and that each presenter stands inside its room. Dialogue: {DLG_LINES} lines, {DLG_BYTES} bytes, the
+longest {DLG_LONGEST} bytes (text scrolls, never cut).
 
-- **Shape:** arcs (the 5 chapters; the clinic chief opens and closes each) > 17 missions (a case: giver, patient, ward,
-  intro / outro lines, a one-line case summary) > 50 quests (one topic, its host NPC, intro and done lines) > 382 steps
-  (script id, presenter, room, storey, `stand` x z yaw, `at` = the object the step is about, `patient` = cast id, bed or
-  seat, pose `lie` / `sit` / `stand` and height, `line` = what the presenter says first, `after` = good / mixed reply).
-  `cast` (50: 35 staff, 15 patients; look = kind, sex, age, skin, hair, colours → `AvatarLook`), `posts` (where each
-  cast member waits: patients in their ward's bed), `greetings` per kind.
-- **Flow:** the tracked mission's giver has the objective marker → talk → intro + case → Accept → the marker moves to
-  the first step's presenter → talk → (quest intro on its first step) + the step line → Start → the script player (S5)
-  with the presenter's name in its header → on its end the presenter's reply (+ the quest's done line) → next step.
-  When every step is played: back to the giver → outro (+ the arc outro after its last case) → reward (T3) → the next
-  case is tracked. Nothing is locked: the journal (pause → Misiuni) lists the arcs and cases with their stages and lets
-  the player track any case; "Du-mă acolo" autonavs to its objective.
-- **Staging:** when a step becomes the objective its presenter walks (same storey, in view) or is placed at `stand`, and
-  the patient lies or sits at the step's bed / seat. A case step happens only with the patient present.
-- **Logic rules (checked):** nothing happens outdoors; a patient is seen only in a clinical room (exam, ward, treatment
-  / ICU / recovery bay, triage, OR, imaging; pharmacy only for counselling at the counter); treatment is chosen in a
-  pharmacy, ward, treatment / ICU / recovery bay, consult room or OR (4 steps were moved by the author's rules: two
-  pharmacy steps out of a histology lab and an imaging room, two patient steps out of labs into the patient's ward /
-  recovery); stand points inside their room, clear of furniture and door approaches.
-- **Talking range (at load, like `rooms_validate`):** the nav bake decides who the player can reach. A presenter whose
-  stand point has no reachable cell within 1.7 m steps to the nearest spot in the same room that has one, staying on
-  their own side (a pharmacist comes to the counter). On the prototype page this moves 13 steps and 2 posts (0.5–6 m,
-  all inside their room); every one of the 432 targets is then within talking range from the entrance. Model findings
-  for MAP-2: `e_respirator`'s recliner stands in front of its door (the room cannot be entered; its presenters come to the
-  door), and potted plants stand in some doorways (the page's nav ignores plants, pots and bins; give them no collider or
-  move them).
-- **Interact (unchanged scan, 2.0 / 2.5 m):** cast NPCs are interactables; the objective's presenter has `IA_PRIORITY`
-  and is usable from any facing; others greet (2.5 s card, nod). Patients in bed: +0.6 m range.
-- **Markers (`markers.c`):** one marker, on the objective NPC (spinning diamond in the chapter colour, ground ring, edge
-  icon with chevron and distance, floor badge on another storey). Tapping it autonavs there (cross-storey through the lift).
-- **Population (draw-only, outside the deterministic NPC sim):** patients in ward / recovery / ICU beds, people seated in
-  waiting rooms, triage and infusion chairs, staff at desks, benches and counters by room type, a few walkers in each
-  storey's corridors; nobody outdoors. The M7 sim and its seed are untouched; cast members are not simulated.
-- **Persistence:** per account two bits per mission (accepted, closed) next to the fact bitset; the tracked case and the
-  player's position per device.
+- **Shape:** 5 arcs (the clinic chief opens and closes each) > 17 cases (giver, patient, ward, intro / outro, a one-line
+  summary) > 50 quests (one topic, its host) > 382 steps (script, presenter, stand point, the object it is about, the
+  patient's bed / seat and pose, the opening line and two replies).
+- **Progress stays per fact.** A step is done when every fact its script covers is set in the account's fact bitset
+  ({BITSET} bytes); a quest, a case and an arc are done when all their steps are. The only extra state is one
+  accepted + closed bit pair per case: **{CASE_BYTES} bytes** per account, next to the fact bitset.
+- **Gates (all of them):** a case closes (its giver's debrief) only when its steps are done; a chapter exam opens only
+  when its rooms are complete (`scripts.json` pools). Nothing else: any case can be accepted at any time from its giver or
+  the journal, any step of an accepted case can be played in any order (the marker suggests the book order), and no arc
+  or case waits for another.
+- **Flow:** the tracked case's giver carries the objective marker → talk → intro + case → accept → the marker moves to the
+  next undone step's presenter → talk → (quest intro on its first step) + the step's line → start → the script player (S5)
+  with the presenter's name in its header → the presenter's reply (+ the quest's done line) → next. All steps done → back
+  to the giver → outro (+ the arc outro after its last case) → reward (T3).
+- **Staging:** the presenter of the objective step walks (same storey, in view) or is placed at its stand point; a case
+  step's patient lies or sits at the step's bed / seat. A case step happens only with the patient present.
+- **Logic and reach (checked at build time, no run-time snapping):** nothing outdoors; patients only in clinical rooms;
+  treatment chosen only in a pharmacy, ward, bay, consult room or OR; every presenter stands within the **2.0 m** talking
+  range of a cell the player can reach on the map's walk grid (`tools/book/model_nav.js`: the page's geometry, everything
+  drawn solid, 0.25 m cells, capsule 0.3 m, the same rules as `navgrid.c`). A presenter behind a counter is spoken to
+  across it. The map check also requires a free 1.0 m approach on both sides of every door and every room's floor
+  reachable from the entrance (stairwells exempt: the stair flight fills them and collides as one box).
+- **Reused, unchanged:** the objective marker is `markers.c` (one marker, the chapter colour, edge icon, distance, floor
+  badge, tap = autonav); talking is the proximity interaction of `interact.h` (10 Hz scan, 2.0 / 2.5 m, the bottom-right
+  panel with the NPC's floating head, `IA_PRIORITY` for the objective's presenter, others greet for 2.5 s and nod); the
+  journal is a page of the existing pause card; autonav and lifts as today.
+- **New:** the objective pill (top left: case, who, room, storey, steps done); the dialogue card (portrait, name, role,
+  lines with Continue, two choices); the journal page (arc tabs, case cards with stages, Track / Take me there); the case
+  state bits; staging the presenter and patient; loading the people table.
+
+### S4b. Characters and crowd (one avatar system)
+
+The game has one avatar: floating body, head and hands (no arms or legs), `AvatarLook` with fixed outfits. The 12
+character kinds of the cast and crowd map onto it (colours from the cast / people records; skin 0..3 → the skin palette;
+hair short → `HAIR_SHORT`, long → `HAIR_BOB`, bun → `HAIR_BUN`, bald → `HAIR_NONE`, curly → `HAIR_CURLY`, ponytail →
+`HAIR_BUN`; sex → `BODY_*`; age 2 → `AVATAR_ELDER`, else `AVATAR_ADULT`):
+
+| kind | outfit_style | outfit colour | trim (under) | decal | accessory / extras |
+|---|---|---|---|---|---|
+| doctor | `OUTFIT_COAT` | white #F4F7F8 | scrubs / shirt colour | `DECAL_BADGE` | `ACC_STETHOSCOPE` |
+| surgeon | `OUTFIT_SCRUBS` | green #5AA36B | same green | `DECAL_NONE` | `ACC_MASK` + `AVATAR_EXTRA_HAT` (scrub cap) |
+| nurse | `OUTFIT_SCRUBS` | teal / blue / violet | same | `DECAL_CROSS` | — |
+| resident | `OUTFIT_COAT` | white | teal scrubs | `DECAL_BADGE` | — |
+| tech | `OUTFIT_COAT` | light blue #D8ECF7 | grey | `DECAL_POCKET` | — |
+| researcher | `OUTFIT_COAT` | #EEF6FB | grey | `DECAL_POCKET` | `AVATAR_EXTRA_READING_GLASSES` |
+| pharmacist | `OUTFIT_COAT` | white | green #2D6A4F | `DECAL_BADGE` | — |
+| librarian | `OUTFIT_PLAIN` | cardigan colour | shirt | `DECAL_NONE` | `AVATAR_EXTRA_READING_GLASSES` |
+| guide (reception) | `OUTFIT_PLAIN` | blue #2F6FB7 | dark | `DECAL_BADGE` | — |
+| patient | `OUTFIT_PLAIN` | gown light blue | same | `DECAL_NONE` | elders walking: `AVATAR_EXTRA_CANE` |
+| visitor | `OUTFIT_PLAIN` | casual colour | — | `DECAL_NONE` | — |
+| student (player) | `OUTFIT_COAT` | white | teal | `DECAL_BADGE` | the player's own look wins |
+
+Poses the missions need: **stand** (exists), **walk** (exists: `AvatarAnim` stride / swing), **sit** (exists:
+`AvatarPose.sit`, seat heights 0.44–0.5 m), **lie** (exists: `AvatarPose.lying`, in a bed at the mattress height of the
+people record), **talk** (exists in part: `head_lift` + the preview nod; **new: a hand gesture while speaking**). Also new,
+optional: long hair and ponytail styles (mapped to bob / bun meanwhile) and hand props (clipboard, notebook); the page's
+models carry them, the game can omit them.
+
+People: {PEOPLE} in the `people` table = {CAST_N} cast posts + {BG_N} background (patients in ward / recovery / ICU beds,
+people seated where people wait, staff at desks, benches and counters by room type, walkers in each storey's corridors;
+nobody outdoors). Per storey:
+
+| storey | people | cast posts | walking |
+|---:|---:|---:|---:|
+{PEOPLE_ROWS}
+
+Maximum on one storey: **{PEOPLE_MAX}**. Static people ({STATIC_N}) are instanced with the avatar batches and take no
+pathfinding; only the {WALKERS} walkers run steering, on the staggered update rates of the M7 sim (every tick near the
+player on the view storey, 1/3 far, 1/6 on other storeys). They are drawn-only and outside the deterministic NPC sim.
 
 ### S5. Script player and item widgets (UI-1 Jelly Pop)
 
@@ -243,13 +279,16 @@ logic rules below). Compile it into the pack next to the scripts (a v4 table) or
 | CPU tick | 5.0 ms | < 0.02 ms: ≤ {MAX_ANCHORS_STOREY} more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
 | CPU render submission | 2.0 ms | + instance building for ≤ {PROPS} props (< 0.05 ms) | estimate, measure |
 | Memory | 300 MB | pack {PACK_MB} MB (embedded, read in place) + figure atlas ≤ {FIG_MB} MB RGBA8 (2048² pages; ASTC 4×4 would be a quarter) + derived tables < 0.1 MB | measured / estimate |
-| Heap allocations in the frame loop | 0 | 0: fixed-size player state, arena tables built at load | |
+| NPCs | 200 | {NPC_TOTAL} at most: the M7 roster (47) + {PEOPLE} people of the missions ({PEOPLE_MAX} at most on one storey); {WALKERS} of them steer | data |
+| Draw calls (people) | in the 150 | +0 for static people (they join the avatar instanced batches: same meshes and pipelines), +1 x-ray pass already counted | instancing |
+| CPU tick (people) | in the 5.0 ms | static: 0; {WALKERS} walkers steering on the staggered rates (< 0.05 ms); staging one presenter per step change | estimate, measure |
+| Heap allocations in the frame loop | 0 | 0: fixed-size player state, arena tables built at load; the people table ({PEOPLE_KB} KB) and dialogue are read in place from the pack | |
 | GPU frame | 8.0 ms | props are small toon meshes; the card is one SDF batch | measure with Instruments |
 
 ## Perf audit (last step)
 
 Run `tools/perf_run.sh OUT --gpu --gate` on the iPad Air 4 with a clean tree and HEAD installed, add a `book` scenario
-(chapter-1 rooms, a card open) to `--autotest perf`, compare with `docs/perf/after/`, record the measured deltas in
+(chapter-1 rooms, a card open, the busiest storey's {PEOPLE_MAX} people) to `--autotest perf`, compare with `docs/perf/after/`, record the measured deltas in
 `docs/PERF.md` and replace every estimate above with its measurement. Any budget exceeded or regressed by more than 10 %
 blocks sign-off.
 
@@ -259,7 +298,7 @@ blocks sign-off.
 - [ ] every piece of furniture comes from `institute.map`; the map loader's build-time check against the pack's furniture
       table passes (same ids, kinds, positions within 1 cm)
 - [ ] S0–S8 done, or stopped at S2 with MAP-2 named as the blocker
-- [ ] the book is reached only through missions (no per-room lists); `missions.json`'s 382 steps all playable, every presenter within talking range after the load-time snap
+- [ ] the book is reached only through missions (no per-room lists); the pack's 382 mission steps all playable, every presenter within the 2.0 m talking range on the baked grid (no run-time snapping); only the two allowed gates
 - [ ] the pack loader accepts what `content/gastro/mgpack_read.c` accepts (same checks) and the final simulation's question
       counts and scoring are left unset (constants marked TODO) for the author
 - [ ] `content/gastro/check.py` passes in the build; the public build uses the stub pack and stays green

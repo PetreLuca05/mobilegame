@@ -3,11 +3,12 @@
 #define MG_PACK_FORMAT_H
 #include <stdint.h>
 #define MGPK_MAGIC 0x4B50474Du /* "MGPK" */
-#define MGPK_VERSION 3u
+#define MGPK_VERSION 4u
 enum { MGPK_STRINGS, MGPK_ROOMS, MGPK_TOPICS, MGPK_ATOMS, MGPK_FACTS, MGPK_ITEMS, MGPK_OPTS, MGPK_REFS, MGPK_SCRIPTS,
-       MGPK_STEPS, MGPK_PROPS, MGPK_SLOTS, MGPK_FIGLABELS, MGPK_FURNITURE, MGPK_TABLE_COUNT };
+       MGPK_STEPS, MGPK_PROPS, MGPK_SLOTS, MGPK_FIGLABELS, MGPK_FURNITURE,
+       MGPK_CAST, MGPK_ARCS, MGPK_MISSIONS, MGPK_QUESTS, MGPK_MSTEPS, MGPK_LINES, MGPK_PEOPLE, MGPK_TABLE_COUNT };
 typedef struct mgpk_table_t { uint32_t offset, count, size; } mgpk_table_t;
-typedef struct mgpk_header_t { uint32_t magic, version, fact_count, item_count; mgpk_table_t table[16]; } mgpk_header_t;
+typedef struct mgpk_header_t { uint32_t magic, version, fact_count, item_count; mgpk_table_t table[32]; } mgpk_header_t;
 typedef struct mgpk_room_t { uint32_t id, name; int8_t floor; uint8_t pad[3]; float x0, z0, x1, z1; } mgpk_room_t;            /* 28 */
 typedef struct mgpk_topic_t { uint32_t id, title; uint16_t room, chapter, step, flags;
                               uint32_t first_fact, fact_count, first_item, item_count, first_script, script_count; } mgpk_topic_t; /* 40 */
@@ -33,5 +34,29 @@ enum { MGPK_MOUNT_FREE, MGPK_MOUNT_WALL, MGPK_MOUNT_FLOOR, MGPK_MOUNT_DOOR };
 typedef mgpk_prop_t mgpk_slot_t;                                                                              /* 28; label = MGPK_NONE */
 /* figure labels for `label` items: box in pixels of the 200-dpi crop fig/<fig>.png (crop size w x h) */
 typedef struct mgpk_figlabel_t { uint32_t fig, text; uint16_t x0, y0, x1, y1, w, h; } mgpk_figlabel_t;                      /* 20 */
+/* ---- missions (v4): the book reached through NPCs; all indices are rows of the tables named; 0xFFFF = none ---- */
+enum { MGPK_KIND_DOCTOR, MGPK_KIND_SURGEON, MGPK_KIND_NURSE, MGPK_KIND_RESIDENT, MGPK_KIND_TECH, MGPK_KIND_PHARMACIST, MGPK_KIND_LIBRARIAN,
+       MGPK_KIND_RESEARCHER, MGPK_KIND_GUIDE, MGPK_KIND_PATIENT, MGPK_KIND_VISITOR, MGPK_KIND_STUDENT };
+enum { MGPK_POSE_STAND, MGPK_POSE_SIT, MGPK_POSE_LIE, MGPK_POSE_WALK };
+/* a named character: look (kind, sex 0 f 1 m, age 0..2, skin 0..3, hair, colours 0xRRGGBB), person = its post in the people table */
+typedef struct mgpk_cast_t { uint32_t id, name, role; uint8_t kind, sex, age, skin, hair, pad[3]; uint32_t hair_rgb, outfit_rgb, under_rgb; uint16_t person, pad2; } mgpk_cast_t; /* 36 */
+/* a chapter: its giver opens (n_intro lines) and closes (n_outro lines) it; lines are rows of the lines table */
+typedef struct mgpk_arc_t { uint16_t chapter, giver; uint32_t title, first_line; uint16_t n_intro, n_outro; } mgpk_arc_t;                 /* 16 */
+/* a case: giver, patient (cast) and ward (room) or 0xFFFF; intro then outro lines from first_line; case_line = the one-line summary */
+typedef struct mgpk_mission_t { uint32_t id, title, case_line; uint16_t chapter, giver, patient, ward; uint32_t first_line;
+                                uint16_t n_intro, n_outro, first_quest, n_quests; } mgpk_mission_t;                                  /* 32 */
+/* a quest = one topic of a case at its host's room; intro lines, then the done line; its steps are msteps rows */
+typedef struct mgpk_quest_t { uint16_t topic, host, mission, n_intro; uint32_t first_line, done_line; uint16_t first_step, n_steps; } mgpk_quest_t; /* 20 */
+/* a step = one script played with its presenter, who stands at stand_x/z facing stand_yaw (inside `room`, within 2.0 m of a cell the
+   player can reach); `at` = the object it is about; patient (cast) lies / sits / stands at pat_x/z, pat_y above the floor, or 0xFFFF;
+   flags: 1 = moved to a room that fits it (logic rule), 2 = moved inside its room into talking range */
+typedef struct mgpk_mstep_t { uint16_t script, presenter, room, quest; int8_t floor; uint8_t kind, flags, pat_pose; uint16_t stand_yaw, patient;
+                              float stand_x, stand_z, at_x, at_z, pat_x, pat_z, pat_y; uint16_t pat_yaw, pad; uint32_t line, after_good, after_mixed; } mgpk_mstep_t; /* 60 */
+/* a dialogue line: speaker = cast row (0xFFFF for greetings); role 0 dialogue, 1 greeting (kind = the look kind it is said by) */
+typedef struct mgpk_line_t { uint32_t text; uint16_t speaker; uint8_t role, kind; } mgpk_line_t;                                    /* 8 */
+/* a person in the building: cast = cast row (its post) or 0xFFFF for a background person with its own look; room 0xFFFF = corridor;
+   mode 0 static (instanced with the avatar batches, no pathfinding), 1 walking (steers along the storey's corridors) */
+typedef struct mgpk_person_t { uint16_t cast, room; int8_t floor; uint8_t kind, pose, mode; float x, z, y; uint16_t yaw; uint8_t talk, sex,
+                               age, skin, hair, pad; uint32_t hair_rgb, outfit_rgb, under_rgb, seed; } mgpk_person_t;                 /* 44 */
 #define MGPK_NONE 0xFFFFFFFFu
 #endif

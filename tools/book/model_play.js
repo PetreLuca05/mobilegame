@@ -14,30 +14,13 @@ var D2R=Math.PI/180,DOM=function(t,c,x){return el(t,c,x)};
 var CHCOL=['#'+COL.c0,'#'+COL.c1,'#'+COL.c2,'#'+COL.c3,'#'+COL.c4];
 var CAST={},CASTI=MIS.cast;CASTI.forEach(function(c){CAST[c.id]=c});
 var SIX={};BK.scripts.forEach(function(s,i){SIX[s.id]=i});
-/* ---------- walk grid ---------- */
-var NV={cs:.25,x0:-34,z0:-27,nx:272,nz:256,w:[]};
+/* ---------- walk grid: the map's own (tools/book/model_nav.js: everything drawn is solid), read from the data ---------- */
+var NG=BK.nav,NV={cs:NG.cs,x0:NG.x0,z0:NG.z0,nx:NG.nx,nz:NG.nz,w:[],r:[]};
+function unbits(b){var s=atob(b),n=NV.nx*NV.nz,o=new Uint8Array(n);for(var k=0;k<n;k++)o[k]=(s.charCodeAt(k>>3)>>(k&7))&1;return o}
+NV.w=NG.walk.map(unbits);NV.r=NG.reach.map(unbits);
 function nvI(x,z){var i=Math.floor((x-NV.x0)/NV.cs),j=Math.floor((z-NV.z0)/NV.cs);return(i<0||j<0||i>=NV.nx||j>=NV.nz)?-1:j*NV.nx+i}
 function walk(f,x,z){var i=nvI(x,z);return i>=0&&NV.w[f]&&NV.w[f][i]===1}
-function sd(px,pz,ax,az,bx,bz){var dx=bx-ax,dz=bz-az,l=dx*dx+dz*dz,t=l>0?((px-ax)*dx+(pz-az)*dz)/l:0;t=t<0?0:t>1?1:t;var ex=ax+t*dx-px,ez=az+t*dz-pz;return ex*ex+ez*ez}
-function rastTri(ax,az,bx,bz,cx,cz,G,tol){var cs=NV.cs,h=cs*tol,i0=Math.max(0,Math.floor((Math.min(ax,bx,cx)-h-NV.x0)/cs)),i1=Math.min(NV.nx-1,Math.floor((Math.max(ax,bx,cx)+h-NV.x0)/cs)),
-  j0=Math.max(0,Math.floor((Math.min(az,bz,cz)-h-NV.z0)/cs)),j1=Math.min(NV.nz-1,Math.floor((Math.max(az,bz,cz)+h-NV.z0)/cs)),area=(bx-ax)*(cz-az)-(bz-az)*(cx-ax),h2=h*h;
-  for(var j=j0;j<=j1;j++){var pz=NV.z0+(j+.5)*cs;for(var i=i0;i<=i1;i++){var px=NV.x0+(i+.5)*cs,hit=false;
-    if(Math.abs(area)>1e-7){var w0=((bx-px)*(cz-pz)-(bz-pz)*(cx-px))/area,w1=((cx-px)*(az-pz)-(cz-pz)*(ax-px))/area;hit=w0>=0&&w1>=0&&w0+w1<=1}
-    if(!hit)hit=sd(px,pz,ax,az,bx,bz)<h2||sd(px,pz,bx,bz,cx,cz)<h2||sd(px,pz,cx,cz,ax,az)<h2;if(hit)G[j*NV.nx+i]=1}}}
-var DECOR={};[COL.plant,COL.pot,COL.leaf,COL.leaf2].forEach(function(c){DECOR[c]=1});
-function rastMB(P,y,fl,bl,H){for(var o=0;o<P.length;o+=9){if(H&&DECOR[H[o/9]])continue;var y0=Math.min(P[o+1],P[o+4],P[o+7]),y1=Math.max(P[o+1],P[o+4],P[o+7]);
-  if(y1<=y+.12&&y0>=y-.3&&y1-y0<.05)rastTri(P[o],P[o+2],P[o+3],P[o+5],P[o+6],P[o+8],fl,.3);else if(y1>y+.2&&y0<y+1.8)rastTri(P[o],P[o+2],P[o+3],P[o+5],P[o+6],P[o+8],bl,.5)}}
-function fillR(G,x0,z0,x1,z1,v){for(var z=z0+NV.cs/2;z<z1;z+=NV.cs)for(var x=x0+NV.cs/2;x<x1;x+=NV.cs){var i=nvI(x,z);if(i>=0)G[i]=v}}
-var LIFTS=[-14.1,-11.1,12.5],LZ=6.35;
-function bakeNav(){var N=NV.nx*NV.nz;for(var f=0;f<4;f++){var fl=new Uint8Array(N),bl=new Uint8Array(N),y=f*FH,M=FL[f].mb;
-  [M.shell,M.props].concat(M.segs.map(function(s){return s.mb})).concat(typeof bm!=='undefined'&&bm[f]?[bm[f]]:[]).forEach(function(mb){rastMB(mb.p,y,fl,bl,mb.h)});if(f===0)rastMB(mbSite.p,y,fl,bl,null);
-  rastMB(mbLift.p,y,fl,bl);
-  LIFTS.forEach(function(cx){fillR(bl,cx-1.05,4.95,cx+1.05,7.75,0);fillR(fl,cx-1.05,4.95,cx+1.05,7.75,1);fillR(bl,cx-1.25,4.8,cx+1.25,5.0,1);fillR(bl,cx-1.25,4.8,cx-1.05,7.8,1);fillR(bl,cx+1.05,4.8,cx+1.25,7.8,1);
-    fillR(bl,cx-.85,7.6,cx+.85,8.7,0);fillR(fl,cx-.85,7.6,cx+.85,8.7,1)});
-  var w=new Uint8Array(N),nx=NV.nx;for(var j=1;j<NV.nz-1;j++)for(var i=1;i<nx-1;i++){var k=j*nx+i;if(!fl[k])continue;var ok=1;
-    for(var dj=-1;dj<=1&&ok;dj++)for(var di=-1;di<=1;di++)if(bl[k+dj*nx+di]){ok=0;break}w[k]=ok}
-  NV.w[f]=w}}
-var t0=performance.now();bakeNav();var bakeMs=Math.round(performance.now()-t0);
+var LIFTS=NG.lifts,LZ=NG.lift_z,bakeMs=0;
 /* A*: 8 neighbours, no corner cutting, octile; string-pulled by grid line of sight */
 var NN=NV.nx*NV.nz,AS={g:new Float32Array(NN),from:new Int32Array(NN),seen:new Uint32Array(NN),closed:new Uint32Array(NN),gen:0,heap:new Int32Array(NN*2),hf:new Float32Array(NN*2)};
 var DI=[1,-1,0,0,1,1,-1,-1],DJ=[0,0,1,-1,1,-1,1,-1];
@@ -59,20 +42,9 @@ function navPath(f,sx,sz,tx,tz){var s=snap(f,sx,sz,1.5),t=snap(f,tx,tz,2.5);if(!
 function plen(p){var L=0;for(var i=1;i<p.length;i++)L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);return L}
 function route(fr,to){if(fr.f===to.f){var p=navPath(fr.f,fr.x,fr.z,to.x,to.z);return p?[{f:fr.f,pts:p}]:null}
   var best=null;LIFTS.forEach(function(lx){var a=navPath(fr.f,fr.x,fr.z,lx,LZ),b=a&&navPath(to.f,lx,LZ,to.x,to.z);if(a&&b){var L=plen(a)+plen(b);if(!best||L<best.L)best={L:L,legs:[{f:fr.f,pts:a},{ride:lx,to:to.f},{f:to.f,pts:b}]}}});return best&&best.legs}
-var REACH=null;
-function reachMap(){if(REACH)return REACH;var N=NV.nx*NV.nz,nx=NV.nx,R=[0,1,2,3].map(function(){return new Uint8Array(N)}),L=ROOMS.filter(function(r){return r.f===0&&r.entrance})[0]||ROOMBY.g_lobby,s=snap(0,(L.x0+L.x1)/2,(L.z0+L.z1)/2-1,4);
-  var q=[[0,nvI(s[0],s[1])]];R[0][q[0][1]]=1;var cabs2={};
-  while(q.length){var e=q.pop(),f=e[0],k=e[1],ki=k%nx,kj=(k/nx)|0,c=cellXZ(k),cb=inCab(c[0],c[1]);if(cb>=0&&!cabs2[cb]){cabs2[cb]=1;for(var g=0;g<4;g++){var kk=nvI(LIFTS[cb],LZ);if(NV.w[g][kk]&&!R[g][kk]){R[g][kk]=1;q.push([g,kk])}}}
-    for(var d=0;d<4;d++){var ni=ki+DI[d],nj=kj+DJ[d];if(ni<0||nj<0||ni>=nx||nj>=NV.nz)continue;var n=nj*nx+ni;if(NV.w[f][n]&&!R[f][n]){R[f][n]=1;q.push([f,n])}}}
-  REACH=R;return R}
+function reachMap(){return NV.r}
 function reachable(f,x,z){var i=nvI(x,z);return i>=0&&reachMap()[f][i]===1}
 function talkable(f,x,z,r){r=r||1.7;for(var dz=-r;dz<=r;dz+=NV.cs)for(var dx=-r;dx<=r;dx+=NV.cs)if(dx*dx+dz*dz<=r*r&&reachable(f,x+dx,z+dz))return true;return false}
-/* a presenter out of the player's reach (behind a counter, in a room whose door the model's furniture blocks) steps to the
-   nearest spot within talking range, staying on their own side when there is one (the game snaps slots at load the same way) */
-var MOVED=[];
-function talkSpot(f,x,z,tag){if(talkable(f,x,z))return null;var best=null,alt=null,R0=roomAt(f,x,z);for(var R=.25;R<=6&&!best;R+=.25)for(var a=0;a<32;a++){var X=x+Math.sin(a/32*6.283)*R,Z=z+Math.cos(a/32*6.283)*R;
-    if(!walk(f,X,Z)||!talkable(f,X,Z,1.4)||(R0&&roomAt(f,X,Z)!==R0))continue;if(!reachable(f,X,Z)){best=[X,Z];break}if(!alt)alt=[X,Z]}var r=best||alt;if(r)MOVED.push(tag+' '+Math.hypot(r[0]-x,r[1]-z).toFixed(1)+' m'+(R0?' in '+R0.id:''));return r}
-function faceReach(f,x,z){var b=null;for(var a=0;a<16;a++)for(var R=.5;R<=2;R+=.5){var X=x+Math.sin(a/16*6.283)*R,Z=z+Math.cos(a/16*6.283)*R;if(reachable(f,X,Z)&&(!b||R<b[1])){b=[a/16*360,R]}}return b?b[0]:0}
 function inCab(x,z){for(var i=0;i<LIFTS.length;i++)if(Math.abs(x-LIFTS[i])<1.05&&z>4.95&&z<7.75)return i;return-1}
 /* ---------- people ---------- */
 var NP=[],npG=[0,1,2,3].map(function(){var g=new THREE.Group();world.add(g);return g});
@@ -92,21 +64,12 @@ var WORK={desk:1,exam_desk:1,reading_desk:1,lab_bench:1,lab_island:1,dispensing_
 function nearNPC(f,x,z,r){for(var i=0;i<NP.length;i++){var o=NP[i];if(o.f===f&&Math.hypot(o.x-x,o.z-z)<r)return o}return null}
 function frontOf(p,dist,side){var t=p[5]*D2R,fx=Math.sin(t),fz=Math.cos(t);return[p[3]+fx*(p[7]/2+dist)+fz*side,p[4]+fz*(p[7]/2+dist)-fx*side]}
 var castNP={},spots={};
-function populate(){var r=rng(20261111),FU=BK.furn||[],posted={};
-  CASTI.forEach(function(c){var p=MIS.posts[c.id];if(!p)return;posted[p.room]=1;if(p.pose==='stand'){var ts=talkSpot(p.f,p.x,p.z,'post '+c.id);if(ts)p={room:p.room,f:p.f,x:ts[0],z:ts[1],yaw:faceReach(p.f,ts[0],ts[1]),pose:'stand',y:0}}castNP[c.id]=addNPC({look:{kind:c.kind,sex:c.sex,age:c.age,skin:c.skin,hair:c.hair,hair_color:c.hair_color,outfit:c.outfit,under:c.under,seed:c.id.length*7919+c.id.charCodeAt(0)},
+function populate(){var posted={};
+  CASTI.forEach(function(c){var p=MIS.posts[c.id];if(!p)return;posted[p.room]=1;castNP[c.id]=addNPC({look:{kind:c.kind,sex:c.sex,age:c.age,skin:c.skin,hair:c.hair,hair_color:c.hair_color,outfit:c.outfit,under:c.under,seed:c.id.length*7919+c.id.charCodeAt(0)},
     cast:c,f:p.f,x:p.x,z:p.z,yaw:p.yaw,pose:p.pose,y:p.y||0,lod:0,home:p,talk:true})});
-  FU.forEach(function(p){var f=p[0],R=ROOMBY[p[1]],k=p[2];if(!R)return;var t=R.type;if(nearNPC(f,p[3],p[4],.8))return;
-    if(BEDY[k]&&(t==='ward_room'||t==='recovery'||t==='icu_bay')&&r()<.7)addNPC({look:look('patient',r),f:f,x:p[3],z:p[4],yaw:p[5],pose:'lie',y:BEDY[k],lod:1,talk:t!=='icu_bay',seat:1});
-    else if(SEATY[k]&&(t==='waiting'||t==='triage'||t==='reception')&&r()<.45)addNPC({look:look(r()<.6?'patient':'visitor',r),f:f,x:p[3],z:p[4],yaw:p[5],pose:'sit',lod:1,talk:true,seat:1});
-    else if(SEATY[k]&&t==='ward_room'&&r()<.18)addNPC({look:look('visitor',r),f:f,x:p[3],z:p[4],yaw:p[5],pose:'sit',lod:1,talk:true,seat:1});
-    else if(k==='infusion_chair'&&r()<.6)addNPC({look:look('patient',r),f:f,x:p[3],z:p[4],yaw:p[5],pose:'sit',lod:1,talk:true,seat:1})});
-  var staff={exam:['doctor',.5],lab:['tech',.6],office:['doctor',.5],pharmacy:['pharmacist',.9],nurse_station:['nurse',1],reception:['guide',1],ward_room:['nurse',.3],icu_bay:['nurse',.8],recovery:['nurse',.6],imaging:['tech',.6],treatment_bay:['nurse',.5],triage:['nurse',.8]};
-  ROOMS.forEach(function(R){var s=staff[R.type];if(!s||posted[R.id]||r()>s[1])return;var W=FU.filter(function(p){return p[1]===R.id&&WORK[p[2]]});if(!W.length)return;
-    var p=W[(r()*W.length)|0];[.5,-.5,0].some(function(side){var q=frontOf(p,.45,side);if(walk(R.f,q[0],q[1])&&!nearNPC(R.f,q[0],q[1],.8)){addNPC({look:look(s[0],r),f:R.f,x:q[0],z:q[1],yaw:(p[5]+180)%360,pose:'stand',lod:1,talk:true});return true}return false})});
-  /* walkers: staff and visitors along the corridors of each storey, never outdoors */
-  var CP=[];CORR.forEach(function(c){for(var f=0;f<4;f++)for(var i=0;i<6;i++){var x=c[0]+(c[2]-c[0])*(i+.5)/6,z=(c[1]+c[3])/2;if(walk(f,x,z))CP.push([f,x,z])}});
-  for(var f=0;f<4;f++){var pts=CP.filter(function(q){return q[0]===f});for(var i=0;i<(f===0?7:5)&&pts.length>1;i++){var q=pts[(r()*pts.length)|0],kind=['nurse','doctor','visitor','resident','tech','patient'][(r()*6)|0];
-    if(kind==='patient'&&f!==2)kind='visitor';addNPC({look:look(kind,r),f:f,x:q[1],z:q[2],yaw:0,pose:'stand',lod:0,talk:false,walker:{pts:pts,path:null,i:0,wait:r()*3}})}}}
+  (MIS.people||[]).forEach(function(q){if(q.cast)return;var w=q.mode==='walk';addNPC({look:q.look,f:q.f,x:q.x,z:q.z,yaw:q.yaw,pose:q.pose,y:q.y||0,lod:w?0:1,talk:q.talk!==false&&!w,
+    walker:w?{pts:WALKP[q.f],path:null,i:0,wait:(q.look.seed%30)/10}:null})})}
+var WALKP=[0,1,2,3].map(function(f){var L=[];(BK.nav.corr||[]).forEach(function(c){for(var i=0;i<6;i++){var x=c[0]+(c[2]-c[0])*(i+.5)/6,z=(c[1]+c[3])/2,k=nvI(x,z);if(k>=0&&NV.r[f][k])L.push([f,x,z])}});return L});
 populate();
 /* the player: a student in a short white coat */
 var ME=addNPC({me:true,look:{kind:'student',sex:'f',age:0,skin:1,hair:'ponytail',hair_color:'#4a2f1d',outfit:'#ffffff',under:'#0e8f83',seed:7},f:0,x:0,z:0,yaw:180,pose:'stand',lod:0});
@@ -116,19 +79,19 @@ var PLY={f:0,x:0,z:13.5,yaw:180,vx:0,vz:0,on:false,ride:null,au:null,frozen:fals
 /* ---------- missions: state, objective ---------- */
 var MS=PR.mis||(PR.mis={acc:{},end:{},arc:{},track:-1});
 function stepsOf(m){var L=[];m.quests.forEach(function(q,qi){q.steps.forEach(function(s,si){L.push({q:q,qi:qi,si:si,s:s})})});return L}
-function mDone(m){return stepsOf(m).filter(function(x){return PR.fin[x.s.script]}).length}
+function sDone(id){var sc=BK.scripts[SIX[id]];return sc.covers.length?sc.covers.every(function(f){return PR.done[f]}):!!PR.fin[id]}
+function mDone(m){return stepsOf(m).filter(function(x){return sDone(x.s.script)}).length}
 function mTotal(m){return stepsOf(m).length}
 function tracked(){var i=MS.track;if(i<0||i>=MIS.missions.length||MS.end[MIS.missions[i].id]){i=MIS.missions.findIndex(function(m){return!MS.end[m.id]});MS.track=i}return i<0?null:MIS.missions[i]}
 function objective(){var m=tracked();if(!m)return null;var g=MIS.posts[m.giver];
   if(!MS.acc[m.id])return{m:m,type:'accept',who:m.giver,f:castNP[m.giver].f,x:castNP[m.giver].x,z:castNP[m.giver].z};
-  var L=stepsOf(m),nx=L.filter(function(x){return!PR.fin[x.s.script]})[0];
+  var L=stepsOf(m),fo=MS.focus&&L.filter(function(x){return x.s.script===MS.focus&&!sDone(x.s.script)})[0],nx=fo||L.filter(function(x){return!sDone(x.s.script)})[0];
   if(nx){var s=nx.s,pz=s.patient&&s.patient.cast===s.presenter?s.patient:null;return{m:m,type:'step',st:nx,who:s.presenter,f:s.f,x:pz?pz.x:s.stand[0],z:pz?pz.z:s.stand[1]}}
   return{m:m,type:'debrief',who:m.giver,f:castNP[m.giver].f,x:castNP[m.giver].x,z:castNP[m.giver].z}}
 var OBJ=null;
 /* stage the cast for the objective: the presenter at the step's stand point, the patient in the step's bed or seat */
 function stage(){OBJ=objective();var want={};
-  if(OBJ&&OBJ.type==='step'){var s=OBJ.st.s,ts=s.patient&&s.patient.cast===s.presenter?null:talkSpot(s.f,s.stand[0],s.stand[1],s.script);
-    want[s.presenter]=ts?{f:s.f,x:ts[0],z:ts[1],yaw:faceReach(s.f,ts[0],ts[1]),pose:'stand',y:0}:{f:s.f,x:s.stand[0],z:s.stand[1],yaw:s.stand[2],pose:'stand',y:0};
+  if(OBJ&&OBJ.type==='step'){var s=OBJ.st.s;want[s.presenter]={f:s.f,x:s.stand[0],z:s.stand[1],yaw:s.stand[2],pose:'stand',y:0};
     if(s.patient)want[s.patient.cast]={f:s.f,x:s.patient.x,z:s.patient.z,yaw:s.patient.yaw,pose:s.patient.pose,y:s.patient.pose==='lie'?s.patient.y:0}}
   Object.keys(castNP).forEach(function(id){var o=castNP[id],w=want[id]||o.home;if(o.f===w.f&&Math.hypot(o.x-w.x,o.z-w.z)<.05&&o.pose===w.pose)return;
     var seen=PLY.on&&o.f===PLY.f&&w.f===PLY.f&&Math.hypot(o.x-PLY.x,o.z-PLY.z)<16&&w.pose==='stand'&&o.pose==='stand';
@@ -216,11 +179,13 @@ function talk(o){if(!o)return;o.nod=.6;var id=o.cast&&o.cast.id;OBJ=objective();
       say(o,L2,[['Închide cazul',function(){MS.end[m.id]=1;saveP();reward(m);MS.track=-1;stage()}]]);return}
     if(OBJ.type==='step'){var st=OBJ.st,s=st.s,L3=[];if(st.si===0)L3=L3.concat(st.q.intro);L3.push(s.line);
       say(o,L3,[['Mai târziu',null,'ghost'],['Începe',function(){playStep(o,st)}]]);return}}
-  if(o.cast){var g=MIS.greetings[o.cast.kind]||MIS.greetings.doctor||['Bună ziua!'];greet(o,g[(Math.random()*g.length)|0]);return}
+  if(o.cast){var off=MIS.missions.filter(function(m){return m.giver===id&&!MS.acc[m.id]&&!MS.end[m.id]})[0];
+    if(off){MS.track=MIS.missions.indexOf(off);saveP();stage();talk(o);return}
+    var g=MIS.greetings[o.cast.kind]||MIS.greetings.doctor||['Bună ziua!'];greet(o,g[(Math.random()*g.length)|0]);return}
   var gg=MIS.greetings[o.look.kind]||MIS.greetings.patient||['Bună ziua!'];greet(o,gg[(Math.random()*gg.length)|0])}
 var greetT=0;function greet(o,line){greetEl.textContent='';greetEl.hidden=false;greetEl.appendChild(DOM('b',null,o.cast?o.cast.name:''));greetEl.appendChild(DOM('span',null,line));greetT=2.5;o.nod=.6}
 function playStep(o,st){var s=st.s,si=SIX[s.script];PLAYM={who:o.cast?o.cast.name:'',role:o.cast?o.cast.role:'',onEnd:function(S,c,a){},onClose:function(fin){PLAYM=null;
-    if(!fin){stage();return}var good=PL0.answered===0||PL0.correct===PL0.answered,L=[good?s.after[0]:s.after[1]];var q=st.q,lastQ=q.steps.every(function(x){return PR.fin[x.script]});if(lastQ&&q.done)L.push(q.done);
+    if(!fin){stage();return}var good=PL0.answered===0||PL0.correct===PL0.answered,L=[good?s.after[0]:s.after[1]];var q=st.q,lastQ=q.steps.every(function(x){return sDone(x.script)});if(MS.focus===s.script)MS.focus=null;if(lastQ&&q.done)L.push(q.done);
     say(o,L,[['Continuă',function(){stage();var nb=OBJ;if(nb&&nb.type==='step')toast('Următorul: '+who(nb.who)+' · '+roomTxt(nb.f,nb.st.s.room));else if(nb&&nb.type==='debrief')toast('Toți pașii sunt gata: raportează la '+who(nb.m.giver))}]])}};
   openPlayer(si)}
 var PL0={correct:0,answered:0};
@@ -302,8 +267,9 @@ function openJournal(){modal.textContent='';modal.hidden=false;var box=DOM('div'
   var arc=MIS.arcs[jTab],list=DOM('div','qs');MIS.missions.forEach(function(m,mi){if(m.chapter!==arc.chapter)return;var d=mDone(m),n=mTotal(m),st=MS.end[m.id]?'Terminată':MS.acc[m.id]?'În curs':'Nouă',tr=tracked()===m;
     var c=DOM('div','mcard'+(tr?' tr':''));c.style.setProperty('--c',CHCOL[m.chapter]);var top=DOM('div','mt');top.appendChild(DOM('b',null,m.title));top.appendChild(DOM('span','st '+(MS.end[m.id]?'ok':MS.acc[m.id]?'on':''),st));c.appendChild(top);
     c.appendChild(DOM('p',null,m.case));c.appendChild(DOM('small',null,'Îți dă cazul: '+who(m.giver)+(m.patient?' · Pacient: '+who(m.patient):'')+' · '+m.quests.length+' etape · '+n+' pași'));c.appendChild(progressBar(d,n));
-    var det=DOM('details');det.appendChild(DOM('summary',null,'Etapele cazului'));m.quests.forEach(function(q){var qd=q.steps.filter(function(s){return PR.fin[s.script]}).length,s0=q.steps[0],r=DOM('div','qrow'+(qd===q.steps.length?' ok':''));
-      r.appendChild(DOM('b',null,(TOPICS[q.topic]?TOPICS[q.topic].t:q.topic)));r.appendChild(DOM('small',null,who(q.host)+' · '+(s0?roomTxt(s0.f,s0.room):'')+' · '+qd+'/'+q.steps.length));det.appendChild(r)});c.appendChild(det);
+    var det=DOM('details');det.appendChild(DOM('summary',null,'Etapele cazului'));m.quests.forEach(function(q){var qd=q.steps.filter(function(s){return sDone(s.script)}).length,s0=q.steps[0],r=DOM('div','qrow'+(qd===q.steps.length?' ok':''));
+      r.appendChild(DOM('b',null,(TOPICS[q.topic]?TOPICS[q.topic].t:q.topic)));r.appendChild(DOM('small',null,who(q.host)+' · '+(s0?roomTxt(s0.f,s0.room):'')+' · '+qd+'/'+q.steps.length));
+      var nd=q.steps.filter(function(s){return!sDone(s.script)})[0];if(nd&&MS.acc[m.id]){var gq=DOM('button','ghost','Mergi');gq.addEventListener('click',function(){MS.track=mi;MS.focus=nd.script;saveP();closeModal();if(!PLY.on)enterPlay();stage();goObjective()});r.appendChild(gq)}det.appendChild(r)});c.appendChild(det);
     var acts=DOM('div','acts');if(!tr&&!MS.end[m.id]){var tb=DOM('button','ghost','Urmărește');tb.addEventListener('click',function(){MS.track=mi;saveP();stage();openJournal()});acts.appendChild(tb)}
     if(!MS.end[m.id]){var gb=DOM('button',null,PLY.on?'Du-mă acolo':'Joacă');gb.addEventListener('click',function(){MS.track=mi;saveP();closeModal();if(!PLY.on)enterPlay();stage();goObjective()});acts.appendChild(gb)}
     c.appendChild(acts);list.appendChild(c)});box.appendChild(list)}
@@ -330,10 +296,10 @@ window.__play={enter:enterPlay,exit:exitPlay,journal:openJournal,goObjective:goO
   reach:reachMap,
   audit:function(){var L=ROOMS.filter(function(r){return r.f===0&&r.entrance})[0]||ROOMBY.g_lobby,s0=snap(0,(L.x0+L.x1)/2,(L.z0+L.z1)/2-1,4),from={f:0,x:s0[0],z:s0[1]},bad=[],n=0,far=[];
     function chk(tag,f,x,z){n++;var t=standNear({f:f,x:x,z:z,yaw:0});if(!reachable(f,t[0],t[1])){var R=roomAt(f,x,z);bad.push(tag+' @'+(R?R.id:'?'))}}
-    MIS.missions.forEach(function(m){m.quests.forEach(function(q){q.steps.forEach(function(st){var pz=st.patient&&st.patient.cast===st.presenter,ts=pz?null:talkSpot(st.f,st.stand[0],st.stand[1],st.script);
-      var x=pz?st.patient.x:ts?ts[0]:st.stand[0],z=pz?st.patient.z:ts?ts[1]:st.stand[1];n++;if(!talkable(st.f,x,z,pz?2.4:1.9))bad.push(st.script+' @'+st.room)})})});
-    Object.keys(castNP).forEach(function(id){var o=castNP[id];n++;if(!talkable(o.home.f,o.home.x,o.home.z,o.home.pose==='lie'?2.4:1.9))bad.push('post '+id)});
-    var mv={};MOVED.forEach(function(t){mv[t]=1});return{checked:n,unreachable:bad,moved:Object.keys(mv)}},
+    MIS.missions.forEach(function(m){m.quests.forEach(function(q){q.steps.forEach(function(st){var pz=st.patient&&st.patient.cast===st.presenter,ts=null;
+      var x=pz?st.patient.x:ts?ts[0]:st.stand[0],z=pz?st.patient.z:ts?ts[1]:st.stand[1];n++;if(!talkable(st.f,x,z,pz?2.6:2.0))bad.push(st.script+' @'+st.room)})})});
+    Object.keys(castNP).forEach(function(id){var o=castNP[id];n++;if(!talkable(o.home.f,o.home.x,o.home.z,o.home.pose==='lie'?2.6:2.0))bad.push('post '+id)});
+    return{checked:n,unreachable:bad}},
   teleport:function(f,x,z){var s=snap(f,x,z,3);if(!s)return false;PLY.f=f;PLY.x=s[0];PLY.z=s[1];setView(f);if(ride)ride.t=1;CAM.ok=false;place(ME);return true},walk:walk,route:route,MS:MS,stage:stage,NP:NP};
 stage();
 })()}

@@ -172,6 +172,48 @@ int main(int argc, char **argv)
         str_ok(fig[i].fig, "figlabel", i); str_ok(fig[i].text, "figlabel", i);
         if (fig[i].x1 > fig[i].w || fig[i].y1 > fig[i].h || fig[i].x0 > fig[i].x1 || fig[i].y0 > fig[i].y1) BAD("figlabel %u: box outside the crop", i);
     }
+    /* ---- missions (v4) ---- */
+#define IDX16(v, n, what, row) do { if ((v) != 0xFFFF) IDX(v, n, what, row); } while (0)
+    uint32_t ncast, narc, nmis, nquest, nms, nline, nper;
+    const mgpk_cast_t *cast = table(MGPK_CAST, sizeof(mgpk_cast_t), &ncast);
+    const mgpk_arc_t *arc = table(MGPK_ARCS, sizeof(mgpk_arc_t), &narc);
+    const mgpk_mission_t *mis = table(MGPK_MISSIONS, sizeof(mgpk_mission_t), &nmis);
+    const mgpk_quest_t *quest = table(MGPK_QUESTS, sizeof(mgpk_quest_t), &nquest);
+    const mgpk_mstep_t *ms = table(MGPK_MSTEPS, sizeof(mgpk_mstep_t), &nms);
+    const mgpk_line_t *line = table(MGPK_LINES, sizeof(mgpk_line_t), &nline);
+    const mgpk_person_t *per = table(MGPK_PEOPLE, sizeof(mgpk_person_t), &nper);
+    uint32_t longest_line = 0; uint64_t dialogue_bytes = 0;
+    for (uint32_t i = 0; i < nline; i++) { uint32_t n = str_ok(line[i].text, "line", i); dialogue_bytes += n; if (n > longest_line) longest_line = n;
+        IDX16(line[i].speaker, ncast, "line speaker", i); if (line[i].role > 1) BAD("line %u: role %u", i, line[i].role); }
+    for (uint32_t i = 0; i < ncast; i++) { str_ok(cast[i].id, "cast", i); str_ok(cast[i].name, "cast", i); str_ok(cast[i].role, "cast", i);
+        if (cast[i].kind > MGPK_KIND_STUDENT || cast[i].hair > 5 || cast[i].age > 2 || cast[i].skin > 3 || cast[i].sex > 1) BAD("cast %u: look out of range", i);
+        IDX16(cast[i].person, nper, "cast post", i); if (cast[i].person < nper && per[cast[i].person].cast != i) BAD("cast %u: its post is someone else's", i); }
+    for (uint32_t i = 0; i < narc; i++) { IDX(arc[i].giver, ncast, "arc giver", i); str_ok(arc[i].title, "arc", i);
+        if ((uint64_t)arc[i].first_line + arc[i].n_intro + arc[i].n_outro > nline) BAD("arc %u: lines past the table", i); }
+    for (uint32_t i = 0; i < nmis; i++) { const mgpk_mission_t *m = &mis[i]; str_ok(m->id, "mission", i); str_ok(m->title, "mission", i);
+        IDX(m->case_line, nline, "mission case line", i); IDX(m->giver, ncast, "mission giver", i); IDX16(m->patient, ncast, "mission patient", i);
+        IDX16(m->ward, nroom, "mission ward", i); if ((uint64_t)m->first_line + m->n_intro + m->n_outro > nline) BAD("mission %u: lines past the table", i);
+        if ((uint64_t)m->first_quest + m->n_quests > nquest) BAD("mission %u: quests past the table", i);
+        else for (uint32_t q = 0; q < m->n_quests; q++) if (quest[m->first_quest + q].mission != i) BAD("mission %u: quest %u is another case's", i, m->first_quest + q); }
+    for (uint32_t i = 0; i < nquest; i++) { const mgpk_quest_t *q = &quest[i]; IDX(q->topic, ntopic, "quest topic", i); IDX(q->host, ncast, "quest host", i);
+        IDX(q->mission, nmis, "quest mission", i); IDX(q->done_line, nline, "quest done line", i);
+        if ((uint64_t)q->first_line + q->n_intro > nline) BAD("quest %u: lines past the table", i);
+        if ((uint64_t)q->first_step + q->n_steps > nms) BAD("quest %u: steps past the table", i);
+        else for (uint32_t k = 0; k < q->n_steps; k++) if (ms[q->first_step + k].quest != i) BAD("quest %u: step %u is another quest's", i, q->first_step + k); }
+    uint8_t *seen = calloc(nscript ? nscript : 1, 1);
+    for (uint32_t i = 0; i < nms; i++) { const mgpk_mstep_t *m = &ms[i]; IDX(m->script, nscript, "step script", i); IDX(m->presenter, ncast, "step presenter", i);
+        IDX(m->room, nroom, "step room", i); IDX(m->quest, nquest, "step quest", i); IDX16(m->patient, ncast, "step patient", i);
+        IDX(m->line, nline, "step line", i); IDX(m->after_good, nline, "step line", i); IDX(m->after_mixed, nline, "step line", i);
+        if (m->pat_pose > MGPK_POSE_WALK) BAD("step %u: pose %u", i, m->pat_pose);
+        if (m->room < nroom && (m->stand_x < room[m->room].x0 || m->stand_x > room[m->room].x1 || m->stand_z < room[m->room].z0 || m->stand_z > room[m->room].z1))
+            BAD("step %u: presenter stands outside its room", i);
+        if (m->script < nscript) { if (seen[m->script]) BAD("script %u in two steps", m->script); seen[m->script] = 1; } }
+    for (uint32_t i = 0; i < nscript; i++) if (script[i].required && nms && !seen[i]) BAD("required script %u in no mission step", i);
+    free(seen);
+    uint32_t npw = 0;
+    for (uint32_t i = 0; i < nper; i++) { IDX16(per[i].cast, ncast, "person cast", i); IDX16(per[i].room, nroom, "person room", i);
+        if (per[i].kind > MGPK_KIND_STUDENT || per[i].pose > MGPK_POSE_WALK || per[i].mode > 1 || per[i].floor < 0 || per[i].floor > 3) BAD("person %u: out of range", i);
+        if (per[i].mode) npw++; }
     /* longest string, number of strings */
     uint32_t longest = 0, nstrings = 0, run = 0;
     for (uint32_t i = 1; i < nstr; i++) {
@@ -183,6 +225,8 @@ int main(int argc, char **argv)
     printf("rooms=%u\ntopics=%u\natoms=%u\nfacts=%u\nitems=%u\nopts=%u\nrefs=%u\nscripts=%u\nrequired=%u\nsplit_parts=%u\nsteps=%u\nprops=%u\nslots=%u\nfiglabels=%u\n",
            nroom, ntopic, natom, nfact, nitem, nopt, nref, nscript, required, parts, nstep, nprop, nslot, nfig);
     printf("string_table_bytes=%u\nstrings=%u\nlongest_string_bytes=%u\n", nstr, nstrings, longest);
+    printf("cast=%u\nmissions=%u\nquests=%u\nmission_steps=%u\ndialogue_lines=%u\ndialogue_bytes=%llu\nlongest_dialogue_line_bytes=%u\npeople=%u\npeople_walking=%u\ncase_state_bytes=%u\n",
+           ncast, nmis, nquest, nms, nline, (unsigned long long)dialogue_bytes, longest_line, nper, npw, (2 * nmis + 7) / 8);
     printf("largest_script=%s\nlargest_script_steps=%u\nlargest_script_string_bytes=%llu\n", g_str + script[big].id, big_steps, (unsigned long long)big_bytes);
     printf("furniture=%u\ndoor_leaves=%u\n", nfurn - nfdoor, nfdoor);
     printf("problems=%u\n", g_bad);

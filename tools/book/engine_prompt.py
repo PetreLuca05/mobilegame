@@ -122,6 +122,16 @@ def main(pack, mgpack):
         'BITSET': f'{(len(facts) + 7) // 8}', 'FIGS': str(len(figs)),
         'FIG_MB': f'{len(figs) * 1024 * 1024 * 4 / 1048576 / 2:.0f}',
     }
+    M = json.load(open(os.path.join(pack, 'missions.json'), encoding='utf-8')) if os.path.exists(os.path.join(pack, 'missions.json')) else {'people': [], 'cast': [], 'missions': []}
+    ppl = M.get('people', [])
+    per = [sum(1 for x in ppl if x['f'] == f) for f in range(4)]
+    walk = [sum(1 for x in ppl if x['f'] == f and x['mode'] == 'walk') for f in range(4)]
+    vals.update({'PEOPLE': str(len(ppl)), 'CAST_N': str(len(M.get('cast', []))), 'BG_N': str(sum(1 for x in ppl if not x['cast'])),
+                 'WALKERS': str(sum(walk)), 'STATIC_N': str(len(ppl) - sum(walk)), 'PEOPLE_MAX': str(max(per) if per else 0),
+                 'PEOPLE_ROWS': '\n'.join(f'| {f} | {per[f]} | {sum(1 for x in ppl if x["f"] == f and x["cast"])} | {walk[f]} |' for f in range(4)),
+                 'DLG_LINES': f'{int(kv.get("dialogue_lines", 0)):,}', 'DLG_BYTES': f'{int(kv.get("dialogue_bytes", 0)):,}',
+                 'DLG_LONGEST': kv.get('longest_dialogue_line_bytes', '0'), 'CASE_BYTES': kv.get('case_state_bytes', '0'),
+                 'PEOPLE_KB': f'{len(ppl) * 44 / 1024:.1f}', 'NPC_TOTAL': str(len(ppl) + 47)})
     for k, v in vals.items():
         tpl = tpl.replace('{' + k + '}', v)
     left = sorted(set(re.findall(r'\{[A-Z][A-Z_]+\}', tpl)) - {'{MG_GEN_DIR}'})

@@ -81,11 +81,15 @@ def main(pack, model_html, out):
     keepk = {'bed', 'exam_couch', 'gurney', 'or_table', 'chair', 'infusion_chair', 'recliner', 'dental', 'alcove_seat', 'sofa', 'corridor_chair',
              'auditorium_seat', 'bench_seat', 'corridor_bench', 'desk', 'exam_desk', 'reading_desk', 'lab_bench', 'lab_island', 'dispensing_counter',
              'station_counter', 'nurse_counter', 'reception_desk', 'trolley_tower', 'ultrasound', 'centrifuge'}
+    nav = None
+    if os.path.exists(os.path.join(pack, 'model_nav.json')):
+        N = json.load(open(os.path.join(pack, 'model_nav.json'), encoding='utf-8'))
+        nav = {**N['grid'], 'lifts': N['lifts'], 'lift_z': N['lift_z'], 'corr': N['corr']}
     furn = [[p['f'], p['room'], p['kind'], p['x'], p['z'], p['yaw'], p['w'], p['d']]
             for p in json.load(open(os.path.join(pack, 'model_furniture.json'), encoding='utf-8'))['pieces'] if p['kind'] in keepk]
     book = {'anchors': anchors, 'scripts': S, 'items': IT, 'atoms': [[a['text'], a['page'], a['kind']] for a in atoms],
             'facts': [topics.index(f['topic']) for f in facts], 'topics': topics, 'figs': figs,
-            'mis': mis, 'furn': furn}
+            'mis': mis, 'furn': furn, 'nav': nav}
     with open(os.path.join(out, 'book.js'), 'w', encoding='utf-8') as fo:
         fo.write('window.BOOK=' + json.dumps(book, ensure_ascii=False, separators=(',', ':')) + ';\n')
     # the page: the model as it is, plus the book layer

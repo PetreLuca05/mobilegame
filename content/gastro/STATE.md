@@ -77,6 +77,30 @@ with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
 - Visible kinds per storey (book + furniture): G 69, 1: 64, 2: 61, 3: 60; meshes with shared families (`mesh_groups`): 43,
   40, 40, 34. Pack v3 adds the furniture table (36-byte rows); prop / slot rows point to their furniture row.
 
+## Engine hand-over close-out (author's message 7)
+
+- Map fixed in the model page (`content/src/institute_model_page.html` → `institute.map` → page = file): toilet doors 1.2 m
+  (8 core toilets were unreachable at 0.9 m); a door rule slides door-side plants, bins and cabinets along the wall out of the
+  opening (plants in 3 rooms, bins in 2, cabinets in 2 rooms incl. the recovery double door); corridor benches / chairs kept
+  clear of doors (2); `e_respirator` recliner to the side wall; amphitheatre rows pulled back from the door, aisles 1.6 m,
+  podium removed, whiteboard to the stage's back wall (the intro lectern prop now sits on the hall's lectern); ward chairs
+  (all wards) out of the gap between the beds; `w_complicatii` ultrasound and `g_garda` crash cart / printer moved; two
+  bedside chart props (`bc_clinic_chart`, `bc_inductie_chart`) to the foot of the bed. Play mode: no decor exception.
+- Map check (`tools/book/model_nav.js`, everything drawn solid, the walk grid the page and missions use): 105 doors with a
+  free 1.0 m approach on both sides; 81 rooms reachable from the entrance, 4 stairwells exempt (the stair flight fills
+  them). Talking range 2.0 m: 13 of last round's 15 run-time moves are back at their original spot; 2 move in the data
+  (`e_farmclin`, behind the counter, 1.0 / 0.7 m); no run-time snapping.
+- `gastro.mgpack` v4 (header 32 table slots; v3 had 16, 14 used): cast, arcs, missions, quests, msteps, lines, people;
+  `mgpack_read.c` checks them. 2,492,032 bytes; dialogue 1,465 lines, 62,782 bytes, longest 131 bytes. Progress per fact;
+  case state 5 bytes per account (accepted + closed per case).
+- Dialogue rule (check.py): every digit, unit, drug, gene, test, diagnosis or complaint word in dialogue, case titles and
+  cast roles must be printed in the step's own sources (arc lines, greetings, roles: none). 1,532 texts checked, 0 fail;
+  rewritten 154 dialogue lines, 14 case titles, 20 cast roles; templates: 102 part lines, 6 object lines.
+- Gates: a case closes when its steps are done; chapter exams open when their rooms are complete; the final simulation
+  now opens when every room is complete (was: every chapter exam passed). Nothing else; any case or step any time.
+- People: 112 (50 cast posts + 62 background, 22 walking), per storey 33 / 28 / 36 / 15, max 36; ENGINE_PROMPT S4 / S4b /
+  perf rows: avatar mapping, poses (new: talking hand gesture), reuse of markers, interaction and the pause card.
+
 ## Missions: the book through NPCs (author's message 6)
 
 - Per mission, never per room: `missions_src.json` (authored: cast 50 = 35 staff + 15 patients, 5 arcs, 17 cases, 50 quest

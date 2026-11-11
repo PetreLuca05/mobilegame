@@ -47,7 +47,7 @@ def review_scripts(pack):
                 'steps': [], 'covers': []})
     out.append({'id': 'r-examen', 'topic': None, 'room': 'o_examen', 'kind': 'exam', 'required': False,
                 'title': 'Sala de examen: simulare', 'trigger': 'interact', 'slot': 'desk',
-                'opens_when': 'every chapter exam passed',
+                'opens_when': 'every room of every chapter complete',
                 'pool': {'chapters': [1, 2, 3, 4], 'types': ['simplu', 'multiplu'], 'count': 'set by the author', 'scoring': 'set by the author'},
                 'steps': [], 'covers': []})
     return out

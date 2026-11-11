@@ -9,7 +9,7 @@ const html = fs.readFileSync(page, 'utf8'), i0 = html.indexOf('<script>var ROOMS
 let src = html.slice(i0 + 8, i1);
 // [anchor, text inserted before it] - each anchor must occur exactly once in the page's code
 const P = [
- ["mb.cyl(L.P(-w/2+.5,0,-3.6)", "PC(mb,'bin');"], ["L.b(mb,w/2-.13,-1.2,1.3,.03,.8,1.1,COL.white)", "PC(mb,'wall_poster');"],
+ ["mb.cyl(L.P(awayU(r,w,-w/2+.5,.2),0,-3.6)", "PC(mb,'bin');"], ["L.b(mb,w/2-.13,-1.2,1.3,.03,.8,1.1,COL.white)", "PC(mb,'wall_poster');"],
  ["L.b(mb,-w/2+.13,-1.5,1.9,.03,.4,.4,COL.white)", "PC(mb,'clock');"], ["L.b(mb,-w/2+.4,-2.6,0,.55,.85,.5,COL.white)", "PC(mb,'sink');"],
  ["L.b(mb,u+q*-.75,3.3,0,.04,1.8,.04,COL.steel)", "PC(mb,'iv_pole');"], ["L.b(mb,u+q*-.62,1.2,0,.03,2,2.6,COL.blanket2)", "PC(mb,'bed_curtain');"],
  ["L.b(mb,-w/2+1+i*1.6,3.2,0,1.3,2,.05,COL.white)", "PC(mb,'wc_cubicle');"], ["L.b(mb,w/2-.5,-1,0,.5,.85,2,COL.white)", "PC(mb,'wc_basin');"],
@@ -25,8 +25,8 @@ const P = [
  ["L.b(mb,0,3.55,2.55,.9,.3,.06,COL.green)", "PC(mb,'pharmacy_sign');"], ["mb.cyl(L.P(-1,0,2),1.3,1.3,1.1,14,COL.white,COL.dark)", "PC(mb,'ct_scanner');"],
  ["L.b(mb,2,4.1,1.2,1.6,1,.06,COL.screen)", "PC(mb,'wall_screen');"], ["L.b(mb,1.2,4.1,1.2,1.6,1,.06,COL.screen)", "PC(mb,'wall_screen');"],
  ["L.b(mb,-1.5,1,0,.7,.7,2,COL.steel)", "PC(mb,'exam_couch');"], ["L.b(mb,0,4.1,1,4.5,1.6,.06,COL.screen)", "PC(mb,'wall_screen');"],
- ["L.b(mb,2.6,3,0,.7,1.1,.5,COL.wood)", "PC(mb,'lectern');"], ["L.b(mb,0,1.2-i*1.2,0,w-1.6,.25+i*.18,1.1,COL.wood2)", "PC(mb,'riser');"],
- ["L.b(mb,-2.5+j,1.1-i*1.2,yy,.45,.45,.45,cc)", "PC(mb,'auditorium_seat');"], ["L.b(mb,-3.5,-1.5,0,4,1.05,.8,COL.wood)", "PC(mb,'reception_desk');"],
+ ["L.b(mb,2.6,3,0,.7,1.1,.5,COL.wood)", "PC(mb,'lectern');"], ["L.b(mb,0,1.6-i*1.15,0,w-3.2,.25+i*.18,1.1,COL.wood2)", "PC(mb,'riser');"],
+ ["L.b(mb,-2.5+j,1.5-i*1.15,yy,.45,.45,.45,cc)", "PC(mb,'auditorium_seat');"], ["L.b(mb,-3.5,-1.5,0,4,1.05,.8,COL.wood)", "PC(mb,'reception_desk');"],
  ["L.b(mb,-5,3.4,0,3,2.2,.12,COL.screen)", "PC(mb,'info_screen');"], ["L.b(mb,5,3.4,0,3,2.2,.12,COL.screen)", "PC(mb,'info_screen');"],
  ["L.b(mb,q[0],q[1],0,1.6,.5,1.6,COL.stone)", "PC(mb,'planter_tree');"], ["L.b(mb,0,0,0,w-3,1.05,.8,COL.white)", "PC(mb,'station_counter');"],
  ["L.b(mb,-.8,0,1.11,.5,.36,.05,COL.screen)", "PC(mb,'desk_screen');"], ["L.b(mb,.9,0,1.11,.5,.36,.05,COL.screen)", "PC(mb,'desk_screen');"],

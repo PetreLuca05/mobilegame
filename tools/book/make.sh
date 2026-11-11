@@ -33,12 +33,16 @@ python3 -I "$T/inflections.py" "$PACK"      # §2: answers not verbatim (report 
 python3 -I "$T/typofacts.py" "$PACK"        # §1: facts whose only testable token is a misprint
 if [[ -f src/institute_model_page.html ]]; then   # the "Gastro Institute 3D" page: its furniture must equal institute.map's (check.py)
   node "$T/model_furniture.js" src/institute_model_page.html "$PACK/model_furniture.json"
+  node "$T/model_nav.js" src/institute_model_page.html "$PACK" "$PACK/model_nav.json"   # walk grid + map check (doors, reachable floors)
 fi
 python3 -I "$T/plans.py" "$PACK"
 cp "$T/wordrule.py" "$PACK/wordrule.py"
 python3 -I "$T/report.py" "$PACK"
 python3 -I "$T/leakguard.py" build "$PACK"
-if [[ -f "$PACK/missions_src.json" ]]; then python3 -I "$T/missions.py" "$PACK"; fi   # the book through NPCs: missions.json
+if [[ -f "$PACK/missions_src.json" ]]; then   # the book through NPCs: missions.json (needs the walk grid), then the pack again with its tables
+  python3 -I "$T/missions.py" "$PACK"
+  python3 -I "$T/packbin.py" "$PACK" "$PACK/gastro.mgpack"
+fi
 python3 -I "$PACK/check.py" "$PACK" || true      # whole book: ledgers, map placement, script length, binary pack, missions
 python3 -I "$T/review_sheets.py" "$PACK"    # §5: review_errata.csv, review_hidden.csv (decisions already filled are kept)
 python3 -I "$T/engine_prompt.py" "$PACK" "$PACK/gastro.mgpack"

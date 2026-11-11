@@ -985,6 +985,25 @@ def main():
     else:
         E['answer words'].append('wordrule.py missing next to check.py')
 
+    # ---------------------------------------------------------------- the map: free door approaches, every floor reachable
+    nvp = os.path.join(pack, 'model_nav.json')
+    if os.path.exists(nvp):
+        NVJ = json.load(open(nvp, encoding='utf-8'))
+        ex = set(NVJ.get('exempt', []))
+        for d in NVJ['doors']:
+            if d['blockers'] and d['room'] not in ex:
+                E['map'].append(f"door of {d['room']} (storey {d['f']}): no free 1.0 m approach: {', '.join(d['blockers'])}")
+        for r in NVJ['rooms']:
+            if r['id'] in ex:
+                continue
+            bad_p = [p_ for p_ in r['pockets'] if p_['m2'] >= .5 and not p_['behind_counter']]
+            if not r['reach'] or bad_p:
+                E['map'].append(f"room {r['id']}: floor not reachable from the entrance ({r['reach']} of {r['cells']} cells; pockets {[p_['m2'] for p_ in bad_p]} m2)")
+        stats['map (all furniture solid)'] = (f"{len(NVJ['doors'])} doors with a free 1.0 m approach on both sides, {len(NVJ['rooms']) - len(ex)} rooms reachable "
+                                              f"from the entrance (stairwells exempt: {len(ex)})" if not E.get('map') else 'FAIL')
+    elif os.path.exists(os.path.join(pack, 'missions_src.json')):
+        E['map'].append('model_nav.json missing: run tools/book/model_nav.js on the 3D page')
+
     # ---------------------------------------------------------------- missions: the book through NPCs, per mission
     if os.path.exists(os.path.join(pack, 'missions_src.json')):
         td = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(pack))), 'tools', 'book')
@@ -1000,6 +1019,17 @@ def main():
             _errs, _notes = MM.check(_res, _scs, _order, _SP)
             for e in _errs:
                 E['missions'].append(e)
+            _nl, _med = MM.med_check(_res, pack)          # dialogue adds no medicine: medical words only where the step prints them
+            for e in _med:
+                E['dialogue'].append(f"{e['where']}: {', '.join(e['not_in_step_sources'])} not in the step's sources: {e['line'][:80]!r}")
+            stats['dialogue'] = f'{_nl} lines; {len(_med)} with a medical word not printed in their step'
+            _tr = _res.get('talk_range')
+            if _tr:
+                stats['talking range 2.0 m'] = (f"{len(_tr['moved'])} spots moved inside their room on the map's grid; "
+                                                f"{len(_tr['back_at_original'])} of the {_tr['runtime_moved_before']} run-time moves of r5 back at their original spot")
+                _pp = _res['people']
+                _per = [sum(1 for x in _pp if x['f'] == f) for f in range(4)]
+                stats['people'] = f"{len(_pp)} ({sum(1 for x in _pp if x['cast'])} cast posts, {sum(1 for x in _pp if not x['cast'])} background, {sum(1 for x in _pp if x['mode'] == 'walk')} walking); per storey {_per}, max {max(_per)}"
             _n = sum(len(q['steps']) for m in _res['missions'] for q in m['quests'])
             stats['missions'] = (f"{len(_res['missions'])} cases, {sum(len(m['quests']) for m in _res['missions'])} quests, {_n} steps = "
                                  f"{_n} required scripts ({'100 %' if not _errs else 'FAIL'}); cast {len(_res['cast'])}; "
