@@ -25,6 +25,7 @@ typedef struct UiStyleTable {
     uint32_t lift_display_bg, lift_display_digit;      /* the lift's floor display: the one dark plate (an elevator display) */
     uint32_t confetti[4];
     uint32_t scrim;
+    uint32_t chapter[6];                  /* BOOK-ENGINE: a chapter's colour (objective marker, pill strip, journal), by arc row */
     uint32_t highlight, highlight_accent; /* button top band: white 55 %, 30 % on accent */
     uint32_t fill_highlight;              /* progress bar top band: white 35 % */
     /* shape */
@@ -86,6 +87,7 @@ static const UiStyleTable k_ui = {
     .lift_display_bg = 0x14171FFF, .lift_display_digit = 0xFFD166FF,
     .confetti = {0xFFC933FF, 0xFF7A6BFF, 0x12A594FF, 0xFFFFFFFF},
     .scrim = 0x173A3A59, /* 35 % */
+    .chapter = {0xFF7A6BFF, 0x4A8BFFFF, 0x12A594FF, 0xB46BFFFF, 0xF2A900FF, 0xFF6BB5FF},
     .highlight = 0xFFFFFF8C, .highlight_accent = 0xFFFFFF4D, .fill_highlight = 0xFFFFFF59,
     .lip_button = 7.0f, .lip_card = 7.0f, .lip_pill = 5.0f, .lip_row = 4.0f,
     .r_button = 22.0f, .r_card = 26.0f, .r_tab = 18.0f, .r_row = 16.0f,

@@ -373,7 +373,24 @@ set(MG_GAME_SOURCES
   game/world_progress.c
   game/worldmap.c
   game/book_pack.c
+  game/book_check.c
+  game/missions.c
+  game/missions_ui.c
+  game/autotest_missions.c
 )
+# BOOK-ENGINE integration: thin stand-ins for the people layer and the script player (other agents') until their files
+# land; then these lines, the stubs and the MG_*_STUB code in game.c go.
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/game/book_people.c)
+  list(APPEND MG_GAME_SOURCES game/book_people_stub.c)
+  set(MG_BOOK_STUB_DEFS ${MG_BOOK_STUB_DEFS} MG_BOOK_PEOPLE_STUB=1)
+endif()
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/game/script_player.c)
+  list(APPEND MG_GAME_SOURCES game/script_player_stub.c)
+  set(MG_BOOK_STUB_DEFS ${MG_BOOK_STUB_DEFS} MG_SCRIPT_PLAYER_STUB=1)
+endif()
+if(MG_BOOK_STUB_DEFS)
+  set_source_files_properties(game/game.c PROPERTIES COMPILE_DEFINITIONS "${MG_BOOK_STUB_DEFS}")
+endif()
 
 # --------------------------------------------------------------- targets
 if(MG_PLATFORM STREQUAL "desktop")

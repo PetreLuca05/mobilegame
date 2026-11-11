@@ -80,6 +80,15 @@
 #include "ui/ui_textarea.h"
 #include "book_pack.h"
 #include "book_progress.h"
+#include "book_check.h"
+#include "missions.h"
+#include "missions_ui.h"
+#ifdef MG_BOOK_PEOPLE_STUB
+#include "book_people_stub.h" /* STUB: until game/book_people.c lands */
+#endif
+#ifdef MG_SCRIPT_PLAYER_STUB
+#include "script_player_stub.h" /* STUB: until game/script_player.c lands */
+#endif
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/tilt.h"
@@ -206,7 +215,7 @@ typedef struct Game {
     bool no_panels;          /* --no-panels: A/B for the perf audit */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
     float text_center_err, text_center_each[3]; /* --autotest text: label capitals vs face centre, pt */
-    float hud_res[24];       /* what the marker icons stay out of: x, y, w, h */
+    float hud_res[40];       /* what the marker icons stay out of: x, y, w, h (10 rects) */
     int hud_res_count;
     int player_storey_cached;
     int ia_enter_run, ia_enter_lag, ia_exit_run, ia_exit_lag; /* ticks */
@@ -295,6 +304,13 @@ typedef struct Game {
     TextLine *book_lines;
     char *book_text;
     uint32_t book_area_inst; /* UI instances the text area emitted last frame */
+    /* BOOK-ENGINE S4: missions (on in a level whose scene is the institute and a pack with missions) */
+    Missions missions;
+    MissionUi mui;
+    BookPeople *people;    /* the pack's people (level arena) */
+    ScriptPlayer *sp;      /* the script player (level arena) */
+    uint32_t mission_marker; /* the objective marker, 0 none */
+    BookCheck bcheck;      /* the load-time data check of the last institute load */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -312,6 +328,10 @@ static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *ou
 }
 
 static void interact_setup(Game *g, MgApp *app);
+static void missions_setup(Game *g, MgApp *app);
+static bool book_modal(const Game *g);
+static void missions_frame(Game *g, MgApp *app);
+static void missions_overlays(Game *g, MgApp *app);
 static void interact_tick(Game *g, MgApp *app);
 static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr);
 static void draw_ia_debug(Game *g, MgApp *app, int floor);
@@ -400,6 +420,12 @@ static void unload_level(Game *g, MgApp *app)
     }
     const double t0 = (double)SDL_GetTicksNS() * 1e-6;
     const char *name = scene_name(g->scene);
+    missions_shutdown(&g->missions); /* BOOK-ENGINE S4: its people and player live in the level arena */
+    g->people = NULL;
+    g->sp = NULL;
+    g->mission_marker = 0;
+    g->mui.journal = false;
+    g->menu.journal_row = false;
     if (g->npcs_on) {
         npc_world_stop(&g->npcs);
     }
@@ -465,6 +491,7 @@ static bool ensure_world(Game *g, MgApp *app, SceneKind kind)
                 mg_log_info("npc: no ambient roster in %s", scene_name(g->scene));
             }
             interact_setup(g, app);
+            missions_setup(g, app);
         }
         { /* Developer -> Teleport to floor: one button per floor of this scene */
             const int nf = SDL_min(scene_floor_count(g->scene), 8);
@@ -1019,7 +1046,7 @@ bool game_init(MgApp *app)
     g->scene_override = -1;
     g->panel_lift = g->ride_lift = -1;
     g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
-    if ((atest && SDL_strcmp(atest, "institute") == 0) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario */
+    if ((atest && (SDL_strcmp(atest, "institute") == 0 || SDL_strcmp(atest, "missions") == 0)) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario; BOOK-ENGINE: missions */
         g->scene_override = (int)scene_kind_from_id(perf_run_scene(&g->perf) ? perf_run_scene(&g->perf) : "institute");
     }
     {
@@ -1617,6 +1644,12 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         break;
     case MENU_FRIENDS:
         friends_page_open(&g->fpage, &g->friends);
+        break;
+    case MENU_JOURNAL: /* BOOK-ENGINE S4: the page replaces the card; its tab = the tracked case's chapter */
+        g->mui.journal = g->missions.on;
+        if (g->missions.on && g->missions.tracked >= 0) {
+            g->mui.arc_tab = SDL_max(missions_arc_of_chapter(&g->book, g->book.missions[g->missions.tracked].chapter), 0);
+        }
         break;
     case MENU_LINK_ACCOUNT: /* never mid-session */
         leave_play(g, app);
@@ -3207,6 +3240,150 @@ static void interact_setup(Game *g, MgApp *app)
     g->ia_hover_slot = IA_NONE;
 }
 
+/* BOOK-ENGINE S4: the missions over the pack when the level is the institute: the pack's people, the script player,
+ * the load-time data check. Off (no pill, no journal row) anywhere else or without a pack with missions. */
+static void missions_setup(Game *g, MgApp *app)
+{
+    (void)app;
+    missions_ui_init(&g->mui);
+    g->mission_marker = 0;
+    g->people = NULL;
+    g->sp = NULL;
+    g->menu.journal_row = false;
+    if (!g->scene || scene_kind(g->scene) != SCENE_INSTITUTE || !g->book.ok || g->book.mission_count == 0 || !g->progress_uid[0]) {
+        return;
+    }
+    IMap map;
+    if (g->nav && imap_open_embedded(&map)) { /* every step against the map and the baked grid, once per load */
+        const HMM_Vec3 at = scene_spawn(g->scene, 0);
+        g->bcheck = book_check(&g->book, &map, g->nav, at, scene_indoors(g->scene, at) ? scene_floor_of(g->scene, at) : -1);
+    }
+#ifdef MG_BOOK_PEOPLE_STUB
+    {
+        float fy[8];
+        const int nf = SDL_min(scene_floor_count(g->scene), 8);
+        for (int f = 0; f < nf; f++) {
+            fy[f] = scene_floor_y(g->scene, f);
+        }
+        g->people = book_people_stub_create(&g->level, &g->book, g->ia_ok ? &g->ia : NULL, fy, nf);
+    }
+#endif
+#ifdef MG_SCRIPT_PLAYER_STUB
+    g->sp = script_player_stub_create(&g->level);
+#endif
+    missions_init(&g->missions, &g->book, &g->progress, g->people, g->sp, &g->level);
+    g->menu.journal_row = g->missions.on;
+    for (uint32_t c = 0; g->missions.on && c < g->book.cast_count && c < HEAD_ICON_CELLS / 2; c++) { /* portraits: rendered in the first frames */
+        const NetSkin skin = missions_cast_skin(&g->book, (int)c);
+        head_icon_get(&g->heads, &skin);
+    }
+}
+
+/* A dialogue, a script or the journal is up: the stick, the HUD and the interact panel step aside. */
+static bool book_modal(const Game *g) { return g->mui.journal || missions_dialogue_open(&g->missions) || missions_playing(&g->missions); }
+
+static void mission_marker_drop(Game *g)
+{
+    if (g->mission_marker && g->active_marker == g->mission_marker) {
+        autonav_clear(&g->autonav);
+        g->active_marker = 0;
+    }
+    if (g->mission_marker) {
+        marker_remove(&g->markers, g->mission_marker);
+    }
+    g->mission_marker = 0;
+}
+
+/* Once per play frame: the objective, its events (progress saved and pushed when a step ends, the reward), and the
+ * objective marker: one, the chapter colour, on whoever the objective is (it moves when they move). */
+static void missions_frame(Game *g, MgApp *app)
+{
+    Missions *m = &g->missions;
+    if (!m->on || !g->scene) {
+        return;
+    }
+    missions_update(m, wall_clock_ms());
+    const uint32_t ev = missions_take_events(m);
+    if (ev & ME_COMMIT) {
+        progress_commit(g, true);
+    }
+    if (ev & ME_REWARD) { /* T3 */
+        ui_fx_banner(&g->ui_fx, str((ev & ME_ARC_DONE) ? "arc_completed" : "case_completed"));
+        ui_fx_tier(&g->ui_fx, UI_T3, app->width_pt * 0.5f, app->height_pt * 0.5f, true);
+    }
+    if (ev & ME_NO_PATIENT) {
+        frontend_toast(&g->fe, str("mission_no_patient"), app->time);
+    }
+    const MissionObjective *o = &m->obj;
+    if (o->kind == MOBJ_NONE || o->cast < 0) {
+        mission_marker_drop(g);
+        return;
+    }
+    const HMM_Vec3 pos = HMM_V3(o->pos.X, scene_floor_y(g->scene, o->storey), o->pos.Z);
+    const uint32_t col = missions_case_color(m, o->mission);
+    marker_t *mk = marker_get(&g->markers, g->mission_marker);
+    if (!mk) {
+        g->mission_marker = marker_add(&g->markers, pos, o->storey, MARKER_OBJECTIVE, col);
+        return;
+    }
+    const float dx = mk->pos.X - pos.X, dz = mk->pos.Z - pos.Z;
+    const bool moved = dx * dx + dz * dz > 0.25f * 0.25f || mk->storey != o->storey;
+    mk->pos = pos;
+    mk->storey = (int8_t)o->storey;
+    mk->color_rgba = col;
+    if (moved && g->active_marker == mk->id && autonav_active(&g->autonav) && g->nav) { /* walking to them: follow */
+        const HMM_Vec3 p = g->player.kin.pos;
+        AutonavCtx c = {p, scene_indoors(g->scene, p) ? scene_floor_of(g->scene, p) : -1, app->time, false, false, 0};
+        autonav_go(&g->autonav, g->nav, &c, pos, o->storey, mk->id);
+    }
+}
+
+/* The journal page (from the pause card), the script player and the dialogue card. */
+static void missions_overlays(Game *g, MgApp *app)
+{
+    if (!g->missions.on) {
+        return;
+    }
+    if (g->mui.journal) {
+        const MissionUiAction a = missions_journal(&g->mui, &g->missions, &g->ui, app, &g->heads);
+        if (a == MUI_CLOSE_JOURNAL) { /* back to the pause card */
+            g->mui.journal = false;
+            g->menu.open = g->menu.card = true;
+        } else if (a == MUI_TAKE_ME) { /* tracked already: walk to the objective */
+            g->mui.journal = false;
+            g->menu.open = g->menu.card = false;
+            missions_frame(g, app);
+            if (g->mission_marker && g->nav) {
+                marker_tapped(g, app, g->mission_marker);
+            }
+        }
+        return;
+    }
+    if (g->menu.open || g->fpage.open) {
+        return;
+    }
+    missions_script_frame(&g->missions, &g->ui, app);
+    missions_dialogue_card(&g->mui, &g->missions, &g->ui, app, &g->heads);
+    g->mui.pill[2] = 0.0f;
+    if (!book_modal(g)) { /* the objective pill under the account chip (under the stats when they show); drawn before the stick takes
+                           * touches, so a tap on it is the pill's */
+        const ui_frame_t cf = hud_frame(app);
+        float cpx, cpy, cps;
+        ui_pause_rect(&cf, &cpx, &cpy, &cps);
+        const float chip_l = ui_safe_left(&cf) + UI_MARGIN + cf.corner;
+        const float py = cpy + CHIP_H + 8.0f + (g->settings.show_stats && !g->perf.active ? 98.0f : 0.0f);
+        const float max_w = mg_minf(app->width_pt * 0.42f, cpx - UI_MARGIN - chip_l - 140.0f);
+        if (missions_pill(&g->mui, &g->missions, &g->ui, chip_l, py, mg_maxf(max_w, 200.0f)) == MUI_OPEN_JOURNAL) {
+            g->mui.journal = true;
+            g->menu.open = g->menu.card = true;
+            g->menu.from_card = false;
+            if (g->missions.tracked >= 0) {
+                g->mui.arc_tab = SDL_max(missions_arc_of_chapter(&g->book, g->book.missions[g->missions.tracked].chapter), 0);
+            }
+        }
+    }
+}
+
 /* Developer -> Show ranges (enter ring, thin exit ring; yellow = active), Show active id */
 static void draw_ia_debug(Game *g, MgApp *app, int floor)
 {
@@ -3347,7 +3524,7 @@ static void interact_tick(Game *g, MgApp *app)
                 g->marker_ia[i] = IA_NONE;
             }
             g->marker_ia_id[i] = m->id;
-            if (m->id) {
+            if (m->id && m->id != g->mission_marker) {
                 g->marker_ia[i] = ia_add(&g->ia, IA_MARKER, m->pos, 1.6f, m->storey, IA_FACING_FREE, (uint16_t)m->id, "Marker", on_marker_interact, g, diamond);
             }
         }
@@ -3748,6 +3925,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         probe.draws = gs.draws;
     }
     probe.frame_allocs = prof_allocs_last_frame();
+    probe.missions = g->missions.on ? &g->missions : NULL;
+    probe.journal_open = g->mui.journal;
+    probe.menu_open = g->menu.open;
     probe.hud_res = g->hud_res;
     probe.hud_res_count = g->hud_res_count;
     if (g->text_test) {
@@ -3875,6 +4055,23 @@ static void game_frame_inner(MgApp *app, float alpha)
     if (ato.respawn_markers) {
         marker_clear(&g->markers, MARKER_TEST);
     }
+    if (ato.missions_reset && g->missions.on) { /* --autotest missions: a clean book, tracking from the first case */
+        book_progress_reset(&g->progress, wall_clock_ms());
+        if (g->net && SDL_strcmp(g->progress_uid, "local") != 0) { /* and the account's row, or the next merge brings it back */
+            net_reset_book_progress(g->net, PROGRESS_BOOK);
+        }
+        progress_commit(g, false);
+        g->missions.tracked = MISSION_NONE;
+        g->missions.progress_seen = -1.0;
+    }
+    if (ato.missions_go && g->mission_marker && g->nav) {
+        marker_tapped(g, app, g->mission_marker);
+    }
+#ifdef MG_SCRIPT_PLAYER_STUB
+    if (ato.missions_skip_fact > 0) {
+        script_player_stub_skip_fact(g->sp, ato.missions_skip_fact - 1);
+    }
+#endif
     if (ato.nav_go && g->nav) {
         AutonavCtx ac = {g->player.kin.pos, probe.nav_storey, app->time, false, false, 0};
         autonav_go(&g->autonav, g->nav, &ac, ato.nav_pos, ato.nav_to, 0);
@@ -4045,6 +4242,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         frontend_flow(g, app, back);
         return;
     }
+    if (back && g->mui.journal) { /* the journal goes back to the pause card */
+        g->mui.journal = false;
+        back = false;
+    } else if (back && missions_dialogue_open(&g->missions) && !g->menu.open) { /* a dialogue: later */
+        missions_dialogue_close(&g->missions);
+        back = false;
+    }
     if (back) { /* in game: the back key opens / closes the settings panel */
         if (!g->menu.open) {
             g->menu.open = true;
@@ -4064,11 +4268,16 @@ static void game_frame_inner(MgApp *app, float alpha)
     SettingsAccount acct = account_view(g);
     const bool stats_was = s->show_stats;
     MenuAction action = MENU_NONE;
+    missions_frame(g, app); /* BOOK-ENGINE S4: the objective and its marker */
     if (g->fpage.open) { /* opened from the pause card; its back arrow returns there */
         friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin);
+    } else if (g->mui.journal && g->menu.open) { /* the missions' journal, a page of the pause card */
+        missions_overlays(g, app);
     } else {
+        g->mui.journal = false;
         action = settings_menu(&g->menu, &g->ui, s, &acct, app->width_pt, app->height_pt, app->safe_left, app->safe_top, app->safe_right,
                                app->safe_bottom, g->status);
+        missions_overlays(g, app); /* the script player and the dialogue card (not under the pause card) */
     }
     if (s->show_stats != stats_was) {
         save_prefs(g); /* per device, and a kill must not lose it */
@@ -4127,9 +4336,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
 #else
 #endif
-    if (g->menu.open || riding) {
+    if (g->menu.open || riding || book_modal(g)) {
         touch_controls_reset(&g->touch);
-        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open, g->ui_anim.reduced); /* fades out under a menu */
+        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open || book_modal(g), g->ui_anim.reduced); /* fades out under a menu */
     } else {
         /* iPad: bigger controls so thumbs reach them */
         float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
@@ -4393,6 +4602,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         PROF_SCOPE("npc.draw");
         draw_crowd(g, app, floor, alpha);
     }
+#ifdef MG_BOOK_PEOPLE_STUB
+    book_people_stub_draw(g->people, app->gfx, &g->avatar_meshes, floor, mg_minf(app->frame_dt, 0.1f));
+#endif
     if (s->show_slots) {
         draw_slots(g, app, floor, feet);
     }
@@ -4400,7 +4612,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         draw_colliders(g, app->gfx, feet);
     }
 
-    if (g->menu.open) {
+    if (g->menu.open || book_modal(g)) {
         return;
     }
     if (g->nav) {
@@ -4698,7 +4910,7 @@ static void markers_update(Game *g, MgApp *app, HMM_Vec3 feet)
         float x, z;
         int st;
         const char *at = arg_value(app->argc, app->argv, "--autotest");
-        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && SDL_strcmp(at, "interact") == 0) ? 0 : (at && SDL_strcmp(at, "hudclamp") == 0 ? 16 : -1)));
+        g->marker_override = count ? SDL_atoi(count) : (at && SDL_strcmp(at, "markers") == 0 ? 8 : (g->perf.active || (at && (SDL_strcmp(at, "interact") == 0 || SDL_strcmp(at, "missions") == 0)) ? 0 : (at && SDL_strcmp(at, "hudclamp") == 0 ? 16 : -1)));
         if (at && SDL_strcmp(at, "interact") == 0) {
             marker_add(ms, HMM_V3(10.4f, scene_floor_y(g->scene, 0), -3.0f), 0, MARKER_OBJECTIVE, 0xFF9F0AFF);
         }
@@ -4838,6 +5050,10 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
     if (frontend_toast_active(&g->fe, app->time)) {
         const float t[4] = {w * 0.5f - 170.0f, h - mg_maxf(app->safe_bottom, 12.0f) - 60.0f, 340.0f, 48.0f};
         memcpy(res + rc * 4, t, sizeof(t));
+        rc++;
+    }
+    if (g->mui.pill[2] > 0.0f) { /* BOOK-ENGINE: the objective pill */
+        memcpy(res + rc * 4, g->mui.pill, sizeof(g->mui.pill));
         rc++;
     }
     g->hud_res_count = rc;

@@ -36,6 +36,7 @@ typedef enum MenuAction {
     MENU_LINK_ACCOUNT, /* pause card: save, close the lobby, go to Settings -> Account */
     MENU_OPEN_MAP,     /* pause card: save, back to the menu, the island with this hospital selected */
     MENU_DEBUG_PROGRESS, /* pause card, test builds: this hospital +25 % (wraps after 100) */
+    MENU_JOURNAL,      /* pause card: the missions' journal (BOOK-ENGINE S4) */
 } MenuAction;
 
 typedef struct SettingsAccount {
@@ -60,6 +61,7 @@ typedef struct SettingsMenu {
     const char *my_name;
     const NetSkin *my_skin;
     bool is_guest;  /* set by the game: the card offers linking */
+    bool journal_row; /* set by the game: a level with missions (the card's Misiuni row) */
     int tp_floors;  /* set by the game per level scene: Developer -> Teleport to floor, one button each */
     char tp_label[8][8]; /* "G##tp", "1##tp" .. "R##tp" */
     UiScroll players_scroll, card_scroll;
