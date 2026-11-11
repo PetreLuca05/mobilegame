@@ -90,26 +90,26 @@ static uint8_t *load(const char *path, size_t *size)
 /* mgpack_read content/gastro_demo/gastro.mgpack (key=value lines) */
 static void expect_dummy_counts(const BookPack *p)
 {
-    EQ(p->stats.bytes, 102864);
+    EQ(p->stats.bytes, 126656);
     EQ(p->hdr->version, 4);
-    EQ(p->stats.fnv1a, 0xb8ee2920u);
+    EQ(p->stats.fnv1a, 0xbba8de49u);
     EQ(p->room_count, 85);
     EQ(p->topic_count, 6);
-    EQ(p->atom_count, 24);
+    EQ(p->atom_count, 25);
     EQ(p->fact_count, 24);
-    EQ(p->item_count, 12);
-    EQ(p->opt_count, 35);
-    EQ(p->ref_count, 48);
-    EQ(p->script_count, 12);
+    EQ(p->item_count, 20);
+    EQ(p->opt_count, 113);
+    EQ(p->ref_count, 72);
+    EQ(p->script_count, 20);
     EQ(p->stats.required, 12);
     EQ(p->stats.split_parts, 0);
-    EQ(p->step_count, 24);
+    EQ(p->step_count, 40);
     EQ(p->prop_count, 201);
     EQ(p->slot_count, 33);
-    EQ(p->figlabel_count, 2);
-    EQ(p->str_size, 47461);
-    EQ(p->stats.strings, 2115);
-    EQ(p->stats.longest_string_bytes, 79);
+    EQ(p->figlabel_count, 37);
+    EQ(p->str_size, 68067);
+    EQ(p->stats.strings, 2267);
+    EQ(p->stats.longest_string_bytes, 1776);
     EQ(p->cast_count, 6);
     EQ(p->mission_count, 3);
     EQ(p->quest_count, 6);
@@ -122,8 +122,8 @@ static void expect_dummy_counts(const BookPack *p)
     EQ(p->furniture_count - p->stats.door_leaves, 1019); /* the reader's furniture= excludes the door leaves */
     EQ(p->stats.door_leaves, 105);
     EQ(p->stats.largest_script_steps, 2);
-    EQ(p->stats.largest_script_string_bytes, 362);
-    CHECK(strcmp(book_pack_str(p, p->scripts[p->stats.largest_script].id), "s-demo_t5-0") == 0);
+    EQ(p->stats.largest_script_string_bytes, 4675);
+    CHECK(strcmp(book_pack_str(p, p->scripts[p->stats.largest_script].id), "s-worst-order") == 0); /* the worst-case items (make_dummy_pack.py WORST) */
 }
 
 static void expect_sound(const BookPack *p)

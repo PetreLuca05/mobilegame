@@ -26,9 +26,10 @@
 
 #define SP_LINES 2048 /* laid-out lines of one step (the longest teach step of the pack is a few hundred) */
 #define SP_BLOCKS 128
-#define SP_OPTS 16    /* options / entries / pairs / labels of one item the widgets take */
+#define SP_OPTS 32    /* options / entries / pairs / labels of one item the widgets take (the real pack: up to 22 sort entries) */
 #define SP_CANDS 8    /* cloze candidates */
 #define SP_GAPS 6
+#define SP_GROUPS 8  /* sort bins (the real pack: up to 5) */
 
 enum { SP_PREDICT, SP_TEACH, SP_CHECK };                                                         /* step stage */
 enum { SP_SIMPLU, SP_MULTIPLU, SP_CARD, SP_CLOZE, SP_SORT, SP_MATCH, SP_ORDER, SP_LABEL, SP_TYPES }; /* item type */
@@ -40,6 +41,20 @@ typedef struct SpBlock {
     int face;
     int first, count;
 } SpBlock;
+
+/* The pack's worst case per item type (script_player_survey at load): counts and sizes only, never text. */
+typedef struct SpWorst {
+    int most[SP_TYPES];            /* most options / entries / pairs / steps / labels / gaps (card: 1) */
+    uint32_t most_item[SP_TYPES];  /* the item with the most (ties: the longest text), MGPK_NONE none */
+    uint32_t long_item[SP_TYPES];  /* the item with the most wrapped lines (stem + options + explanation) */
+    int answer_bytes[SP_TYPES], answer_lines[SP_TYPES]; /* longest option / answer / entry */
+    int stem_bytes[SP_TYPES], stem_lines[SP_TYPES];
+    int expl_bytes[SP_TYPES], expl_lines[SP_TYPES];
+    int teach_bytes, teach_lines;  /* longest atom */
+    int sort_groups;               /* most bins of a sort item */
+    int fig_w, fig_h, fig_labels;  /* the biggest figure, the most label boxes on one figure */
+    float width;                   /* the card body width the lines were counted at (the narrowest preset) */
+} SpWorst;
 
 typedef struct ScriptPlayer {
     bool active, finished;
@@ -64,11 +79,13 @@ typedef struct ScriptPlayer {
     int8_t place[SP_OPTS];     /* sort: bin of entry i; label: box of label i; match: right pair of left i; -1 none */
     uint8_t perm[SP_OPTS];     /* order: opt at each position; match: right column; sort / label: chip order */
     int n_groups;              /* sort bins */
-    uint32_t group_text[3];
+    uint32_t group_text[SP_GROUPS];
     int entry_group[SP_OPTS];  /* sort: the right bin of each entry */
     int n_boxes;               /* label: boxes = the item's labels; box i is where label i belongs */
     float box[SP_OPTS][4];     /* in the crop's pixels: x0 y0 x1 y1 */
     float crop_w, crop_h;
+    float box_c[SP_OPTS][2];    /* label: each box's centre on screen (this frame) */
+    float fig_tap[2];          /* label: where the finger on the figure is */
     int cand_opt[SP_CANDS];    /* cloze candidates: opt rows (absolute) */
     int n_cands, n_gaps;
     int8_t gap_fill[SP_GAPS];  /* candidate in each gap, -1 empty */
@@ -97,6 +114,12 @@ typedef struct ScriptPlayer {
     bool fig_drawn, fig_placeholder;
     uint32_t allocs;           /* heap allocations the card made last frame (prof) */
     char why[96];              /* the last failure the player logged ("" none) */
+    SpWorst worst;
+    struct {
+        uint32_t key;
+        float y, h;
+    } where[96];                /* every target in the body last frame, on screen or scrolled away (screen y): tests scroll to it */
+    int n_where;
     /* autotests (missions, book): answer every step by the pack's key once the card has shown */
     bool autoplay;
     int skip_fact;             /* autoplay answers wrong the items that hold this fact, then forgets it; -1 none */
@@ -104,6 +127,8 @@ typedef struct ScriptPlayer {
 
 /* Once at startup: opens the embedded figures (content/figures.mgfig) and reserves the GPU texture for the largest. */
 void script_player_init(ScriptPlayer *sp, GfxContext *g);
+/* Once after the pack loads: finds the worst case of each item type (script_player.worst) and logs it as numbers. */
+void script_player_survey(ScriptPlayer *sp, const BookPack *pack, const TextFont *body, const TextFont *bold);
 /* Opens script `script_index` of the pack; presenter_name heads the card. false (and nothing opens) on a bad index. */
 bool script_player_open(ScriptPlayer *sp, const BookPack *pack, uint32_t script_index, const char *presenter_name);
 bool script_player_active(const ScriptPlayer *sp);

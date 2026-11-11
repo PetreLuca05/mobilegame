@@ -92,13 +92,23 @@ static bool build_ops(BookUiTest *t, const ScriptPlayer *sp)
         op(t, OP_TAP, w ? "sp_didnt" : "sp_knew", NULL);
         return true;
     case SP_CLOZE: {
+        /* right: each gap's own answer; wrong: gap 0 gets a candidate that answers no gap of the item (a sibling's), the rest right */
         bool used[SP_CANDS] = {0};
         for (int g = 0; g < sp->n_gaps; g++) {
             const char *ans = str_of(sp, opt(sp, g)->text);
             int pick = -1;
             for (int c = 0; c < sp->n_cands && pick < 0; c++) {
-                const bool same = strcmp(str_of(sp, book_opt(sp->pack, (uint32_t)sp->cand_opt[c])->text), ans) == 0;
-                pick = !used[c] && (same != (w && g == 0)) ? c : -1;
+                const char *ct = str_of(sp, book_opt(sp->pack, (uint32_t)sp->cand_opt[c])->text);
+                bool ok;
+                if (w && g == 0) {
+                    ok = true;
+                    for (int k = 0; k < sp->n_gaps && ok; k++) {
+                        ok = strcmp(ct, str_of(sp, opt(sp, k)->text)) != 0;
+                    }
+                } else {
+                    ok = strcmp(ct, ans) == 0;
+                }
+                pick = !used[c] && ok ? c : -1;
             }
             if (pick < 0) {
                 return false;
@@ -186,23 +196,51 @@ static int scroll_step(BookUiTest *t, MgApp *app, const AutotestProbe *p, double
     if (!ui_rect_of(p->ui, "sp_body", &bx, &by, &bw, &bh)) {
         return failf(t, "the card's body is not on screen");
     }
-    const float x = bx - 3.0f, y0 = by + bh * (t->dir > 0 ? 0.85f : 0.15f), y1 = by + bh * (t->dir > 0 ? 0.25f : 0.75f);
+    const float x = bx - 3.0f;
     switch (t->sub) {
-    case 10:
+    case 10: {
+        /* a chip the player laid out last frame (sp_ent / sp_lab: its rect even off screen): scroll towards it */
+        int idx = -1;
+        const char *want = t->ops[t->op].kind == OP_DRAG && ui_find(p->ui, t->ops[t->op].a, &(float){0}, &(float){0}) ? t->ops[t->op].b : t->ops[t->op].a;
+        if (SDL_sscanf(want, "sp_ent%d", &idx) == 1 || SDL_sscanf(want, "sp_lab%d", &idx) == 1) {
+            if (idx >= 0 && idx < SP_OPTS && p->sp->drag_key[idx]) {
+                const float cy = p->sp->chip_rect[idx][1] + p->sp->chip_rect[idx][3] * 0.5f;
+                t->dir = cy < by ? -1 : 1;
+            }
+        }
         t->last_off = p->sp->scroll.offset;
-        finger(app, SDL_EVENT_FINGER_DOWN, BT_FINGER, x, y0);
+        /* the player says where the target is even when it is scrolled away: one drag of exactly that far (at most 0.7 of the
+         * view per drag); unknown: a step in t->dir */
+        const uint32_t key = ui_key(want);
+        t->scroll_dy = 0.0f;
+        for (int i = 0; i < p->sp->n_where; i++) {
+            if (p->sp->where[i].key == key) {
+                const float d = p->sp->where[i].y + p->sp->where[i].h * 0.5f - (by + bh * 0.5f);
+                t->scroll_dy = d > bh * 0.7f ? bh * 0.7f : d < -bh * 0.7f ? -bh * 0.7f : d;
+                t->dir = d > 0.0f ? 1 : -1;
+            }
+        }
+        if (t->scroll_dy == 0.0f) {
+            t->scroll_dy = (t->dir > 0 ? 0.6f : -0.6f) * bh;
+        }
+        if (fabsf(t->scroll_dy) < 14.0f) { /* a short move would never become a scroll (10 pt): take a little more */
+            t->scroll_dy = t->scroll_dy < 0.0f ? -14.0f : 14.0f;
+        }
+        t->sy0 = by + bh * 0.5f + t->scroll_dy * 0.5f;
+        finger(app, SDL_EVENT_FINGER_DOWN, BT_FINGER, x, t->sy0);
         t->motion = 0, t->sub = 11;
         return 0;
+    }
     case 11:
         t->motion++;
-        finger(app, SDL_EVENT_FINGER_MOTION, BT_FINGER, x, y0 + (y1 - y0) * (float)t->motion / 6.0f);
+        finger(app, SDL_EVENT_FINGER_MOTION, BT_FINGER, x, t->sy0 - t->scroll_dy * (float)t->motion / 6.0f);
         if (t->motion >= 6) {
             t->sub = 12, t->at = now;
         }
         return 0;
     case 12:
         if (now - t->at >= 0.05) {
-            finger(app, SDL_EVENT_FINGER_UP, BT_FINGER, x, y1);
+            finger(app, SDL_EVENT_FINGER_UP, BT_FINGER, x, t->sy0 - t->scroll_dy);
             t->sub = 13, t->at = now;
         }
         return 0;
@@ -215,7 +253,7 @@ static int scroll_step(BookUiTest *t, MgApp *app, const AutotestProbe *p, double
         if (fabsf(p->sp->scroll.offset - t->last_off) < 1.0f) { /* at an end: the other way */
             t->dir = t->dir > 0 ? -1 : 1;
         }
-        if (++t->scrolls > 16) {
+        if (++t->scrolls > 48) { /* a 22-entry sort is ~12 screens on a phone, there and back */
             return failf(t, "%s: widget %s never came into view", k_type[p->sp->type >= 0 ? p->sp->type : 0], t->ops[t->op].a);
         }
         t->sub = 0;
@@ -341,10 +379,10 @@ int bu_run(BookUiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
     ScriptPlayer *sp = p->sp;
     if (t->t0 == 0.0) {
         t->t0 = now;
-        const char *win = SDL_getenv("MG_WINDOW");
-        SDL_snprintf(t->win, sizeof(t->win), "%s", win && win[0] ? win : "default");
+        const char *win = SDL_getenv("MG_WINDOW"), *tag = SDL_getenv("MG_BOOK_UI_TAG"); /* tag: the real pack's pictures apart (never in docs/) */
+        SDL_snprintf(t->win, sizeof(t->win), "%s%s%s", tag ? tag : "", tag ? "-" : "", win && win[0] ? win : "default");
     }
-    if (now - t->t0 > 900.0) { /* 16 runs; the real pack's scripts take ~40 s each */
+    if (now - t->t0 > 1800.0) { /* 16 runs; the real pack's scripts take ~40 s each */
         return failf(t, "timed out in run %d", t->run);
     }
     if (sp && sp->active && t->stage >= 2) { /* every frame with the card up: allocations and UI draws; settled and still: targets */
@@ -372,16 +410,26 @@ int bu_run(BookUiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         if (!p->progress) {
             return failf(t, "no progress file open");
         }
+        /* per type: the wrong run plays the script holding the item with the most text (wrapped lines), the right run the one
+         * holding the item with the most options / entries / labels (script_player_survey); the first of the type if neither is
+         * in a script */
         for (int i = 0; i < SP_TYPES; i++) {
-            t->script[i] = -1;
+            t->script[i] = t->script_most[i] = t->script_long[i] = -1;
         }
         for (uint32_t s = 0; s < p->book->script_count; s++) {
             const mgpk_script_t *sc = book_script(p->book, s);
             for (uint32_t k = 0; k < sc->step_count; k++) {
                 const mgpk_step_t *st = book_step(p->book, sc->first_step + k);
                 const mgpk_item_t *it = st && st->stage == SP_CHECK ? book_item(p->book, st->item) : NULL;
-                if (it && it->type < SP_TYPES && t->script[it->type] < 0) {
-                    t->script[it->type] = (int)s;
+                if (!it || it->type >= SP_TYPES) {
+                    continue;
+                }
+                t->script[it->type] = t->script[it->type] < 0 ? (int)s : t->script[it->type];
+                if (st->item == sp->worst.most_item[it->type] && t->script_most[it->type] < 0) {
+                    t->script_most[it->type] = (int)s;
+                }
+                if (st->item == sp->worst.long_item[it->type] && t->script_long[it->type] < 0) {
+                    t->script_long[it->type] = (int)s;
                 }
             }
         }
@@ -389,6 +437,10 @@ int bu_run(BookUiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
             if (t->script[i] < 0) {
                 return failf(t, "no script checks a %s item", k_type[i]);
             }
+            t->script_most[i] = t->script_most[i] >= 0 ? t->script_most[i] : t->script[i];
+            t->script_long[i] = t->script_long[i] >= 0 ? t->script_long[i] : t->script[i];
+            mg_log_info("autotest book_ui: %s: the most (%d) in script %d, the longest in script %d", k_type[i], sp->worst.most[i], t->script_most[i],
+                        t->script_long[i]);
         }
         book_progress_reset(p->progress, (double)SDL_GetTicks()); /* this test's own profile: every fact unset */
         mg_log_info("autotest book_ui: window %s, scripts per type found, progress reset", t->win);
@@ -405,8 +457,9 @@ int bu_run(BookUiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         if (type == SP_LABEL && !t->wrong) {
             sp->fig_resident = -1; /* the figure goes up again inside a frame: its upload must not allocate either */
         }
-        if (!script_player_open(sp, p->book, (uint32_t)t->script[type], "Dr. Ana Test")) {
-            return failf(t, "the player did not open script %d", t->script[type]);
+        const int script = t->wrong ? t->script_long[type] : t->script_most[type];
+        if (!script_player_open(sp, p->book, (uint32_t)script, "Dr. Ana Test")) {
+            return failf(t, "the player did not open script %d", script);
         }
         t->step_seen = -1;
         t->stage = 2;

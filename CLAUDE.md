@@ -705,11 +705,19 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   (`ui_modal_rect`), steps predict / teach / check, widgets for the 8 item types, explanation + multiplu whys; only a check
   answered right sets the item's facts. Pack text wraps and scrolls (per-step line cache, visible lines only); chrome strings
   `sp_*`. Back closes it; the stick and the UI under it take no touches. Widget ids in `script_player.h`.
+  Sizes it must take (the real pack's worst case, logged at load as `book: worst cases ...`, numbers only, by
+  `script_player_survey`): 22 sort entries in up to 5 bins (one list tinted by bin + compact bins in a grid that stay beside
+  the list while it scrolls), 14 order rows, 13 labels on a figure of up to 35 boxes (each box numbered on the figure, placed
+  through numbered 44 pt buttons or a drop on the figure = the nearest box), up to 32 options per item (`SP_OPTS`).
 - Exams (S7, `game/book_exam.c`): the 7 pools as constants, `book_room_complete`, `book_chapter_complete`, `book_pool_open`
   (shut while a count is a `TODO(author)` 0).
 - `--autotest book_ui` (`tools/book_ui_test.sh`: default, iphone, iphone-flip, ipad; pictures `docs/autotest/book/`): every
   item type answered wrong (facts stay unset), then right (facts set), by taps and real drags; fails on a target < 44 pt or
-  outside the safe rect, > 3 UI draws, a frame allocation with the card up. `MG_BOOK_UI_FROM=N` starts at run N.
+  outside the safe rect, > 3 UI draws, a frame allocation with the card up. `MG_BOOK_UI_FROM=N` starts at run N. Per type the
+  wrong run plays the item with the most text, the right run the one with the most options / entries / labels. The dummy pack
+  carries one item per type at the real pack's worst size (`WORST` in `tools/book/make_dummy_pack.py`, invented filler, a
+  1386 x 1233 figure with 35 boxes), so CI plays the hardest layouts. Real-pack runs: `MG_BOOK_UI_TAG=real` keeps their
+  pictures apart (they hold book text: never in docs/).
 
 ## Institute look (INST-LIGHT)
 
