@@ -1,8 +1,8 @@
 /* WORLD-1 progress. Per book: the last hospital played and where the
  * ambulance is parked (prefs.json "world", the save's book/level, and
  * book_state on Supabase: the newer choice wins). Completion is derived,
- * never stored: world_level_completion asks the learning system (no content
- * packs yet: 0 / 0), and test builds (MG_PROF, not the store archives) can override it per level
+ * never stored: world_level_completion asks the learning system (BOOK-ENGINE: the level with a content pack
+ * reports its facts through world_progress_set_live; the others are 0 / 0), and test builds (MG_PROF, not the store archives) can override it per level
  * (--debug level-progress <level> <percent>, the pause card's "+25 %"). */
 #ifndef MG_WORLD_PROGRESS_H
 #define MG_WORLD_PROGRESS_H
@@ -51,6 +51,12 @@ typedef struct WorldProgress {
     WorldBookState books[WORLD_MAX_BOOKS];
     char last_book[WORLD_ID_LEN]; /* WORLD-2: Maps opens this island */
     WorldRides rides;
+    /* BOOK-ENGINE: levels with a content pack, this run only (world_progress_set_live) */
+    int live_count;
+    struct {
+        char book[WORLD_ID_LEN], level[WORLD_ID_LEN];
+        WorldCompletion c;
+    } live[4];
     /* debug overrides, this run only */
     int debug_count;
     struct {
@@ -60,6 +66,8 @@ typedef struct WorldProgress {
 } WorldProgress;
 
 WorldCompletion world_level_completion(const WorldProgress *wp, const char *book, const char *level);
+/* BOOK-ENGINE: a level's facts from its content pack (the account's book progress); replaces that level's 0 / 0. */
+void world_progress_set_live(WorldProgress *wp, const char *book, const char *level, WorldCompletion c);
 int world_completion_percent(WorldCompletion c); /* 0 / 0 counts as 0 % */
 IslandCompletion world_island_completion(const WorldProgress *wp, const WorldBookDef *b);
 
