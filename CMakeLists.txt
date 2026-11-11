@@ -284,6 +284,7 @@ add_library(mg_engine STATIC
   engine/ui/head_icons.c
   engine/ui/notice_panel.c
 )
+add_dependencies(mg_engine mg_content_pack) # Xcode's build system: the pack copy feeds both the embed step and mg_content_pack, so one must depend on the other
 target_include_directories(mg_engine PUBLIC engine ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(mg_engine PUBLIC SDL3::SDL3-static mg_thirdparty mg_physics)
 # native Google sign-in, one starter per platform (engine/platform/google_auth.h)

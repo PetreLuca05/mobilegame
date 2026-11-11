@@ -89,7 +89,11 @@ def main(figdir, out, fmt):
             for n in names:
                 args += [os.path.join(figdir, n), os.path.join(tmp, n[:-4] + '.astc')]
             enc = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'astc_encode.swift')
-            subprocess.run([swift, enc] + args, check=True)
+            # a Mac tool even inside an iOS build: Xcode's environment points SDKROOT etc. at the iPhone SDK
+            env = {k: v for k, v in os.environ.items() if k not in ('SDKROOT', 'PLATFORM_NAME', 'EFFECTIVE_PLATFORM_NAME') and 'DEPLOYMENT_TARGET' not in k}
+            xcrun = shutil.which('xcrun')
+            cmd = [xcrun, '--sdk', 'macosx', 'swift'] if xcrun else [swift]
+            subprocess.run(cmd + [enc] + args, check=True, env=env)
         for n in names:
             fid = n[:-4]
             if len(fid.encode()) > 23:
