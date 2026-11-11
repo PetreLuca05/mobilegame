@@ -43,6 +43,8 @@ typedef enum NetCmdType {
     CMD_STATS_SAVE,
     CMD_BOOK_SAVE,
     CMD_RIDE_SAVE, /* state in NetTransport.ride_save (too big for a command) */
+    CMD_PROGRESS_SAVE, /* book progress in NetTransport.progress_* (too big for a command) */
+    CMD_PROGRESS_RESET,
     CMD_LINK_GOOGLE, /* token in NetTransport.link_* (too big for a command) */
     CMD_SIGN_OUT,
     CMD_QUIET,
@@ -175,7 +177,18 @@ struct NetTransport {
     bool ride_pending;
     char ride_save[256];
     double ride_save_ms;
-    char rest_body[1024];
+    /* book progress: what to send (set under the lock) and the merged row that came back (read under the lock) */
+    bool progress_pending, progress_reset_pending;
+    char progress_book[32];
+    uint8_t progress_facts[NET_PROGRESS_FACTS_MAX], progress_cases[NET_PROGRESS_CASES_MAX];
+    int progress_nf, progress_nc;
+    double progress_ms;
+    bool merged_valid;
+    char merged_book[32];
+    uint8_t merged_facts[NET_PROGRESS_FACTS_MAX], merged_cases[NET_PROGRESS_CASES_MAX];
+    int merged_nf, merged_nc;
+    double merged_ms;
+    char rest_body[2048]; /* the largest: book progress (NET_PROGRESS_FACTS_MAX bytes as hex) */
     /* Google link handoff (under lock) */
     char link_token[2048];
     char link_nonce[96];
@@ -1023,6 +1036,12 @@ static void process_commands(NetTransport *n)
         case CMD_RIDE_SAVE:
             n->ride_pending = true; /* ride_save was set under the lock */
             break;
+        case CMD_PROGRESS_SAVE:
+            n->progress_pending = true; /* progress_* was set under the lock */
+            break;
+        case CMD_PROGRESS_RESET:
+            n->progress_reset_pending = true;
+            break;
         case CMD_LINK_GOOGLE:
             n->link_pending = true;
             n->want_account = true;
@@ -1190,6 +1209,34 @@ static void stats_saved(void *user, int status, const char *body, size_t len)
     }
 }
 
+/* book_progress_merge answered: {book, facts (base64), cases (base64), updated_ms} -> merged_*, NET_EV_BOOK_PROGRESS */
+static void progress_saved(void *user, int status, const char *body, size_t len)
+{
+    NetTransport *n = (NetTransport *)user;
+    cJSON *j = status >= 200 && status < 300 && len > 0 ? cJSON_ParseWithLength(body, len) : NULL;
+    const char *book = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "book"));
+    const char *facts = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "facts"));
+    const char *cases = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "cases"));
+    const cJSON *ms = cJSON_GetObjectItemCaseSensitive(j, "updated_ms");
+    if (!book || !facts || !cases || !cJSON_IsNumber(ms)) {
+        cJSON_Delete(j);
+        account_error(n, "book progress save failed", status);
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    snprintf(n->merged_book, sizeof(n->merged_book), "%s", book);
+    n->merged_nf = (int)net_base64_decode(facts, strlen(facts), n->merged_facts, sizeof(n->merged_facts));
+    n->merged_nc = (int)net_base64_decode(cases, strlen(cases), n->merged_cases, sizeof(n->merged_cases));
+    n->merged_ms = ms->valuedouble;
+    n->merged_valid = true;
+    SDL_UnlockMutex(n->lock);
+    cJSON_Delete(j);
+    NetEvent e;
+    memset(&e, 0, sizeof(e));
+    e.type = NET_EV_BOOK_PROGRESS;
+    push_event(n, &e);
+}
+
 static void book_saved(void *user, int status, const char *body, size_t len)
 {
     (void)body;
@@ -1258,6 +1305,24 @@ static void drive_account(NetTransport *n)
         snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_state\":%s,\"p_at_ms\":%.0f}", n->ride_save, n->ride_save_ms);
         SDL_UnlockMutex(n->lock);
         n->ride_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "POST", "rpc/ride_state_set", n->rest_body, book_saved, n);
+    } else if (n->progress_reset_pending) {
+        SDL_LockMutex(n->lock);
+        snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_book\":\"%s\"}", n->progress_book);
+        SDL_UnlockMutex(n->lock);
+        n->progress_reset_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "POST", "rpc/book_progress_reset", n->rest_body, book_saved, n);
+    } else if (n->progress_pending) { /* bytea as PostgREST's hex text: "\\x0a1b..." */
+        SDL_LockMutex(n->lock);
+        int at = snprintf(n->rest_body, sizeof(n->rest_body), "{\"p_book\":\"%s\",\"p_facts\":\"\\\\x", n->progress_book);
+        for (int i = 0; i < n->progress_nf && at < (int)sizeof(n->rest_body) - 200; i++) {
+            at += snprintf(n->rest_body + at, sizeof(n->rest_body) - (size_t)at, "%02x", n->progress_facts[i]);
+        }
+        at += snprintf(n->rest_body + at, sizeof(n->rest_body) - (size_t)at, "\",\"p_cases\":\"\\\\x");
+        for (int i = 0; i < n->progress_nc && at < (int)sizeof(n->rest_body) - 64; i++) {
+            at += snprintf(n->rest_body + at, sizeof(n->rest_body) - (size_t)at, "%02x", n->progress_cases[i]);
+        }
+        snprintf(n->rest_body + at, sizeof(n->rest_body) - (size_t)at, "\",\"p_at_ms\":%.0f}", n->progress_ms);
+        SDL_UnlockMutex(n->lock);
+        n->progress_pending = !rest_call(&n->rest, n->io, n->auth.access_token, "POST", "rpc/book_progress_merge", n->rest_body, progress_saved, n);
     }
 }
 
@@ -1443,6 +1508,7 @@ static void link_merged(NetTransport *n)
 {
     supa_auth_link_commit(&n->auth);
     n->stats_pending = n->profile_pending = n->book_pending = n->ride_pending = false; /* the guest's numbers must not land on this account */
+    n->progress_pending = n->progress_reset_pending = false;
     SDL_LockMutex(n->lock);
     n->friend_count = 0;
     n->search_count = 0;
@@ -1647,7 +1713,8 @@ static int net_thread(void *arg)
     }
     /* last profile/stats writes before closing (bounded) */
     for (int i = 0; i < 300 && n->want_account && supa_auth_ready(&n->auth) &&
-                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending || n->book_pending || n->ride_pending);
+                    (n->rest.busy || n->rpc.busy || n->rpc_count > 0 || n->profile_pending || n->stats_pending || n->book_pending || n->ride_pending ||
+                     n->progress_pending);
          i++) {
         n->now = (double)SDL_GetTicksNS() * 1e-9;
         drive_account(n);
@@ -1950,6 +2017,55 @@ void net_rpc(NetTransport *n, NetRpc rpc, const char *json_body)
         snprintf(slot->body, sizeof(slot->body), "%s", json_body);
     }
     SDL_UnlockMutex(n->lock);
+}
+
+void net_save_book_progress(NetTransport *n, const char *book, const uint8_t *facts, int nfacts, const uint8_t *cases, int ncases, double at_ms)
+{
+    if (!n || nfacts < 0 || nfacts > NET_PROGRESS_FACTS_MAX || ncases < 0 || ncases > NET_PROGRESS_CASES_MAX) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    snprintf(n->progress_book, sizeof(n->progress_book), "%s", book);
+    memcpy(n->progress_facts, facts, (size_t)nfacts);
+    memcpy(n->progress_cases, cases, (size_t)ncases);
+    n->progress_nf = nfacts, n->progress_nc = ncases, n->progress_ms = at_ms;
+    SDL_UnlockMutex(n->lock);
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_PROGRESS_SAVE;
+    push_cmd(n, &c);
+}
+
+void net_reset_book_progress(NetTransport *n, const char *book)
+{
+    if (!n) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    snprintf(n->progress_book, sizeof(n->progress_book), "%s", book);
+    n->merged_valid = false;
+    SDL_UnlockMutex(n->lock);
+    NetCmd c;
+    memset(&c, 0, sizeof(c));
+    c.type = CMD_PROGRESS_RESET;
+    push_cmd(n, &c);
+}
+
+bool net_book_progress_copy(NetTransport *n, char *book, size_t book_cap, uint8_t *facts, int *nfacts, uint8_t *cases, int *ncases, double *updated_ms)
+{
+    if (!n) {
+        return false;
+    }
+    SDL_LockMutex(n->lock);
+    const bool ok = n->merged_valid;
+    if (ok) {
+        snprintf(book, book_cap, "%s", n->merged_book);
+        memcpy(facts, n->merged_facts, (size_t)n->merged_nf);
+        memcpy(cases, n->merged_cases, (size_t)n->merged_nc);
+        *nfacts = n->merged_nf, *ncases = n->merged_nc, *updated_ms = n->merged_ms;
+    }
+    SDL_UnlockMutex(n->lock);
+    return ok;
 }
 
 int net_friends_copy(NetTransport *n, NetFriendRow *out, int cap)

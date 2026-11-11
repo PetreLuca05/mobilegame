@@ -108,6 +108,7 @@ typedef enum NetEventType {
     NET_EV_LINK,        /* value = NetLinkEvent; text = the identity's name (conflict) or the reason (failed) */
     NET_EV_ROOM_CMD,    /* the host's start / to_menu: value = NetRoomCmd, text = sender, push = its fields */
     NET_EV_MEMBERS,     /* one per id of the host's list: peer, value = index, len = count; text = sender. Count 0: the host closed the room */
+    NET_EV_BOOK_PROGRESS, /* the account's merged book progress arrived: net_book_progress_copy */
 } NetEventType;
 
 /* Postgres functions of the friends migration */
@@ -253,6 +254,15 @@ void net_save_stats(NetTransport *n, const NetStats *totals);
 void net_save_book_state(NetTransport *n, const char *book, const char *level, double at_ms);
 /* ride_state_set: the shuffle bag (a JSON object, < 256 bytes), changed at at_ms (coalesced; the newer wins). */
 void net_save_ride_state(NetTransport *n, const char *state_json, double at_ms);
+/* book_progress_merge: this device's progress (fact bits ORed in, the newer case state wins; at_ms = when it last
+ * changed), coalesced (the newest call wins). The merged row comes back as NET_EV_BOOK_PROGRESS. */
+#define NET_PROGRESS_FACTS_MAX 512 /* bytes of fact bits (Gastro: 419) */
+#define NET_PROGRESS_CASES_MAX 64
+void net_save_book_progress(NetTransport *n, const char *book, const uint8_t *facts, int nfacts, const uint8_t *cases, int ncases, double at_ms);
+/* book_progress_reset: Settings -> Erase progress (the account's row goes on every device). */
+void net_reset_book_progress(NetTransport *n, const char *book);
+/* The last merged row (after NET_EV_BOOK_PROGRESS); false if none has arrived. */
+bool net_book_progress_copy(NetTransport *n, char *book, size_t book_cap, uint8_t *facts, int *nfacts, uint8_t *cases, int *ncases, double *updated_ms);
 /* Link the guest to Google or Apple ("google" / "apple") with a
  * native-sign-in ID token (+ raw nonce).
  * Success arrives as NET_EV_PROFILE (guest = false), failure as

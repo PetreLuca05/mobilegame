@@ -289,6 +289,7 @@ set(MG_GAME_SOURCES
   game/lib_study.c
   game/lib_move.c
   game/lib_dressing.c
+  game/book_progress.c
   game/lib_nav.c
   game/lib_fidget.c
   game/lib_life.c
@@ -332,6 +333,12 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(mg_tests PRIVATE mg_physics SDL3::Headers) # headers only: the stick test drives touch_controls without SDL
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
+  # BOOK-ENGINE: the device's book progress file (writes into the build directory)
+  add_executable(book_progress_test tests/book_progress_test.c game/book_progress.c)
+  target_include_directories(book_progress_test PRIVATE game)
+  target_link_libraries(book_progress_test PRIVATE SDL3::SDL3-static)
+  target_compile_options(book_progress_test PRIVATE ${MG_WARNINGS})
+  add_test(NAME book_progress COMMAND book_progress_test ${CMAKE_BINARY_DIR})
   # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
   add_executable(weld_test tests/weld_test.c engine/gfx/weld.c)
 target_include_directories(weld_test PRIVATE engine)
