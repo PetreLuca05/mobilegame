@@ -6,7 +6,7 @@
 #include "core/assets.h"
 #include "core/log.h"
 
-#define MAX_STRINGS 320
+#define MAX_STRINGS 1024 /* both tables together (Romanian first, then English) */
 
 typedef struct StringEntry {
     const char *key, *value;
@@ -44,11 +44,16 @@ static bool load_table(StringTable *t, Arena *perm, const char *path)
     const cJSON *it;
     cJSON_ArrayForEach(it, j)
     {
-        if (cJSON_IsString(it) && t->count < MAX_STRINGS) {
-            t->e[t->count].key = copy(perm, it->string);
-            t->e[t->count].value = copy(perm, it->valuestring);
-            t->count++;
+        if (!cJSON_IsString(it)) {
+            continue;
         }
+        if (t->count >= MAX_STRINGS) { /* never silently: a dropped key shows on screen as its raw name */
+            mg_log_error("strings: table full (%d), %s and the rest of %s dropped: raise MAX_STRINGS", MAX_STRINGS, it->string, path);
+            break;
+        }
+        t->e[t->count].key = copy(perm, it->string);
+        t->e[t->count].value = copy(perm, it->valuestring);
+        t->count++;
     }
     cJSON_Delete(j);
     return true;
