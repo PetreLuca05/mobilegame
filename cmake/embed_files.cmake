@@ -18,7 +18,12 @@ foreach(f IN LISTS FILES)
   string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
   # break into lines of 32 bytes to keep compilers happy
   string(REGEX REPLACE "((0x..,){32})" "\\1\n" hex "${hex}")
-  string(APPEND body "static const unsigned char mg_asset_${index}[${size} + 1] = {\n${hex}0x00};\n")
+  # a content pack (.mgpack) is read in place as fixed-size records: 8-byte aligned like the tables inside it
+  set(align "")
+  if(rel MATCHES "\\.mgpack$")
+    set(align "_Alignas(8) ")
+  endif()
+  string(APPEND body "${align}static const unsigned char mg_asset_${index}[${size} + 1] = {\n${hex}0x00};\n")
   string(APPEND table "  { \"${rel}\", mg_asset_${index}, ${size} },\n")
   math(EXPR index "${index} + 1")
 endforeach()
