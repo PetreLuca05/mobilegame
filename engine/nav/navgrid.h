@@ -10,7 +10,7 @@
 #include "physics/collide.h"
 
 #define NAV_CELL 0.25f
-#define NAV_MAX_GRIDS 4
+#define NAV_MAX_GRIDS 5 /* MAP-2 institute: G (+ yard), 1, 2, 3, roof */
 #define NAV_MAX_POINTS 128
 #define NAV_UNREACHABLE (-1)
 #define NAV_MAX_CARS 4 /* lift cars (the institute has three) */

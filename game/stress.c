@@ -25,7 +25,7 @@ bool stress_init(StressCrowd *c, Arena *perm)
 {
     memset(c, 0, sizeof(*c));
     c->spawn_rng = 0x51A7E5u;
-    return npc_pool_init(&c->pool, perm) && spatial_init(&c->grid, perm, -40.0f, -30.0f, 40.0f, 30.0f, 5, NPC_MAX);
+    return npc_pool_init(&c->pool, perm) && spatial_init(&c->grid, perm, -56.0f, -42.0f, 56.0f, 48.0f, 6, NPC_MAX);
 }
 
 static uint32_t spawn_rnd(StressCrowd *c)

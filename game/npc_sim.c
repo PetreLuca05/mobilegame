@@ -26,7 +26,7 @@ bool npc_world_init(NpcWorld *w, Arena *perm, RoomGraph *rooms, struct NavWorld 
     memset(w, 0, sizeof(*w));
     w->rooms = rooms;
     w->nav = nav;
-    return npc_pool_init(&w->pool, perm) && spatial_init(&w->grid, perm, -40.0f, -30.0f, 40.0f, 30.0f, 5, NPC_MAX) && npc_data_load(&w->data, perm);
+    return npc_pool_init(&w->pool, perm) && spatial_init(&w->grid, perm, -56.0f, -42.0f, 56.0f, 48.0f, 6, NPC_MAX) && npc_data_load(&w->data, perm);
 }
 
 int npc_index_by_id(const NpcWorld *w, uint32_t id)

@@ -8,7 +8,7 @@
 #include "core/mg_types.h"
 
 #define FLOORFADE_TIME 0.35f
-#define FLOORFADE_SLOTS 128
+#define FLOORFADE_SLOTS 256 /* MAP-2 institute: 8 storey slots + up to 192 wall pieces */
 
 typedef struct FloorFade {
     float vis[FLOORFADE_SLOTS];    /* current, 1 drawn .. 0 gone */

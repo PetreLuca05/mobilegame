@@ -15,7 +15,7 @@ bool ia_init(Interact *ia, Arena *perm)
         ia->free_list[i] = (uint16_t)(IA_MAX - 1 - i);
     }
     ia->free_count = IA_MAX;
-    return spatial_init(&ia->grid, perm, -40.0f, -30.0f, 40.0f, 30.0f, 5, IA_MAX);
+    return spatial_init(&ia->grid, perm, -56.0f, -42.0f, 56.0f, 48.0f, 6, IA_MAX) /* the institute plot; yard + 5 storeys */;
 }
 
 uint16_t ia_add(Interact *ia, ia_kind_t kind, HMM_Vec3 pos, float range, int storey, unsigned flags, uint16_t ref, const char *label,
