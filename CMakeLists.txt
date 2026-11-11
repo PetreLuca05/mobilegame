@@ -16,7 +16,7 @@ option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store buil
 # without it the provisioning profile rejects the entitlement.
 option(MG_TEST_AUTH "--autotest link: email + password stand in for the ID-token grant (Debug test builds only)" OFF)
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
-set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room)")
+set(MG_SCENE "hospital" CACHE STRING "Default scene for direct starts: hospital | devroom (M1 engine test room; forces it everywhere). Levels choose theirs at run time (books.json)")
 set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
 set(MG_RENDER "minimal" CACHE STRING
     "Renderer: minimal (one directional light, no shadows/lights/reflection) | full (M3 path, reference only)")
@@ -43,6 +43,9 @@ function(mg_stamp_build target)
   add_dependencies(${target} mg_buildinfo)
   target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR}/generated)
 endfunction()
+if(MG_SCENE STREQUAL "devroom")
+  add_compile_definitions(MG_SCENE_DEVROOM=1)
+endif()
 if(MG_CAMERA STREQUAL "thirdperson")
   add_compile_definitions(MG_CAMERA_THIRDPERSON=1)
 endif()
@@ -256,7 +259,10 @@ endif()
 set(MG_GAME_SOURCES
   game/main.c
   game/game.c
-  game/scene_${MG_SCENE}.c
+  game/scene.c
+  game/scene_hospital.c
+  game/scene_devroom.c
+  game/scene_institute_stub.c # TODO(institute integration): replaced by game/scene_institute.c
   game/devroom.c
   game/devroom_layout.c
   game/hospital.c

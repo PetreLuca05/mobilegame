@@ -87,7 +87,16 @@
 #include "worldmap.h"
 
 typedef struct Game {
-    Scene *scene;
+    Scene *scene;          /* the level scene built last (stays built after play until another kind is needed) */
+    Arena level;           /* the level scene's memory: scene, nav, NPCs, interactables; reset on a scene switch */
+    GfxMeshMark level_mesh_mark; /* GPU meshes from here up are the level's (gfx_mesh_reset_to on a switch) */
+    bool play_common, play_common_ok; /* what every level shares is set up (once) */
+    bool preview_ok;       /* the preview card's meshes (once) */
+    int scene_override;    /* --scene hospital|institute|devroom (desktop), -1 = per level */
+    int panel_lift;        /* the lift the 3D panel works (the one the player stands in), -1 none */
+    int ride_lift;         /* the lift carrying the player while riding */
+    int level_switch_test; /* --autotest levelswitch: ticks until the check (0 off), -1 done */
+    double level_switch_end;
     ColWorld world;
     KinematicParams kparams;
     Player player;
@@ -345,17 +354,94 @@ static bool parse_cam_arg(int argc, char **argv, FlyCamera *c)
     return false;
 }
 
-/* The hospital (+ terrain) is only built for play: the menu runs in the
- * small locker room. Returns false if the scene cannot be built. */
-static bool ensure_world(Game *g, MgApp *app)
+#define LEVEL_ARENA_BYTES (64u << 20) /* the hospital: 38 MB peak while building (mesh builders' scratch), 9.6 MB kept; untouched pages cost nothing */
+
+static void finish_map_preload(Game *g, MgApp *app);
+
+/* Once, before the first level scene: what every level shares goes under the level mark (markers, the preview
+ * card, the world map's meshes: the map preloads behind the menu, but a direct start into play has not finished
+ * it; its meshes must not land above the mark or a scene switch would drop them). Then the level arena and mark. */
+static bool ensure_play_common(Game *g, MgApp *app)
 {
-    if (g->scene) {
+    if (g->play_common) {
+        return g->play_common_ok;
+    }
+    g->play_common = true;
+    finish_map_preload(g, app);
+    g->preview_ok = preview_panel_init(&g->panel, app->gfx, &app->perm);
+    g->all_paths = ARENA_PUSH(&app->perm, NavPath, MARKER_MAX);
+    if (!markers_init(&g->markers, app->gfx, &app->perm) || !g->all_paths || !arena_sub_reserve(&app->perm, &g->level, LEVEL_ARENA_BYTES)) {
+        mg_log_error("level: no room for the level arena (%u MB; perm %zu / %zu used)", LEVEL_ARENA_BYTES >> 20, app->perm.used, app->perm.size);
+        return false;
+    }
+    gfx_settle_uploads(app->gfx);
+    g->level_mesh_mark = gfx_mesh_mark(app->gfx);
+    mg_log_info("level: arena %u MB reserved, perm %zu / %zu MB used", LEVEL_ARENA_BYTES >> 20, app->perm.used >> 20, app->perm.size >> 20);
+    g->play_common_ok = true;
+    return true;
+}
+
+/* Everything that points into the level arena or at the level's meshes goes; the arena and the meshes above the
+ * mark are freed. The shared parts (markers' meshes, the preview card, the world map) stay. */
+static void unload_level(Game *g, MgApp *app)
+{
+    if (!g->scene) {
+        return;
+    }
+    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    const char *name = scene_name(g->scene);
+    if (g->npcs_on) {
+        npc_world_stop(&g->npcs);
+    }
+    g->npcs_on = g->npcs_ok = g->npc_catching_up = false;
+    SDL_zero(g->npcs);
+    g->crowd_ok = false;
+    g->crowd.pool.count = 0; /* its requests went with the nav */
+    autonav_clear(&g->autonav);
+    g->active_marker = 0;
+    SDL_memset(g->markers.m, 0, sizeof(g->markers.m)); /* every marker is a spot in the old scene */
+    g->nav_path_ok = false;
+    SDL_zero(g->nav_debug); /* its grids are level meshes */
+    g->ia_ok = g->lift_panel_ok = false;
+    g->panel.shown = IA_NONE;
+    g->panel.slide = 0.0f;
+    g->panel_lift = g->ride_lift = -1;
+    g->riding = false;
+    g->scene = NULL;
+    g->nav = NULL;
+    colworld_clear(&g->world);
+    rooms_clear(&g->rooms);
+    uint32_t meshes, vb, ib;
+    gfx_mesh_usage(app->gfx, &meshes, &vb, &ib);
+    gfx_mesh_reset_to(app->gfx, g->level_mesh_mark);
+    const size_t peak = g->level.peak;
+    arena_reset(&g->level);
+    g->level.peak = 0;
+    arena_release_unused(&g->level);
+    mg_log_info("level: unloaded %s in %.1f ms: %u meshes, %u KB vertices, %u KB indices, arena peak %zu KB", name,
+                (double)SDL_GetTicksNS() * 1e-6 - t0, meshes - g->level_mesh_mark.meshes, (vb - g->level_mesh_mark.vb_bytes) >> 10,
+                (ib - g->level_mesh_mark.ib_bytes) >> 10, peak >> 10);
+}
+
+/* The level scene of `kind` (+ terrain, nav, room graph, NPC roster, interactables, lift panel), built into the
+ * level arena and above the level mesh mark. A scene of another kind is unloaded first; the same kind stays as it
+ * is (Continue / Join / back to the menu and in again). False if the scene cannot be built. */
+static bool ensure_world(Game *g, MgApp *app, SceneKind kind)
+{
+    if (g->scene && scene_kind(g->scene) == kind) {
         return true;
     }
-    g->scene = scene_create(app->gfx, &app->perm, &g->world, &app->font);
+    if (!ensure_play_common(g, app)) {
+        return false;
+    }
+    unload_level(g, app);
+    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    colworld_clear(&g->world);
+    g->panel_lift = g->ride_lift = -1;
+    g->scene = scene_create(kind, app->gfx, &g->level, &g->world, &app->font);
     if (g->scene) {
-        g->nav = scene_nav_bake(g->scene, &app->perm, &g->world);
-        g->crowd_ok = g->nav && stress_init(&g->crowd, &app->perm);
+        g->nav = scene_nav_bake(g->scene, &g->level, &g->world);
+        g->crowd_ok = g->nav && stress_init(&g->crowd, &g->level);
         if (g->nav) {
             mg_log_info("nav: baked %d grids in %.1f ms", nav_grid_count(g->nav), (double)nav_bake_ms(g->nav));
         }
@@ -364,17 +450,112 @@ static bool ensure_world(Game *g, MgApp *app)
             int bad = rooms_validate(&g->rooms, g->nav);
             mg_log_info("rooms: %d rooms, %d doors, %d slots, %d on blocked cells", g->rooms.room_count, g->rooms.door_count,
                         g->rooms.slot_count, bad);
-            g->npcs_ok = npc_world_init(&g->npcs, &app->perm, &g->rooms, g->nav);
+            g->npcs_ok = scene_ambient_npcs(g->scene) && npc_world_init(&g->npcs, &g->level, &g->rooms, g->nav);
+            if (!scene_ambient_npcs(g->scene)) {
+                mg_log_info("npc: no ambient roster in %s", scene_name(g->scene));
+            }
             interact_setup(g, app);
         }
-        arena_release_unused(&app->perm); /* the mesh builders' scratch: ~30 MB of dirty pages */
+        { /* Developer -> Teleport to floor: one button per floor of this scene */
+            const int nf = SDL_min(scene_floor_count(g->scene), 8);
+            g->menu.tp_floors = nf;
+            for (int f = 0; f < nf; f++) {
+                const char *fname = scene_floor_name(g->scene, f);
+                SDL_snprintf(g->menu.tp_label[f], sizeof(g->menu.tp_label[f]), "%c##tp", fname && fname[0] ? fname[0] : '?');
+            }
+        }
     }
-    if (g->nav && !markers_init(&g->markers, app->gfx, &app->perm)) {
-        return false;
+    SceneryShape shape = g->scene ? scene_scenery_shape(g->scene) : (SceneryShape){0};
+    const bool ok = g->scene && scenery_init(&g->scenery, &shape, app->gfx, &g->level);
+    gfx_settle_uploads(app->gfx);
+    uint32_t meshes, vb, ib;
+    gfx_mesh_usage(app->gfx, &meshes, &vb, &ib);
+    mg_log_info("level: built %s in %.1f ms: %u meshes (%u KB vertices, %u KB indices) over the mark, arena %zu KB kept, peak %zu KB of %u MB, lifts %d, floors %d",
+                g->scene ? scene_name(g->scene) : scene_kind_id(kind), (double)SDL_GetTicksNS() * 1e-6 - t0, meshes - g->level_mesh_mark.meshes,
+                (vb - g->level_mesh_mark.vb_bytes) >> 10, (ib - g->level_mesh_mark.ib_bytes) >> 10, g->level.used >> 10, g->level.peak >> 10,
+                LEVEL_ARENA_BYTES >> 20, g->scene ? scene_elevator_count(g->scene) : 0, g->scene ? scene_floor_count(g->scene) : 0);
+    arena_release_unused(&g->level); /* the mesh builders' scratch */
+    if (!ok) {
+        unload_level(g, app);
     }
-    g->all_paths = ARENA_PUSH(&app->perm, NavPath, MARKER_MAX);
-    SceneryShape shape = scene_scenery_shape();
-    return g->scene && scenery_init(&g->scenery, &shape, app->gfx, &app->perm);
+    return ok;
+}
+
+/* The scene a level loads: --scene, else the level's books.json "scene" (MG_SCENE=devroom: always the dev room). */
+static SceneKind level_scene_kind(const Game *g, int book, int level)
+{
+    if (scene_kind_forced()) {
+        return scene_default_kind();
+    }
+    if (g->scene_override >= 0) {
+        return (SceneKind)g->scene_override;
+    }
+    if (book < 0 || book >= g->books.count || level < 0 || level >= g->books.books[book].level_count) {
+        return scene_default_kind();
+    }
+    return scene_kind_from_id(g->books.books[book].levels[level].scene);
+}
+
+/* ------------------------------------------------------------ lifts (N per scene) */
+
+static int lift_count(const Game *g) { return g->scene ? scene_elevator_count(g->scene) : 0; }
+static Elevator *lift_get(Game *g, int i) { return g->scene && i >= 0 ? scene_elevator(g->scene, i) : NULL; }
+static bool lift_holds_xz(const Elevator *e, HMM_Vec3 p) { return p.X >= e->x0 && p.X <= e->x1 && p.Z >= e->z0 && p.Z <= e->z1; }
+
+/* The lift whose car the capsule stands in (elevator_contains), -1 none. */
+static int lift_containing(Game *g, HMM_Vec3 feet, float radius)
+{
+    for (int i = 0; i < lift_count(g); i++) {
+        if (elevator_contains(lift_get(g, i), feet, radius)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The nearest car (to its centre, on the ground plan), -1 if the scene has no lift. */
+static int lift_nearest(Game *g, HMM_Vec3 p)
+{
+    int best = -1;
+    float best_d = 1e30f;
+    for (int i = 0; i < lift_count(g); i++) {
+        const Elevator *e = lift_get(g, i);
+        const float dx = (e->x0 + e->x1) * 0.5f - p.X, dz = (e->z0 + e->z1) * 0.5f - p.Z, d = dx * dx + dz * dz;
+        if (d < best_d) {
+            best_d = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static bool any_lift_busy(Game *g)
+{
+    for (int i = 0; i < lift_count(g); i++) {
+        if (elevator_busy(lift_get(g, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Every car waits on `floor` (Continue, debug teleport); a lift without that landing keeps its place. */
+static void lifts_place(Game *g, int floor)
+{
+    for (int i = 0; i < lift_count(g); i++) {
+        Elevator *e = lift_get(g, i);
+        if (floor < e->floors) {
+            elevator_place(e, floor);
+        }
+    }
+}
+
+/* The marker HUD's badge for a floor: the first letter of its name (G 1 2 .. R). */
+static void floor_badge(const Game *g, int floor, char out[4])
+{
+    const char *n = g->scene ? scene_floor_name(g->scene, floor) : NULL;
+    out[0] = n && n[0] ? n[0] : 0;
+    out[1] = 0;
 }
 
 /* in play: the account chip top left, the pause button top right; the perf text goes under the chip */
@@ -724,8 +905,18 @@ bool game_init(MgApp *app)
         g->load_step = 0;
         g->fe.state = FE_LOADING;
     }
+    g->scene_override = -1;
+    g->panel_lift = g->ride_lift = -1;
+    g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
+    {
+        const char *sc = arg_value(app->argc, app->argv, "--scene"); /* desktop: hospital | institute | devroom (also every level load) */
+        if (sc) {
+            g->scene_override = (int)scene_kind_from_id(SDL_strcmp(sc, "hospital") == 0 ? "hospital_v1" : sc);
+            mg_log_info("scene: --scene %s", scene_kind_id((SceneKind)g->scene_override));
+        }
+    }
     if (play_now) {
-        if (!ensure_world(g, app)) {
+        if (!ensure_world(g, app, g->scene_override >= 0 && !scene_kind_forced() ? (SceneKind)g->scene_override : scene_default_kind())) {
             return false;
         }
         HMM_Vec3 spawn = scene_spawn(g->scene, 0);
@@ -829,10 +1020,78 @@ static void tilt_step(Game *g, MgApp *app)
     }
 }
 
+/* --autotest levelswitch: hospital -> institute (stub) -> dev room -> hospital, three times, between ticks (nothing of
+ * the scene is in a draw list). Every hospital build must leave the GPU pools and the level arena exactly where the
+ * first one did, every unload must bring the pools back to the level mark, the world map's meshes (under the mark) stay. */
+static void run_level_switch_check(Game *g, MgApp *app)
+{
+    static const SceneKind order[] = {SCENE_INSTITUTE, SCENE_DEVROOM, SCENE_HOSPITAL};
+    bool ok = g->scene && scene_kind(g->scene) == SCENE_HOSPITAL && g->wm.loaded;
+    char why[160] = "";
+    uint32_t m0, vb0, ib0;
+    gfx_mesh_usage(app->gfx, &m0, &vb0, &ib0);
+    const size_t level0 = g->level.used, perm0 = app->perm.used;
+    const int grids0 = g->nav ? nav_grid_count(g->nav) : 0;
+    mg_log_info("levelswitch: hospital: %u meshes (%u over the mark), vb %u KB, ib %u KB, level arena %zu KB, perm %zu KB", m0, m0 - g->level_mesh_mark.meshes,
+                vb0 >> 10, ib0 >> 10, level0 >> 10, perm0 >> 10);
+    for (int round = 0; round < 3 && ok; round++) {
+        for (int k = 0; k < 3 && ok; k++) {
+            const double t0 = mg_time_now();
+            if (!ensure_world(g, app, order[k])) {
+                SDL_snprintf(why, sizeof(why), "could not build %s", scene_kind_id(order[k]));
+                ok = false;
+                break;
+            }
+            uint32_t m, vb, ib;
+            gfx_mesh_usage(app->gfx, &m, &vb, &ib);
+            mg_log_info("levelswitch: round %d: %s in %.1f ms: %u meshes, vb %u KB, ib %u KB, level arena %zu KB, lifts %d, npcs_ok %d, nav %d grids", round,
+                        scene_name(g->scene), (mg_time_now() - t0) * 1000.0, m, vb >> 10, ib >> 10, g->level.used >> 10, lift_count(g), g->npcs_ok,
+                        g->nav ? nav_grid_count(g->nav) : 0);
+            if (scene_kind(g->scene) != order[k]) {
+                SDL_snprintf(why, sizeof(why), "built %s, wanted %s", scene_kind_id(scene_kind(g->scene)), scene_kind_id(order[k]));
+                ok = false;
+            } else if (order[k] == SCENE_INSTITUTE && g->npcs_ok) {
+                SDL_snprintf(why, sizeof(why), "the institute has the hospital's ambient roster");
+                ok = false;
+            } else if (order[k] == SCENE_DEVROOM && (g->nav || lift_count(g) != 0)) {
+                SDL_snprintf(why, sizeof(why), "the dev room has a nav or lifts");
+                ok = false;
+            } else if (order[k] == SCENE_HOSPITAL && (m != m0 || vb != vb0 || ib != ib0 || g->level.used != level0 || app->perm.used != perm0 || !g->npcs_ok ||
+                                                     !g->nav || nav_grid_count(g->nav) != grids0 || lift_count(g) != 1)) {
+                SDL_snprintf(why, sizeof(why), "hospital rebuilt differently: %u/%u meshes, vb %u/%u, level %zu/%zu, perm %zu/%zu", m, m0, vb, vb0, g->level.used, level0,
+                             app->perm.used, perm0);
+                ok = false;
+            } else if (m < g->level_mesh_mark.meshes || !g->wm.loaded) {
+                SDL_snprintf(why, sizeof(why), "the pools went under the level mark");
+                ok = false;
+            }
+        }
+    }
+    if (ok) { /* back in the hospital: play on from the entrance for a moment */
+        player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
+        g->cam.initialized = g->td.initialized = false;
+        g->fade_snap = true;
+    }
+    mg_log_info("levelswitch: %s%s%s", ok ? "all builds match" : "FAILED: ", ok ? "" : why, "");
+    g->level_switch_test = ok ? -1 : 0;
+    g->level_switch_end = ok ? app->time + 3.0 : app->time;
+    if (!ok) {
+        mg_log_info("AUTOTEST FAILED");
+        app->quit_requested = true;
+    }
+}
+
 void game_tick(MgApp *app)
 {
     Game *g = (Game *)app->game;
     tilt_step(g, app);
+    if (g->level_switch_test > 0 && --g->level_switch_test == 0) {
+        run_level_switch_check(g, app);
+    } else if (g->level_switch_test < 0 && app->time >= g->level_switch_end) { /* it drew and played for 3 s */
+        mg_log_info("AUTOTEST PASSED");
+        app->quit_requested = true;
+        g->level_switch_test = 0;
+    }
     if (!g->playing) {
         if (g->fe.state == FE_MAP) {
             worldmap_tick(&g->wm, MG_TICK_DT);
@@ -843,29 +1102,34 @@ void game_tick(MgApp *app)
         return;
     }
     scene_tick(g->scene, &g->world, MG_TICK_DT);
-    Elevator *el = scene_elevator(g->scene);
-    bool moving = el && elevator_moving(el);
-    if (moving && !g->riding) { /* the car leaves: is the player in it? */
-        HMM_Vec3 p = g->player.kin.pos;
-        g->riding = p.X >= el->x0 && p.X <= el->x1 && p.Z >= el->z0 && p.Z <= el->z1 &&
-                    fabsf(p.Y - (float)el->from_floor * el->storey) < 0.5f;
-        g->ride_offset = p.Y - (float)el->from_floor * el->storey;
+    if (g->riding) { /* still moving? */
+        const Elevator *re = lift_get(g, g->ride_lift);
+        g->riding = re && elevator_moving(re);
     }
-    if (!moving) {
-        g->riding = false;
-    }
-    if (el && el->arrived) {
-        el->arrived = false;
-        audio_ding(g->audio);
-        if (g->playing && g->player.kin.pos.X >= el->x0 && g->player.kin.pos.X <= el->x1 && g->player.kin.pos.Z >= el->z0 && g->player.kin.pos.Z <= el->z1) {
-            ui_haptic(HAPTIC_LIFT_ARRIVE); /* only for a rider: not a car the player cannot see */
+    for (int i = 0; i < lift_count(g) && !g->riding; i++) { /* a car leaves: is the player in it? */
+        const Elevator *e = lift_get(g, i);
+        const HMM_Vec3 p = g->player.kin.pos;
+        if (elevator_moving(e) && lift_holds_xz(e, p) && fabsf(p.Y - (float)e->from_floor * e->storey) < 0.5f) {
+            g->riding = true;
+            g->ride_lift = i;
+            g->ride_offset = p.Y - (float)e->from_floor * e->storey;
         }
-        g->stats.rides++;
-        stats_reset_position(&g->stats);
+    }
+    for (int i = 0; i < lift_count(g); i++) {
+        Elevator *e = lift_get(g, i);
+        if (e->arrived) {
+            e->arrived = false;
+            audio_ding(g->audio);
+            if (g->playing && lift_holds_xz(e, g->player.kin.pos)) {
+                ui_haptic(HAPTIC_LIFT_ARRIVE); /* only for a rider: not a car the player cannot see */
+            }
+            g->stats.rides++;
+            stats_reset_position(&g->stats);
+        }
     }
     if (g->riding) { /* travel with the car: no physics through the slabs */
         g->player.prev_pos = g->player.kin.pos;
-        g->player.kin.pos.Y = el->car_y + g->ride_offset;
+        g->player.kin.pos.Y = lift_get(g, g->ride_lift)->car_y + g->ride_offset;
         g->player.kin.vel = HMM_V3(0, 0, 0);
     } else {
         PROF_SCOPE("kinematic");
@@ -885,8 +1149,7 @@ void game_tick(MgApp *app)
     if (g->offline_play && scene_indoors(g->scene, g->player.kin.pos)) { /* rooms visited: storey x chunk */
         HMM_Vec3 p = g->player.kin.pos;
         int col = (int)mg_clampf((p.X + 15.0f) / 3.75f, 0.0f, 7.0f);
-        int bit = scene_floor_of(g->scene, p) * 16 + col + (p.Z > -9.4f ? 8 : 0);
-        g->save.visited_rooms |= 1ull << (bit & 63);
+        save_mark_visited(&g->save, scene_floor_of(g->scene, p), col + (p.Z > -9.4f ? 8 : 0)); /* storeys 0..7 */
     }
 }
 
@@ -1040,6 +1303,7 @@ static void write_save(Game *g)
     s->yaw = g->td.yaw; /* v2: the camera yaw (fixed since M5-S; read and ignored) */
 #endif
     s->floor = (uint32_t)scene_floor_of(g->scene, g->player.kin.pos);
+    SDL_snprintf(s->scene_id, sizeof(s->scene_id), "%s", scene_kind_id(scene_kind(g->scene))); /* v7: whose coordinates pos is in */
     s->play_seconds = g->save_play_base + (uint32_t)g->stats.play_seconds;
     s->elevator_rides = g->save_rides_base + (uint32_t)g->stats.rides;
     g->has_save = save_write(s, g->profile_name) || g->has_save;
@@ -1104,10 +1368,10 @@ static int level_index(const Game *g, const char *id)
 
 /* The islands: BOOKS after New Game, ARRIVED on the last played hospital of the last played island
  * from Maps and the pause card. */
-static bool open_map(Game *g, MgApp *app, WmState state)
+/* Finish the menu's preload of the islands (or the whole load) now: the map, and before the first level scene. */
+static void finish_map_preload(Game *g, MgApp *app)
 {
-    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
-    if (!g->wm.loaded && !g->wm_tried) { /* finish the menu's preload (or the whole load) now */
+    if (!g->wm.loaded && !g->wm_tried) {
         prof_allocs_exempt(true); /* once: the islands' meshes */
         int r;
         while ((r = worldmap_load_step(&g->wm, &g->books, app->gfx, &app->perm)) == 0) {
@@ -1116,6 +1380,12 @@ static bool open_map(Game *g, MgApp *app, WmState state)
         prof_allocs_exempt(false);
         arena_release_unused(&app->perm);
     }
+}
+
+static bool open_map(Game *g, MgApp *app, WmState state)
+{
+    const double t0 = (double)SDL_GetTicksNS() * 1e-6;
+    finish_map_preload(g, app);
     if (!g->wm.loaded) {
         frontend_toast(&g->fe, "Could not load the map", app->time);
         return false;
@@ -1251,12 +1521,9 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
 #endif
         break;
     case MENU_TELEPORT: {
-        Elevator *el = scene_elevator(g->scene);
-        int f = g->settings.teleport_floor;
+        int f = SDL_clamp(g->settings.teleport_floor, 0, scene_floor_count(g->scene) - 1);
         player_init(&g->player, scene_floor_lobby(g->scene, f), 0.0f);
-        if (el) {
-            elevator_place(el, f);
-        }
+        lifts_place(g, f);
         g->cam.initialized = g->td.initialized = false;
         g->fade_snap = true;
         break;
@@ -1659,15 +1926,27 @@ static void draw_notices(Game *g, MgApp *app)
 static void load_step(Game *g, MgApp *app)
 {
     switch (g->load_step++) {
-    case 0:
-        break; /* one frame to show the bar */
-    case 1:
-        if (!ensure_world(g, app)) {
+    case 0: { /* one frame to show the bar; which level (and so which scene) this is */
+        SaveGame peek;
+        if (g->pending_play == 3 && save_read(&peek, g->profile_name)) { /* Continue: the save's level */
+            g->play_book = SDL_max(world_book_find(&g->books, peek.book_id), 0);
+            g->play_level = level_index(g, peek.level_id);
+        } else if (g->pending_play == 4) { /* a friend's game: the host's level (map_id = book * 64 + level) */
+            g->play_book = SDL_clamp(g->lobby.grant.map_id / 64, 0, g->books.count - 1);
+            g->play_level = SDL_clamp(g->lobby.grant.map_id % 64, 0, cur_book(g)->level_count - 1);
+        }
+        break;
+    }
+    case 1: {
+        const SceneKind kind = level_scene_kind(g, g->play_book, g->play_level);
+        mg_log_info("level: %s/%s -> scene %s", cur_book(g)->id, cur_book(g)->levels[g->play_level].id, scene_kind_id(kind));
+        if (!ensure_world(g, app, kind)) {
             frontend_toast(&g->fe, "Could not load the hospital", app->time);
             g->fe.state = FE_MAIN_MENU;
         }
         gfx_settle_uploads(app->gfx); /* the hospital's meshes are in */
         break;
+    }
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
         g->offline_play = g->pending_play == 0 || g->pending_play == 3 || g->pending_play == 5;
@@ -1677,20 +1956,28 @@ static void load_step(Game *g, MgApp *app)
         g->save_play_base = g->save_rides_base = 0;
         if (g->pending_play == 3 && save_read(&g->save, g->profile_name)) { /* Continue */
             g->npc_resume_tick = g->save.npc_tick;
-            player_init(&g->player, g->save.pos, g->save.yaw);
+            /* v7: the save says whose coordinates it holds; a level whose scene changed since (a v6 gastro save, hospital
+             * coordinates, now the institute) starts at the new scene's entrance */
+            const bool same_scene = SDL_strcmp(g->save.scene_id, scene_kind_id(scene_kind(g->scene))) == 0;
+            if (same_scene) {
+                player_init(&g->player, g->save.pos, g->save.yaw);
 #ifndef MG_CAMERA_THIRDPERSON
-            /* v2 saves store the camera yaw; the camera is fixed now */
+                /* v2 saves store the camera yaw; the camera is fixed now */
 #endif
-            Elevator *el = scene_elevator(g->scene);
-            if (el && g->save.floor > 0) {
-                elevator_place(el, (int)g->save.floor < el->floors ? (int)g->save.floor : 0);
+                if (g->save.floor > 0) {
+                    lifts_place(g, (int)g->save.floor);
+                }
+            } else {
+                mg_log_info("save: v%u in scene %s, the level is %s now: Continue starts at its entrance", g->save.version, g->save.scene_id,
+                            scene_kind_id(scene_kind(g->scene)));
+                g->npc_resume_tick = 0;
             }
             g->save_play_base = g->save.play_seconds - (uint32_t)g->stats.play_seconds;
             g->save_rides_base = g->save.elevator_rides - (uint32_t)g->stats.rides;
             g->play_book = SDL_max(world_book_find(&g->books, g->save.book_id), 0);
             g->play_level = level_index(g, g->save.level_id);
             SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", cur_book(g)->id);
-            g->keep_save_pos = true;
+            g->keep_save_pos = same_scene;
             world_set_last_level(&g->prefs.world, cur_book(g)->id, cur_book(g)->levels[g->play_level].id, -1.0f, wall_clock_ms());
             push_book_state(g);
         } else if (g->pending_play == 5) { /* Join: the level from its entrance; play time and rides carry on */
@@ -2774,14 +3061,19 @@ static void interact_setup(Game *g, MgApp *app)
     const char *ia_at = arg_value(app->argc, app->argv, "--autotest");
     g->text_test = ia_at && SDL_strcmp(ia_at, "text") == 0;
     g->hud_clamp_test = ia_at && SDL_strcmp(ia_at, "hudclamp") == 0;
-    g->ia_ok = ia_init(&g->ia, &app->perm) && preview_panel_init(&g->panel, app->gfx, &app->perm);
+    g->ia_ok = g->preview_ok && ia_init(&g->ia, &g->level); /* per level; the preview card's meshes are shared */
     g->npcs.on_spawned = npc_registered;
     g->npcs.on_despawned = npc_unregistered;
     g->npcs.callback_user = g;
     for (int i = 0; i < MARKER_MAX; i++) {
         g->marker_ia[i] = IA_NONE;
     }
-    g->lift_panel_ok = elevator_panel_init(&g->lift_panel, app->gfx, &app->perm, scene_floor_count(), &app->font, scene_floor_name);
+    const char *names[LIFT_PANEL_FLOORS];
+    const int nf = SDL_min(scene_floor_count(g->scene), LIFT_PANEL_FLOORS);
+    for (int f = 0; f < nf; f++) {
+        names[f] = scene_floor_name(g->scene, f);
+    }
+    g->lift_panel_ok = lift_count(g) > 0 && elevator_panel_init(&g->lift_panel, app->gfx, &g->level, nf, &app->font, names);
     if (!g->ia_ok) {
         return;
     }
@@ -2844,7 +3136,9 @@ static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
     pr->ia_enter_lag = g->ia_enter_lag;
     pr->ia_exit_lag = g->ia_exit_lag;
     pr->greeting = g->greet_t > 0.0f;
-    pr->lift_at = HMM_V3((g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, 0.1f, (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f);
+    const Elevator *near_lift = lift_get(g, lift_nearest(g, g->player.kin.pos)); /* the scene's lifts, not the room graph's one car */
+    pr->lift_at = near_lift ? HMM_V3((near_lift->x0 + near_lift->x1) * 0.5f, 0.1f, (near_lift->z0 + near_lift->z1) * 0.5f)
+                            : HMM_V3((g->rooms.lift[0] + g->rooms.lift[2]) * 0.5f, 0.1f, (g->rooms.lift[1] + g->rooms.lift[3]) * 0.5f);
     for (int i = 0; i < 2; i++) {
         pr->it_slot[i] = -1;
     }
@@ -2865,7 +3159,7 @@ static void interact_probe(Game *g, MgApp *app, AutotestProbe *pr)
             break;
         }
     }
-    for (int f = 0; f < 3 && g->lift_panel_ok; f++) {
+    for (int f = 0; f < g->lift_panel.floors && f < LIFT_PANEL_FLOORS && g->lift_panel_ok; f++) {
         elevator_panel_button_pos(&g->lift_panel, f, &pr->lift_btn_x[f], &pr->lift_btn_y[f]);
     }
 #if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
@@ -3284,7 +3578,6 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->day_state = daycycle_state(&g->day, (float)g->day.t);
     g->lamp_on = g->day_state.lamp_on;
 #endif
-    Elevator *probe_el = g->playing ? scene_elevator(g->scene) : NULL;
     AutotestProbe probe = {&g->link, g->profile.guest, &g->stats, &g->friends, &g->lobby, &g->fpage, &g->notice, &g->heads, &g->profile.skin, g->profile.display_name, g->npc_sync_tick, g->npc_sync_hash,
                            g->player.kin.pos,
                            g->player.kin.vel,
@@ -3300,7 +3593,7 @@ static void game_frame_inner(MgApp *app, float alpha)
                            (int)g->fe.state,
                            g->playing,
                            g->playing ? scene_floor_of(g->scene, g->player.kin.pos) : 0,
-                           probe_el && elevator_busy(probe_el),
+                           g->playing && any_lift_busy(g),
                            SDL_crc32(0, &g->profile.skin, sizeof(g->profile.skin)),
                            g->route.active && !g->route.done ? g->route.step : -1,
                            (int)g->autonav.state,
@@ -3462,10 +3755,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* network: events, remote buffers, our state at the adaptive rate */
     {
         const KinematicState *k = &g->player.kin;
-        Elevator *el = g->playing ? scene_elevator(g->scene) : NULL;
         uint8_t flags = (uint8_t)((k->grounded ? REP_GROUNDED : 0) | (k->jumping ? REP_JUMPING : 0) |
                                   (g->player.sprint ? REP_SPRINTING : 0) |
-                                  (el && elevator_busy(el) ? REP_RIDING : 0));
+                                  (g->playing && any_lift_busy(g) ? REP_RIDING : 0));
         PROF_SCOPE("net.poll");
         friends_tick(&g->friends, app->time);
         {
@@ -3477,13 +3769,15 @@ static void game_frame_inner(MgApp *app, float alpha)
         lobby_follow(g, app);
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
                        (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
-        if (el) { /* someone riding from our landing: their doors close here too */
+        for (int li = 0; g->playing && li < lift_count(g); li++) { /* someone riding from our landing: their doors close here too */
+            Elevator *el = lift_get(g, li);
             for (int f = 0; f < el->floors; f++) {
                 el->hold_shut[f] = false;
             }
             for (int i = 0; i < SESSION_MAX_REMOTE; i++) {
                 const RemotePlayer *r = &g->session.remotes[i];
-                if (r->active && r->visible && (r->sample.flags & REP_RIDING) && r->sample.floor < el->floors) {
+                /* the replication has no lift id: with several lifts, the car the rider stands in */
+                if (r->active && r->visible && (r->sample.flags & REP_RIDING) && r->sample.floor < el->floors && (lift_count(g) == 1 || lift_holds_xz(el, r->pos))) {
                     el->hold_shut[r->sample.floor] = true;
                 }
             }
@@ -3659,13 +3953,23 @@ static void game_frame_inner(MgApp *app, float alpha)
         AvatarLook look = avatar_look_from_skin(g->profile.skin);
         avatar_draw(app->gfx, &g->avatar_meshes, &look, &pv, &g->preview_anim, NULL);
     }
-    Elevator *el = scene_elevator(g->scene);
-    const bool riding = el && elevator_busy(el);
+    /* the panel works the lift the player stands in (kept while it slides out); none in: the nearest (forced panel) */
+    const int lift_here = lift_containing(g, g->player.kin.pos, g->kparams.radius);
+    if (lift_here >= 0) {
+        g->panel_lift = lift_here;
+    } else if (g->panel_lift < 0 || g->panel_lift >= lift_count(g)) {
+        g->panel_lift = lift_nearest(g, g->player.kin.pos);
+    }
+    Elevator *el = lift_get(g, g->panel_lift);
+    const bool riding = any_lift_busy(g);
     /* auto-nav rides on its own: no panel unless the player cancels */
     const bool menu_shown = el && !riding && !g->menu.open && !g->no_panels && (!autonav_active(&g->autonav) || s->force_lift_panel) &&
-                            (elevator_contains(el, g->player.kin.pos, g->kparams.radius) || s->force_lift_panel);
+                            (lift_here >= 0 || s->force_lift_panel);
     if (g->lift_panel_ok && el) {
         const ui_frame_t lf = hud_frame(app);
+        if (menu_shown) {
+            elevator_panel_set_floors(&g->lift_panel, el->floors); /* one button per landing of this lift */
+        }
         elevator_panel_update(&g->lift_panel, mg_minf(app->frame_dt, 0.1f), menu_shown, &lf);
         const int due = elevator_panel_take(&g->lift_panel);
         if (due >= 0) {
@@ -3759,16 +4063,18 @@ static void game_frame_inner(MgApp *app, float alpha)
             if (g->menu.open) {
                 autonav_cancel(&g->autonav);
             }
+            /* the car the path rides (nav car i = scene lift i), else the one at hand */
+            Elevator *ael = g->autonav.path.ride_car >= 0 ? lift_get(g, g->autonav.path.ride_car) : el;
             AutonavCtx ac = {feet, scene_indoors(g->scene, feet) ? scene_floor_of(g->scene, feet) : -1, app->time,
-                             el && elevator_contains(el, g->player.kin.pos, g->kparams.radius),
-                             el && elevator_busy(el), el ? el->car_floor : 0};
+                             ael && elevator_contains(ael, g->player.kin.pos, g->kparams.radius),
+                             ael && elevator_busy(ael), ael ? ael->car_floor : 0};
             AutonavOut ao;
             PROF_SCOPE("autonav");
             autonav_update(&g->autonav, g->nav, &ac, &ao);
             g->auto_x = ao.move_x;
             g->auto_z = ao.move_z;
-            if (ao.ride_to >= 0 && el) {
-                elevator_request(el, ao.ride_to);
+            if (ao.ride_to >= 0 && ael) {
+                elevator_request(ael, ao.ride_to);
             }
         }
         if (g->nav) {
@@ -4195,7 +4501,7 @@ static bool spawn_test_marker(Game *g, HMM_Vec3 feet)
             continue;
         }
         HMM_Vec3 p = HMM_V3(grid->d.x0 + ((float)cx + 0.5f) * NAV_CELL, grid->d.floor_y, grid->d.z0 + ((float)cz + 0.5f) * NAV_CELL);
-        if (!outdoor && scene_area_kind(p.X, p.Z, storey) != want) {
+        if (!outdoor && scene_area_kind(g->scene, p.X, p.Z, storey) != want) {
             continue;
         }
         bool clear = HMM_LenSqrV3(HMM_SubV3(p, feet)) > 1.5f * 1.5f;
@@ -4316,7 +4622,8 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
             tint = (UiColor){240, 60, 60, 255};
         }
         *in = (MarkerHudIn){m->id, HMM_AddV3(m->pos, HMM_V3(0, 1.4f, 0)), level_of(m->storey), c, m->dist_shown,
-                            scale, shake, m->ring_t, tint};
+                            scale, shake, m->ring_t, tint, {0}};
+        floor_badge(g, in->storey, in->badge);
     }
     /* panels the icons stay out of: pause button, lift panel, interact card, greeting card, toast */
     const float w = app->width_pt, h = app->height_pt;

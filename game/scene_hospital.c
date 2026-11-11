@@ -1,6 +1,6 @@
-/* MG_SCENE=hospital (default): yard + 3-storey hospital. */
+/* SCENE_HOSPITAL ("hospital_v1"): yard + 3-storey hospital, one lift. */
 #include "rooms.h"
-#include "scene.h"
+#include "scene_impl.h"
 
 #include <math.h>
 
@@ -10,55 +10,67 @@
 static const char *const k_floor_names[HOSP_FLOORS] = {"G " "\x02" " Reception", "1 " "\x02" " Wards",
                                                        "2 " "\x02" " Surgery"};
 
-struct Scene {
+typedef struct HospitalScene {
+    Scene base;
     Hospital h;
     Elevator lift;
-};
+} HospitalScene;
 
-Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont *font)
+#define HS(s) ((HospitalScene *)(s))
+#define CHS(s) ((const HospitalScene *)(s))
+
+Scene *scene_hospital_create(GfxContext *g, Arena *arena, ColWorld *world, const TextFont *font)
 {
-    Scene *s = ARENA_PUSH(perm, Scene, 1);
-    if (!s || !hospital_init(&s->h, g, perm, world, font)) {
+    HospitalScene *s = ARENA_PUSH(arena, HospitalScene, 1);
+    if (!s || !hospital_init(&s->h, g, arena, world, font)) {
         return NULL;
     }
+    s->base.kind = SCENE_HOSPITAL;
     elevator_init(&s->lift, HOSP_FLOORS, HOSP_STOREY, HOSP_CAR_X0, HOSP_CAR_X1, HOSP_CAR_Z0, HOSP_CAR_Z1, HOSP_CAR_H);
-    return s;
+    return &s->base;
 }
 
-SceneryShape scene_scenery_shape(void)
+const char *scene_hospital_name(const Scene *s)
 {
-    SceneryShape s = {HOSP_YARD_HX + 1.0f, HOSP_YARD_HZ + 1.0f, -0.05f, 0.0f};
-    return s;
+    (void)s;
+    return "hospital";
 }
 
-HMM_Vec3 scene_spawn(const Scene *s, int slot) { return s->h.spawns[slot >= 0 && slot < HOSP_SPAWNS ? slot : 0]; }
+SceneryShape scene_hospital_scenery_shape(const Scene *s)
+{
+    (void)s;
+    SceneryShape sh = {HOSP_YARD_HX + 1.0f, HOSP_YARD_HZ + 1.0f, -0.05f, 0.0f};
+    return sh;
+}
 
-float scene_spawn_yaw(const Scene *s)
+HMM_Vec3 scene_hospital_spawn(const Scene *s, int slot) { return CHS(s)->h.spawns[slot >= 0 && slot < HOSP_SPAWNS ? slot : 0]; }
+
+float scene_hospital_spawn_yaw(const Scene *s)
 {
     (void)s;
     return 0.0f; /* facing north, towards the entrance */
 }
 
-int scene_floor_of(const Scene *s, HMM_Vec3 p)
+int scene_hospital_floor_of(const Scene *s, HMM_Vec3 p)
 {
     (void)s;
     int f = (int)floorf((p.Y + 1.0f) / HOSP_STOREY);
     return f < 0 ? 0 : (f >= HOSP_FLOORS ? HOSP_FLOORS - 1 : f);
 }
 
-float scene_floor_y(const Scene *s, int floor)
+float scene_hospital_floor_y(const Scene *s, int floor)
 {
     (void)s;
     return (float)floor * HOSP_STOREY;
 }
 
-bool scene_indoors(const Scene *s, HMM_Vec3 p)
+bool scene_hospital_indoors(const Scene *s, HMM_Vec3 p)
 {
     (void)s;
     return p.X > HOSP_X0 && p.X < HOSP_X1 && p.Z > HOSP_Z0 && p.Z < HOSP_Z1 && p.Y < HOSP_FLOORS * HOSP_STOREY;
 }
 
-void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
+void scene_hospital_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
 {
     (void)s;
     float a = t * 0.05f + 0.35f;
@@ -66,19 +78,20 @@ void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
     *target = HMM_V3(0.0f, 4.0f, -4.0f);
 }
 
-void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
+void scene_hospital_draw(Scene *s, GfxContext *g, const SceneView *v)
 {
     HospView hv = {v->floor, v->fade, v->storey_tint, v->show_triggers, v->lamp_on};
-    hospital_draw(&s->h, g, &hv);
+    hospital_draw(&HS(s)->h, g, &hv);
 #ifdef MG_RENDER_FULL
     if (v->show_lights) {
-        hospital_draw_light_gizmos(&s->h, g, v->floor);
+        hospital_draw_light_gizmos(&HS(s)->h, g, v->floor);
     }
 #endif
 }
 
-int scene_area_kind(float x, float z, int storey)
+int scene_hospital_area_kind(const Scene *s, float x, float z, int storey)
 {
+    (void)s;
     if (storey < 0) {
         return 2;
     }
@@ -88,50 +101,66 @@ int scene_area_kind(float x, float z, int storey)
     return corridor || lift_lobby || main_lobby ? 1 : 0;
 }
 
-struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world) { return hospital_nav_bake(&s->h, perm, world); }
+struct NavWorld *scene_hospital_nav_bake(Scene *s, Arena *arena, ColWorld *world) { return hospital_nav_bake(&HS(s)->h, arena, world); }
 
-void scene_rooms_build(Scene *s, struct RoomGraph *g)
+void scene_hospital_rooms_build(Scene *s, struct RoomGraph *g)
 {
     (void)s;
     hospital_rooms_build(g);
 }
 
-bool scene_box_cut_away(const Scene *s, int box, const float *fade)
+bool scene_hospital_ambient_npcs(const Scene *s)
 {
-    return hospital_box_cut_away(&s->h, box, fade);
+    (void)s;
+    return true;
 }
 
-void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
+bool scene_hospital_box_cut_away(const Scene *s, int box, const float *fade) { return hospital_box_cut_away(&CHS(s)->h, box, fade); }
+
+void scene_hospital_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
 {
-    hospital_fade_targets(&s->h, target, view_floor, inside, player, eye);
+    hospital_fade_targets(&CHS(s)->h, target, view_floor, inside, player, eye);
 }
 
 #ifdef MG_RENDER_FULL
-int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
+int scene_hospital_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
-    return hospital_lights(&s->h, g, v->floor, v->focus, v->lamp_on);
+    return hospital_lights(&HS(s)->h, g, v->floor, v->focus, v->lamp_on);
 }
 #endif
 
-void scene_tick(Scene *s, ColWorld *world, float dt)
+void scene_hospital_tick(Scene *s, ColWorld *world, float dt)
 {
-    elevator_tick(&s->lift, dt);
+    HospitalScene *hs = HS(s);
+    elevator_tick(&hs->lift, dt);
     for (int f = 0; f < HOSP_FLOORS; f++) {
-        s->h.door_open[f] = s->lift.door_open[f];
+        hs->h.door_open[f] = hs->lift.door_open[f];
     }
-    hospital_apply_doors(&s->h, world);
+    hospital_apply_doors(&hs->h, world);
 }
 
-Elevator *scene_elevator(Scene *s) { return &s->lift; }
+int scene_hospital_elevator_count(const Scene *s)
+{
+    (void)s;
+    return 1;
+}
 
-int scene_floor_count(void) { return HOSP_FLOORS; }
+Elevator *scene_hospital_elevator(Scene *s, int index) { return index == 0 ? &HS(s)->lift : NULL; }
 
-const char *scene_floor_name(int floor) { return floor >= 0 && floor < HOSP_FLOORS ? k_floor_names[floor] : ""; }
+int scene_hospital_floor_count(const Scene *s)
+{
+    (void)s;
+    return HOSP_FLOORS;
+}
 
-HMM_Vec3 scene_floor_lobby(const Scene *s, int floor)
+const char *scene_hospital_floor_name(const Scene *s, int floor)
+{
+    (void)s;
+    return floor >= 0 && floor < HOSP_FLOORS ? k_floor_names[floor] : "";
+}
+
+HMM_Vec3 scene_hospital_floor_lobby(const Scene *s, int floor)
 {
     (void)s;
     return HMM_V3(0.0f, (float)floor * HOSP_STOREY, -11.6f);
 }
-
-const char *scene_name(void) { return "hospital"; }

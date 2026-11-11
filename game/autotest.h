@@ -100,7 +100,7 @@ typedef struct AutotestProbe {
     int it_slot[2];            /* marker, receptionist */
     HMM_Vec3 it_stand[2];
     HMM_Vec3 lift_at;
-    float lift_btn_x[3], lift_btn_y[3];
+    float lift_btn_x[8], lift_btn_y[8]; /* per landing of the panel (LIFT_PANEL_FLOORS) */
     int hover_slot;            /* -1: none on screen, or no mouse */
     float hover_x, hover_y;
     uint32_t active_flags;

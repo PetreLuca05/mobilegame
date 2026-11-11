@@ -31,10 +31,29 @@
 #define PRESS_ANIM_S 0.57f /* UI-1: press 90 ms + release 480 ms */
 #define FOV_DEG 28.0f
 
-bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *(*name)(int))
+/* the column, top floor first, under the floor indicator */
+void elevator_panel_set_floors(ElevatorPanel *p, int floors)
+{
+    floors = floors < 1 ? 1 : (floors > p->built ? p->built : floors);
+    if (floors == p->floors && p->button_r > 0.0f) {
+        return;
+    }
+    p->floors = floors;
+    const float top = 0.235f, bottom = -0.345f;
+    const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
+    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.43f : BUTTON_MAX_R);
+    for (int i = 0; i < p->floors; i++) {
+        p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
+    }
+    if (p->pressed >= p->floors) {
+        p->pressed = -1;
+    }
+}
+
+bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *const *names)
 {
     *p = (ElevatorPanel){0};
-    p->floors = floors > LIFT_PANEL_FLOORS ? LIFT_PANEL_FLOORS : floors;
+    p->built = floors < 1 ? 1 : (floors > LIFT_PANEL_FLOORS ? LIFT_PANEL_FLOORS : floors);
     p->pressed = -1;
     const size_t mark = arena_mark(scratch);
     MeshBuilder mb;
@@ -47,13 +66,7 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     mb_box(&mb, HMM_Translate(HMM_V3(0.0f, 0.0f, SLAB_HALF_D)), HMM_V3(SLAB_HALF_W - 0.004f, SLAB_HALF_H - 0.004f, 0.002f), white);
     mb_box(&mb, HMM_Translate(HMM_V3(0.0f, INDICATOR_Y, SLAB_HALF_D + FACE_LIFT)), HMM_V3(INDICATOR_HALF_W, INDICATOR_HALF_H, INDICATOR_THICK), mg_rgb(k_ui.lift_display_bg >> 8));
     p->slab = mb_upload(&mb, g);
-    /* the column, top floor first, under the floor indicator */
-    const float top = 0.235f, bottom = -0.345f;
-    const float spacing = p->floors > 1 ? (top - bottom) / (float)(p->floors - 1) : 0.0f;
-    p->button_r = mg_minf(BUTTON_MAX_R, spacing > 0.0f ? spacing * 0.43f : BUTTON_MAX_R);
-    for (int i = 0; i < p->floors; i++) {
-        p->button_y[p->floors - 1 - i] = top - (float)i * spacing;
-    }
+    elevator_panel_set_floors(p, p->built);
     const HMM_Mat4 face = HMM_Rotate_RH(HMM_AngleDeg(90.0f), HMM_V3(1, 0, 0)); /* the cylinder's axis out of the face */
     mb_reset(&mb);
     mb_cylinder(&mb, face, 1.0f, 1.0f, 28, white);
@@ -62,8 +75,8 @@ bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int fl
     mb_cylinder(&mb, face, 1.0f, 0.004f, 28, white);
     p->ring = mb_upload(&mb, g);
     bool labels_ok = true;
-    for (int i = 0; i < p->floors; i++) { /* G, 1, 2: the first letter of the floor's name, 1 unit tall */
-        const char label[2] = {name(i)[0], 0};
+    for (int i = 0; i < p->built; i++) { /* G, 1, 2, .., R: the first letter of the floor's name, 1 unit tall */
+        const char label[2] = {names[i] && names[i][0] ? names[i][0] : '?', 0};
         mb_reset(&mb);
         text_mesh(&mb, f, HMM_M4D(1.0f), 1.0f, white, label);
         p->label[i] = mb_upload(&mb, g);
