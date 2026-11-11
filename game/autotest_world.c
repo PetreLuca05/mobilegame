@@ -123,8 +123,9 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
         if (in < 1.5) {
             return 0;
         }
-        if (SDL_strcmp(wm_cur_c(m)->book->name, "Kumar") != 0 || wm_cur_c(m)->island_c.known || wm_cur_c(m)->island_c.finished != 0) {
-            return fail(w, "BOOKS: the title is not Kumar or the island completion is not \"—\" with 0 finished");
+        /* after Erase progress: "—" (no level has content) or 0 % (BOOK-ENGINE: Gastro's pack, 0 facts), nothing finished */
+        if (SDL_strcmp(wm_cur_c(m)->book->name, "Kumar") != 0 || wm_cur_c(m)->island_c.percent != 0 || wm_cur_c(m)->island_c.finished != 0) {
+            return fail(w, "BOOKS: the title is not Kumar or the island completion is not \"—\" / 0 % with 0 finished");
         }
         mg_log_info("autotest worldmap: 1 BOOKS, title %s, completion — (every hospital 0/0), 0 of %d finished (ok)", wm_cur_c(m)->book->name, wm_cur_c(m)->island_c.count);
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "worldmap_1_books");

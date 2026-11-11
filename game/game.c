@@ -79,6 +79,7 @@
 #include "ui/hud.h"
 #include "ui/ui_textarea.h"
 #include "book_pack.h"
+#include "book_progress.h"
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/tilt.h"
@@ -288,6 +289,8 @@ typedef struct Game {
     double ui_screen_t0;        /* UI-1: the tween pool */
     UiFx ui_fx;            /* UI-1: particles, rings, reward tokens, banner, sounds, haptics */
     BookPack book;         /* BOOK-1: the embedded content pack, read in place (ok = false: refused, no book content) */
+    BookProgress progress; /* BOOK-ENGINE: the account's facts + case state for the pack (book_progress_*) */
+    char progress_uid[64]; /* whose file is open ("" none) */
     UiTextArea book_area;  /* --autotest text: a long text from the pack in a scrolling text area */
     TextLine *book_lines;
     char *book_text;
@@ -602,9 +605,14 @@ static void lobby4_fake(Game *g)
     notice_push(&g->notice, NOTICE_JOIN, "perf", "Guest", &skins[0], str("notice_wants_join"), 100000.0);
 }
 
+static void progress_merged(Game *g);
+
 static void on_net_event(void *user, const NetEvent *e)
 {
     Game *g = (Game *)user;
+    if (e->type == NET_EV_BOOK_PROGRESS) {
+        progress_merged(g);
+    }
     friends_on_event(&g->friends, e);
     lobby_on_event(&g->lobby, e);
     account_link_on_event(&g->link, e);
@@ -615,6 +623,73 @@ static void on_net_event(void *user, const NetEvent *e)
 
 static double wall_clock_ms(void);
 static void maps_tag_update(Game *g);
+
+/* BOOK-ENGINE progress (decision 4): one file per account in the pref path, the pack's content id as the book */
+#define PROGRESS_BOOK "gastro"         /* book_progress.book on Supabase */
+#define PROGRESS_WORLD_BOOK "kumar"    /* where the pack's level sits on the world map */
+#define PROGRESS_WORLD_LEVEL "gastro"
+
+static void progress_live(Game *g)
+{
+    if (g->progress_uid[0]) {
+        world_progress_set_live(&g->prefs.world, PROGRESS_WORLD_BOOK, PROGRESS_WORLD_LEVEL,
+                                (WorldCompletion){book_progress_count(&g->progress), (int)g->book.fact_count});
+    }
+}
+
+/* Opens the account's file (uid "" = no account yet: a "local" file); same account = nothing. */
+static void progress_open(Game *g, const char *uid)
+{
+    const char *who = uid && uid[0] ? uid : "local";
+    if (!g->book.ok || SDL_strcmp(g->progress_uid, who) == 0) {
+        return;
+    }
+    char name[128], path[512];
+    SDL_snprintf(name, sizeof(name), "book_%s_%s.bin", PROGRESS_BOOK, who);
+    if (!prefs_path(g->profile_name, name, path, sizeof(path)) ||
+        !book_progress_open(&g->progress, path, PROGRESS_BOOK, (int)g->book.fact_count, (int)g->book.mission_count)) {
+        mg_log_error("book: progress file for %s not opened", who);
+        g->progress_uid[0] = 0;
+        return;
+    }
+    SDL_snprintf(g->progress_uid, sizeof(g->progress_uid), "%s", who);
+    mg_log_info("book: progress %s: %d / %u facts", name, book_progress_count(&g->progress), g->book.fact_count);
+    progress_live(g);
+}
+
+/* A step ended (or the account loaded): the file now, the server merge when online. */
+static void progress_commit(Game *g, bool push)
+{
+    if (!g->progress_uid[0]) {
+        return;
+    }
+    if (g->progress.dirty) {
+        book_progress_save(&g->progress);
+    }
+    if (push && g->net && SDL_strcmp(g->progress_uid, "local") != 0) {
+        net_save_book_progress(g->net, PROGRESS_BOOK, g->progress.facts, g->progress.fact_bytes, g->progress.cases, g->progress.case_bytes,
+                               g->progress.updated_ms);
+    }
+    progress_live(g);
+}
+
+/* The server's merged row (another device's bits OR'd in, the newer case state). */
+static void progress_merged(Game *g)
+{
+    char book[32];
+    uint8_t facts[NET_PROGRESS_FACTS_MAX], cases[NET_PROGRESS_CASES_MAX];
+    int nf = 0, nc = 0;
+    double at = 0.0;
+    if (!net_book_progress_copy(g->net, book, sizeof(book), facts, &nf, cases, &nc, &at) || !g->progress_uid[0] ||
+        SDL_strcmp(book, PROGRESS_BOOK) != 0) {
+        return;
+    }
+    const int before = book_progress_count(&g->progress);
+    book_progress_merge(&g->progress, facts, nf, cases, nc, at);
+    progress_commit(g, false);
+    mg_log_info("book: progress merged with the account: %d -> %d facts", before, book_progress_count(&g->progress));
+    maps_tag_update(g);
+}
 static bool open_map(Game *g, MgApp *app, WmState state);
 static void erase_progress(Game *g);
 
@@ -694,6 +769,13 @@ bool game_init(MgApp *app)
     if (!world_books_load(&g->books)) {
         mg_log_error("world: assets/world/books.json has no book");
         return false;
+    }
+    progress_open(g, g->prefs.cache_user_id); /* the cached account until the sign-in confirms it */
+    for (int i = 1; i + 2 < app->argc; i++) { /* --debug book-fact <i>: sets one fact as a finished step would (test builds) */
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "book-fact") == 0 && g->progress_uid[0]) {
+            book_progress_set_fact(&g->progress, SDL_atoi(app->argv[i + 2]), wall_clock_ms());
+            progress_commit(g, false); /* pushed once the account loads */
+        }
     }
     for (int i = 1; i + 3 < app->argc; i++) { /* --debug level-progress <level> <percent> (test builds) */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "level-progress") == 0) {
@@ -1762,6 +1844,8 @@ static void account_loaded(Game *g, MgApp *app)
         }
     }
     g->pending_name[0] = 0;
+    progress_open(g, g->profile.user_id); /* BOOK-ENGINE: this account's file, then the server's copy merged in */
+    progress_commit(g, true);
     for (int i = 0; i < g->profile.book_count; i++) { /* book_state: the newer choice wins */
         const NetBookState *b = &g->profile.books[i];
         world_progress_merge_remote(&g->prefs.world, b->book, b->level, b->updated_ms);
@@ -2164,6 +2248,13 @@ static void erase_progress(Game *g)
         world_progress_reset(&g->prefs.world, g->books.books[i].id, wall_clock_ms());
     }
     SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", g->books.books[0].id);
+    if (g->progress_uid[0]) { /* BOOK-ENGINE: the book's facts and cases too, here and on the account */
+        book_progress_reset(&g->progress, wall_clock_ms());
+        if (g->net && SDL_strcmp(g->progress_uid, "local") != 0) {
+            net_reset_book_progress(g->net, PROGRESS_BOOK);
+        }
+        progress_live(g);
+    }
     save_prefs(g);
     maps_tag_update(g);
     mg_log_info("settings: progress erased");

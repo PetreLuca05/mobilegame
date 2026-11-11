@@ -8,18 +8,36 @@
 
 WorldCompletion world_level_completion(const WorldProgress *wp, const char *book, const char *level)
 {
-    (void)book;
 #ifdef MG_PROF /* test builds only: store archives are -DMG_PROF=OFF */
     for (int i = 0; i < wp->debug_count; i++) {
         if (SDL_strcmp(wp->debug[i].level, level) == 0) {
             return (WorldCompletion){wp->debug[i].percent, 100};
         }
     }
-#else
-    (void)wp;
-    (void)level;
 #endif
-    return (WorldCompletion){0, 0}; /* no content pack for any level yet */
+    for (int i = 0; i < wp->live_count; i++) { /* a level with a content pack */
+        if (SDL_strcmp(wp->live[i].level, level) == 0 && SDL_strcmp(wp->live[i].book, book) == 0) {
+            return wp->live[i].c;
+        }
+    }
+    return (WorldCompletion){0, 0}; /* no content pack for this level */
+}
+
+void world_progress_set_live(WorldProgress *wp, const char *book, const char *level, WorldCompletion c)
+{
+    int i = 0;
+    while (i < wp->live_count && (SDL_strcmp(wp->live[i].level, level) != 0 || SDL_strcmp(wp->live[i].book, book) != 0)) {
+        i++;
+    }
+    if (i == wp->live_count) {
+        if (i == (int)SDL_arraysize(wp->live)) {
+            return;
+        }
+        wp->live_count++;
+        SDL_snprintf(wp->live[i].book, sizeof(wp->live[i].book), "%s", book);
+        SDL_snprintf(wp->live[i].level, sizeof(wp->live[i].level), "%s", level);
+    }
+    wp->live[i].c = c;
 }
 
 int world_completion_percent(WorldCompletion c)
