@@ -5,7 +5,16 @@
 #include "autotest.h"
 #include "book_people.h"
 #include "core/log.h"
+#include "core/prof.h"
 #include "npc_sim.h"
+
+/* the test's own log lines: a long one goes through SDL_malloc, which is not the game's frame loop */
+#define BT_LOG(fn, ...)                                                                                                                              \
+    do {                                                                                                                                             \
+        prof_allocs_exempt(true);                                                                                                                    \
+        fn(__VA_ARGS__);                                                                                                                             \
+        prof_allocs_exempt(false);                                                                                                                   \
+    } while (0)
 
 enum { ST_WAIT, ST_WALKERS, ST_SHOTS, ST_SHOT_WAIT, ST_TALK_GO, ST_TALK_TAP, ST_TALK_UP, ST_TALK_CHECK, ST_STAGE_WALK, ST_UNSTAGE_WALK, ST_AWAY,
        ST_STAGE_PLACE, ST_UNSTAGE_PLACE, ST_DONE };
@@ -21,7 +30,7 @@ static void on_talk(void *user, int cast_index)
     BookTest *t = (BookTest *)user;
     t->talk_calls++;
     t->talk_cast = cast_index;
-    mg_log_info("autotest bookpeople: talk callback, cast %d", cast_index);
+    BT_LOG(mg_log_info, "autotest bookpeople: talk callback, cast %d", cast_index);
 }
 
 static const npc_hot_t *hot_of(const BookPeople *bp, int i) { return &bp->w->pool.hot[bp->w->pool.read][i]; }
@@ -74,11 +83,16 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
     if (t->stage > ST_WAIT) {
         t->draws_max = SDL_max(t->draws_max, p->draws);
         t->allocs += p->frame_allocs;
+        const char *site;
+        uint32_t bytes;
+        for (int k = 0; p->frame_allocs && prof_alloc_site(k, &site, &bytes); k++) { /* where, for the report */
+            BT_LOG(mg_log_warn, "autotest bookpeople: frame allocation in %s, %u bytes (stage %d)", site, bytes, t->stage);
+        }
         if (p->book_drawn_floor >= 0 && p->book_drawn_floor < 8) {
             t->drawn_max[p->book_drawn_floor] = SDL_max(t->drawn_max[p->book_drawn_floor], p->book_drawn);
             if ((int)p->book_drawn > bp->per_storey[p->book_drawn_floor] && !t->over) {
                 t->over = true;
-                mg_log_error("autotest bookpeople: %u drawn on storey %d, the pack has %d there", p->book_drawn, p->book_drawn_floor,
+                BT_LOG(mg_log_error, "autotest bookpeople: %u drawn on storey %d, the pack has %d there", p->book_drawn, p->book_drawn_floor,
                              bp->per_storey[p->book_drawn_floor]);
             }
         }
@@ -111,7 +125,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
                 lying += bper->post_pose == MGPK_POSE_LIE;
             } else if (!walkable(bp, h->storey, h->x, h->z)) {
                 bad++;
-                mg_log_error("autotest bookpeople: person %d (%s) on a blocked cell at %.2f %.2f storey %d", i, bper->name ? bper->name : "", (double)h->x,
+                BT_LOG(mg_log_error, "autotest bookpeople: person %d (%s) on a blocked cell at %.2f %.2f storey %d", i, bper->name ? bper->name : "", (double)h->x,
                              (double)h->z, h->storey);
             }
             walkers += bper->mode == 1;
@@ -119,7 +133,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
             t->sz[i] = h->z;
             t->moved[i] = 0.0f;
         }
-        mg_log_info("autotest bookpeople: %d people (%d cast), %d walking, %d seated, %d lying; storeys %d / %d / %d / %d; %d moved onto the grid; %d misplaced",
+        BT_LOG(mg_log_info, "autotest bookpeople: %d people (%d cast), %d walking, %d seated, %d lying; storeys %d / %d / %d / %d; %d moved onto the grid; %d misplaced",
                     bp->count, bp->cast_count, walkers, seated, lying, bp->per_storey[0], bp->per_storey[1], bp->per_storey[2], bp->per_storey[3], bp->snapped,
                     bad);
         if (bad) {
@@ -144,14 +158,14 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
                 walkers++;
                 if (t->moved[i] < 2.0f) {
                     still++;
-                    mg_log_error("autotest bookpeople: walker %d moved only %.2f m", i, (double)t->moved[i]);
+                    BT_LOG(mg_log_error, "autotest bookpeople: walker %d moved only %.2f m", i, (double)t->moved[i]);
                 }
             } else if (t->moved[i] > 0.01f) {
-                mg_log_error("autotest bookpeople: static person %d moved %.2f m", i, (double)t->moved[i]);
+                BT_LOG(mg_log_error, "autotest bookpeople: static person %d moved %.2f m", i, (double)t->moved[i]);
                 still++;
             }
         }
-        mg_log_info("autotest bookpeople: walkers: %d of %d moved >= 2 m in 25 s, %u stuck events, %u path requests", walkers - still, walkers,
+        BT_LOG(mg_log_info, "autotest bookpeople: walkers: %d of %d moved >= 2 m in 25 s, %u stuck events, %u path requests", walkers - still, walkers,
                     bp->w->stats.stuck_events, bp->w->stats.path_requests);
         if (still) {
             return failed(t, "%s", "a walker did not walk, or a static person moved");
@@ -210,7 +224,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
     case ST_SHOT_WAIT:
         if (el >= t->wait) {
             SDL_snprintf(out->screenshot, sizeof(out->screenshot), "book_people_s%d", t->storey);
-            mg_log_info("autotest bookpeople: storey %d: %u drawn (pack %d there), %u draws", t->storey, p->book_drawn, bp->per_storey[t->storey], p->draws);
+            BT_LOG(mg_log_info, "autotest bookpeople: storey %d: %u drawn (pack %d there), %u draws", t->storey, p->book_drawn, bp->per_storey[t->storey], p->draws);
             t->storey++;
             t->stage = ST_SHOTS;
         }
@@ -260,7 +274,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
         }
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "book_people_speaking");
         book_people_speaking(bp, 0, false);
-        mg_log_info("autotest bookpeople: talk: %d callback(s), cast %d", t->talk_calls, t->talk_cast);
+        BT_LOG(mg_log_info, "autotest bookpeople: talk: %d callback(s), cast %d", t->talk_calls, t->talk_cast);
         if (t->talk_calls != 1 || t->talk_cast != 0) {
             return failed(t, "%s", "the talk callback did not fire exactly once for cast row 0");
         }
@@ -278,7 +292,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
     }
     case ST_STAGE_WALK:
         if (bp->people[t->person].stage == BOOK_STAGE_AT && dist_to(bp, t->person, t->tx, t->tz) < 0.6f) {
-            mg_log_info("autotest bookpeople: staged: walked to the stand point in %.1f s (%.2f m off)", el - t->t0,
+            BT_LOG(mg_log_info, "autotest bookpeople: staged: walked to the stand point in %.1f s (%.2f m off)", el - t->t0,
                         (double)dist_to(bp, t->person, t->tx, t->tz));
             SDL_snprintf(out->screenshot, sizeof(out->screenshot), "book_people_staged");
             book_people_unstage(bp, 0);
@@ -289,7 +303,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
             t->stage = ST_UNSTAGE_WALK;
         } else if (el - t->t0 > 15.0) {
             const npc_hot_t *h = hot_of(bp, t->person);
-            mg_log_error("autotest bookpeople: presenter at %.2f %.2f state %d next %d/%d stage %d phase %d, target %.2f %.2f", (double)h->x, (double)h->z,
+            BT_LOG(mg_log_error, "autotest bookpeople: presenter at %.2f %.2f state %d next %d/%d stage %d phase %d, target %.2f %.2f", (double)h->x, (double)h->z,
                          h->state, h->next, bp->w->pool.cold[t->person].path.count, bp->people[t->person].stage, bp->w->pool.cold[t->person].phase,
                          (double)t->tx, (double)t->tz);
             return failed(t, "%s", "the presenter did not reach the stand point in 15 s");
@@ -297,7 +311,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
         return 0;
     case ST_UNSTAGE_WALK:
         if (bp->people[t->person].stage == BOOK_STAGE_NONE && dist_to(bp, t->person, bp->people[t->person].x, bp->people[t->person].z) < 0.6f) {
-            mg_log_info("autotest bookpeople: unstaged: walked back to the post in %.1f s", el - t->t0);
+            BT_LOG(mg_log_info, "autotest bookpeople: unstaged: walked back to the post in %.1f s", el - t->t0);
             /* now from another storey: placed, not walked */
             const int other = bp->people[t->person].storey == 0 ? 1 : 0;
             float x = 0.0f, z = 0.0f;
@@ -341,7 +355,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
             if (bper->stage != BOOK_STAGE_NONE || dist_to(bp, t->person, bper->x, bper->z) > 0.01f) {
                 return failed(t, "%s", "unstaged from another storey: not placed back at the post");
             }
-            mg_log_info("autotest bookpeople: staging from another storey: placed there and back");
+            BT_LOG(mg_log_info, "autotest bookpeople: staging from another storey: placed there and back");
             t->wait = el + 1.0;
             t->stage = ST_UNSTAGE_PLACE;
         }
@@ -352,7 +366,7 @@ int bt_run(BookTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, do
         }
         return 0;
     default:
-        mg_log_info("autotest bookpeople: most drawn per storey %u / %u / %u / %u (pack %d / %d / %d / %d); worst %u draws a frame (budget 150), %u heap "
+        BT_LOG(mg_log_info, "autotest bookpeople: most drawn per storey %u / %u / %u / %u (pack %d / %d / %d / %d); worst %u draws a frame (budget 150), %u heap "
                     "allocations in the frame loop",
                     t->drawn_max[0], t->drawn_max[1], t->drawn_max[2], t->drawn_max[3], bp->per_storey[0], bp->per_storey[1], bp->per_storey[2],
                     bp->per_storey[3], t->draws_max, t->allocs);
