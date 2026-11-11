@@ -7,6 +7,7 @@ checks them at configure time and on every build. Only OFL, MIT, CC0 or Apache-2
 |---|---|---|---|---|
 | `assets/fonts/Baloo2-wght.ttf`, `Baloo2-OFL.txt` | Baloo 2, variable (wght 400-800) | github.com/google/fonts `ofl/baloo2/Baloo2[wght].ttf` | `c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1`, 2026-03-03 | SIL Open Font License 1.1 (`Baloo2-OFL.txt`) |
 | `assets/fonts/Nunito-wght.ttf`, `Nunito-OFL.txt` | Nunito, variable (wght 200-1000) | github.com/google/fonts `ofl/nunito/Nunito[wght].ttf` | `8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`, 2026-03-12 | SIL Open Font License 1.1 (`Nunito-OFL.txt`) |
+| `assets/fonts/Comfortaa-wght.ttf`, `Comfortaa-OFL.txt` | Comfortaa, variable (wght 300-700): only α β γ, which Baloo 2 and Nunito lack (BOOK-1) | github.com/google/fonts `ofl/comfortaa/Comfortaa[wght].ttf` | `c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1`, 2026-03-03 | SIL Open Font License 1.1 (`Comfortaa-OFL.txt`) |
 
 Fredoka (OFL), the UI font before UI-1, was removed with it.
 

@@ -180,6 +180,8 @@ add_library(mg_engine STATIC
   engine/gfx/weld.c
   engine/gfx/floorfade.c
   engine/ui/text.c
+  engine/ui/text_layout.c
+  engine/ui/ui_textarea.c
   engine/ui/widgets.c
   engine/ui/ui_anim.c
   engine/ui/ui_fx.c
@@ -332,6 +334,12 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(mg_tests PRIVATE mg_physics SDL3::Headers) # headers only: the stick test drives touch_controls without SDL
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
+  # word wrap (engine/ui/text_layout.c) on a font with known advances
+  add_executable(text_wrap_test tests/text_wrap_test.c engine/ui/text_layout.c)
+  target_include_directories(text_wrap_test PRIVATE engine)
+  target_link_libraries(text_wrap_test PRIVATE mg_thirdparty)
+  target_compile_options(text_wrap_test PRIVATE ${MG_WARNINGS})
+  add_test(NAME text_wrap COMMAND text_wrap_test)
   # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
   add_executable(weld_test tests/weld_test.c engine/gfx/weld.c)
 target_include_directories(weld_test PRIVATE engine)
