@@ -1,0 +1,138 @@
+# BOOK-1 state — Gastro book inside the institute map
+
+Resume from these files alone (the zip = `content/gastro/` + `content/src/` + `tools/book/`). Source: `Gastro.pdf`,
+22 PDF pages, printed 1147, 1162–1166, 1172–1176, 1198–1208. Rebuild: `tools/book/make.sh content/gastro` (23 s; ends
+with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
+
+## Status (end of the BOOK-1 session)
+
+**Content complete.** Waiting for the author's `review_errata.csv` and `review_hidden.csv` (then
+`check.py content/gastro --apply-review` → rebuild with `make.sh`). The final exam's question counts and scoring are unset
+(the author's). The engine step (MAP-2, then BOOK-ENGINE via `ENGINE_PROMPT.md`) has not started.
+
+- Engine hand-over: `BOOK-1_engine_bundle.zip` = `gastro.mgpack` (v4) + header + `mgpack_read.c` + `institute.map` + the walk
+  grid it was checked on (`model_nav.json`) + the 18 figure crops + `ENGINE_PROMPT.md`; it unpacks into the git-ignored
+  `content_private/gastro/`. The public repository builds on the dummy pack `content/gastro_demo/gastro.mgpack`
+  (`tools/book/make_dummy_pack.py`, invented filler, same format) and shows „conținut demo”.
+- Door check: every door opening holds ≥ 2 walkable cells across (101 doors: 2–3; stairwells exempt); the grid supports
+  1.2 m doors and wider.
+
+## Phase
+
+| phase | state |
+|---|---|
+| A extract | done and accepted (check-in 1); the author's review of errata and hidden text runs through the two review sheets |
+| B facts / C items / D scripts | all 50 topics done (style v2, check-in 2) |
+| E proof | `check.py` (whole book) passes 100 %: the four ledgers, the style rules, typos not tested, verbatim gaps / labels, prop kinds, placement, interactables per room, script length, and the reference C reader on `gastro.mgpack` |
+| close-out §1–§8 | done; see "Close-out" below and `report.md` |
+| F hand-over | `ENGINE_PROMPT.md`: MAP-2 first (`learn1b-quest1-map2-prompt.md`), then BOOK-ENGINE; engine work not started (author's decision) |
+
+## Measured (build + check.py)
+
+- Text layer 18,151 words, all in atoms; 1,828 hidden (PDF p. 2: 314, 6: 137, 7: 505, 11: 283, 12: 194, 22: 395), every one
+  under a white rectangle of the PDF.
+- `cleaned.txt` 127,030 characters, 108,419 non-whitespace, all in 657 atoms; 1,194 sentences, 700 number tokens.
+- 3,349 facts; 3,478 items (cloze 1,452, multiplu 720, simplu 623, card 456, sort 74, order 67, match 65, label 21);
+  every fact tested by ≥ 2 item types and by ≥ 1 simplu / multiplu; items per fact min 2, median 2, max 6; multiplu correct
+  counts 2: 159, 3: 416, 4: 145.
+- 389 scripts: 382 required as played (280 as authored; 96 longer than 15 steps are stored as 198 parts „Partea N” on the
+  same prop) + 7 optional review / exam pools (counts and scoring of the exams are the author's to set).
+- `institute.map`: 201 props in 15 kinds (13 existing in MAP-2 v3, 2 new: microscope, iv_stand), 34 NPC points; all pass
+  the placement check; interactables per room min 1, median 6, max 9.
+- 134 errata: contradiction 9, cross-reference 9, missing target 4, contents mismatch 8, terminology 23, layout 6,
+  illegible 1, typo 74. 247 facts / 457 items `needs_review`; 514 facts / 600 items `unverified_ocr` (hidden text).
+- 18 figures, 177 labels, every label boxed on its crop.
+- `gastro.mgpack` v2: 2,355,308 bytes; string table 1,818,519 bytes; longest string 1,776 bytes; largest script
+  `s-barrett_dx-praga-p1` (12 steps, 25,117 string bytes); progress bitset 419 bytes per account.
+
+## Close-out (author's message 3)
+
+- §1 typos shown, not tested: 72 items changed (69 answer fields to the intended form with the printed wording in the
+  explanation, one of them a cloze turned into a card; 3 cloze gaps moved off the misprint) + 1 new card; 2 facts whose only
+  testable token is a misprint (`typo_only_facts.json`, for the author).
+- §2 answers verbatim: cloze gaps and label answers are exact substrings (check.py); 637 other answers not verbatim
+  (inflection 560, reworded 77), listed in `report.md` (appendix) and `inflections.json`.
+- §3 props: 155 placement failures found and fixed (114 wall-mounted props off their wall, 38 free props < 0.3 m from a
+  wall, 3 outside their room) by `tools/book/placeprops.py`; visible kinds per storey ≤ 18.
+- §4 script length: as authored min 2, median 12, max 42; as played min 2, median 10, max 15.
+- §5 review sheets: `review_errata.csv` 134 rows, `review_hidden.csv` 590 rows; `check.py --apply-review` applies them.
+- §6 hook: `git config core.hooksPath tools/hooks` (README); installed in the working clone, the desktop build is green.
+  On Linux the build needs `-D_DEFAULT_SOURCE` for `M_PI` in `engine/audio/audio_sdl.c` (not changed by BOOK-1).
+- §7 `ENGINE_PROMPT.md` regenerated (order, prop kinds, binary layout, reference reader, measured sizes, perf audit).
+
+## Corrections round (author's message 4)
+
+- §1 typo errata in two classes: 74 typo errata, class A (spelling only) 16, class B 58. 59 items reverted to the printed
+  wording; 2 tests moved by hand; 4 items kept as printed with the misprint as their test (needs_review); 2 facts whose only
+  testable token is a misprint. `review_errata.csv` has `printed`, `intended`, `class`, `use_intended` (yes for A, no for B);
+  `--apply-review` honours it.
+- §2 short keyed answers: every word printed in its source sentence or an inflection of one (check.py, `wordrule.py`);
+  reworded 39 before, 5 after (3 items kept on purpose, needs_review). The previous 77: 62 shortened (61 verbatim spans), 9
+  inflections, 6 reworded.
+- §3 props against the institute model (the "Gastro Institute 3D" page): its own furniture is rasterised
+  (`model_occupancy.json`, from `content/src/institute_model_page.html`); 234 props / NPC points, 0 placement failures,
+  9 anchored to furniture the model already has (`on_model`). 183 moved from their authored position, 53 by more than
+  1.0 m (report.md §3; `plan/0–3.png`, the reviewer's Plan tabs). The book plays inside the model page.
+- §4 `ENGINE_PROMPT.md`: measured text lengths (stem 287, option / answer 621, explanation 1,681 characters); text
+  scrolls, never cut; the Linux `M_PI` error in `engine/audio/audio_sdl.c` noted for the engine step (file untouched).
+
+## Furniture as data (author's message 5)
+
+- `content/src/institute.map` holds every piece of furniture the institute model places: 1,020 `prop` records (82 kinds:
+  id, kind, room, position, rotation, footprint w × d, height, wall / free / floor) and 105 door leaves (hinge, swing). The
+  9 `on_model` anchors name furniture ids; their position comes from the record. `tools/book/model_furniture.js` exports
+  the page's furniture (`model_furniture.json`); `check.py` fails unless page and file place the same pieces (ids, kinds,
+  positions within 1 cm), and the placement check runs against the file's records (234 objects, 0 failures).
+- The 3D page still builds its furniture in code (it does not read the file); the equality check in `make.sh` guards it. To
+  change furniture: change the page, then `node tools/book/model_furniture.js PAGE OUT --map content/src/institute.map`.
+- Model page findings: 9 of its pieces reach past their room outline into a wall (6 cabinets, a lab bench, the two outer
+  library shelves); they are the page's geometry, recorded as they are.
+- Visible kinds per storey (book + furniture): G 69, 1: 64, 2: 61, 3: 60; meshes with shared families (`mesh_groups`): 43,
+  40, 40, 34. Pack v3 adds the furniture table (36-byte rows); prop / slot rows point to their furniture row.
+
+## Engine hand-over close-out (author's message 7)
+
+- Map fixed in the model page (`content/src/institute_model_page.html` → `institute.map` → page = file): toilet doors 1.2 m
+  (8 core toilets were unreachable at 0.9 m); a door rule slides door-side plants, bins and cabinets along the wall out of the
+  opening (plants in 3 rooms, bins in 2, cabinets in 2 rooms incl. the recovery double door); corridor benches / chairs kept
+  clear of doors (2); `e_respirator` recliner to the side wall; amphitheatre rows pulled back from the door, aisles 1.6 m,
+  podium removed, whiteboard to the stage's back wall (the intro lectern prop now sits on the hall's lectern); ward chairs
+  (all wards) out of the gap between the beds; `w_complicatii` ultrasound and `g_garda` crash cart / printer moved; two
+  bedside chart props (`bc_clinic_chart`, `bc_inductie_chart`) to the foot of the bed. Play mode: no decor exception.
+- Map check (`tools/book/model_nav.js`, everything drawn solid, the walk grid the page and missions use): 105 doors with a
+  free 1.0 m approach on both sides; 81 rooms reachable from the entrance, 4 stairwells exempt (the stair flight fills
+  them). Talking range 2.0 m: 13 of last round's 15 run-time moves are back at their original spot; 2 move in the data
+  (`e_farmclin`, behind the counter, 1.0 / 0.7 m); no run-time snapping.
+- `gastro.mgpack` v4 (header 32 table slots; v3 had 16, 14 used): cast, arcs, missions, quests, msteps, lines, people;
+  `mgpack_read.c` checks them. 2,492,032 bytes; dialogue 1,465 lines, 62,782 bytes, longest 131 bytes. Progress per fact;
+  case state 5 bytes per account (accepted + closed per case).
+- Dialogue rule (check.py): every digit, unit, drug, gene, test, diagnosis or complaint word in dialogue, case titles and
+  cast roles must be printed in the step's own sources (arc lines, greetings, roles: none). 1,532 texts checked, 0 fail;
+  rewritten 154 dialogue lines, 14 case titles, 20 cast roles; templates: 102 part lines, 6 object lines.
+- Gates: a case closes when its steps are done; chapter exams open when their rooms are complete; the final simulation
+  now opens when every room is complete (was: every chapter exam passed). Nothing else; any case or step any time.
+- People: 112 (50 cast posts + 62 background, 22 walking), per storey 33 / 28 / 36 / 15, max 36; ENGINE_PROMPT S4 / S4b /
+  perf rows: avatar mapping, poses (new: talking hand gesture), reuse of markers, interaction and the pause card.
+
+## Missions: the book through NPCs (author's message 6)
+
+- Per mission, never per room: `missions_src.json` (authored: cast 50 = 35 staff + 15 patients, 5 arcs, 17 cases, 50 quest
+  lines, NPC mapping for the 57 scripts that name a person, 4 room moves) → `tools/book/missions.py` → `missions.json`
+  (382 steps: presenter, stand point, the patient's bed / seat and pose, opening line). `check.py` runs it: every required
+  script in exactly one step, book order, logic rules (nothing outdoors; patients only in clinical rooms; treatment only in
+  pharmacy / ward / bay / consult room / OR), lines ≤ 160 characters, comma-below ș ț, no 8-word run of a fact.
+- 30 case steps put the patient in a bed or seat of the step's room; 4 steps moved by the rules (`step_place`).
+- The 3D page plays it: a walking player (game camera), walk grid baked from the model (35 ms), lifts, 112 background
+  people placed by room type (none outdoors), the cast at their posts, the game's marker and interact systems, dialogue,
+  journal, reward; Jelly Pop UI; interiors lit (toon) with no cast shadows. Load-time talking-range snap: 13 steps and 2
+  posts move inside their room (behind counters, `e_respirator` whose recliner blocks the door); all 432 targets reachable.
+- Characters: `tools/book/model_npc.js` (12 kinds, ≤ 600 triangles, 6 meshes + outlines; 1 merged mesh for crowds).
+
+## Topics done (all 50; per-topic counts in report.md)
+
+## Next
+
+1. Author: fill `review_errata.csv` / `review_hidden.csv` → `check.py content/gastro --apply-review` → fix the listed
+   topic modules → `make.sh`.
+2. MAP-2 builds the institute scene with the BOOK-1 props and slots; then BOOK-ENGINE (`ENGINE_PROMPT.md`, S4 = missions).
+3. Exam question counts and scoring: the author's.

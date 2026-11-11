@@ -1,0 +1,302 @@
+{
+ "note": "Prop kinds of the institute map. w = width across the facing direction, d = depth along it (metres); mount: wall = hangs on / stands against a wall (no 0.3 m clearance), free = stands in the room. existing = already modelled for MAP-2 v3 (3D model artifact or map slot furniture); new = needs a model. yaw 0 faces +z (south).",
+ "model_to_kind": {
+  "poster": "poster",
+  "whiteboard": "board",
+  "wall_plaque": "plaque",
+  "pharmacy_shelf": "shelf",
+  "specimen_shelf": "shelf",
+  "bookshelf": "shelf",
+  "lightbox": "lightbox",
+  "bed_chart": "cart",
+  "monitor": "monitor",
+  "or_screen": "monitor",
+  "breath_analyser": "monitor",
+  "scope_tower": "scope_tower",
+  "microscope": "microscope",
+  "filing_cabinet": "cabinet",
+  "lab_bench": "bench",
+  "model_stomach": "model",
+  "iv_stand": "iv_stand",
+  "dispensing_counter": "counter",
+  "lectern": "podium"
+ },
+ "kinds": {
+  "poster": {
+   "w": 0.7,
+   "d": 0.05,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "framed wall poster (corridor posters of MAP-2)"
+  },
+  "plaque": {
+   "w": 0.4,
+   "d": 0.04,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "small wall plaque, like the coloured door signs"
+  },
+  "board": {
+   "w": 1.6,
+   "d": 0.1,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "whiteboard (MAP-2 PROP board)"
+  },
+  "lightbox": {
+   "w": 0.9,
+   "d": 0.1,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "X-ray / figure viewer on the wall (MAP-2 PROP lightbox)"
+  },
+  "shelf": {
+   "w": 1.2,
+   "d": 0.4,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "shelf unit against a wall: books, drugs, specimens (MAP-2 shelf)"
+  },
+  "cabinet": {
+   "w": 0.8,
+   "d": 0.5,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "filing / storage cabinet (MAP-2 cabinet)"
+  },
+  "counter": {
+   "w": 1.6,
+   "d": 0.6,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "dispensing counter (map slot kind counter)"
+  },
+  "bench": {
+   "w": 1.8,
+   "d": 0.7,
+   "mount": "wall",
+   "status": "existing",
+   "desc": "lab bench (map slot kind bench)"
+  },
+  "cart": {
+   "w": 0.7,
+   "d": 0.5,
+   "mount": "free",
+   "status": "existing",
+   "desc": "trolley; used as the bedside chart trolley (MAP-2 PROP cart)"
+  },
+  "monitor": {
+   "w": 0.5,
+   "d": 0.5,
+   "mount": "free",
+   "status": "existing",
+   "desc": "monitor on a stand; also OR screen and breath analyser (MAP-2 monitor)"
+  },
+  "scope_tower": {
+   "w": 0.7,
+   "d": 0.6,
+   "mount": "free",
+   "status": "existing",
+   "desc": "endoscopy tower (MAP-2 trolleyTower)"
+  },
+  "model": {
+   "w": 0.5,
+   "d": 0.5,
+   "mount": "free",
+   "status": "existing",
+   "desc": "anatomical model on a stand (MAP-2 PROP model)"
+  },
+  "podium": {
+   "w": 0.6,
+   "d": 0.5,
+   "mount": "free",
+   "status": "existing",
+   "desc": "lectern (MAP-2 PROP podium)"
+  },
+  "microscope": {
+   "w": 0.8,
+   "d": 0.6,
+   "mount": "free",
+   "status": "new",
+   "desc": "small lab table with a microscope; footprint 0.8 x 0.6 m, height 1.2 m"
+  },
+  "iv_stand": {
+   "w": 0.5,
+   "d": 0.5,
+   "mount": "free",
+   "status": "new",
+   "desc": "IV pole on a 5-wheel base with a drip bag; footprint 0.5 x 0.5 m, height 1.9 m"
+  }
+ },
+ "slot_kinds": {
+  "npc_stand": {
+   "w": 0.5,
+   "d": 0.5
+  },
+  "npc_seat": {
+   "w": 0.6,
+   "d": 0.6
+  }
+ },
+ "map_slot_furniture": {
+  "desk": {
+   "w": 1.8,
+   "d": 0.8
+  },
+  "chair": {
+   "w": 0.5,
+   "d": 0.5
+  },
+  "bed": {
+   "w": 1.0,
+   "d": 2.1
+  },
+  "bench": {
+   "w": 1.8,
+   "d": 0.7
+  },
+  "scope": {
+   "w": 0.7,
+   "d": 0.6
+  },
+  "or_table": {
+   "w": 0.8,
+   "d": 2.0
+  },
+  "board": {
+   "w": 1.8,
+   "d": 0.5
+  },
+  "screen": {
+   "w": 0.5,
+   "d": 0.5
+  },
+  "counter": {
+   "w": 1.6,
+   "d": 0.6
+  },
+  "reading_desk": {
+   "w": 1.4,
+   "d": 0.7
+  },
+  "post": {
+   "w": 2.0,
+   "d": 0.8
+  },
+  "table": {
+   "w": 2.4,
+   "d": 1.2
+  }
+ },
+ "mesh_groups": {
+  "seat": [
+   "chair",
+   "corridor_chair",
+   "auditorium_seat",
+   "alcove_seat"
+  ],
+  "bench_seat": [
+   "bench_seat",
+   "corridor_bench"
+  ],
+  "plant": [
+   "plant",
+   "corridor_plant",
+   "planter"
+  ],
+  "wall_panel": [
+   "wall_poster",
+   "notice_poster",
+   "pharmacy_sign",
+   "lift_sign",
+   "book:poster",
+   "book:plaque"
+  ],
+  "screen_panel": [
+   "wall_screen",
+   "info_screen",
+   "desk_screen",
+   "counter_screen"
+  ],
+  "table": [
+   "exam_desk",
+   "side_table",
+   "reading_desk",
+   "conference_table",
+   "desk_papers"
+  ],
+  "cabinet": [
+   "cabinet",
+   "tall_cabinet",
+   "cupboard",
+   "book:cabinet"
+  ],
+  "shelf": [
+   "shelf",
+   "scope_cabinet",
+   "book:shelf"
+  ],
+  "counter": [
+   "dispensing_counter",
+   "station_counter",
+   "reception_desk",
+   "nurse_counter",
+   "book:counter"
+  ],
+  "lab_bench": [
+   "lab_bench",
+   "lab_island",
+   "book:bench"
+  ],
+  "couch": [
+   "exam_couch",
+   "or_table",
+   "gurney"
+  ],
+  "cart": [
+   "supply_cart",
+   "anaesthesia_cart",
+   "instrument_table",
+   "book:cart"
+  ],
+  "monitor": [
+   "monitor",
+   "book:monitor"
+  ],
+  "tower": [
+   "trolley_tower",
+   "book:scope_tower"
+  ],
+  "board": [
+   "whiteboard_stand",
+   "book:board"
+  ],
+  "lightbox": [
+   "lightbox_stand",
+   "book:lightbox"
+  ],
+  "curtain": [
+   "bed_curtain",
+   "privacy_screen"
+  ],
+  "model": [
+   "anatomy_model",
+   "book:model"
+  ],
+  "podium": [
+   "podium",
+   "lectern",
+   "book:podium"
+  ],
+  "iv": [
+   "iv_pole",
+   "book:iv_stand"
+  ],
+  "sink": [
+   "sink",
+   "scrub_sink",
+   "wc_basin"
+  ]
+ },
+ "note_mesh_groups": "Kinds in one group draw one instanced mesh (a unit box family scaled per instance, the colour per instance); book kinds are written book:<kind>. A kind in no group is its own mesh."
+}

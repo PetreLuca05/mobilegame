@@ -1,0 +1,26 @@
+# PDF page 19 = printed 1205. End of Boala Crohn (new biologics, surgery, prognosis), start of Colita ulcerativă
+# (clinical picture, examination, investigations). No boxes or figures printed on this page.
+hdr b000 name=hdr1205
+p b001 cont            # continues the "Terapii biologice noi" paragraph from p. 1204 ("... în trialuri de fază a 3-a pentru")
+h4 b002                # orange bold, same style as "Tratamentul medical al bolii Crohn" (p. 1203)
+p b003:0-5
+li b003:6-10 split=2,4 keep   # three bullets printed, the bullet glyphs are missing from the text layer (fixes add them)
+p b003:11-12           # 4th indication, printed flush left without a bullet (book layout), kept as printed
+p b003:13-
+h4 b004                # green bold
+p b005
+p b006 cont            # column break
+h3 b007:0 name=h3cu    # magenta bold disease title (like "Boala Crohn" on p. 1202)
+h4 b007:1              # green bold
+p b008
+h4 b009                # orange bold
+p b010
+h4 b011:0              # orange bold
+h5 b011:1              # blue regular
+li b012 b015 b016:0
+li b013 b016:1-2
+li b014 b016:3-4
+h5 b017 name=h5fec
+p b018
+h5 b019
+p b020                 # continues on p. 1206

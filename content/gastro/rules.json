@@ -1,0 +1,15 @@
+[
+ {
+  "id": "R1",
+  "find": "(?<=\\d)-(?=\\d)",
+  "replace": "–",
+  "why": "numeric ranges are printed with an en dash (10–20%, 1–4 luni); the OCR layer has a hyphen; not applied to hidden text (no print to check); page fixes restore the few ranges printed with a hyphen",
+  "skip_hidden": true
+ },
+ {
+  "id": "R2",
+  "find": "„([^\"„”\\n]*)\"",
+  "replace": "„\\1”",
+  "why": "Romanian closing quote ” is OCR'd as a straight quote"
+ }
+]

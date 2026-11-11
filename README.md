@@ -42,6 +42,7 @@ for the layout, conventions and every build command.
 ```
 git clone --recursive https://github.com/PetreLuca05/mobilegame.git
 cd mobilegame
+git config core.hooksPath tools/hooks      # pre-commit hook: book leak guard + desktop build of what is staged
 cp config.local.h.example config.local.h   # then put in your Supabase host + publishable key
 ```
 `config.local.h` is git-ignored. Only the Supabase host and the publishable

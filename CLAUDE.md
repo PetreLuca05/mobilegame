@@ -617,3 +617,26 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   changes: docs/LIB1.md. Tests:
   `--autotest library` (`tools/library_test.sh`: + Reduse, a fresh install, the free rect on the iPhone presets and the iPad), the
   two-instance join / kick in `tools/friends2_test.sh` (role ma), perf scenario `menu_to_map` (the move looped).
+
+## Book content (BOOK-1)
+
+- `content/gastro/` = the Gastro chapter (Gastro.pdf) as a content pack for the institute map: atoms → facts → items →
+  scripts, proved by `content/gastro/check.py` (ledgers words / characters / sentences / facts→items / facts→scripts must
+  be 100 %). Pipeline in `tools/book/` (`make.sh content/gastro`); state and next steps in `content/gastro/STATE.md`.
+- The real pack, its header, the reader, the map, `model_nav.json` and the figures for the build machine live in the git-ignored
+  `content_private/gastro/` (from the BOOK-1 engine bundle zip); without it the build embeds the dummy pack
+  (`content/gastro_demo/`). Nothing under `content_private/` is ever committed.
+- The repo is public: the book's text never goes into git, in any commit or in the branch history (`.gitignore`s in
+  `content/`, `content/gastro/`, `tools/book/`). The PDF lives in `content/src/`; text, fixes, facts, items, figures and
+  topic sources travel in the content-pack zip. `tools/precommit.sh` refuses a commit holding a run of 12 or more
+  consecutive words of the book (`tools/book/leakguard.py` + the hashed shingles in `content/gastro/leakguard.txt`);
+  `check.py --leak .` scans every tracked file.
+- Every printed character is exam material; teach the book as printed (OCR fixes only, the book's own errors go to errata).
+  Misprints are shown, never tested (no gap / keyed answer / pair / sort label holds one); cloze gaps and label answers are
+  exact substrings of the source sentence.
+- Map side (`content/gastro/institute.map`, `prop_kinds.json`): `iprop` names a kind (15: 13 existing in MAP-2, 2 new); the
+  whole-book `check.py` runs the placement check, ≤ 12 interactables per room and ≤ 15 steps per required script (longer
+  ones are parts on the same prop); `tools/book/placeprops.py` moves failing props. `content/gastro/mgpack_read.c` is the
+  reference reader of `gastro.mgpack` (v4; 32 table slots in the header), built and run by `check.py`.
+- Author review: `review_errata.csv` / `review_hidden.csv` (zip only) → `check.py content/gastro --apply-review` → lists
+  what must be rebuilt. Hand-over: `content/gastro/ENGINE_PROMPT.md` (MAP-2 first, then BOOK-ENGINE).
