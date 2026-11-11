@@ -60,6 +60,8 @@ begin
     (g, 'b3', 'three', now());                                                         -- only G: moves
   insert into public.ride_state (user_id, state, updated_at) values
     (e, '{"last":0}', now() - interval '1 hour'), (g, '{"last":3}', now());           -- G's bag is newer: wins
+  insert into public.book_progress (user_id, book, facts, cases, updated_at) values
+    (e, 'gastro', '\x0101', '\x01', now() - interval '1 hour'), (g, 'gastro', '\x0210', '\x03', now()); -- facts OR, G's cases newer
 
   -- tickets: guests only, redeemed by permanent accounts only
   perform pg_temp.as_user(e, false);
@@ -120,6 +122,10 @@ begin
   if (select host_id from public.player_status where user_id = h) is not null then raise exception 'TEST FAIL: host_id not cleared'; end if;
   if (select state->>'last' from public.ride_state where user_id = e) <> '3' or exists (select 1 from public.ride_state where user_id = g) then
     raise exception 'TEST FAIL: ride_state merge';
+  end if;
+  if (select facts from public.book_progress where user_id = e) <> '\x0311'::bytea or (select cases from public.book_progress where user_id = e) <> '\x03'::bytea
+     or exists (select 1 from public.book_progress where user_id = g) then
+    raise exception 'TEST FAIL: book_progress merge (%)', (select facts::text || ' ' || cases::text from public.book_progress where user_id = e);
   end if;
   if (select string_agg(book_id || '=' || last_level, ',' order by book_id) from public.book_state where user_id = e) <> 'b2=one,b3=three,kumar=cardio' then
     raise exception 'TEST FAIL: book_state %', (select string_agg(book_id || '=' || last_level, ',' order by book_id) from public.book_state where user_id = e);
