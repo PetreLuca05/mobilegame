@@ -165,7 +165,7 @@ static int check_targets(UiTest *t, MgApp *app, const AutotestProbe *p, const ch
             continue; /* not a target, or scrolled away */
         }
         checked++;
-        if (w < k_ui.target_min - 0.5f || h < k_ui.target_min - 0.5f) {
+        if (!ui->seen[i].partial && (w < k_ui.target_min - 0.5f || h < k_ui.target_min - 0.5f)) { /* a scrolled-in part: full size */
             return failf(t, "%s: a widget at (%.0f, %.0f) is %.0f x %.0f pt, under %.0f", screen, x, y, w, h, k_ui.target_min);
         }
         const bool on_screen_v = y >= 0.0f && y + h <= app->height_pt;

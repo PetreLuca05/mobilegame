@@ -124,6 +124,7 @@ typedef struct WorldMap {
     HMM_Mat4 view_proj;
     HMM_Vec3 eye;
     float card_x, card_y, card_w, card_h;
+    float safe_x0, safe_y0, safe_x1, safe_y1; /* this frame's safe rect (pt): a label crossing it is drawn but not tappable */
     float view_w, view_h, top_bar_b;
     int visible_cells, islands_drawn;
     bool join_disabled;    /* lobby guest: only the host starts */

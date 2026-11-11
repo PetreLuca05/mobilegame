@@ -44,6 +44,7 @@ typedef struct Ui {
         uint32_t key;
         float x, y, w, h;
         bool rect_only; /* ui_remember: a rect others look up (a reward's counter), not something to tap */
+        bool partial;   /* cut by a scroll view's edge: the rect is the part inside it (a full-size target, scrolled) */
         int8_t hclass;  /* its HapticClass (autotests: what a press should play) */
     } seen[256];
     int seen_count;

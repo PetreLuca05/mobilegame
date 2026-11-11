@@ -36,7 +36,10 @@ typedef struct FtOp {
 #define WAIT(x) {OP_WAIT, x, 0}
 #define SLEEP(x) {OP_SLEEP, NULL, x}
 #define SHOT(x) {OP_SHOT, x, 0}, SLEEP(0.3) /* a capture stalls its frame */
-#define NEW_GAME TAP("menurow4"), {OP_PLAYING, NULL, 0}, {OP_TOKEN, NULL, 0} /* Maps, then Join on the island */
+/* New Game = Settings -> Account -> Erase progress (the first island, no last hospital: a role's profile may have played
+ * another island), back, Maps, then Join on the island */
+#define ERASE_THEN_MAPS TAP("menurow2"), TAP("tab1"), TAP("erase_progress"), TAP("erase_yes"), TAP("menu"), SLEEP(1.5), TAP("menurow4")
+#define NEW_GAME ERASE_THEN_MAPS, {OP_PLAYING, NULL, 0}, {OP_TOKEN, NULL, 0}
 #define BACK_TO_MENU TAP("gear"), TAP("p_home"), {OP_MENU, NULL, 0}
 #define ST(x) {OP_ST, NULL, x}
 #define PLAYERS(x) {OP_PLAYERS, NULL, x}
@@ -239,7 +242,7 @@ static const FtOp k_dguest[] = {
 
 /* no network: the game plays, the switch is off, the list is the cached one */
 static const FtOp k_offline[] = {
-    {OP_NET_DOWN, NULL, 0}, TAP("menurow4"), {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(1.0),
+    {OP_NET_DOWN, NULL, 0}, ERASE_THEN_MAPS, {OP_PLAYING, NULL, 0}, {OP_LOBBY, NULL, LOBBY_OFFLINE}, SLEEP(1.0), /* no room token offline */
     TAP("gear"), {OP_NO_TOGGLE, NULL, 0}, TAP("p_friends"), SLEEP(1.0), {OP_STALE, NULL, 0}, TAP("friends"), TAP("p_resume"), {OP_END, NULL, 0},
 };
 

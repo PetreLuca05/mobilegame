@@ -1064,7 +1064,9 @@ static int draw_labels(WorldMap *m, Ui *ui)
         }
         SDL_snprintf(id, sizeof(id), "wm_lbl%d", i);
         bool held = false;
-        if (ui_hit_area(ui, id, x - r - 9.0f, y0 - 6.0f, 2.0f * r + 18.0f, 2.0f * r + 18.0f, &held)) { /* the badge: a chip never covers a neighbour's */
+        const float hx = x - r - 9.0f, hy = y0 - 6.0f, hw = 2.0f * r + 18.0f; /* the badge: a chip never covers a neighbour's */
+        const bool in_safe = hx >= m->safe_x0 && hx + hw <= m->safe_x1 && hy >= m->safe_y0 && hy + hw <= m->safe_y1;
+        if (in_safe && ui_hit_area(ui, id, hx, hy, hw, hw, &held)) { /* under the notch / island: drawn, not a target */
             tapped = i;
         }
         const bool sel = i == is->selected;
@@ -1368,6 +1370,8 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
             }
         }
         if (m->state != WM_BOOKS) {
+            m->safe_x0 = app->safe_left, m->safe_y0 = app->safe_top;
+            m->safe_x1 = app->width_pt - app->safe_right, m->safe_y1 = app->height_pt - app->safe_bottom;
             const int lbl = draw_labels(m, ui);
             if (lbl >= 0) {
                 worldmap_go(m, lbl);

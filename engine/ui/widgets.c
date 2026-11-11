@@ -126,6 +126,13 @@ static void remember(Ui *ui, const char *label, float x, float y, float w, float
     if (clipped || ui->seen_count >= (int)MG_ARRAY_COUNT(ui->seen)) {
         return;
     }
+    bool partial = false;
+    if (ui->clip_on) { /* inside a scroll view: what can be touched is the part inside the viewport */
+        const float x1 = mg_minf(x + w, ui->clip[0] + ui->clip[2]), y1 = mg_minf(y + h, ui->clip[1] + ui->clip[3]);
+        const float x0 = mg_maxf(x, ui->clip[0]), y0 = mg_maxf(y, ui->clip[1]);
+        partial = x0 > x || y0 > y || x1 < x + w || y1 < y + h;
+        x = x0, y = y0, w = x1 - x0, h = y1 - y0;
+    }
     int i = ui->seen_count++;
     ui->seen[i].key = hash_label(hash ? hash + 2 : label);
     (void)hash;
@@ -134,6 +141,7 @@ static void remember(Ui *ui, const char *label, float x, float y, float w, float
     ui->seen[i].w = w;
     ui->seen[i].h = h;
     ui->seen[i].rect_only = false;
+    ui->seen[i].partial = partial;
     ui->seen[i].hclass = HC_NONE;
 }
 

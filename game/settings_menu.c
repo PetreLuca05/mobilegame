@@ -105,22 +105,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
         cy += 56.0f;
     }
-    ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
-    cy += 52.0f;
-    ui_label_caps(ui, cx, cy + 4.0f, str("ui_motion")); /* UI-1: Animații interfață: Complete / Reduse */
-    cy += 22.0f;
-    {
-        static const char *const motion_keys[2] = {"ui_motion_full##mot", "ui_motion_reduced##mot"};
-        const float half = (cw - 8.0f) * 0.5f;
-        for (int i = 0; i < 2; i++) {
-            char ml[64];
-            SDL_snprintf(ml, sizeof(ml), "%s##mot%d", str(motion_keys[i]), i);
-            if (ui_button(ui, ml, cx + (float)i * (half + 8.0f), cy, half, 46.0f, s->ui_motion == i)) {
-                s->ui_motion = i;
-            }
-        }
-    }
-    cy += 58.0f;
 #else
     ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
@@ -144,6 +128,23 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     cy += step + 4.0f;
     ui_toggle(ui, "Sound", cx, cy, cw, &s->sound_on);
     cy += 52.0f;
+    /* the interface rows sit in the second column (the first is full on a phone: the last row reached the home indicator) */
+    ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
+    cy += 52.0f;
+    ui_label_caps(ui, cx, cy + 4.0f, str("ui_motion")); /* UI-1: Animații interfață: Complete / Reduse */
+    cy += 22.0f;
+    {
+        static const char *const motion_keys[2] = {"ui_motion_full", "ui_motion_reduced"};
+        const float half = (cw - 8.0f) * 0.5f;
+        for (int i = 0; i < 2; i++) {
+            char ml[64];
+            SDL_snprintf(ml, sizeof(ml), "%s##mot%d", str(motion_keys[i]), i);
+            if (ui_button(ui, ml, cx + (float)i * (half + 8.0f), cy, half, 46.0f, s->ui_motion == i)) {
+                s->ui_motion = i;
+            }
+        }
+    }
+    cy += 58.0f;
 #ifdef MG_CAMERA_THIRDPERSON
     ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
     cy += 52.0f;
@@ -578,11 +579,11 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     float h = bottom - y;
     if (m->tab == 0) {
         m->editing_name = false;
-        float off = ui_scroll_begin(ui, &m->game_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 8.0f, false);
+        float off = ui_scroll_begin(ui, &m->game_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 4.0f, false); /* ends at the safe bottom */
         float used = game_tab(m, ui, s, x, y - off, w, &action);
         ui_scroll_end(ui, &m->game_scroll, h, used);
     } else {
-        float off = ui_scroll_begin(ui, &m->skin_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 8.0f, false);
+        float off = ui_scroll_begin(ui, &m->skin_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 4.0f, false); /* ends at the safe bottom */
         float used = skin_tab(m, ui, acct, x, y - off, w, &action);
         ui_scroll_end(ui, &m->skin_scroll, h, used);
     }

@@ -19,6 +19,10 @@ for p in fta ftb ftc ftd; do
     check onboard_$p || { echo "FAIL onboarding $p"; exit 1; }
   fi
 done
+# every role starts with its lobby open: a run (this script or the other friends script) may have left one locked
+for p in fta ftb ftc ftd; do
+  [ -f "$PREFS/$p-prefs.json" ] && python3 -c "import json,sys; f=sys.argv[1]; d=json.load(open(f)); d['lobby_open']=True; json.dump(d,open(f,'w'))" "$PREFS/$p-prefs.json"
+done
 build/desktop/mg_nettest profile fta Ana 1 3 0 > /dev/null 2>&1
 build/desktop/mg_nettest profile ftb Bogdan 2 2 1 > /dev/null 2>&1
 build/desktop/mg_nettest profile ftc Clara 3 4 2 > /dev/null 2>&1
