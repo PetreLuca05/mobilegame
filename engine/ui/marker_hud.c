@@ -181,10 +181,12 @@ void marker_hud_draw(GfxContext *g, const TextFont *f, const MarkerHudOut *out, 
             text_draw_centered(g, f, x, y + r + 11.0f, 11.0f, ui_rgba(k_ui.ink), d);
         }
         if (in->storey != view_floor) { /* floor badge, top right */
-            static const char *const names[3] = {"G", "1", "2"};
+            char num[4];
+            snprintf(num, sizeof(num), "%d", in->storey);
+            const char *label = in->badge[0] ? in->badge : (in->storey <= 0 ? "G" : num);
             const float bx = x + r * 0.75f, by = y - r * 0.75f;
             ui_round_rect(g, f, bx - 8.0f, by - 7.0f, 16.0f, 14.0f, 7.0f, ui_rgba(k_ui.ink));
-            text_draw_centered(g, f, bx, by, 11.0f, ui_rgba(k_ui.white), names[in->storey >= 0 && in->storey < 3 ? in->storey : 0]);
+            text_draw_centered(g, f, bx, by, 11.0f, ui_rgba(k_ui.white), label);
         }
     }
 }

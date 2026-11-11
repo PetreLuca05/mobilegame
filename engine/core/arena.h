@@ -17,6 +17,9 @@ void arena_init(Arena *a, void *memory, size_t size);
 void *arena_alloc(Arena *a, size_t size, size_t align);
 /* Carve a child arena out of a parent. */
 bool arena_sub(Arena *parent, Arena *child, size_t size);
+/* The same without touching the pages: a big child that is filled (and reset) later stays untouched memory until
+ * then (arena_alloc zeroes what it hands out). */
+bool arena_sub_reserve(Arena *parent, Arena *child, size_t size);
 size_t arena_mark(const Arena *a);
 void arena_reset_to(Arena *a, size_t mark);
 void arena_reset(Arena *a);

@@ -5,7 +5,8 @@
 #include "core/log.h"
 #include "prefs.h"
 
-#define SAVE_BYTES 108
+#define SAVE_BYTES 132
+#define SAVE_BYTES_V6 108
 #define SAVE_BYTES_V5 88
 #define SAVE_BYTES_V4 56
 #define SAVE_BYTES_V3 52
@@ -69,6 +70,10 @@ bool save_write(const SaveGame *s, const char *profile)
     b[96] = (uint8_t)s->rides.bag_left;
     b[97] = (uint8_t)(int8_t)s->rides.last;
     b[106] = (uint8_t)s->rides.prev_count;
+    SDL_memcpy(b + 108, s->scene_id, 16);
+    b[108 + 15] = 0;
+    put32(b + 124, (uint32_t)s->visited_rooms_hi);
+    put32(b + 128, (uint32_t)(s->visited_rooms_hi >> 32));
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     bool ok = SDL_SaveFile(tmp, b, sizeof(b)) && SDL_RenamePath(tmp, path);
     if (!ok) {
@@ -93,7 +98,7 @@ bool save_read(SaveGame *s, const char *profile)
         s->visited_rooms = (uint64_t)get32(b + 36) | ((uint64_t)get32(b + 40) << 32);
         s->npc_seed = s->version >= 3 && len >= SAVE_BYTES_V3 ? get32(b + 48) : 0;
         s->npc_tick = s->version >= 4 && len >= SAVE_BYTES_V4 ? get32(b + 52) : 0;
-        s->has_rides = s->version >= 6 && len >= SAVE_BYTES;
+        s->has_rides = s->version >= 6 && len >= SAVE_BYTES_V6;
         if (s->has_rides) {
             s->rides.rng = get32(b + 88);
             for (int i = 0; i < RIDE_COUNT; i++) {
@@ -105,6 +110,14 @@ bool save_read(SaveGame *s, const char *profile)
             s->rides.last = (int8_t)b[97];
             s->rides.prev_count = SDL_min(b[106], 2);
             s->rides.forced = -1;
+        }
+        if (s->version >= 7 && len >= SAVE_BYTES) {
+            SDL_memcpy(s->scene_id, b + 108, 16);
+            s->scene_id[15] = 0;
+            s->visited_rooms_hi = (uint64_t)get32(b + 124) | ((uint64_t)get32(b + 128) << 32);
+        } else { /* before v7 every save was in the hospital */
+            SDL_snprintf(s->scene_id, sizeof(s->scene_id), "hospital_v1");
+            s->visited_rooms_hi = 0;
         }
         if (s->version >= 5 && len >= SAVE_BYTES_V5) {
             SDL_memcpy(s->book_id, b + 56, 16);

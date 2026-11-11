@@ -14,7 +14,8 @@
 typedef struct ElevatorPanel {
     GfxMeshId slab, button, ring;
     GfxMeshId label[LIFT_PANEL_FLOORS]; /* one per floor, 1 unit tall */
-    int floors;
+    int floors;          /* buttons shown: the current lift's landings (elevator_panel_set_floors) */
+    int built;           /* labels built: the scene's floor count */
     float button_y[LIFT_PANEL_FLOORS]; /* on the slab's face, -0.5 .. 0.5 */
     float button_r;
     float press_anim[LIFT_PANEL_FLOORS]; /* 1 just pressed .. 0 */
@@ -25,8 +26,11 @@ typedef struct ElevatorPanel {
     float blink_t;       /* tapped the floor we are on */
 } ElevatorPanel;
 
-/* name: a floor's name, its first letter goes on the button */
-bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *(*name)(int));
+/* names[floors]: each floor's name, its first letter goes on the button (G 1 2 .. R). Uploads meshes: per level
+ * scene (after the level's mesh mark), so a scene with more floors gets its own labels. */
+bool elevator_panel_init(ElevatorPanel *p, GfxContext *g, Arena *scratch, int floors, const TextFont *f, const char *const *names);
+/* The lift the player stands in: its landing count (<= the floors built), one button per landing. */
+void elevator_panel_set_floors(ElevatorPanel *p, int floors);
 void elevator_panel_update(ElevatorPanel *p, float dt, bool open, const ui_frame_t *f);
 bool elevator_panel_visible(const ElevatorPanel *p);
 /* A button's centre on screen, pt */

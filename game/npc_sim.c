@@ -324,7 +324,7 @@ void npc_world_bench(NpcWorld *w, int n, uint32_t seed)
         npc_cold_t *c = &p->cold[p->count - 1];
         HMM_Vec3 at;
         int storey = 0;
-        if (nav_random_point(w->nav, (int)(npc_rand(&w->rng) % 3u), &w->rng, &at, &storey)) {
+        if (nav_random_point(w->nav, (int)(npc_rand(&w->rng) % (uint32_t)nav_grid_count(w->nav)), &w->rng, &at, &storey)) {
             h->x = h->prev_x = c->home_x = c->stuck_x = at.X;
             h->z = h->prev_z = c->home_z = c->stuck_z = at.Z;
             h->y = at.Y;

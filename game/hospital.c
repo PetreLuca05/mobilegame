@@ -1329,7 +1329,8 @@ NavWorld *hospital_nav_bake(Hospital *h, Arena *perm, ColWorld *world)
     }
     const float fp[4] = {HOSP_X0, HOSP_Z0, HOSP_X1, HOSP_Z1}, car[4] = {HOSP_CAR_X0, HOSP_CAR_Z0, HOSP_CAR_X1, HOSP_CAR_Z1};
     memcpy(d.footprint, fp, sizeof(fp));
-    memcpy(d.car, car, sizeof(car));
+    memcpy(d.cars[0], car, sizeof(car));
+    d.car_count = 1;
     d.radius = 0.35f;
     d.height = 1.8f;
     d.step = 0.35f;
