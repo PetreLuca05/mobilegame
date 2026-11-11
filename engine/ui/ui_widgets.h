@@ -23,6 +23,8 @@ void ui_icon(Ui *ui, UiIcon icon, float cx, float cy, float size, UiColor c);
 float ui_text(Ui *ui, int face, float x, float y, float size, UiColor c, const char *s);
 void ui_text_c(Ui *ui, int face, float cx, float cy, float size, UiColor c, const char *s);
 float ui_text_w(const Ui *ui, int face, const char *s, float size);
+/* The font of a face (TEXT_FACE_*); the body face when the Ui has no faces attached. */
+const TextFont *ui_face(const Ui *ui, int face);
 /* A label in caps, 12 pt teal, 0.14 em tracking. */
 void ui_label_caps(Ui *ui, float x, float y, const char *s);
 /* TILT-1 depth: the instances that follow shift by k_ui.tilt_depth[level] against the tilt (the shader clamps it near
@@ -35,6 +37,10 @@ void ui_jiggle_update(Ui *ui); /* starts the ones whose time has come (once per 
 /* A surface with its lip (cards 26 / 7, rows 16 / 4, pills: radius -1, 5). */
 void ui_surface(Ui *ui, float x, float y, float w, float h, float radius, float lip, UiColor face, UiColor lip_c, float highlight, UiColor hl);
 void ui_card(Ui *ui, float x, float y, float w, float h);
+/* A small status chip (a primary pill with its lip, label-size bold ink text) whose right edge is `right`, top `top`;
+ * not a target. Returns its width (k_ui.tag_h tall, plus the lip). */
+float ui_tag_chip(Ui *ui, const char *text, float right, float top);
+float ui_tag_chip_w(const Ui *ui, const char *text);
 /* Buttons: "Text##id"; returns true on the touch-up inside. */
 bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, UiVariant v, int flags);
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v);

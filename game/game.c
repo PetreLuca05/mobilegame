@@ -77,6 +77,8 @@
 #include "settings_menu.h"
 #include "stats.h"
 #include "ui/hud.h"
+#include "ui/ui_textarea.h"
+#include "book_pack.h"
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/tilt.h"
@@ -276,6 +278,11 @@ typedef struct Game {
     double juice_banner_at;
     double ui_screen_t0;        /* UI-1: the tween pool */
     UiFx ui_fx;            /* UI-1: particles, rings, reward tokens, banner, sounds, haptics */
+    BookPack book;         /* BOOK-1: the embedded content pack, read in place (ok = false: refused, no book content) */
+    UiTextArea book_area;  /* --autotest text: a long text from the pack in a scrolling text area */
+    TextLine *book_lines;
+    char *book_text;
+    uint32_t book_area_inst; /* UI instances the text area emitted last frame */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -502,6 +509,7 @@ bool game_init(MgApp *app)
     ui_haptic_set_level((HapticLevel)g->settings.haptics);
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     g->has_save = save_exists(g->profile_name);
+    book_pack_load(&g->book); /* BOOK-1: logs its summary or its problems; the game runs either way */
     if (!world_books_load(&g->books)) {
         mg_log_error("world: assets/world/books.json has no book");
         return false;
@@ -3331,6 +3339,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
         /* the cedilla forms draw the comma glyphs */
         probe.text_ok = probe.text_ok && app->font.glyphs[0x15F].u0 == app->font.glyphs[0x219].u0 && app->font.glyphs[0x163].u0 == app->font.glyphs[0x21B].u0;
+        /* BOOK-1: the pack's punctuation and Greek in every face, and the long text drawn as a screenful */
+        static const uint32_t book[] = {0x201E, 0x201D, 0x2013, 0x2019, 0x203A, 0x2192, 0x2212, 0x2020, 0x3B1, 0x3B2, 0x3B3};
+        for (size_t i = 0; i < MG_ARRAY_COUNT(book); i++) {
+            probe.text_ok = probe.text_ok && text_has_glyph(&app->font, book[i]) && text_has_glyph(&app->font_display, book[i]) &&
+                            text_has_glyph(&app->font_bold, book[i]);
+        }
+        probe.text_ok = probe.text_ok && g->book_area.drawn > 0 && g->book_area_inst < 3000u;
     }
     if (g->ia_check && g->ia_ok && g->playing) {
         interact_probe(g, app, &probe);
@@ -3966,6 +3981,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         const float chip_l = ui_safe_left(&cf) + UI_MARGIN + cf.corner; /* head_chip_draw takes the right edge */
         gfx_ui_depth(app->gfx, k_ui.tilt_depth[2], 0); /* TILT-1: the account pill */
         head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, chip_l + head_chip_width(&app->font, g->profile.display_name), cpy);
+        if (book_pack_is_demo()) { /* BOOK-1: the dummy pack; left of the pause button, clear of the stick half and the notices */
+            ui_tag_chip(&g->ui, str("content_demo"), cpx - UI_MARGIN, cpy + (cps - k_ui.tag_h) * 0.5f);
+        }
         gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
@@ -4021,6 +4039,32 @@ static void game_frame_inner(MgApp *app, float alpha)
         ui_round_rect(app->gfx, &app->font, tx, ty, tw, 140.0f, 14.0f, ui_rgba(0x101218F0));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 44.0f, 30.0f, ui_rgba(0xFFFFFFFF), str("autotest_text"));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 100.0f, 20.0f, ui_rgba(0xFFD166FF), str("autotest_text_line"));
+        /* BOOK-1: the pack's glyphs, and ~25 KB of the pack's text in a scrolling area that emits only its visible lines */
+        if (!g->book_text && g->book.ok) {
+            const size_t cap = 26 * 1024;
+            g->book_text = ARENA_PUSH(&app->perm, char, cap);
+            g->book_lines = ARENA_PUSH(&app->perm, TextLine, 4096);
+            ui_text_area_init(&g->book_area, g->book_lines, 4096);
+            size_t n = 0;
+            for (uint32_t r = 0; n + 600 < cap && r < 64; r++) {
+                for (uint32_t i = 0; i < g->book.line_count && n + 600 < cap; i++) {
+                    const char *line = book_pack_str(&g->book, g->book.lines[i].text);
+                    n += (size_t)SDL_snprintf(g->book_text + n, cap - n, i % 7 == 6 ? "%s\n\n" : "%s ", line);
+                }
+            }
+            mg_log_info("autotest text: a %u-byte text from the pack for the text area", (unsigned)n);
+        }
+        const float bt = 12.0f, bh = ty - 12.0f - bt;
+        ui_round_rect(app->gfx, &app->font, tx, bt, tw, bh, 14.0f, ui_rgba(0x101218F0));
+        text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, bt + 16.0f, 18.0f, ui_rgba(0xFFD166FF), str("autotest_text_book"));
+        if (g->book_text) {
+            uint32_t a0, a1;
+            gfx_ui_instances(app->gfx, &a0);
+            ui_text_area(&g->ui, &g->book_area, g->book_text, TEXT_FACE_BODY, 15.0f, ui_rgba(0xFFFFFFFF), tx + 16.0f, bt + 34.0f, tw - 32.0f,
+                         mg_maxf(bh - 42.0f, 20.0f));
+            gfx_ui_instances(app->gfx, &a1);
+            g->book_area_inst = a1 - a0;
+        }
         /* label centring: read back what three buttons emit; the capitals' middle against the face's middle */
         static const struct { float h; int flags; } btn[3] = {{54.0f, 0}, {54.0f, UI_F_SMALL}, {44.0f, UI_F_SMALL}};
         const TextGlyph *H = &app->font_display.glyphs['H'];
@@ -4325,7 +4369,8 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
     const ui_frame_t uf = hud_frame(app);
     float px, py, ps;
     ui_pause_rect(&uf, &px, &py, &ps);
-    const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
+    const float demo_w = book_pack_is_demo() ? ui_tag_chip_w(&g->ui, str("content_demo")) + UI_MARGIN : 0.0f; /* BOOK-1: its chip */
+    const float pause_btn[4] = {px - 6.0f - demo_w, py - 6.0f, ps + 12.0f + demo_w, ps + 12.0f};
     memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
     if (g->lift_panel_ok && elevator_panel_visible(&g->lift_panel)) {

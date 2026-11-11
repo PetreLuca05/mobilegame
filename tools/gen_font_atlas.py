@@ -5,6 +5,10 @@ Usage: python3 tools/gen_font_atlas.py [out.mgf]
 UI-1: three faces in one atlas (FACES below): display = Baloo 2 ExtraBold, body = Nunito Bold,
 bold = Nunito ExtraBold (assets/fonts, pinned in assets/ASSETS.lock). Both families have every
 Romanian letter, the em dash and the ellipsis, so nothing is composed.
+BOOK-1 adds the pack's punctuation and Greek (BOOK_CHARS). A face that lacks one takes it from the first
+fallback that has it (FALLBACKS: Baloo 2 for the arrow in the Nunito faces, Comfortaa for alpha beta gamma, which
+neither family has), drawn at the face's weight (clamped to the fallback's axis) and scaled so its x-height matches
+the face's. The engine puts these above-the-table code points in control-char slots (text_extra_slot in text_layout.c).
 
 Needs Pillow, numpy and scipy (pip install pillow numpy scipy).
 Each glyph is rasterised at 8x the atlas size, a signed Euclidean distance
@@ -53,6 +57,10 @@ ROMANIAN = "ăâîșțĂÂÎȘȚ"
 # Procedural icons (not in the font)
 ICON_GEAR = 0x2699
 ICON_ARROW_UP = 0x2191
+# BOOK-1: the code points the content pack uses beyond Latin-1 / Latin Extended-A (and the ones above)
+BOOK_CHARS = "\u201E\u201D\u2013\u2019\u203A\u2192\u2212\u2020\u03B1\u03B2\u03B3"  # „ ” – ’ › → − † α β γ
+FALLBACKS = [ROOT / "assets/fonts/Baloo2-wght.ttf", ROOT / "assets/fonts/Comfortaa-wght.ttf"]
+SOURCES = {}  # (face name, char) -> font file it came from, printed at the end
 
 
 def load_font(path, weight, size):
@@ -171,12 +179,39 @@ def icon_sdf(draw_fn):
     return (val * 255.0 + 0.5).astype(np.uint8), float(xoff), float(yoff), float(EM_PX * 1.05)
 
 
-def face_items(path, weight, icons):
+def x_height(tt):
+    return tt["OS/2"].sxHeight / tt["head"].unitsPerEm
+
+
+def fallback_font(path, weight, ch):
+    """The first fallback font with `ch`, at `weight` clamped to its axis, scaled to the face's x-height."""
+    face_tt = TTFont(str(path))
+    for fb in FALLBACKS:
+        if fb == path:
+            continue
+        tt = TTFont(str(fb))
+        if ord(ch) not in tt.getBestCmap():
+            continue
+        axis = tt["fvar"].axes[0]
+        w = min(max(weight, axis.minValue), axis.maxValue)
+        size = round(EM_PX * UPSCALE * x_height(face_tt) / x_height(tt))
+        return load_font(fb, w, size), fb
+    raise SystemExit(f"{path.name}: no glyph for {ch!r} and no fallback has it")
+
+
+def face_items(name, path, weight, icons):
     font = load_font(path, weight, EM_PX * UPSCALE)
     ascent, descent = font.getmetrics()
     cmap = TTFont(str(path)).getBestCmap()
     chars = BASE_CHARS + [chr(c) for c in LATIN_RANGE if c in cmap and c not in CEDILLA and chr(c) not in BASE_CHARS]
     items = [(ord(ch), lambda ch=ch: glyph_sdf(font, ch)) for ch in chars]
+    for ch in BOOK_CHARS:
+        if ord(ch) in cmap:
+            src, fb = font, path
+        else:
+            src, fb = fallback_font(path, weight, ch)
+        SOURCES[(name, ch)] = fb.name
+        items.append((ord(ch), lambda ch=ch, src=src: glyph_sdf(src, ch)))
     if icons:
         items += [(ICON_GEAR, lambda: icon_sdf(draw_gear)), (ICON_ARROW_UP, lambda: icon_sdf(draw_arrow_up))]
     have = {cp for cp, _ in items}
@@ -196,7 +231,7 @@ def main():
     circle_pos = (8, 0)
     faces = []
     for name, path, weight in FACES:
-        ascent, descent, made = face_items(path, weight, name == "body")
+        ascent, descent, made = face_items(name, path, weight, name == "body")
         faces.append((name, ascent, descent, made))
     allg = [(fi, m) for fi, f in enumerate(faces) for m in f[3]]
     allg.sort(key=lambda g: -(g[1][1].shape[0] if g[1][1] is not None else 0))  # tallest first packs tighter
@@ -240,6 +275,8 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(bytes(out))
     Image.fromarray(atlas).save(OUT.with_suffix(".preview.png"))
+    for ch in BOOK_CHARS:
+        print(f"  U+{ord(ch):04X} {ch}: " + ", ".join(f"{n} {SOURCES[(n, ch)]}" for n, _, _ in FACES))
     print(f"wrote {OUT} ({len(out)} bytes, {ATLAS_W}x{ATLAS_H}, {sum(len(g) for g in glyphs)} glyphs in {len(faces)} faces, rows used {y + row_h}px)")
 
 

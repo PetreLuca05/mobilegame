@@ -22,7 +22,8 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 VERSION_CODE="${VERSION_CODE:-$(date +%s | cut -c1-9)}"
 TASKS=(bundleRelease)
 [[ "${1:-}" == "--apk" ]] && TASKS+=(assembleRelease)
-./gradlew -PmgVersionCode="$VERSION_CODE" "${TASKS[@]}"
+# BOOK-1: the release build fails at configure without the real pack (content_private/gastro/gastro.mgpack)
+./gradlew -PmgVersionCode="$VERSION_CODE" -PmgRequireRealContent=ON "${TASKS[@]}"
 echo "AAB: $(pwd)/app/build/outputs/bundle/release/app-release.aab (versionCode $VERSION_CODE)"
 [[ "${1:-}" == "--apk" ]] && echo "APK: $(pwd)/app/build/outputs/apk/release/app-release.apk"
 echo "Upload the AAB in Play Console > Testing > Internal testing > Create new release."

@@ -26,6 +26,8 @@ static const TextFont *face_of(const Ui *ui, int face)
     return ui->font;
 }
 
+const TextFont *ui_face(const Ui *ui, int face) { return face_of(ui, face); }
+
 float ui_text(Ui *ui, int face, float x, float y, float size, UiColor c, const char *s) { return text_draw(ui->gfx, face_of(ui, face), x, y, size, c, s); }
 
 void ui_text_c(Ui *ui, int face, float cx, float cy, float size, UiColor c, const char *s) { text_draw_centered(ui->gfx, face_of(ui, face), cx, cy, size, c, s); }
@@ -206,6 +208,16 @@ void ui_card(Ui *ui, float x, float y, float w, float h)
     ui_depth(ui, 1, 0, 0);
     ui_surface(ui, x, y, w, h, k_ui.r_card, k_ui.lip_card, C(k_ui.surface), C(k_ui.lip_mint), 0.0f, C(0));
     ui_depth_end(ui);
+}
+
+float ui_tag_chip_w(const Ui *ui, const char *text) { return ui_text_w(ui, TEXT_FACE_BOLD, text, k_ui.t_label) + 2.0f * k_ui.tag_pad; }
+
+float ui_tag_chip(Ui *ui, const char *text, float right, float top)
+{
+    const float w = ui_tag_chip_w(ui, text), h = k_ui.tag_h, x = right - w;
+    ui_surface(ui, x, top, w, h, -1.0f, k_ui.tag_lip, C(k_ui.primary), C(k_ui.primary_lip), k_ui.highlight_band, C(k_ui.highlight));
+    ui_text_c(ui, TEXT_FACE_BOLD, x + w * 0.5f, top + h * 0.5f, k_ui.t_label, C(k_ui.ink), text);
+    return w;
 }
 
 static void begin_squash(Ui *ui, uint32_t key, float cx, float bottom, float extra)
