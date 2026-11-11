@@ -81,6 +81,7 @@
 #include "ui/hud.h"
 #include "ui/ui_textarea.h"
 #include "book_pack.h"
+#include "core/frame_notes.h"
 #include "book_progress.h"
 #include "book_check.h"
 #include "missions.h"
@@ -470,6 +471,7 @@ static bool ensure_world(Game *g, MgApp *app, SceneKind kind)
     if (g->scene && scene_kind(g->scene) == kind) {
         return true;
     }
+    frame_note("level build");
     if (!ensure_play_common(g, app)) {
         return false;
     }
@@ -2370,6 +2372,7 @@ static void map_preload(Game *g, MgApp *app)
 {
     if (!g->wm.loaded && !g->wm_tried) {
         prof_allocs_exempt(true); /* once: the islands' meshes */
+        frame_note("map preload step");
         const int r = worldmap_load_step(&g->wm, &g->books, app->gfx, &app->perm);
         if (r == 1) {
             gfx_settle_uploads(app->gfx); /* the islands are in: their staging buffers go now, not whenever Metal reclaims them */
@@ -3890,6 +3893,13 @@ static void tilt_debug_draw(Game *g, MgApp *app)
 
 void game_frame(MgApp *app, float alpha)
 {
+    { /* the late-frame log (a tracked bug): the frame that just ended, with what it noted */
+        static const char *const screens[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU", "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
+        const Game *gg = (const Game *)app->game;
+        const int st = (int)gg->fe.state;
+        frame_notes_check(app->time, (double)app->frame_dt * 1000.0, st >= 0 && st < (int)MG_ARRAY_COUNT(screens) ? screens[st] : "?",
+                          gg->playing && gg->scene ? scene_name(gg->scene) : gg->menu_world_on ? "library" : "-");
+    }
     game_frame_inner(app, alpha);
     Game *g = (Game *)app->game;
     tilt_debug_draw(g, app);
@@ -4178,9 +4188,8 @@ static void game_frame_inner(MgApp *app, float alpha)
         game_pause(app);
         _Exit(0);
     }
+    static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU", "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
     if ((int)g->fe.state != g->logged_fe) { /* screen changes, for device logs */
-        static const char *const names[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU",
-                                            "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
         g->logged_fe = (int)g->fe.state;
         mg_log_info("frontend: %s", names[g->logged_fe]);
     }

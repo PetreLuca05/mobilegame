@@ -4,6 +4,7 @@
 
 #include "core/log.h"
 #include "core/prof.h"
+#include "core/frame_notes.h"
 #include "build_info.h"
 #include "platform/device_stats.h"
 
@@ -167,6 +168,13 @@ static void write_report(const PerfRun *p, MgApp *app)
         for (int i = 0; prof_alloc_site(i, &site, &site_bytes); i++) {
             PUT("%s\"%s:%u\"", i ? ", " : "", site, site_bytes);
         }
+    }
+    PUT("],\n");
+    PUT("\"late_frames\": ["); /* the tracked late-frame bug: the run's frames over FRAME_LATE_MS, with what they noted */
+    for (int i = 0; i < frame_late_count(); i++) {
+        const FrameLate *l = frame_late_get(i);
+        PUT("%s{\"at_s\": %.2f, \"ms\": %.1f, \"screen\": \"%s\", \"scene\": \"%s\", \"notes\": \"%s\"}", i ? ", " : "", l->at_s, l->ms, l->screen, l->scene,
+            l->notes);
     }
     PUT("],\n");
     PUT("\"entities_sim_max\": %u,\n\"entities_rendered_max\": %u,\n\"route_failures\": %d,\n", p->sim_max, p->rendered_max, p->failed);

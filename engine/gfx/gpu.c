@@ -14,6 +14,7 @@
 #include "core/log.h"
 #include "core/png_write.h"
 #include "core/prof.h"
+#include "core/frame_notes.h"
 #include "core/time.h"
 #include "gfx.h"
 #include "mesh_pool.h"
@@ -783,6 +784,7 @@ static void apply_msaa(GfxContext *g)
     if (want == g->msaa) {
         return;
     }
+    frame_note("MSAA change (pipelines)");
     SDL_WaitForGPUIdle(g->dev);
     release_pipelines(g);
     release_targets(g);
@@ -1204,6 +1206,7 @@ bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32
 GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices,
                           uint32_t index_count)
 {
+    frame_note("mesh upload");
     uint32_t vbytes = vert_count * (uint32_t)sizeof(GfxVertex);
     uint32_t ibytes = index_count * (uint32_t)sizeof(uint32_t);
     if (!mesh_pool_fits(&g->pool, vbytes, ibytes) || index_count == 0) {
@@ -1420,6 +1423,7 @@ bool gfx_figure_reserve(GfxContext *g, int max_w, int max_h, int format)
 
 bool gfx_set_figure(GfxContext *g, int w, int h, int format, const void *data, uint32_t size)
 {
+    frame_note("figure upload");
     if (!data || w <= 0 || h <= 0) {
         g->fig_w = g->fig_h = 0;
         return false;
@@ -1595,7 +1599,11 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
 }
 
-void gfx_settle_uploads(GfxContext *g) { SDL_WaitForGPUIdle(g->dev); }
+void gfx_settle_uploads(GfxContext *g)
+{
+    frame_note("GPU idle wait (settle uploads)");
+    SDL_WaitForGPUIdle(g->dev);
+}
 
 void gfx_allow_fade(GfxContext *g, bool on) { g->fade_allowed = on; }
 
@@ -2961,6 +2969,7 @@ void gfx_frame_end(GfxContext *g)
 
 void gfx_request_screenshot(GfxContext *g, const char *path)
 {
+    frame_note("screenshot");
     SDL_snprintf(g->shot_path, sizeof(g->shot_path), "%s", path);
 }
 
