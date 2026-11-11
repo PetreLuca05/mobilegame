@@ -129,6 +129,12 @@ typedef struct AutotestProbe {
     int islands_drawn;         /* the map's islands drawn this frame */
     float frame_dt;
     float dissolve;            /* LIB-1 Reduse: the captured frame's weight (0 none) */
+    /* BOOK-ENGINE / MAP-2: --autotest institute */
+    int scene_kind;            /* SceneKind of the loaded level, -1 none */
+    int lift_count, floor_count;
+    int ride_lift;             /* the lift carrying the player, -1 none */
+    uint32_t draws;            /* last frame's main-pass draws */
+    uint32_t frame_allocs;     /* last frame's heap allocations in the frame loop */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -185,6 +191,7 @@ typedef struct Autotest {
     int clamp_frames, clamp_edge, clamp_hidden;
     WorldTest wt;
     char wt_phase[16]; /* worldmap2: "" or "relaunch" */
+    uint32_t inst_draws_max, inst_allocs, inst_lifts; /* institute: worst draws, allocations, lifts ridden (bit per lift) */
     WtTap map_tap; /* save / offline: through the island after New Game */
     StickTest st;
     HapticTest ht;

@@ -560,6 +560,27 @@ static void lifts_place(Game *g, int floor)
     }
 }
 
+/* The landing call (MAP-2: with several lifts a car stays where it was last used): walking up to an idle car's landing on
+ * another floor brings it there, doors opening on arrival, as a call button would. The landing zone is the car's plan
+ * grown by LIFT_CALL_REACH on the player's storey; a player riding any car calls nothing. */
+#define LIFT_CALL_REACH 1.6f
+static void lifts_call(Game *g, HMM_Vec3 feet)
+{
+    if (any_lift_busy(g) && g->riding) {
+        return;
+    }
+    for (int i = 0; i < lift_count(g); i++) {
+        Elevator *e = lift_get(g, i);
+        const int f = (int)lroundf(feet.Y / e->storey);
+        if (elevator_busy(e) || f < 0 || f >= e->floors || f == e->car_floor || SDL_fabsf(feet.Y - (float)f * e->storey) > 0.6f) {
+            continue;
+        }
+        if (feet.X > e->x0 - LIFT_CALL_REACH && feet.X < e->x1 + LIFT_CALL_REACH && feet.Z > e->z0 - LIFT_CALL_REACH && feet.Z < e->z1 + LIFT_CALL_REACH) {
+            elevator_request(e, f);
+        }
+    }
+}
+
 /* The marker HUD's badge for a floor: the first letter of its name (G 1 2 .. R). */
 static void floor_badge(const Game *g, int floor, char out[4])
 {
@@ -998,6 +1019,9 @@ bool game_init(MgApp *app)
     g->scene_override = -1;
     g->panel_lift = g->ride_lift = -1;
     g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
+    if ((atest && SDL_strcmp(atest, "institute") == 0) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario */
+        g->scene_override = (int)scene_kind_from_id(perf_run_scene(&g->perf) ? perf_run_scene(&g->perf) : "institute");
+    }
     {
         const char *sc = arg_value(app->argc, app->argv, "--scene"); /* desktop: hospital | institute | devroom (also every level load) */
         if (sc) {
@@ -1192,6 +1216,7 @@ void game_tick(MgApp *app)
         return;
     }
     scene_tick(g->scene, &g->world, MG_TICK_DT);
+    lifts_call(g, g->player.kin.pos);
     if (g->riding) { /* still moving? */
         const Elevator *re = lift_get(g, g->ride_lift);
         g->riding = re && elevator_moving(re);
@@ -3713,6 +3738,16 @@ static void game_frame_inner(MgApp *app, float alpha)
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
     probe.show_stats = s->show_stats;
+    probe.scene_kind = g->scene ? (int)scene_kind(g->scene) : -1;
+    probe.lift_count = lift_count(g);
+    probe.floor_count = g->scene ? scene_floor_count(g->scene) : 0;
+    probe.ride_lift = g->ride_lift;
+    {
+        GfxStats gs;
+        gfx_get_stats(app->gfx, &gs);
+        probe.draws = gs.draws;
+    }
+    probe.frame_allocs = prof_allocs_last_frame();
     probe.hud_res = g->hud_res;
     probe.hud_res_count = g->hud_res_count;
     if (g->text_test) {

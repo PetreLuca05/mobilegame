@@ -44,6 +44,8 @@ typedef struct PerfRun {
 void perf_run_init(PerfRun *p, int argc, char **argv);
 int perf_run_stress_count(const PerfRun *p); /* dummies the scenario wants */
 bool perf_run_spawn(const PerfRun *p, HMM_Vec3 *pos);
+/* The scenario's level scene ("institute"), NULL for the build's default. */
+const char *perf_run_scene(const PerfRun *p);
 /* Every frame. Quits the app when the time is up. */
 void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, AutotestOut *out, const PerfSample *s);
 

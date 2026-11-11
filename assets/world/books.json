@@ -13,7 +13,7 @@
           "id": "gastro",
           "name": "Gastro",
           "map_id": "institute",
-          "scene": "hospital_v1"
+          "scene": "institute"
         },
         {
           "id": "hepato",

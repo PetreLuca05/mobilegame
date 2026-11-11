@@ -22,6 +22,7 @@ typedef struct Scenario {
     float park_fraction;
     Waypoint route[4];
     int route_len;
+    const char *scene; /* the level scene it plays (NULL: the build's default, the hospital) */
 } Scenario;
 
 static const Scenario k_scenarios[] = {
@@ -39,6 +40,8 @@ static const Scenario k_scenarios[] = {
     {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */
     {"worldmap_voyage", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* WORLD-2: by plane between the islands, back and forth */
     {"island", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},          /* parked at a hospital: island, ambulance, the card */
+    /* MAP-2: the institute: the G lobby, both wings, a ride to floor 2 (3 lifts, 5 floors, no ambient NPCs) */
+    {"institute", 0.0f, 0.1f, 4.0f, 0, 0.0f, {{-17.5f, -6.0f, 0}, {6.0f, -9.5f, 2}, {17.5f, -9.5f, 0}, {0.0f, 4.0f, 0}}, 4, "institute"},
     {"stress200", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{0.0f, 17.0f, -1}, {-3.0f, -3.0f, 0}, {-10.4f, -3.0f, 2}, {0.0f, 17.0f, -1}}, 4},
 };
 
@@ -86,6 +89,12 @@ int perf_run_stress_count(const PerfRun *p)
 {
     const Scenario *s = p->active ? scenario_of(p) : NULL;
     return s ? s->dummies : 0;
+}
+
+const char *perf_run_scene(const PerfRun *p)
+{
+    const Scenario *s = p->active ? scenario_of(p) : NULL;
+    return s ? s->scene : NULL;
 }
 
 bool perf_run_spawn(const PerfRun *p, HMM_Vec3 *pos)
