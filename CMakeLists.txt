@@ -290,6 +290,7 @@ set(MG_GAME_SOURCES
   game/lib_move.c
   game/lib_dressing.c
   game/book_progress.c
+  game/book_figs.c
   game/lib_nav.c
   game/lib_fidget.c
   game/lib_life.c
@@ -339,6 +340,22 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(book_progress_test PRIVATE SDL3::SDL3-static)
   target_compile_options(book_progress_test PRIVATE ${MG_WARNINGS})
   add_test(NAME book_progress COMMAND book_progress_test ${CMAKE_BINARY_DIR})
+  # BOOK-ENGINE figures: the demo pack's crops through tools/book/figpack.py (ASTC via ImageIO on Apple, RGBA8 elsewhere)
+  if(APPLE)
+    set(MG_FIG_TEST_FORMAT astc)
+  else()
+    set(MG_FIG_TEST_FORMAT rgba8)
+  endif()
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/generated/figtest.mgfig
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig
+            ${CMAKE_BINARY_DIR}/generated/figtest.mgfig ${MG_FIG_TEST_FORMAT}
+    DEPENDS ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_demo.png)
+  add_custom_target(figtest_mgfig DEPENDS ${CMAKE_BINARY_DIR}/generated/figtest.mgfig)
+  add_executable(book_figs_test tests/book_figs_test.c game/book_figs.c)
+  target_include_directories(book_figs_test PRIVATE game)
+  target_compile_options(book_figs_test PRIVATE ${MG_WARNINGS})
+  add_dependencies(book_figs_test figtest_mgfig)
+  add_test(NAME book_figs COMMAND book_figs_test ${CMAKE_BINARY_DIR}/generated/figtest.mgfig fig_demo)
   # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
   add_executable(weld_test tests/weld_test.c engine/gfx/weld.c)
 target_include_directories(weld_test PRIVATE engine)

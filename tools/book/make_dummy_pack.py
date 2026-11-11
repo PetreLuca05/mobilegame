@@ -49,9 +49,15 @@ SYL = ['ta', 'lo', 'mi', 're', 'du', 'na', 'vi', 'so', 'ke', 'pu', 'ra', 'ze', '
 
 
 def write_png(path, w, h, rgb):
-    """a plain RGB PNG of one colour (no Pillow needed)"""
+    """an RGB PNG (no Pillow needed): rgb on a soft diagonal ramp, with a dark frame and two darker boxes where the labels go,
+    so a block-compressed copy has edges and gradients to get wrong"""
     import struct, zlib
-    raw = b''.join(b'\0' + bytes(rgb) * w for _ in range(h))
+    def px(x, y):
+        if x in (0, w - 1) or y in (0, h - 1) or 4 <= x < 20 and 4 <= y < 14 or 30 <= x < 50 and 20 <= y < 30:
+            return bytes((40, 60, 90))
+        k = (x + y) / (w + h)
+        return bytes(int(c * (0.8 + 0.2 * k)) for c in rgb)
+    raw = b''.join(b'\0' + b''.join(px(x, y) for x in range(w)) for y in range(h))
     chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
     open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
 
@@ -184,6 +190,7 @@ def main(out):
     spec.loader.exec_module(pb)
     os.makedirs(out, exist_ok=True)
     pb.main(tmp, os.path.join(out, 'gastro.mgpack'))
+    shutil.copytree(os.path.join(tmp, 'fig'), os.path.join(out, 'fig'), dirs_exist_ok=True)  # the figure crops travel next to the pack
     cc = shutil.which('cc') or shutil.which('gcc') or shutil.which('clang')
     reader = os.path.join(os.path.dirname(HERE), '..', 'content', 'gastro', 'mgpack_read.c')
     if len(sys.argv) > 2:
