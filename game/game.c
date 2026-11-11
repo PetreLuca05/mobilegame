@@ -826,6 +826,7 @@ bool game_init(MgApp *app)
     g->has_save = save_exists(g->profile_name);
     book_pack_load(&g->book); /* BOOK-1: logs its summary or its problems; the game runs either way */
     script_player_init(&g->sp, app->gfx); /* BOOK-ENGINE: the figures embedded, the GPU texture for the largest reserved */
+    script_player_survey(&g->sp, &g->book, &app->font, &app->font_bold); /* the worst case per item type, logged as numbers */
     {
         const char *at = arg_value(app->argc, app->argv, "--autotest");
         g->sp.autoplay = at && (SDL_strcmp(at, "missions") == 0 || SDL_strcmp(at, "book") == 0); /* answered by the pack's key */

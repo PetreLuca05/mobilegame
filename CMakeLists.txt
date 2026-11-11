@@ -438,7 +438,8 @@ if(MG_PLATFORM STREQUAL "desktop")
   add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/generated/figtest.mgfig
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig
             ${CMAKE_BINARY_DIR}/generated/figtest.mgfig ${MG_FIG_TEST_FORMAT}
-    DEPENDS ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_demo.png)
+    DEPENDS ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_demo.png
+            ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_worst.png)
   add_custom_target(figtest_mgfig DEPENDS ${CMAKE_BINARY_DIR}/generated/figtest.mgfig)
   add_executable(book_figs_test tests/book_figs_test.c game/book_figs.c)
   target_compile_options(book_figs_test PRIVATE -iquote ${CMAKE_SOURCE_DIR}/game) # quotes only: glibc's <string.h> pulls <strings.h>, which -I game would turn into game/strings.h

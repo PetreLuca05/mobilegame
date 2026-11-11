@@ -16,7 +16,7 @@
 struct AutotestProbe;
 struct AutotestOut;
 
-#define BT_OPS 48
+#define BT_OPS 96
 
 typedef struct BtOp {
     int kind;        /* 1 tap, 2 drag, 3 wait */
@@ -26,19 +26,20 @@ typedef struct BtOp {
 typedef struct BookUiTest {
     int stage, run, step_seen, op, n_ops, sub, finger;
     int script[8];   /* a script whose check item has type i, -1 none */
+    int script_most[8], script_long[8]; /* the scripts holding the worst-case items (most / longest) */
     double at, t0, step_at;
     bool wrong;      /* this run answers wrong */
     BtOp ops[BT_OPS];
     /* scroll search */
     int scrolls, dir;
-    float last_off;
+    float last_off, scroll_dy, sy0;
     float fx, fy, tx, ty;
     int motion;
     /* checks */
     uint8_t facts_before[64]; /* the item's facts, set before the run (bit per ref) */
     uint32_t worst_ui_draws, allocs, frames, checked, other_allocs;
     int small, outside, drags, figs, placeholders;
-    char win[16];
+    char win[32];
     char why[200];
 } BookUiTest;
 

@@ -347,7 +347,7 @@ static void step_enter(ScriptPlayer *sp, double t)
         for (uint32_t k = 0; k < sp->it->n_opts; k++) {
             const mgpk_opt_t *o = book_opt(sp->pack, sp->it->first_opt + k);
             if (o->group == 255) {
-                if (sp->n_groups < 3) {
+                if (sp->n_groups < SP_GROUPS) {
                     sp->group_text[sp->n_groups++] = o->text;
                 }
             } else if (e < SP_OPTS) {
@@ -372,6 +372,104 @@ static void step_enter(ScriptPlayer *sp, double t)
     default:
         break;
     }
+}
+
+/* lines of s wrapped at w (into the player's line buffer: called at load, before any card) */
+static int lines_of(ScriptPlayer *sp, const TextFont *f, const char *s, float size, float w)
+{
+    const size_t n = strlen(s);
+    return n ? text_wrap(f, s, n, size, w, sp->lines, SP_LINES) : 0;
+}
+
+void script_player_survey(ScriptPlayer *sp, const BookPack *pack, const TextFont *body, const TextFont *bold)
+{
+    SpWorst *w = &sp->worst;
+    memset(w, 0, sizeof(*w));
+    if (!pack || !pack->ok || !body || !bold) {
+        return;
+    }
+    const Uint64 t0 = SDL_GetTicksNS();
+    /* the narrowest card: the iPhone preset (844 x 390, 59 pt inset): safe 785, card margin 10, body padding PAD */
+    w->width = 785.0f - 20.0f - 2.0f * PAD;
+    const float row_w = w->width - 56.0f - 24.0f; /* an option row's text column (text_row with a box mark) */
+    int score[SP_TYPES], long_score[SP_TYPES];
+    for (int t = 0; t < SP_TYPES; t++) {
+        w->most_item[t] = w->long_item[t] = MGPK_NONE;
+        score[t] = long_score[t] = -1;
+    }
+    for (uint32_t i = 0; i < pack->item_count; i++) {
+        const mgpk_item_t *it = book_item(pack, i);
+        if (!it || it->type >= SP_TYPES) {
+            continue;
+        }
+        const int t = it->type;
+        int count = it->n_opts;
+        if (t == SP_SORT) { /* entries, not the group names */
+            count = 0;
+            for (uint32_t k = 0; k < it->n_opts; k++) {
+                count += book_opt(pack, it->first_opt + k)->group != 255 ? 1 : 0;
+            }
+            w->sort_groups = (int)it->n_opts - count > w->sort_groups ? (int)it->n_opts - count : w->sort_groups;
+        }
+        const char *stem = book_pack_str(pack, it->stem), *ex = book_pack_str(pack, it->explanation);
+        const int sb = (int)strlen(stem), eb = (int)strlen(ex);
+        const int sl = lines_of(sp, bold, stem, T_STEM, w->width), el = lines_of(sp, body, ex, T_TEXT, w->width);
+        int ab = 0, al = 0, total = sl + el;
+        for (uint32_t k = 0; k < it->n_opts; k++) {
+            const mgpk_opt_t *o = book_opt(pack, it->first_opt + k);
+            const char *a = book_pack_str(pack, o->text);
+            const char *b = t == SP_MATCH ? book_pack_str(pack, o->aux) : "";
+            const int bytes = (int)(strlen(a) + strlen(b));
+            const int lines = t == SP_MATCH ? (int)mg_maxf((float)lines_of(sp, bold, a, 15.0f, w->width * 0.5f - 30.0f), (float)lines_of(sp, bold, b, 15.0f, w->width * 0.5f - 30.0f))
+                                            : lines_of(sp, bold, a, t == SP_SIMPLU || t == SP_MULTIPLU || t == SP_ORDER ? T_TEXT : 15.0f, row_w);
+            ab = bytes > ab ? bytes : ab;
+            al = lines > al ? lines : al;
+            total += lines;
+        }
+        w->answer_bytes[t] = ab > w->answer_bytes[t] ? ab : w->answer_bytes[t];
+        w->answer_lines[t] = al > w->answer_lines[t] ? al : w->answer_lines[t];
+        w->stem_bytes[t] = sb > w->stem_bytes[t] ? sb : w->stem_bytes[t];
+        w->stem_lines[t] = sl > w->stem_lines[t] ? sl : w->stem_lines[t];
+        w->expl_bytes[t] = eb > w->expl_bytes[t] ? eb : w->expl_bytes[t];
+        w->expl_lines[t] = el > w->expl_lines[t] ? el : w->expl_lines[t];
+        const int sc = count * 100000 + total;
+        if (sc > score[t]) {
+            score[t] = sc, w->most[t] = count, w->most_item[t] = i;
+        }
+        if (total > long_score[t]) {
+            long_score[t] = total, w->long_item[t] = i;
+        }
+    }
+    for (uint32_t a = 0; a < pack->atom_count; a++) {
+        const char *s = book_pack_str(pack, book_atom(pack, a)->text);
+        const int b = (int)strlen(s), l = lines_of(sp, body, s, T_TEXT, w->width);
+        w->teach_bytes = b > w->teach_bytes ? b : w->teach_bytes;
+        w->teach_lines = l > w->teach_lines ? l : w->teach_lines;
+    }
+    for (int f = 0; sp->figs_ok && f < sp->figs.count; f++) {
+        BookFig fg;
+        if (!book_figs_get(&sp->figs, f, &fg)) {
+            continue;
+        }
+        if (fg.w * fg.h > w->fig_w * w->fig_h) {
+            w->fig_w = fg.w, w->fig_h = fg.h;
+        }
+        int n = 0;
+        for (uint32_t r = 0; r < pack->figlabel_count; r++) {
+            n += strcmp(book_pack_str(pack, book_figlabel(pack, r)->fig), fg.id) == 0 ? 1 : 0;
+        }
+        w->fig_labels = n > w->fig_labels ? n : w->fig_labels;
+    }
+    static const char *const names[SP_TYPES] = {"simplu", "multiplu", "card", "cloze", "sort", "match", "order", "label"};
+    char line[1024];
+    size_t o = (size_t)SDL_snprintf(line, sizeof(line), "book: worst cases at %.0f pt:", (double)w->width);
+    for (int t = 0; t < SP_TYPES && o < sizeof(line); t++) {
+        o += (size_t)SDL_snprintf(line + o, sizeof(line) - o, " %s n=%d answer=%dB/%dL stem=%dB/%dL expl=%dB/%dL;", names[t], w->most[t], w->answer_bytes[t],
+                                  w->answer_lines[t], w->stem_bytes[t], w->stem_lines[t], w->expl_bytes[t], w->expl_lines[t]);
+    }
+    mg_log_info("%s sort groups=%d teach=%dB/%dL figure=%dx%d labels=%d (%.1f ms)", line, w->sort_groups, w->teach_bytes, w->teach_lines, w->fig_w,
+                w->fig_h, w->fig_labels,
+                (double)(SDL_GetTicksNS() - t0) / 1e6);
 }
 
 bool script_player_open(ScriptPlayer *sp, const BookPack *pack, uint32_t script_index, const char *presenter_name)
@@ -515,6 +613,13 @@ static UiAnswer answer_state(const ScriptPlayer *sp, int k)
     return ok ? UI_ANS_REVEAL : UI_ANS_DIM;
 }
 
+static void where(ScriptPlayer *sp, const char *id, float y, float h)
+{
+    if (sp->n_where < (int)(sizeof(sp->where) / sizeof(sp->where[0]))) {
+        sp->where[sp->n_where].key = ui_key(id), sp->where[sp->n_where].y = y, sp->where[sp->n_where++].h = h;
+    }
+}
+
 /* a tappable surface holding wrapped pack text; mark: 0 none, 1 an empty box, 2 a ticked box (multiplu) */
 static float text_row(ScriptPlayer *sp, Ui *ui, const Body *b, const char *id, const char *text, float x, float y, float w, UiAnswer state, int mark,
                       bool tappable, bool selected, bool *clicked)
@@ -523,6 +628,7 @@ static float text_row(ScriptPlayer *sp, Ui *ui, const Body *b, const char *id, c
     const float face_h = mg_maxf(k_ui.row_h, text_h(sp, ui, text, TEXT_FACE_BOLD, T_TEXT, tw) + 2.0f * pad), h = face_h + lip;
     const uint32_t key = ui_key(id);
     bool held = false;
+    where(sp, id, y, h);
     ui->hclass = HC_ANSWER;
     const bool hit = tappable && ui_press(ui, id, x, y, w, h, &held, false);
     ui->hclass = HC_LINK;
@@ -574,6 +680,9 @@ static bool chip(ScriptPlayer *sp, Ui *ui, const Body *b, const char *id, const 
                  uint32_t lip, uint32_t ink, bool ring, bool tappable, float alpha)
 {
     bool held = false;
+    if (tappable) {
+        where(sp, id, y, h);
+    }
     const bool hit = tappable && ui_press(ui, id, x, y, w, h, &held, false);
     if (!visible(b, y, h)) {
         return hit;
@@ -654,6 +763,27 @@ static void order_move(ScriptPlayer *sp, int from, int to)
     sp->perm[to] = v;
 }
 
+/* sort: a colour per bin (tokens) */
+static uint32_t group_colour(int g)
+{
+    const uint32_t c[SP_GROUPS] = {k_ui.accent, k_ui.coin, k_ui.status_menu, k_ui.bad, k_ui.ok, k_ui.primary_lip, k_ui.ink_soft, k_ui.secondary_lip};
+    return c[g % SP_GROUPS];
+}
+
+/* label: the box whose centre is nearest (x, y), -1 none */
+static int nearest_box(const ScriptPlayer *sp, float x, float y)
+{
+    int best = -1;
+    float bd = 1e30f;
+    for (int i = 0; i < sp->n_boxes; i++) {
+        const float dx = sp->box_c[i][0] - x, dy = sp->box_c[i][1] - y, d = dx * dx + dy * dy;
+        if (d < bd) {
+            bd = d, best = i;
+        }
+    }
+    return best;
+}
+
 /* the item's widget; returns the height used */
 static float item_widget(ScriptPlayer *sp, Ui *ui, const Body *b, float y0)
 {
@@ -661,6 +791,7 @@ static float item_widget(ScriptPlayer *sp, Ui *ui, const Body *b, float y0)
     float y = y0;
     const bool live = !sp->answered;
     sp->n_drop = 0;
+    sp->n_where = 0;
     memset(sp->drop_rect, 0, sizeof(sp->drop_rect));
     switch (sp->type) {
     case SP_SIMPLU:
@@ -754,79 +885,84 @@ static float item_widget(ScriptPlayer *sp, Ui *ui, const Body *b, float y0)
         break;
     }
     case SP_SORT: {
-        /* the pool of unsorted entries and the bins: side by side on a wide card (the pool left), else the pool above the bins;
-         * a chip is dragged into a bin, or tapped and then a bin (or a chip already in it) tapped */
+        /* Up to 22 entries in up to 5 groups (the real pack): every entry stays in one list, tinted with the colour of the bin it
+         * went to; the bins are compact (name + count) and, on a wide card, stay in view beside the list while it scrolls. An
+         * entry is dragged onto a bin, or tapped and then a bin tapped; a placed entry tapped again can go to another bin. */
         const bool side = b->w >= 520.0f;
-        const float px = b->x, pw = side ? b->w * 0.4f : b->w;
-        const float gx = side ? b->x + pw + 14.0f : b->x, gw = side ? b->w - pw - 14.0f : b->w;
-        const float pool_y = y;
-        float py = y;
+        const float lw = side ? b->w * 0.42f : b->w;
+        const float gx = side ? b->x + lw + 14.0f : b->x, gw = side ? b->w - lw - 14.0f : b->w;
+        const int ng = sp->n_groups > 0 ? sp->n_groups : 1;
+        int cols = (int)((gw + 10.0f) / 130.0f);
+        cols = cols < 1 ? 1 : cols > ng ? ng : cols;
+        const int nrows = (ng + cols - 1) / cols;
+        const float bw = (gw - 10.0f * (float)(cols - 1)) / (float)cols;
+        float row_y[SP_GROUPS + 1];
+        row_y[0] = 0.0f;
+        for (int r = 0; r < nrows; r++) {
+            float bh = 0.0f;
+            for (int gi = r * cols; gi < ng && gi < (r + 1) * cols; gi++) {
+                bh = mg_maxf(bh, 10.0f + text_h(sp, ui, S(sp, sp->group_text[gi]), TEXT_FACE_DISPLAY, 15.0f, bw - 20.0f) + 30.0f);
+            }
+            row_y[r + 1] = row_y[r] + mg_maxf(bh, k_ui.target_min + 12.0f) + 10.0f;
+        }
+        const float bins_h = row_y[nrows] - 10.0f;
+        /* the list */
+        const float list_y = side ? y : y + bins_h + 12.0f;
+        float py = list_y;
         for (int p = 0; p < sp->n; p++) {
             const int e = sp->perm[p];
-            if (sp->place[e] >= 0) {
-                continue;
-            }
+            const int g = sp->place[e];
             const char *t = S(sp, opt_of(sp, e)->text);
-            const float h = chip_h(sp, ui, t, pw);
+            const float h = chip_h(sp, ui, t, lw);
+            const bool ok = g == sp->entry_group[e];
             SDL_snprintf(id, sizeof(id), "sp_ent%d", e);
-            keep_chip(sp, e, id, px, py, pw, h);
-            if (chip(sp, ui, b, id, t, px, py, pw, h, k_ui.surface, k_ui.lip_mint, k_ui.ink, sp->selected == e, live, sp->drag == e ? 0.3f : 1.0f)) {
+            keep_chip(sp, e, id, b->x, py, lw, h);
+            const uint32_t fill = sp->answered ? (ok ? k_ui.ok : k_ui.bad) : g >= 0 ? k_ui.surface_tint : k_ui.surface;
+            if (chip(sp, ui, b, id, t, b->x, py, lw, h, fill, sp->answered ? (ok ? k_ui.ok_lip : k_ui.bad_lip) : k_ui.lip_mint,
+                     sp->answered ? k_ui.white : k_ui.ink, sp->selected == e, live, sp->drag == e ? 0.3f : 1.0f)) {
                 sp->selected = sp->selected == e ? -1 : e;
+            }
+            if (g >= 0 && visible(b, py, h)) { /* the bin it is in: a stripe of the bin's colour down its left edge */
+                ui_shape(ui->gfx, &(UiShape){.x = b->x + 3.0f, .y = py + 6.0f, .w = 6.0f, .h = h - k_ui.lip_pill - 12.0f, .radius = 3.0f,
+                                             .color = C(group_colour(g))});
             }
             py += h + 8.0f;
         }
-        const int ng = sp->n_groups > 0 ? sp->n_groups : 1;
-        const float bw = (gw - 10.0f * (float)(ng - 1)) / (float)ng;
-        float bh = 0.0f;
-        for (int gi = 0; gi < ng; gi++) { /* the tallest bin sets the row */
-            float h = 12.0f + text_h(sp, ui, S(sp, sp->group_text[gi]), TEXT_FACE_DISPLAY, 16.0f, bw - 24.0f) + 10.0f;
-            for (int e = 0; e < sp->n; e++) {
-                h += sp->place[e] == gi ? chip_h(sp, ui, S(sp, opt_of(sp, e)->text), bw - 16.0f) + 6.0f : 0.0f;
-            }
-            bh = mg_maxf(bh, mg_maxf(h + 8.0f, 110.0f));
+        add_drop(sp, SP_OPTS, b->x, list_y, lw, mg_maxf(py - list_y, 44.0f)); /* back off every bin */
+        /* the bins: beside the list, held in view while it scrolls (never past the list's ends) */
+        float by0 = y;
+        if (side) {
+            by0 = mg_maxf(y, b->v0 + 4.0f);
+            by0 = mg_minf(by0, mg_maxf(y, py - 8.0f - bins_h));
         }
-        const float gy = side ? y : py + 6.0f;
-        add_drop(sp, SP_OPTS, px, pool_y, pw, mg_maxf(py - pool_y, 44.0f)); /* back to the pool */
         for (int gi = 0; gi < ng; gi++) {
-            const float bx = gx + (bw + 10.0f) * (float)gi;
+            const int r = gi / cols;
+            const float bx = gx + (bw + 10.0f) * (float)(gi % cols), gy = by0 + row_y[r], bh = row_y[r + 1] - row_y[r] - 10.0f;
+            int count = 0;
+            for (int e = 0; e < sp->n; e++) {
+                count += sp->place[e] == gi ? 1 : 0;
+            }
             if (visible(b, gy, bh)) {
                 ui_shape(ui->gfx, &(UiShape){.x = bx, .y = gy, .w = bw, .h = bh, .radius = k_ui.r_row, .color = C(k_ui.surface_tint)});
-                ui_shape(ui->gfx, &(UiShape){.x = bx, .y = gy, .w = bw, .h = bh, .radius = k_ui.r_row, .stroke = 2.0f,
-                                             .color = C(sp->selected >= 0 || sp->drag >= 0 ? k_ui.accent : k_ui.secondary_lip)});
-            }
-            float cy = gy + 12.0f;
-            cy += text_block(sp, ui, S(sp, sp->group_text[gi]), TEXT_FACE_DISPLAY, 16.0f, C(k_ui.teal_text), bx + 12.0f, cy, bw - 24.0f, b->v0, b->v1) + 10.0f;
-            bool into = false; /* a tap on a chip in this bin while another is held: the held one comes here too */
-            for (int e = 0; e < sp->n; e++) {
-                if (sp->place[e] != gi) {
-                    continue;
-                }
-                const char *t = S(sp, opt_of(sp, e)->text);
-                const float h = chip_h(sp, ui, t, bw - 16.0f);
-                const bool ok = sp->place[e] == sp->entry_group[e];
-                SDL_snprintf(id, sizeof(id), "sp_ent%d", e);
-                keep_chip(sp, e, id, bx + 8.0f, cy, bw - 16.0f, h);
-                if (chip(sp, ui, b, id, t, bx + 8.0f, cy, bw - 16.0f, h, sp->answered ? (ok ? k_ui.ok : k_ui.bad) : k_ui.surface,
-                         sp->answered ? (ok ? k_ui.ok_lip : k_ui.bad_lip) : k_ui.lip_mint, sp->answered ? k_ui.white : k_ui.ink, sp->selected == e, live,
-                         sp->drag == e ? 0.3f : 1.0f)) {
-                    if (sp->selected >= 0 && sp->selected != e) {
-                        into = true;
-                    } else {
-                        sp->selected = sp->selected == e ? -1 : e;
-                    }
-                }
-                cy += h + 6.0f;
+                ui_shape(ui->gfx, &(UiShape){.x = bx, .y = gy, .w = bw, .h = bh, .radius = k_ui.r_row, .stroke = sp->selected >= 0 || sp->drag >= 0 ? 3.0f : 2.0f,
+                                             .color = C(group_colour(gi))});
+                text_block(sp, ui, S(sp, sp->group_text[gi]), TEXT_FACE_DISPLAY, 15.0f, C(k_ui.ink), bx + 10.0f, gy + 10.0f, bw - 20.0f, b->v0, b->v1);
+                char num[16];
+                SDL_snprintf(num, sizeof(num), "%d", count);
+                ui_shape(ui->gfx, &(UiShape){.x = bx + 10.0f, .y = gy + bh - 26.0f, .w = 30.0f, .h = 20.0f, .radius = -1.0f, .color = C(group_colour(gi))});
+                ui_text_c(ui, TEXT_FACE_BOLD, bx + 25.0f, gy + bh - 16.0f, 12.0f, C(k_ui.white), num);
             }
             add_drop(sp, gi, bx, gy, bw, bh);
             bool held = false;
             SDL_snprintf(id, sizeof(id), "sp_bin%d", gi);
-            if (((live && ui_press(ui, id, bx, gy, bw, bh, &held, true)) || into) && sp->selected >= 0) { /* after its chips: they take their own taps */
+            where(sp, id, gy, bh);
+            if (live && ui_press(ui, id, bx, gy, bw, bh, &held, true) && sp->selected >= 0) {
                 sp->place[sp->selected] = (int8_t)gi;
                 sp->selected = -1;
                 relayout(sp);
             }
         }
-        y = mg_maxf(py, gy + bh);
+        y = side ? mg_maxf(py, y + bins_h) : py;
         break;
     }
     case SP_MATCH: {
@@ -913,21 +1049,38 @@ static float item_widget(ScriptPlayer *sp, Ui *ui, const Body *b, float y0)
             if (visible(b, by, bh)) {
                 ui_shape(ui->gfx, &(UiShape){.x = bx, .y = by, .w = bw, .h = bh, .radius = 5.0f, .stroke = -2.0f, .color = C(fill),
                                              .color2 = C(sp->selected >= 0 ? k_ui.accent : k_ui.ink)});
-                if (lab >= 0) { /* the label, shrunk to the box (the full text is on its chip and in the explanation) */
-                    const char *t = S(sp, opt_of(sp, lab)->text);
-                    float ts = 13.0f;
+                { /* every box carries its number (its button below has it too); a placed label shows in the box if it still reads
+                   * at 9 pt, else the number stays: text never spills over a neighbouring box */
+                    const char *t = lab >= 0 ? S(sp, opt_of(sp, lab)->text) : "";
+                    float ts = mg_minf(13.0f, bh * 0.8f);
                     const float tw = text_width(ui_face(ui, TEXT_FACE_BOLD), t, ts);
-                    ts = tw > bw - 6.0f && tw > 0.0f ? mg_maxf(ts * (bw - 6.0f) / tw, 7.0f) : ts;
-                    ui_text_c(ui, TEXT_FACE_BOLD, bx + bw * 0.5f, by + bh * 0.5f, ts, C(sp->answered ? k_ui.white : k_ui.ink), t);
+                    ts = tw > bw - 4.0f && tw > 0.0f ? ts * (bw - 4.0f) / tw : ts;
+                    char num[8];
+                    SDL_snprintf(num, sizeof(num), "%d", i + 1);
+                    const bool text = lab >= 0 && ts >= 9.0f;
+                    ui_text_c(ui, TEXT_FACE_BOLD, bx + bw * 0.5f, by + bh * 0.5f, text ? ts : mg_minf(11.0f, bh * 0.9f),
+                              C(sp->answered ? k_ui.white : lab >= 0 ? k_ui.ink : k_ui.teal_text), text ? t : num);
                 }
             }
-            /* the target is at least 44 pt round the box */
-            const float tw = mg_maxf(bw, k_ui.target_min), th = mg_maxf(bh, k_ui.target_min), tx = bx + bw * 0.5f - tw * 0.5f, ty = by + bh * 0.5f - th * 0.5f;
-            add_drop(sp, i, tx, ty, tw, th);
+            /* boxes can be small and close (a 12-label figure): each is remembered at its own rect, and one target over the
+             * whole figure takes the box nearest the finger, so neighbouring boxes never steal each other's taps */
+            sp->box_c[i][0] = bx + bw * 0.5f, sp->box_c[i][1] = by + bh * 0.5f;
+        }
+        add_drop(sp, 0, fr[0], fr[1], fr[2], fr[3]); /* a drop anywhere on the figure: the nearest box (drag_draw_drop) */
+        {
+            const uint32_t fkey = ui_key("sp_fig");
+            if (ui->active_id == fkey && ui->active_touch >= 0) {
+                sp->fig_tap[0] = ui->in->touches[ui->active_touch].x, sp->fig_tap[1] = ui->in->touches[ui->active_touch].y;
+            }
             bool held = false;
-            SDL_snprintf(id, sizeof(id), "sp_box%d", i);
-            if (live && ui_press(ui, id, tx, ty, tw, th, &held, true)) {
-                if (sp->selected >= 0) {
+            const float tw = mg_maxf(fr[2], k_ui.target_min), th = mg_maxf(fr[3], k_ui.target_min);
+            if (live && ui_press(ui, "sp_fig", fr[0], fr[1], tw, th, &held, true)) {
+                const int i = nearest_box(sp, sp->fig_tap[0], sp->fig_tap[1]);
+                int lab = -1;
+                for (int k = 0; k < sp->n; k++) {
+                    lab = sp->place[k] == i ? k : lab;
+                }
+                if (i >= 0 && sp->selected >= 0) {
                     for (int k = 0; k < sp->n; k++) {
                         sp->place[k] = sp->place[k] == i ? -1 : sp->place[k];
                     }
@@ -938,21 +1091,68 @@ static float item_widget(ScriptPlayer *sp, Ui *ui, const Body *b, float y0)
                 }
             }
         }
+        /* the labels: chips as wide as their text, flowing in the column */
         const float lx = side ? mg_minf(fr[0] + fr[2] + 18.0f, b->x + b->w - 200.0f) : b->x, lw = side ? b->x + b->w - lx : b->w;
-        float ly = side ? y : y + fr[3] + 18.0f;
+        float ly = side ? y : y + fr[3] + 18.0f, cx = lx, row_h = 0.0f;
         for (int p = 0; p < sp->n; p++) {
             const int k = sp->perm[p];
             const char *t = S(sp, opt_of(sp, k)->text);
-            const float h = chip_h(sp, ui, t, lw);
+            const float cw = mg_minf(mg_maxf(text_width(ui_face(ui, TEXT_FACE_BOLD), t, 15.0f) + 24.0f, 64.0f), lw);
+            const float h = chip_h(sp, ui, t, cw);
+            if (cx > lx && cx + cw > lx + lw) {
+                cx = lx, ly += row_h + 8.0f, row_h = 0.0f;
+            }
             const bool placed = sp->place[k] >= 0;
             SDL_snprintf(id, sizeof(id), "sp_lab%d", k);
-            keep_chip(sp, k, id, lx, ly, lw, h);
-            if (chip(sp, ui, b, id, t, lx, ly, lw, h, placed ? k_ui.surface_tint : k_ui.surface, k_ui.lip_mint, k_ui.ink, sp->selected == k, live,
+            keep_chip(sp, k, id, cx, ly, cw, h);
+            if (chip(sp, ui, b, id, t, cx, ly, cw, h, placed ? k_ui.surface_tint : k_ui.surface, k_ui.lip_mint, k_ui.ink, sp->selected == k, live,
                      sp->drag == k ? 0.3f : placed ? 0.5f : 1.0f)) {
                 sp->selected = sp->selected == k ? -1 : k;
             }
-            ly += h + 8.0f;
+            if (placed && visible(b, ly, h)) { /* the number of the box it sits in, over the chip's corner */
+                char num[8];
+                SDL_snprintf(num, sizeof(num), "%d", sp->place[k] + 1);
+                ui_shape(ui->gfx, &(UiShape){.x = cx + cw - 12.0f, .y = ly - 6.0f, .w = 18.0f, .h = 18.0f, .radius = -1.0f, .color = C(k_ui.accent)});
+                ui_text_c(ui, TEXT_FACE_BOLD, cx + cw - 3.0f, ly + 3.0f, 11.0f, C(k_ui.white), num);
+            }
+            cx += cw + 8.0f;
+            row_h = mg_maxf(row_h, h);
         }
+        ly += row_h + 12.0f;
+        /* the boxes as numbered 44 pt buttons: the way to place a label when the boxes on the figure are too small or too close
+         * to tap (a held label goes to the button's box; a filled box's button takes its label back) */
+        const float kb = k_ui.target_min + 2.0f;
+        float kx = lx;
+        for (int i = 0; i < sp->n_boxes; i++) {
+            if (kx > lx && kx + kb > lx + lw) {
+                kx = lx, ly += kb + 8.0f;
+            }
+            int lab = -1;
+            for (int k = 0; k < sp->n; k++) {
+                lab = sp->place[k] == i ? k : lab;
+            }
+            const bool ok = lab == i;
+            char num[8];
+            SDL_snprintf(num, sizeof(num), "%d", i + 1);
+            SDL_snprintf(id, sizeof(id), "sp_box%d", i);
+            if (chip(sp, ui, b, id, num, kx, ly, kb, kb, sp->answered ? (ok ? k_ui.ok : k_ui.bad) : lab >= 0 ? k_ui.primary : k_ui.surface,
+                     sp->answered ? (ok ? k_ui.ok_lip : k_ui.bad_lip) : lab >= 0 ? k_ui.primary_lip : k_ui.lip_mint, sp->answered ? k_ui.white : k_ui.ink,
+                     sp->selected >= 0, live, 1.0f)) {
+                if (sp->selected >= 0) {
+                    for (int k = 0; k < sp->n; k++) {
+                        sp->place[k] = sp->place[k] == i ? -1 : sp->place[k];
+                    }
+                    sp->place[sp->selected] = (int8_t)i;
+                    sp->selected = -1;
+                } else if (lab >= 0) {
+                    sp->place[lab] = -1;
+                }
+                relayout(sp);
+            }
+            add_drop(sp, i + 1, kx, ly, kb, kb); /* a drop on a button: its box */
+            kx += kb + 8.0f;
+        }
+        ly += kb;
         y = mg_maxf(side ? y + fr[3] + 12.0f : y, ly);
         break;
     }
@@ -1109,12 +1309,12 @@ static void drag_draw_drop(ScriptPlayer *sp, Ui *ui, const Body *full)
     if (t->active) {
         return;
     }
-    const int at = drop_at(sp, t->x, t->y); /* the finger's point, on this frame's targets */
+    int at = drop_at(sp, t->x, t->y); /* the finger's point, on this frame's targets */
     if (sp->type == SP_ORDER) {
         order_move(sp, sp->drag, at);
     } else if (sp->type == SP_SORT && at >= 0) {
         sp->place[sp->drag] = (int8_t)(at == SP_OPTS ? -1 : at);
-    } else if (sp->type == SP_LABEL && at >= 0 && at < sp->n_boxes) {
+    } else if (sp->type == SP_LABEL && at >= 0 && (at = at == 0 ? nearest_box(sp, t->x, t->y) : at - 1) >= 0 && at < sp->n_boxes) {
         for (int k = 0; k < sp->n; k++) {
             sp->place[k] = sp->place[k] == at ? -1 : sp->place[k];
         }
