@@ -313,22 +313,49 @@ static void path_reset(NavPath *p)
     p->count = 0;
     p->ride_at = -1;
     p->ride_from = p->ride_to = 0;
+    p->ride_car = -1;
     p->length = 0.0f;
 }
 
-/* start cell, target cell, and the car cells when the storeys differ */
+static uint16_t cell_label(const NavGrid *g, const uint16_t *labels, NavCell c);
+
+static float car_cx(const NavWorld *n, int k) { return (n->cars[k][0] + n->cars[k][2]) * 0.5f; }
+static float car_cz(const NavWorld *n, int k) { return (n->cars[k][1] + n->cars[k][3]) * 0.5f; }
+
+/* start cell, target cell, and the car cells when the storeys differ. With several cars: the one connected to
+ * both ends that makes the walk (start -> car, car -> target, straight lines) shortest; if none connects, the
+ * nearest, and regions_connect says no. *car = -1 on one storey. */
 static bool resolve(const NavWorld *n, HMM_Vec3 from, int gfrom, HMM_Vec3 to, int gto, NavCell *a, NavCell *b, NavCell *ca,
-                    NavCell *cb)
+                    NavCell *cb, int *car)
 {
     const NavGrid *ga = &n->grids[gfrom], *gb = &n->grids[gto];
+    *car = -1;
     if (!nearest_walkable(ga, from.X, from.Z, a) || !nearest_walkable(gb, to.X, to.Z, b)) {
         return false;
     }
-    if (gfrom != gto) {
-        float cx = (n->car[0] + n->car[2]) * 0.5f, cz = (n->car[1] + n->car[3]) * 0.5f;
-        return nearest_walkable(ga, cx, cz, ca) && nearest_walkable(gb, cx, cz, cb);
+    if (gfrom == gto) {
+        return true;
     }
-    return true;
+    float best = 1e30f;
+    bool best_connects = false;
+    for (int k = 0; k < n->car_count; k++) {
+        NavCell ka, kb;
+        const float cx = car_cx(n, k), cz = car_cz(n, k);
+        if (!nearest_walkable(ga, cx, cz, &ka) || !nearest_walkable(gb, cx, cz, &kb)) {
+            continue;
+        }
+        const bool connects = cell_label(ga, ga->region, *a) == cell_label(ga, ga->region, ka) &&
+                              cell_label(gb, gb->region, kb) == cell_label(gb, gb->region, *b);
+        const float d = sqrtf((cx - from.X) * (cx - from.X) + (cz - from.Z) * (cz - from.Z)) + sqrtf((to.X - cx) * (to.X - cx) + (to.Z - cz) * (to.Z - cz));
+        if ((connects && !best_connects) || (connects == best_connects && d < best)) {
+            best = d;
+            best_connects = connects;
+            *ca = ka;
+            *cb = kb;
+            *car = k;
+        }
+    }
+    return *car >= 0;
 }
 
 static uint16_t cell_label(const NavGrid *g, const uint16_t *labels, NavCell c) { return labels[c.z * g->d.cols + c.x]; }
@@ -347,7 +374,8 @@ bool nav_can_reach(const NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Ve
 {
     int gfrom = nav_grid_index(n, from_storey), gto = nav_grid_index(n, to_storey);
     NavCell a, b, ca = {0, 0}, cb = {0, 0};
-    return gfrom >= 0 && gto >= 0 && resolve(n, from_pos, gfrom, to_pos, gto, &a, &b, &ca, &cb) &&
+    int car;
+    return gfrom >= 0 && gto >= 0 && resolve(n, from_pos, gfrom, to_pos, gto, &a, &b, &ca, &cb, &car) &&
            regions_connect(n, gfrom, gto, a, b, ca, cb);
 }
 
@@ -386,7 +414,7 @@ bool nav_random_point(const NavWorld *n, int grid, uint32_t *rng, HMM_Vec3 *pos,
     }
     const NavGrid *g = &n->grids[grid];
     NavCell car;
-    if (!nearest_walkable(g, (n->car[0] + n->car[2]) * 0.5f, (n->car[1] + n->car[3]) * 0.5f, &car)) {
+    if (n->car_count < 1 || !nearest_walkable(g, car_cx(n, 0), car_cz(n, 0), &car)) {
         return false;
     }
     const uint16_t want = cell_label(g, g->region, car);
@@ -418,7 +446,8 @@ int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_p
     int gfrom = nav_grid_index(n, from_storey), gto = nav_grid_index(n, to_storey);
     int result = NAV_UNREACHABLE;
     NavCell a, b, ca = {0, 0}, cb = {0, 0};
-    if (gfrom >= 0 && gto >= 0 && resolve(n, from_pos, gfrom, to_pos, gto, &a, &b, &ca, &cb)) {
+    int car = -1;
+    if (gfrom >= 0 && gto >= 0 && resolve(n, from_pos, gfrom, to_pos, gto, &a, &b, &ca, &cb, &car)) {
         NavSearch s;
         if (gfrom == gto) {
             search_begin(&s, &n->sync_mem, &n->grids[gfrom], a, b, gfrom, path, true);
@@ -431,6 +460,7 @@ int nav_find_path(NavWorld *n, HMM_Vec3 from_pos, int from_storey, HMM_Vec3 to_p
                 path->ride_at = path->count - 1;
                 path->ride_from = gfrom;
                 path->ride_to = gto;
+                path->ride_car = car;
                 add_point(path, &n->grids[gto], cb, gto);
                 search_begin(&s, &n->sync_mem, &n->grids[gto], cb, b, gto, path, false);
                 search_run(&s, 0.0, NULL);
@@ -568,7 +598,7 @@ uint32_t nav_request(NavWorld *n, NavClass cls, HMM_Vec3 from_pos, int from_stor
     path_reset(&r->partial);
     r->cross = r->gfrom != r->gto;
     r->state = NAV_REQ_UNREACHABLE;
-    if (r->gfrom >= 0 && r->gto >= 0 && resolve(n, from_pos, r->gfrom, to_pos, r->gto, &r->a, &r->b, &r->ca, &r->cb) &&
+    if (r->gfrom >= 0 && r->gto >= 0 && resolve(n, from_pos, r->gfrom, to_pos, r->gto, &r->a, &r->b, &r->ca, &r->cb, &r->car) &&
         regions_connect(n, r->gfrom, r->gto, r->a, r->b, r->ca, r->cb)) {
         if (cache_lookup(n, cls, r)) {
             n->stats.cache_hits++;
@@ -675,6 +705,7 @@ void nav_service(NavWorld *n, NavClass cls, double budget_ms, int max_expansions
             r->path.ride_at = r->path.count - 1;
             r->path.ride_from = r->gfrom;
             r->path.ride_to = r->gto;
+            r->path.ride_car = r->car;
             add_point(&r->path, &n->grids[r->gto], r->cb, r->gto);
             r->segment = 1;
             request_start_segment(n, q, r);

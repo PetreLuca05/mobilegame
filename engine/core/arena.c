@@ -44,6 +44,20 @@ bool arena_sub(Arena *parent, Arena *child, size_t size)
     return true;
 }
 
+bool arena_sub_reserve(Arena *parent, Arena *child, size_t size)
+{
+    uintptr_t cur = (uintptr_t)(parent->base + parent->used);
+    uintptr_t aligned = (cur + 15u) & ~(uintptr_t)15u;
+    size_t offset = (size_t)(aligned - (uintptr_t)parent->base);
+    if (offset + size > parent->size) {
+        return false;
+    }
+    parent->used = offset + size;
+    parent->peak = parent->used > parent->peak ? parent->used : parent->peak;
+    arena_init(child, parent->base + offset, size);
+    return true;
+}
+
 size_t arena_mark(const Arena *a) { return a->used; }
 
 void arena_reset_to(Arena *a, size_t mark)

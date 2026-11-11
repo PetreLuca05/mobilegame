@@ -48,6 +48,7 @@ typedef struct NavRequest {
     int segment;     /* cross-storey: 0 to the car, 1 from it */
     int gfrom, gto, from_storey, to_storey;
     NavCell a, b, ca, cb;
+    int car;         /* cross-storey: the car ridden */
     NavSearch s;
     NavPath path, partial;
     float cpu_ms;
@@ -76,7 +77,8 @@ struct NavWorld {
     NavGrid grids[NAV_MAX_GRIDS];
     int grid_count;
     int total;
-    float car[4];
+    float cars[NAV_MAX_CARS][4];
+    int car_count;
     float bake_ms, path_ms;
     NavQueue queues[NAV_CLASS_COUNT];
     NavSearchMem sync_mem;  /* nav_find_path */

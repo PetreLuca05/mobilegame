@@ -13,6 +13,7 @@
 
 #include "core/arena.h"
 #include "core/mg_types.h"
+#include "gfx/mesh_pool.h"
 
 struct SDL_Window;
 typedef struct GfxContext GfxContext;
@@ -210,6 +211,13 @@ void gfx_settle_uploads(GfxContext *g);
 /* A mesh that is rebuilt now and then (LIB-1: a lobby's table dressing) without growing the pools: reserve room once,
  * then update it in place (it waits for the GPU: not for every frame). Draws nothing until the first update. */
 GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indices);
+/* Level scenes: the pools are linear, so meshes are freed as a stack. Take a mark before a level's meshes go in;
+ * gfx_mesh_reset_to(mark) drops every mesh uploaded after it (waits for the GPU first; their ids are invalid from
+ * then on, gfx_draw ignores them) and keeps every one below it (UI, avatar, library, world map). False on a stale
+ * mark (the pool is already below it). */
+GfxMeshMark gfx_mesh_mark(const GfxContext *g);
+bool gfx_mesh_reset_to(GfxContext *g, GfxMeshMark mark);
+void gfx_mesh_usage(const GfxContext *g, uint32_t *meshes, uint32_t *vb_bytes, uint32_t *ib_bytes);
 bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices, uint32_t index_count);
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat,
               uint32_t flags);

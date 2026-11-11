@@ -340,6 +340,13 @@ target_compile_options(weld_test PRIVATE ${MG_WARNINGS})
 add_dependencies(weld_test mobilegame) # the generated meshes
 add_test(NAME weld COMMAND weld_test ${CMAKE_BINARY_DIR}/generated/assets)
 
+# level scenes: mesh pool mark / reset, level arena, nav with several lift cars, five landings, save bits (pure C)
+add_executable(level_mem_test tests/level_mem_test.c engine/nav/navgrid.c engine/nav/astar.c engine/core/arena.c game/elevator.c)
+target_include_directories(level_mem_test PRIVATE game engine)
+target_link_libraries(level_mem_test PRIVATE mg_physics m)
+target_compile_options(level_mem_test PRIVATE ${MG_WARNINGS})
+add_test(NAME level_mem COMMAND level_mem_test)
+
 foreach(lib dressing nav fidget life)
     add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c)
     target_include_directories(lib_${lib}_test PRIVATE game engine)
