@@ -26,7 +26,7 @@ uint16_t ia_add(Interact *ia, ia_kind_t kind, HMM_Vec3 pos, float range, int sto
     }
     const uint16_t s = ia->free_list[--ia->free_count];
     ia->hot[s] = (ia_hot_t){pos, range, (int8_t)storey, (uint8_t)kind, (uint8_t)flags, 1, ref, 0};
-    ia->cold[s] = (ia_cold_t){label, on_interact, user, preview};
+    ia->cold[s] = (ia_cold_t){label, NULL, on_interact, user, preview};
     ia->high_water = (int)s + 1 > ia->high_water ? (int)s + 1 : ia->high_water;
     return s;
 }

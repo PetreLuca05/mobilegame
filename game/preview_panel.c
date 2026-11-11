@@ -142,6 +142,17 @@ void preview_panel_draw_ui(const PreviewPanel *p, const Interact *ia, GfxContext
         return;
     }
     if (ia->hot[p->shown].kind == IA_NPC && ia->cold[p->shown].preview.look) {
+        const char *role = ia->cold[p->shown].sublabel;
+        if (role) { /* BOOK-ENGINE: a cast person: the head, its name and role on a small card under it */
+            const char *name = ia->cold[p->shown].label ? ia->cold[p->shown].label : "";
+            const float x = p->x, y = p->y, s = p->size;
+            const float w = mg_maxf(text_width(f, name, 13.0f), text_width(f, role, 11.0f)) + 16.0f, h = 36.0f;
+            const float cx = x + s * 0.5f, top = y + s - h + 4.0f;
+            ui_round_rect(g, f, cx - w * 0.5f, top + 3.0f, w, h, 10.0f, ui_rgba(k_ui.lip_mint));
+            ui_round_rect(g, f, cx - w * 0.5f, top, w, h, 10.0f, ui_rgba(k_ui.surface));
+            text_draw_centered(g, f, cx, top + 11.0f, 13.0f, ui_rgba(k_ui.ink), name);
+            text_draw_centered(g, f, cx, top + 26.0f, 11.0f, ui_rgba(k_ui.ink_soft), role);
+        }
         return; /* just the head */
     }
     const float x = p->x, y = p->y, s = p->size;

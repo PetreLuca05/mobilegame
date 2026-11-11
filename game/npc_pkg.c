@@ -286,6 +286,9 @@ void npc_pkg_update(NpcWorld *w, int i, float dt)
 {
     npc_hot_t *h = &w->pool.hot[w->pool.read][i];
     npc_cold_t *c = &w->pool.cold[i];
+    if (c->flags & NPC_FLAG_BOOK) {
+        return; /* book_people_tick */
+    }
     if (c->phase == NPC_PHASE_FADE_IN) {
         c->fade += dt / FADE_TIME;
         if (c->fade >= 1.0f) {

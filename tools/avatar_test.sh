@@ -13,7 +13,7 @@ $GAME --offline --autotest avatar > "$OUT/avatar.log" 2>&1
 if grep -q "AUTOTEST PASSED" "$OUT/avatar.log"; then echo "PASS avatar"; else echo "FAIL avatar: $(grep FAILED "$OUT/avatar.log" | head -1)"; RC=1; fi
 
 shot() { # NAME GALLERY SPAWN CAM
-  $GAME --offline --play new --avatar-gallery "$2" --spawn "$3" --cam "$4" --autotest screenshot "av_$1" > "$OUT/$1.log" 2>&1
+  $GAME --offline --scene hospital --play new --avatar-gallery "$2" --spawn "$3" --cam "$4" --autotest screenshot "av_$1" > "$OUT/$1.log" 2>&1
   if [ -f "$PREF/av_$1.png" ]; then cp "$PREF/av_$1.png" "$DOC/$1.png"; echo "shot $1"; else echo "FAIL shot $1"; RC=1; fi
 }
 
@@ -26,6 +26,7 @@ python3 tools/png_montage.py $DOC/options.png --cols 2 --scale 2 $DOC/options_ro
 
 shot ages ages -10,0.1,-6 8.6,2.6,19.6,0,-16
 shot poses poses -10,0.1,-6 10.2,1.4,18.4,0,-8
+shot book book -10,0.1,-6 9.7,2.4,22.5,0,-10 # BOOK-ENGINE S4b: the pack kinds, talking, the scrub cap
 shot seat_waiting_chair seats 10,0.1,-6 0.9,1.25,-1.7,-90,-12
 shot seat_reception_chair seats 10,0.1,-6 -1.6,1.1,-4.6,90,-8
 shot seat_yard_bench seats 10,0.1,-6 -1.6,1.3,12,90,-14

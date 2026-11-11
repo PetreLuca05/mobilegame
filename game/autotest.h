@@ -26,6 +26,7 @@
  *   stick       UI-1b: release spring, full-speed ticks, marker taps, reduced motion, safe rect (autotest_stick.h)
  *   ui          UI-1: press / release / tiers / reduced motion / targets / screenshots (autotest_ui.h)
  *   worldmap2   WORLD-2: two islands, the four vehicles, the shuffle rule (tools/worldmap2_test.sh adds the relaunch)
+ *   bookpeople  BOOK-ENGINE S4b: the pack's people in the institute, walkers, talking, staging (autotest_book.h)
  *   nav         every room reachable, rides, timings (no walking)
  *   screenshot NAME  wait 3 s, save the frame as NAME.png, quit
  * Any script can take a picture with AutotestOut.screenshot; any run can add
@@ -42,6 +43,7 @@
 #include "autotest_stick.h"
 #include "autotest_tilt.h"
 #include "autotest_avatar.h"
+#include "autotest_book.h"
 #include "autotest_library.h"
 #include "autotest_ui.h"
 #include "autotest_world.h"
@@ -135,6 +137,10 @@ typedef struct AutotestProbe {
     int ride_lift;             /* the lift carrying the player, -1 none */
     uint32_t draws;            /* last frame's main-pass draws */
     uint32_t frame_allocs;     /* last frame's heap allocations in the frame loop */
+    /* BOOK-ENGINE S4b: --autotest bookpeople */
+    struct BookPeople *book_people; /* NULL outside the institute */
+    uint32_t book_drawn;       /* book people drawn last frame */
+    int book_drawn_floor;      /* on this view storey, -1 none */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -155,6 +161,9 @@ typedef struct AutotestOut {
     int set_haptics;       /* haptics: 1 + the Vibrații level to set, 0 none */
     bool net_drop;         /* netsoak: drop the realtime socket now */
     bool stale_eye_once;   /* library: the next Back keeps one frame's camera stale past t 0.3 (the jump rule's canary) */
+    bool teleport;         /* bookpeople: put the player at teleport_pos facing teleport_yaw */
+    HMM_Vec3 teleport_pos;
+    float teleport_yaw;
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);
@@ -198,6 +207,7 @@ typedef struct Autotest {
     TiltTest tt;
     AvatarTest at;
     LibraryTest lt;
+    BookTest bt;
     struct {
         int cycles, worst_ms, total_ms;
         double dropped_at, next_drop;

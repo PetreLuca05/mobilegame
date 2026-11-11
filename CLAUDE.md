@@ -671,3 +671,12 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - Figures (decision 7): `tools/book/figpack.py FIGDIR OUT astc|rgba8` -> `.mgfig` (MGFG v1, sorted ids, 16-aligned, top row
   first); ASTC 4x4 through macOS ImageIO (`tools/book/astc_encode.swift`, flips the image: ImageIO writes the bottom row
   first), RGBA8 decoded without Pillow. `game/book_figs.c` reads it in place; ctest `book_figs` on the dummy pack's figure.
+- People (S4b, `game/book_people.c`): in the institute `g->npcs` runs no roster; it holds exactly the pack's `people` rows,
+  spawned in table order with `npc_spawn_at` (`NPC_FLAG_BOOK`: no package; NPC index = person row). Static ones stand / sit
+  (record `y` = seat top) / lie (`y` = mattress top) at their post; walkers wander their storey's corridors on the NPC steering
+  at rate 1 (a viewer-dependent rate would break the seed + tick rule). Drawn by `draw_npcs` on the view storey only. Looks:
+  `book_people_look` (S4b table; surgeon `AVATAR_EXTRA_SCRUB_CAP` = the short-hair cap in the outfit colour, no hair under it).
+  Talking: every cast person is usable (name + role card under the head in the preview), the objective's has `IA_PRIORITY` +
+  "...", a tap calls `book_people_on_talk`'s callback; background people greet with the pack's greetings by kind.
+  `AvatarPose.talk` = the speaking gesture (`book_people_speaking`). Missions API: `book_people_find_cast / set_objective /
+  stage / stage_patient / unstage / pos`. `--autotest bookpeople` (pictures `docs/autotest/book/`), `--avatar-gallery book`.

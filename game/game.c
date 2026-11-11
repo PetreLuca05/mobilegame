@@ -18,6 +18,7 @@
 #include "core/jobs.h"
 #include "core/prof.h"
 #include "npc_sim.h"
+#include "book_people.h"
 #include "interact.h"
 #include "perf_run.h"
 #include "preview_panel.h"
@@ -218,6 +219,10 @@ typedef struct Game {
     uint32_t marker_ia_id[MARKER_MAX];
     NpcWorld npcs;
     bool npcs_ok, npcs_on;
+    BookPeople bp;              /* BOOK-ENGINE S4b: the institute's people from the pack (g->npcs runs them; no roster) */
+    bool bp_ok;
+    uint32_t bp_drawn;          /* book people drawn this frame (all on the view storey) */
+    int bp_drawn_floor;
     bool npc_catching_up, npc_sync_log;
     uint32_t npc_pose_log_tick; /* --log-npc-poses TICK: every NPC's pose once at that tick (0 off) */
     double npc_epoch_ms;       /* online: wall clock of tick 0 */
@@ -405,6 +410,8 @@ static void unload_level(Game *g, MgApp *app)
     }
     g->npcs_on = g->npcs_ok = g->npc_catching_up = false;
     SDL_zero(g->npcs);
+    SDL_zero(g->bp);
+    g->bp_ok = false;
     g->crowd_ok = false;
     g->crowd.pool.count = 0; /* its requests went with the nav */
     autonav_clear(&g->autonav);
@@ -463,6 +470,16 @@ static bool ensure_world(Game *g, MgApp *app, SceneKind kind)
             g->npcs_ok = scene_ambient_npcs(g->scene) && npc_world_init(&g->npcs, &g->level, &g->rooms, g->nav);
             if (!scene_ambient_npcs(g->scene)) {
                 mg_log_info("npc: no ambient roster in %s", scene_name(g->scene));
+            }
+            if (kind == SCENE_INSTITUTE && g->book.ok && g->book.person_count > 0) { /* BOOK-ENGINE S4b: the pack's people instead */
+                float fy[BOOK_PEOPLE_FLOORS];
+                const int nf = SDL_min(scene_floor_count(g->scene), BOOK_PEOPLE_FLOORS);
+                for (int f = 0; f < nf; f++) {
+                    fy[f] = scene_floor_y(g->scene, f);
+                }
+                g->bp_ok = npc_world_init(&g->npcs, &g->level, &g->rooms, g->nav) &&
+                           book_people_init(&g->bp, &g->level, &g->book, &g->npcs, &g->rooms, g->nav, fy, nf);
+                g->npcs_ok = g->bp_ok;
             }
             interact_setup(g, app);
         }
@@ -1019,7 +1036,7 @@ bool game_init(MgApp *app)
     g->scene_override = -1;
     g->panel_lift = g->ride_lift = -1;
     g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
-    if ((atest && SDL_strcmp(atest, "institute") == 0) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario */
+    if ((atest && (SDL_strcmp(atest, "institute") == 0 || SDL_strcmp(atest, "bookpeople") == 0)) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario */
         g->scene_override = (int)scene_kind_from_id(perf_run_scene(&g->perf) ? perf_run_scene(&g->perf) : "institute");
     }
     {
@@ -1164,7 +1181,7 @@ static void run_level_switch_check(Game *g, MgApp *app)
             if (scene_kind(g->scene) != order[k]) {
                 SDL_snprintf(why, sizeof(why), "built %s, wanted %s", scene_kind_id(scene_kind(g->scene)), scene_kind_id(order[k]));
                 ok = false;
-            } else if (order[k] == SCENE_INSTITUTE && g->npcs_ok) {
+            } else if (order[k] == SCENE_INSTITUTE && g->npcs_ok && !g->bp_ok) {
                 SDL_snprintf(why, sizeof(why), "the institute has the hospital's ambient roster");
                 ok = false;
             } else if (order[k] == SCENE_DEVROOM && (g->nav || lift_count(g) != 0)) {
@@ -1301,6 +1318,16 @@ static void run_npc_bench(Game *g, MgApp *app);
 static uint32_t npc_seed_for(Game *g, MgApp *app);
 static void npc_step(Game *g, MgApp *app);
 static void npc_catch_up(Game *g, MgApp *app);
+
+/* The roster from `seed`, or in the institute the pack's people (BOOK-ENGINE) */
+static void npcs_start(Game *g, uint32_t seed)
+{
+    if (g->bp_ok) {
+        book_people_start(&g->bp, seed);
+    } else {
+        npc_world_start(&g->npcs, seed);
+    }
+}
 static void npc_idle_touches(Game *g, MgApp *app, int i, const npc_hot_t *h, npc_cold_t *c, AvatarPose *pose, float dt, bool queue_waiting);
 static void npc_save_test_compare(Game *g, MgApp *app);
 static void npc_save_test_save(Game *g, MgApp *app);
@@ -2814,6 +2841,7 @@ typedef struct CrowdCull {
     float px, pz, near2;
     int floor;
     bool lod0_only; /* --no-lod */
+    bool view_only; /* BOOK-ENGINE: only the view storey (the institute's people) */
 } CrowdCull;
 
 /* storey + frustum + LOD, on the job system: reads the crowd, writes `out` only */
@@ -2824,7 +2852,7 @@ static void crowd_cull_job(void *ctx, int first, int last, int worker)
     for (int i = first; i < last; i++) {
         const npc_hot_t *h = &c->hot[i];
         c->out[i] = 255;
-        if ((int)h->storey > c->floor) {
+        if ((int)h->storey > c->floor || (c->view_only && (h->storey < 0 ? 0 : (int)h->storey) != c->floor)) {
             continue;
         }
         HMM_Vec4 clip = HMM_MulM4V4(c->view_proj, HMM_V4(h->x, h->y + 1.0f, h->z, 1.0f));
@@ -2971,6 +2999,9 @@ static void npc_step(Game *g, MgApp *app)
 {
     const size_t mark = arena_mark(&app->frame);
     npc_tick(&g->npcs, app->jobs, &app->frame, MG_TICK_DT);
+    if (g->bp_ok) {
+        book_people_tick(&g->bp, MG_TICK_DT);
+    }
     arena_reset_to(&app->frame, mark);
     if (g->npc_sync_log && g->playing && g->npcs.tick % 600u == 0u) { /* not the menu's backdrop */
         mg_log_info("npc-sync: tick %u hash %08x alive %d seed %u", g->npcs.tick, npc_world_hash(&g->npcs), g->npcs.pool.count, g->npcs.seed);
@@ -3032,7 +3063,7 @@ static void npc_room_epoch(Game *g)
     if (earliest < g->npc_epoch_ms - 0.5) { /* someone was here first: replay from their tick 0 */
         g->npc_epoch_ms = earliest;
         session_set_npc_epoch(&g->session, earliest);
-        npc_world_start(&g->npcs, g->npcs.seed);
+        npcs_start(g, g->npcs.seed);
         g->npc_catching_up = true;
         mg_log_info("npc: joining a room in progress, epoch %.0f", earliest);
     }
@@ -3148,8 +3179,15 @@ static void on_npc_interact(uint16_t ref, void *user)
     for (int i = 0; i < p->count; i++) {
         npc_cold_t *c = &p->cold[i];
         if ((uint16_t)c->id == ref) {
+            const char *book_line = NULL;
+            if (g->bp_ok && book_people_of_npc(&g->bp, i)) {
+                if (book_people_interact(&g->bp, i, &book_line)) { /* a cast person: the missions layer talks */
+                    c->talk_t = 3.0f;
+                    return;
+                }
+            }
             const int n = g->npcs.data.n_greetings[c->archetype];
-            const char *line = n ? g->npcs.data.greetings[c->archetype][(g->greet_count++ + c->id) % (uint32_t)n] : "";
+            const char *line = book_line ? book_line : n ? g->npcs.data.greetings[c->archetype][(g->greet_count++ + c->id) % (uint32_t)n] : "";
             SDL_snprintf(g->greet_name, sizeof(g->greet_name), "%s", c->name);
             SDL_snprintf(g->greet_line, sizeof(g->greet_line), "%s", line);
             g->greet_t = 2.5f;
@@ -3323,6 +3361,20 @@ static void interact_tick(Game *g, MgApp *app)
     const bool chat_eval = app->clock.tick % 30u == 0u; /* twice a second */
     for (int i = 0; i < p->count && g->npcs_on; i++) {
         npc_cold_t *c = &p->cold[i];
+        const BookPerson *bper = g->bp_ok ? book_people_of_npc(&g->bp, i) : NULL;
+        if (bper) { /* BOOK-ENGINE: cast people always talk (the objective's asks to), the pack says who else greets */
+            if (chat_eval) {
+                const unsigned f = book_people_ia_flags(&g->bp, i);
+                c->wants_chat = (f & IA_WANTS_CHAT) != 0;
+                ia_set_flags(&g->ia, c->ia_slot, f);
+            }
+            ia_set_pos(&g->ia, c->ia_slot, HMM_V3(hot[i].x, hot[i].y, hot[i].z), hot[i].storey);
+            g->ia.cold[c->ia_slot].label = bper->name ? bper->name : c->name;
+            g->ia.cold[c->ia_slot].sublabel = bper->role;
+            g->ia.cold[c->ia_slot].preview.look = &c->look;
+            g->ia.hot[c->ia_slot].ref = (uint16_t)c->id;
+            continue;
+        }
         if (chat_eval) {
             const char *arch = g->npcs.data.archetypes[c->archetype].name;
             const uint32_t tags = c->slot != SLOT_NONE ? g->rooms.slots[c->slot].tags : 0u;
@@ -3463,7 +3515,12 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         return;
     }
     const float near_m = g->thermal >= 2 ? 11.0f : 22.0f;
-    CrowdCull cull = {hot, lods, g->view_proj, g->player.kin.pos.X, g->player.kin.pos.Z, near_m * near_m, floor, g->no_lod};
+    CrowdCull cull = {hot, lods, g->view_proj, g->player.kin.pos.X, g->player.kin.pos.Z, near_m * near_m, floor, g->no_lod, g->bp_ok};
+    if (g->bp_ok) {
+        book_people_set_view(&g->bp, floor, &g->view_proj);
+        g->bp_drawn = 0;
+        g->bp_drawn_floor = floor;
+    }
     if (p->count >= 100) {
         jobs_run(app->jobs, crowd_cull_job, &cull, p->count, 32);
         jobs_wait(app->jobs);
@@ -3517,9 +3574,14 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
         pose.sit = c->pose == POSE_SIT ? c->sit_t : 0.0f;
         if (c->pose == POSE_SIT) { /* the body base on the seat's top (+ the library's clearance) */
             const bool bench = c->slot != SLOT_NONE && c->slot < (uint32_t)g->rooms.slot_count && (g->rooms.slots[c->slot].tags & SLOT_BENCH);
-            pose.seat_y = (bench ? HOSP_BENCH_TOP : HOSP_CHAIR_TOP) + g->avatar_meshes.rig.seat_clearance;
+            pose.seat_y = (c->pose_y > 0.0f ? c->pose_y : bench ? HOSP_BENCH_TOP : HOSP_CHAIR_TOP) + g->avatar_meshes.rig.seat_clearance;
+        }
+        if (c->pose == POSE_BED && c->pose_y > 0.0f) { /* BOOK-ENGINE: the record's mattress (the lying pose is set on a 0.6 m one) */
+            pose.feet.Y += (c->pose_y - 0.6f) * c->sit_t;
         }
         pose.lying = c->pose == POSE_BED ? c->sit_t : 0.0f;
+        c->vis_talk += ((c->speaking ? 1.0f : 0.0f) - c->vis_talk) * mg_minf(dt * 6.0f, 1.0f);
+        pose.talk = c->vis_talk;
         pose.crouch = c->pose == POSE_CROUCH ? 1.0f : 0.0f;
         pose.sway = c->pose == POSE_MOP ? 0.12f * HMM_SinF((float)app->time * 3.0f + (float)i) : 0.0f;
         pose.hide = c->fade < 1.0f ? 1.0f - c->fade : 0.0f;
@@ -3527,9 +3589,11 @@ static void draw_npcs(Game *g, MgApp *app, int floor, float alpha)
             pose.hide = mg_maxf(pose.hide, mg_clampf((feet.Z - (MENU_HERO_Z - 1.0f)) / 1.5f, 0.0f, 1.0f));
         }
         npc_idle_touches(g, app, i, h, c, &pose, dt, queue_waiting);
+        pose.head_lift = mg_maxf(pose.head_lift, 0.08f * c->vis_talk); /* speaking: the head lifts a little too */
         avatar_animate(&g->avatar_meshes, &c->anim, &pose, dt);
         avatar_draw(app->gfx, &g->avatar_meshes, &c->look, &pose, &c->anim, NULL);
         g->rendered_entities++;
+        g->bp_drawn += g->bp_ok;
         if (g->settings.show_npc_paths && h->state == MOVE_WALK) {
             markers_draw_path(&g->markers, app->gfx, &c->path, h->next, feet, floor, 0xFFD166FFu, 1.0f);
         }
@@ -3659,13 +3723,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         const char *at_kind = arg_value(app->argc, app->argv, "--autotest");
         const bool roster_test = at_kind && (SDL_strcmp(at_kind, "friends") == 0 || SDL_strcmp(at_kind, "interact") == 0 || SDL_strcmp(at_kind, "npcs") == 0 || SDL_strcmp(at_kind, "npcs-save") == 0 || SDL_strcmp(at_kind, "npcs-continue") == 0 ||
                                              perf_wants_npcs(g));
-        if (!at_kind || roster_test) {
+        if (!at_kind || roster_test || g->bp_ok) { /* the institute's people are part of its scene (every test there has them) */
             const uint32_t seed = npc_seed_for(g, app);
             const bool want = roster_test || s->npc_density > 0.0f; /* density Low only draws fewer: every client simulates the same people */
             if (want && (!g->npcs_on || seed != g->npcs.seed || s->respawn_npcs)) {
                 s->respawn_npcs = false;
                 g->npcs_on = true;
-                npc_world_start(&g->npcs, seed);
+                npcs_start(g, seed);
                 g->npc_catching_up = true; /* to the room's tick, or the save's */
             } else if (!want && g->npcs_on) {
                 g->npcs_on = false;
@@ -3748,6 +3812,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         probe.draws = gs.draws;
     }
     probe.frame_allocs = prof_allocs_last_frame();
+    probe.book_people = g->bp_ok && g->playing ? &g->bp : NULL;
+    probe.book_drawn = g->bp_drawn;
+    probe.book_drawn_floor = g->bp_ok && g->npcs_on ? g->bp_drawn_floor : -1;
     probe.hud_res = g->hud_res;
     probe.hud_res_count = g->hud_res_count;
     if (g->text_test) {
@@ -3845,6 +3912,11 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     if (ato.force_ride > 0) { /* --autotest worldmap2 */
         g->prefs.world.rides.forced = ato.force_ride - 1;
+    }
+    if (ato.teleport && g->playing) { /* --autotest bookpeople */
+        player_init(&g->player, ato.teleport_pos, ato.teleport_yaw);
+        g->cam.initialized = g->td.initialized = false;
+        g->fade_snap = true;
     }
     if (ato.stale_eye_once) {
         g->stale_eye_armed = true;

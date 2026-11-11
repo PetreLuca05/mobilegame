@@ -161,6 +161,56 @@ uint32_t npc_spawn(NpcWorld *w, int archetype, int storey, bool steady, uint32_t
     return c->id;
 }
 
+uint32_t npc_spawn_at(NpcWorld *w, int archetype, int storey, float x, float y, float z, float yaw, const AvatarLook *look, const char *name,
+                      unsigned flags, uint32_t rng)
+{
+    NpcPool *p = &w->pool;
+    if (p->count >= NPC_MAX || archetype < 0 || archetype >= w->data.archetype_count) {
+        return 0;
+    }
+    const NpcArchetype *a = &w->data.archetypes[archetype];
+    const int i = p->count;
+    npc_cold_t *c = &p->cold[i];
+    const uint16_t gen = c->gen;
+    memset(c, 0, sizeof(*c));
+    c->gen = gen;
+    c->id = ++w->next_id;
+    c->archetype = (uint8_t)archetype;
+    c->age = look->age == AVATAR_ELDER ? AGE_ELDER : (look->age == AVATAR_CHILD ? AGE_CHILD : AGE_ADULT);
+    c->slot = SLOT_NONE;
+    c->flags = (uint8_t)flags;
+    c->fade = 1.0f;
+    c->look = *look;
+    c->phase = NPC_PHASE_HOLD;
+    c->pose = POSE_STAND;
+    c->package = (uint8_t)(a->package_count > 0 ? a->package_count - 1 : 0);
+    SDL_snprintf(c->name, sizeof(c->name), "%s", name ? name : "");
+    p->count++;
+    npc_hot_t h;
+    memset(&h, 0, sizeof(h));
+    h.x = h.prev_x = x;
+    h.z = h.prev_z = z;
+    h.y = y;
+    h.yaw = yaw;
+    h.storey = (int8_t)storey;
+    h.rate = 1;
+    h.rng = rng | 1u;
+    h.last_tick = w->tick;
+    h.speed = c->age == AGE_ELDER ? 0.9f : a->speed;
+    h.state = MOVE_IDLE;
+    c->home_x = c->stuck_x = c->seat_x = x;
+    c->home_z = c->stuck_z = c->seat_z = z;
+    c->seat_yaw = yaw;
+    p->hot[p->read][i] = h;
+    npc_sync_buffers(w, i);
+    if (w->on_spawned) {
+        w->on_spawned(i, w->callback_user);
+    }
+    w->stats.spawned++;
+    w->stats.max_alive = (uint32_t)p->count > w->stats.max_alive ? (uint32_t)p->count : w->stats.max_alive;
+    return c->id;
+}
+
 void npc_despawn(NpcWorld *w, uint32_t id)
 {
     NpcPool *p = &w->pool;
@@ -294,6 +344,20 @@ void npc_world_start(NpcWorld *w, uint32_t seed)
     w->running = true;
     compute_targets(w);
     fill_roster(w, true);
+}
+
+void npc_world_start_empty(NpcWorld *w, uint32_t seed)
+{
+    npc_world_stop(w);
+    slots_free_all(w->rooms);
+    w->next_id = 0;
+    w->pool.read = 0;
+    w->seed = seed ? seed : 1u;
+    w->rng = w->seed;
+    w->tick = 0;
+    memset(w->target, 0, sizeof(w->target));
+    memset(&w->stats, 0, sizeof(w->stats));
+    w->running = true;
 }
 
 void npc_world_stop(NpcWorld *w)

@@ -8,7 +8,9 @@
  *   bed      a ward bed (storey 1)
  *   poses    idle, walk, browse, push, creator look, crouch, mop, talk pop, stretch
  *   subs     the states A1 maps by substitution (docs/AVATAR.md): crouch, mop sway, weight shift, talk pop, seated
- *            stretch, airborne hands, elder, child, held still for side-by-side pictures with the old avatar */
+ *            stretch, airborne hands, elder, child, held still for side-by-side pictures with the old avatar
+ *   book     BOOK-ENGINE S4b: the twelve pack kinds (back row: doctor .. student) and in front (two rows nearer) a talking doctor, a talking
+ *            surgeon (scrub cap), a seated talking nurse, an elder patient walking with a cane, a librarian (book_people_look) */
 #ifndef MG_AVATAR_GALLERY_H
 #define MG_AVATAR_GALLERY_H
 
@@ -16,7 +18,7 @@
 
 #define GALLERY_MAX 48
 
-typedef enum { GALLERY_OFF, GALLERY_OPTIONS, GALLERY_AGES, GALLERY_SEATS, GALLERY_BED, GALLERY_POSES, GALLERY_SUBS } GalleryMode;
+typedef enum { GALLERY_OFF, GALLERY_OPTIONS, GALLERY_AGES, GALLERY_SEATS, GALLERY_BED, GALLERY_POSES, GALLERY_SUBS, GALLERY_BOOK } GalleryMode;
 
 typedef struct AvatarGallery {
     GalleryMode mode;
