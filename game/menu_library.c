@@ -1202,7 +1202,6 @@ bool menu_library_npc_at_door(const MenuLibrary *L, int b)
 /* LOD for the NPCs (the menu draws 26 people): by size on screen only, as a fraction of the view's height (the same
  * people on every device), with hysteresis; a switch is a LOD_FADE_S dithered crossfade of the two meshes, so it never
  * pops. Nobody switches because of a ranking or a bay. My table's members are drawn by member_* at LOD0 always. */
-#define LIB_NAV_BUDGET_MS 0.5 /* per frame for the NPCs' path searches (one search always runs) */
 #define LOD_COARSE_BELOW 0.195f /* of the view's height */
 #define LOD_FULL_ABOVE 0.215f
 #define LOD_HEIGHT_M 1.7f

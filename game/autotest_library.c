@@ -410,8 +410,10 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     }
     case 3: /* the friend comes in */
         if (t->seated <= 0.0) {
-            if (t->seen && now - t->joined > 6.0) {
-                return failf(t, "join: not seated 6 s after joining");
+            /* §7: an A* walk among the people (it may wait for someone in a doorway); §15.7's 12 s for a walk to a table */
+            if (t->seen && now - t->joined > 12.0) {
+                const LibMember *mb = &L->seat[1];
+                return failf(t, "join: not seated 12 s after joining (state %d at %.2f, %.2f)", (int)mb->state, (double)mb->pos.X, (double)mb->pos.Y);
             }
             return 0;
         }
