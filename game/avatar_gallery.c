@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL_stdinc.h>
 
+#include "book_people.h"
 #include "hospital.h"
 
 #define YAW_FACE_PZ HMM_PI32          /* looks along +Z (south, at the default camera) */
@@ -21,13 +22,14 @@ typedef struct Item {
     float sit, seat_y, lying, crouch, browse, push, look_w, stretch, head_lift, sway;
     float walk; /* m/s along the facing (animated in place) */
     float weight, head_yaw;
+    float talk; /* BOOK-ENGINE: the talking gesture */
     bool airborne, still; /* still: sway held at its value, no time-driven motion */
     bool indoors;
 } Item;
 
 GalleryMode avatar_gallery_parse(const char *name, int *row)
 {
-    static const char *const names[] = {"", "options", "ages", "seats", "bed", "poses", "subs"};
+    static const char *const names[] = {"", "options", "ages", "seats", "bed", "poses", "subs", "book"};
     *row = 0;
     if (name && SDL_strncmp(name, "options", 7) == 0 && name[7] >= '1' && name[7] <= '6' && name[8] == 0) {
         *row = name[7] - '0';
@@ -199,6 +201,45 @@ static int build(GalleryMode mode, Item *out)
         }
         break;
     }
+    case GALLERY_BOOK: {
+        for (int k = 0; k < 12; k++) { /* every kind, a female and a male alternately, the pack's colours from the S4b table */
+            mgpk_person_t r;
+            SDL_zero(r);
+            r.kind = (uint8_t)k;
+            r.sex = (uint8_t)(k & 1);
+            r.age = (uint8_t)(k == MGPK_KIND_PATIENT ? 2 : k % 2);
+            r.skin = (uint8_t)(k % 4);
+            r.hair = (uint8_t)(k % 6);
+            r.hair_rgb = 0x4A2F1D;
+            Item it = lawn(k - 2, 0, base);
+            it.look = book_people_look(&r, NULL);
+            it.use_look = true;
+            out[n++] = it;
+        }
+        static const uint8_t front[5] = {MGPK_KIND_DOCTOR, MGPK_KIND_SURGEON, MGPK_KIND_NURSE, MGPK_KIND_PATIENT, MGPK_KIND_LIBRARIAN};
+        for (int i = 0; i < 5; i++) {
+            mgpk_person_t r;
+            SDL_zero(r);
+            r.kind = front[i];
+            r.sex = (uint8_t)(i & 1);
+            r.age = (uint8_t)(i == 3 ? 2 : 1);
+            r.skin = (uint8_t)i % 4u;
+            r.mode = (uint8_t)(i == 3);
+            r.hair_rgb = 0x6B4423;
+            Item it = lawn(i * 2, 2, base);
+            it.look = book_people_look(&r, NULL);
+            it.use_look = true;
+            it.talk = i < 3 ? 1.0f : 0.0f;
+            if (i == 2) {
+                it.sit = 1.0f, it.seat_y = HOSP_CHAIR_TOP;
+            }
+            if (i == 3) {
+                it.walk = 0.9f;
+            }
+            out[n++] = it;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -230,6 +271,8 @@ void avatar_gallery_draw(AvatarGallery *gal, GfxContext *g, const AvatarMeshes *
         p.sway = it->sway != 0.0f ? (it->still ? it->sway : it->sway * HMM_SinF(gal->anim[i].t * 3.0f)) : 0.0f;
         p.weight_tilt = it->weight;
         p.head_yaw = it->head_yaw;
+        p.talk = it->talk;
+        p.head_lift = mg_maxf(p.head_lift, 0.08f * it->talk);
         p.grounded = !it->airborne;
         avatar_animate(m, &gal->anim[i], &p, dt);
         avatar_draw(g, m, &look, &p, &gal->anim[i], NULL);

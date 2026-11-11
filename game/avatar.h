@@ -30,6 +30,7 @@ enum { AVATAR_ADULT, AVATAR_CHILD, AVATAR_ELDER };
 #define AVATAR_EXTRA_HAT 2u
 #define AVATAR_EXTRA_BUCKET 4u
 #define AVATAR_EXTRA_READING_GLASSES 8u /* lighter lenses than the sunglasses */
+#define AVATAR_EXTRA_SCRUB_CAP 16u      /* BOOK-ENGINE surgeon: the short-hair cap drawn in the outfit colour over the head (no hair under it) */
 
 typedef struct AvatarLook {
     uint32_t skin, outfit, hair, accent; /* 0xRRGGBB */
@@ -129,6 +130,8 @@ typedef struct AvatarPose {
     float breath_k;   /* 0 = 1 */
     float body_yaw;   /* the body and head turn about the body base (+ to its left); the hands stay */
     float scale;      /* the whole avatar, 0 = 1 (the library on the island: lib_scale) */
+    /* BOOK-ENGINE */
+    float talk;       /* 0 .. 1: talking, the right hand gestures in front, the left one bobs a little (drawn only) */
 } AvatarPose;
 
 /* The solved pose: what the draw uses, what tests measure. */

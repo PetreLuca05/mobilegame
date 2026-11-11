@@ -13,6 +13,7 @@ enum { MOVE_IDLE, MOVE_NEED_PATH, MOVE_WAIT_PATH, MOVE_WALK, MOVE_ARRIVED, MOVE_
 enum { NPC_PHASE_START, NPC_PHASE_WALK, NPC_PHASE_HOLD, NPC_PHASE_FADE_IN, NPC_PHASE_FADE_OUT };
 #define NPC_FLAG_STAY 1u      /* never leaves (the parent at a paediatric bed) */
 #define NPC_FLAG_BENCH 2u     /* benchmark wanderer: ignores the roster */
+#define NPC_FLAG_BOOK 4u      /* BOOK-ENGINE: a person from the pack; book_people.c moves it, no package runs */
 
 typedef struct NpcStats {
     uint32_t spawned, despawned, stuck_events, repaths, max_alive, path_requests;
@@ -44,6 +45,12 @@ bool npc_world_init(NpcWorld *w, Arena *perm, RoomGraph *rooms, struct NavWorld 
  * tick: not on the viewer, the frame rate or the number of threads. */
 void npc_world_start(NpcWorld *w, uint32_t seed);
 void npc_world_stop(NpcWorld *w);
+/* A running world with no roster (the institute's book people are spawned with npc_spawn_at). */
+void npc_world_start_empty(NpcWorld *w, uint32_t seed);
+/* One NPC at a given spot with a given look and name (BOOK-ENGINE): no slot, no package, no draw from the world's rng.
+ * `rng` seeds its own stream. Returns the id, 0 if the pool is full. */
+uint32_t npc_spawn_at(NpcWorld *w, int archetype, int storey, float x, float y, float z, float yaw, const AvatarLook *look, const char *name,
+                      unsigned flags, uint32_t rng);
 /* n plain wanderers scattered over the map, no roster (--autotest npcs-bench). */
 void npc_world_bench(NpcWorld *w, int n, uint32_t seed);
 uint32_t npc_world_hash(const NpcWorld *w);

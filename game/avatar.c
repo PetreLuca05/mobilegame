@@ -627,6 +627,17 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
             h.Y = mg_lerpf(h.Y, base + rest.Y, lying);
         }
         h.Y -= 0.3f * p->crouch;
+        if (p->talk > 0.0f && lying < 1.0f) { /* BOOK-ENGINE: a hand gesture while speaking */
+            const float w = p->talk * (1.0f - lying);
+            if (i == 1) { /* the right hand (-x): up in front of the chest, beating with the words, drifting in and out */
+                h.X += w * (0.05f + 0.03f * HMM_SinF(t * 2.3f + a->seed));
+                h.Y += w * (0.24f + 0.05f * HMM_SinF(t * 6.5f + a->seed));
+                h.Z += w * (0.16f + 0.04f * HMM_SinF(t * 3.1f + a->seed * 0.7f));
+            } else { /* the left hand: a smaller, slower bob */
+                h.Y += w * (0.07f + 0.03f * HMM_SinF(t * 4.3f + 1.0f + a->seed));
+                h.Z += w * 0.06f;
+            }
+        }
         s->hand[i] = xform(root, h);
     }
 }
@@ -746,17 +757,20 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         hm[i].Columns[3] = HMM_V4V(s.hand[i], 1.0f);
     }
     const int lod = override ? 0 : p->lod;
+    const bool cap = (look->extras & AVATAR_EXTRA_SCRUB_CAP) != 0; /* the short-hair cap in the outfit colour, no hair under it */
+    const uint32_t hair_rgb = cap ? look->outfit : look->hair;
+    const int hair_style = cap ? HAIR_SHORT : look->hair_style;
     if (lod == 2) {
         part(&dc, m->far_body, s.body_s, look->outfit, SURF_MATTE);
-        part(&dc, m->far_head, s.head, look->hair_style != HAIR_NONE ? look->hair : look->skin, SURF_MATTE);
+        part(&dc, m->far_head, s.head, hair_style != HAIR_NONE ? hair_rgb : look->skin, SURF_MATTE);
         draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
         return;
     }
     if (lod == 1) {
         outlined(&dc, m->lod_body, m->lod_body_hull, s.body_s, look->outfit, HMM_V4(extra.X, 0, 0, (float)(1u | ((uint32_t)extra.W & GFX_ZONE_BODY1))));
         outlined(&dc, m->lod_head, m->lod_head_hull, s.head, look->skin, none);
-        if (look->hair_style != HAIR_NONE) {
-            part(&dc, m->lod_hair, s.head, look->hair, SURF_MATTE);
+        if (hair_style != HAIR_NONE) {
+            part(&dc, m->lod_hair, s.head, hair_rgb, SURF_MATTE);
         }
         part(&dc, m->lod_hand, hm[0], look->skin, SURF_MATTE);
         part(&dc, m->lod_hand, hm[1], look->skin, SURF_MATTE);
@@ -767,8 +781,8 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, extra);
     }
     outlined(&dc, m->head, m->head_hull, s.head, look->skin, none);
-    if (look->hair_style != HAIR_NONE && look->hair_style < AVATAR_HAIRS) {
-        outlined(&dc, m->hair[look->hair_style], m->hair_hull[look->hair_style], s.head, look->hair, none);
+    if (hair_style != HAIR_NONE && hair_style < AVATAR_HAIRS) {
+        outlined(&dc, m->hair[hair_style], m->hair_hull[hair_style], s.head, hair_rgb, none);
     }
     if (p->small_own) { /* the small parts from here on */
         if (p->hide_small >= 0.98f) {

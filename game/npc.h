@@ -60,6 +60,10 @@ typedef struct npc_cold_t {
     uint8_t archetype, age, pose, package, step, phase;
     uint8_t stuck_count, flags;
     uint16_t ia_slot;     /* interactable registry */
+    /* BOOK-ENGINE people (NPC_FLAG_BOOK): placed from the pack, never run a package */
+    float pose_y;         /* seated: the seat's top; lying: the mattress top (0 = the hospital's) */
+    float vis_talk;       /* draw only: 0 .. 1 the talking gesture */
+    bool speaking;        /* their line is on screen */
 } npc_cold_t;
 
 typedef struct NpcPool {

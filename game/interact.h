@@ -44,6 +44,7 @@ typedef void (*ia_callback)(uint16_t ref, void *user);
 
 typedef struct ia_cold_t {
     const char *label;
+    const char *sublabel; /* BOOK-ENGINE: a cast person's role, under the name in the preview (NULL none) */
     ia_callback on_interact;
     void *user;
     preview_desc_t preview;
