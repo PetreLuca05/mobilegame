@@ -55,6 +55,10 @@ typedef enum GfxMaterialKind {
     GFX_MAT_TOON,   /* 3-band cel ramp + hard rim (+ specular spot when glossy) + flat ambient */
     GFX_MAT_OUTLINE, /* inverted-hull toon outline: flat colour, mesh pushed out, front faces culled */
     GFX_MAT_FLOOR,  /* grid slab with planar reflection */
+    GFX_MAT_PATTERN,  /* the institute's building: vertex colour x tint x a detail pattern (gfx_set_patterns), world-scale UVs
+                       * from the face's dominant axis; vertex alpha = pattern id | 16 lit (game/inst_patterns.h): unlit, or
+                       * the reference page's two-step toon light (hemisphere + sun). Opaque; instanced; dithered when hide > 0.
+                       * Before TEXT: the main pass sorts by kind, so opaque floors go down before the blended labels and discs */
     GFX_MAT_TEXT,   /* world-space SDF glyph quads (signs), UV in the normal, alpha-blended */
     GFX_MAT_SPRITE, /* alpha-blended procedural sprite (disc / cloud / glow) */
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */
@@ -65,6 +69,9 @@ typedef enum GfxMaterialKind {
                         * nearest surface once (a true fade, no screen-door pattern) */
     GFX_MAT_ALPHA,    /* unlit vertex colour x tint, alpha tint.a, blended (premultiplied), no depth write, back to front:
                        * light pools and cones, glass (LIB-1 alpha meshes); not lit, so no band to flip */
+    GFX_MAT_GLASS,    /* the institute's see-through toon glass (the reference page's glass shader): stepped sky reflection,
+                       * sliding glints, hard rim, alpha 0.3..1; blended (premultiplied), no depth write, both faces, drawn
+                       * with the dithered geometry (after the avatars), back to front; hide scales its alpha */
     GFX_MAT_COUNT
 } GfxMaterialKind;
 
@@ -196,6 +203,11 @@ void gfx_dissolve_capture(GfxContext *g);
 void gfx_dissolve(GfxContext *g, float alpha);
 /* Upload the single-channel SDF UI atlas (font + shapes). */
 bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t h);
+/* Detail patterns for GFX_MAT_PATTERN (the institute's textures): `layers` square single-channel images of `size` px,
+ * each with its whole mip chain (size, size / 2 .. 1, tightly packed), layer after layer; one 2D array texture with
+ * a repeating, trilinear, anisotropic sampler. Uploaded once (load time); later calls keep the first. */
+bool gfx_set_patterns(GfxContext *g, const uint8_t *data, uint32_t size, uint32_t layers, uint32_t levels);
+bool gfx_has_patterns(const GfxContext *g);
 
 bool gfx_frame_begin(GfxContext *g);
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene);

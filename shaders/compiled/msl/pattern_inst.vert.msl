@@ -1,0 +1,50 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct FrameVS
+{
+    float4x4 u_view_proj;
+};
+
+struct VSMain_out
+{
+    float3 _entryPointOutput_wpos [[user(locn0)]];
+    float3 _entryPointOutput_nrm [[user(locn1)]];
+    float4 _entryPointOutput_col [[user(locn2)]];
+    float3 _entryPointOutput_lpos [[user(locn3)]];
+    half4 _entryPointOutput_tint [[user(locn4)]];
+    half4 _entryPointOutput_params [[user(locn5)]];
+    float4 gl_Position [[position]];
+};
+
+struct VSMain_in
+{
+    float3 i_pos [[attribute(0)]];
+    float3 i_nrm [[attribute(1)]];
+    float4 i_col [[attribute(2)]];
+    float4 i_row0 [[attribute(3)]];
+    float4 i_row1 [[attribute(4)]];
+    float4 i_row2 [[attribute(5)]];
+    float4 i_tint [[attribute(6)]];
+    float4 i_params [[attribute(7)]];
+};
+
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _135 [[buffer(1)]])
+{
+    VSMain_out out = {};
+    float4 _292 = float4(in.i_pos, 1.0);
+    float _296 = dot(in.i_row0, _292);
+    float _300 = dot(in.i_row1, _292);
+    float _304 = dot(in.i_row2, _292);
+    out.gl_Position = _135.u_view_proj * float4(_296, _300, _304, 1.0);
+    out._entryPointOutput_wpos = float3(_296, _300, _304);
+    out._entryPointOutput_nrm = float3(dot(cross(in.i_row1.xyz, in.i_row2.xyz), in.i_nrm), dot(cross(in.i_row2.xyz, in.i_row0.xyz), in.i_nrm), dot(cross(in.i_row0.xyz, in.i_row1.xyz), in.i_nrm));
+    out._entryPointOutput_col = in.i_col;
+    out._entryPointOutput_lpos = in.i_pos;
+    out._entryPointOutput_tint = half4(in.i_tint);
+    out._entryPointOutput_params = half4(half(0.0), half(0.0), half(0.0), half(in.i_params.w));
+    return out;
+}
+

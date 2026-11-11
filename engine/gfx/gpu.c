@@ -235,6 +235,8 @@ struct GfxContext {
     uint32_t ui_count;
     float ui_w_pt, ui_h_pt;
     SDL_GPUTexture *ui_atlas;
+    SDL_GPUTexture *pattern_tex;      /* GFX_MAT_PATTERN's detail patterns (2D array, mips), NULL until gfx_set_patterns */
+    SDL_GPUSampler *pattern_sampler;  /* repeat, trilinear, anisotropic */
     SDL_GPUSampler *ui_sampler;
     SDL_GPUSampler *linear_clamp;
 
@@ -516,17 +518,19 @@ static bool create_pipelines(GfxContext *g)
             static const struct {
                 GfxMaterialKind kind;
                 const char *vert, *frag, *dither;
+                uint32_t samplers;
             } k_inst[] = {
-                {GFX_MAT_TOON, "toon_inst.vert", "toon_inst.frag", "toon_inst_dither.frag"},
-                {GFX_MAT_OUTLINE, "outline_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag"},
-                {GFX_MAT_UNLIT, "toon_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag"},
-                {GFX_MAT_SPRITE, "sprite_inst.vert", "sprite_inst.frag", NULL},
+                {GFX_MAT_TOON, "toon_inst.vert", "toon_inst.frag", "toon_inst_dither.frag", 0},
+                {GFX_MAT_OUTLINE, "outline_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag", 0},
+                {GFX_MAT_UNLIT, "toon_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag", 0},
+                {GFX_MAT_SPRITE, "sprite_inst.vert", "sprite_inst.frag", NULL, 0},
+                {GFX_MAT_PATTERN, "pattern_inst.vert", "pattern_inst.frag", "pattern_inst_dither.frag", 1},
             };
             for (size_t k = 0; k < MG_ARRAY_COUNT(k_inst); k++) {
                 const MaterialProgram *mp = material_program(k_inst[k].kind);
                 PipeDesc d = {
                     .vs = load_shader(g, k_inst[k].vert, 2, 0),
-                    .fs = load_shader(g, k_inst[k].frag, 2, 0),
+                    .fs = load_shader(g, k_inst[k].frag, 2, k_inst[k].samplers),
                     .layout = LAYOUT_MESH,
                     .instanced = true,
                     .blend = mp->blend,
@@ -542,7 +546,7 @@ static bool create_pipelines(GfxContext *g)
                     return false;
                 }
                 if (k_inst[k].dither) {
-                    d.fs = load_shader(g, k_inst[k].dither, 2, 0);
+                    d.fs = load_shader(g, k_inst[k].dither, 2, k_inst[k].samplers);
                     g->inst_pipe[k_inst[k].kind][1] = make_pipeline(g, &d);
                 }
             }
@@ -1148,6 +1152,12 @@ void gfx_shutdown(GfxContext *g)
     if (g->ui_atlas) {
         SDL_ReleaseGPUTexture(g->dev, g->ui_atlas);
     }
+    if (g->pattern_tex) {
+        SDL_ReleaseGPUTexture(g->dev, g->pattern_tex);
+    }
+    if (g->pattern_sampler) {
+        SDL_ReleaseGPUSampler(g->dev, g->pattern_sampler);
+    }
     SDL_ReleaseGPUTexture(g->dev, g->dummy_tex);
     SDL_ReleaseGPUSampler(g->dev, g->linear_clamp);
     SDL_ReleaseWindowFromGPUDevice(g->dev, g->win);
@@ -1254,6 +1264,109 @@ bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t
     g->ui_atlas = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8_UNORM, w, h, SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                SDL_GPU_SAMPLECOUNT_1);
     return g->ui_atlas && upload_texture(g, g->ui_atlas, pixels, w, h, 1);
+}
+
+/* ------------------------------------------------------------------ detail patterns */
+
+bool gfx_has_patterns(const GfxContext *g) { return g->pattern_tex != NULL; }
+
+bool gfx_set_patterns(GfxContext *g, const uint8_t *data, uint32_t size, uint32_t layers, uint32_t levels)
+{
+    if (g->pattern_tex) {
+        return true;
+    }
+    if (!data || size == 0 || layers == 0 || levels == 0) {
+        return false;
+    }
+    /* each level of each layer at a 16-byte aligned offset in one staging buffer */
+    uint32_t staged = 0;
+    for (uint32_t l = 0; l < layers; l++) {
+        for (uint32_t m = 0; m < levels; m++) {
+            const uint32_t s = size >> m ? size >> m : 1;
+            staged += (s * s + 15u) & ~15u;
+        }
+    }
+    SDL_GPUTextureCreateInfo ci;
+    SDL_zero(ci);
+    ci.type = SDL_GPU_TEXTURETYPE_2D_ARRAY;
+    ci.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+    ci.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    ci.width = size;
+    ci.height = size;
+    ci.layer_count_or_depth = layers;
+    ci.num_levels = levels;
+    ci.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    SDL_GPUTexture *tex = SDL_CreateGPUTexture(g->dev, &ci);
+    SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, staged, 0};
+    SDL_GPUTransferBuffer *tb = tex ? SDL_CreateGPUTransferBuffer(g->dev, &tci) : NULL;
+    SDL_GPUSamplerCreateInfo sci;
+    SDL_zero(sci);
+    sci.min_filter = SDL_GPU_FILTER_LINEAR;
+    sci.mag_filter = SDL_GPU_FILTER_LINEAR;
+    sci.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+    sci.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    sci.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    sci.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    sci.max_lod = 1000.0f;
+    sci.enable_anisotropy = true; /* the page: renderer.capabilities.getMaxAnisotropy() */
+    sci.max_anisotropy = 16.0f;
+    SDL_GPUSampler *smp = tb ? SDL_CreateGPUSampler(g->dev, &sci) : NULL;
+    if (!tex || !tb || !smp) {
+        mg_log_error("gfx: patterns: %ux%u x %u failed: %s", size, size, layers, SDL_GetError());
+        if (smp) {
+            SDL_ReleaseGPUSampler(g->dev, smp);
+        }
+        if (tb) {
+            SDL_ReleaseGPUTransferBuffer(g->dev, tb);
+        }
+        if (tex) {
+            SDL_ReleaseGPUTexture(g->dev, tex);
+        }
+        return false;
+    }
+    uint8_t *map = SDL_MapGPUTransferBuffer(g->dev, tb, false);
+    const uint8_t *src = data;
+    uint32_t off = 0;
+    for (uint32_t l = 0; l < layers; l++) {
+        for (uint32_t m = 0; m < levels; m++) {
+            const uint32_t s = size >> m ? size >> m : 1;
+            memcpy(map + off, src, (size_t)s * s);
+            src += (size_t)s * s;
+            off += (s * s + 15u) & ~15u;
+        }
+    }
+    SDL_UnmapGPUTransferBuffer(g->dev, tb);
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    off = 0;
+    for (uint32_t l = 0; l < layers; l++) {
+        for (uint32_t m = 0; m < levels; m++) {
+            const uint32_t s = size >> m ? size >> m : 1;
+            SDL_GPUTextureTransferInfo from = {tb, off, s, s};
+            SDL_GPUTextureRegion region;
+            SDL_zero(region);
+            region.texture = tex;
+            region.mip_level = m;
+            region.layer = l;
+            region.w = s;
+            region.h = s;
+            region.d = 1;
+            SDL_UploadToGPUTexture(cp, &from, &region, false);
+            off += (s * s + 15u) & ~15u;
+        }
+    }
+    SDL_EndGPUCopyPass(cp);
+    const bool ok = SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(g->dev, tb);
+    if (!ok) {
+        SDL_ReleaseGPUSampler(g->dev, smp);
+        SDL_ReleaseGPUTexture(g->dev, tex);
+        return false;
+    }
+    g->pattern_tex = tex;
+    g->pattern_sampler = smp;
+    mg_log_info("gfx: patterns: %u layers %ux%u R8 + %u mips (%u KB)", layers, size, size, levels - 1, staged >> 10);
+    return true;
 }
 
 /* ------------------------------------------------------------------ book figures */
@@ -1616,6 +1729,9 @@ static int draw_bucket(const DrawItem *d)
     if (d->kind == GFX_MAT_DEPTH || d->kind == GFX_MAT_TOON_FADE) { /* whole-object fades last: depth, then colour */
         return d->kind == GFX_MAT_DEPTH ? 4 : 5;
     }
+    if (d->kind == GFX_MAT_GLASS) { /* see-through, no depth write: over the avatars behind it, with the dithered geometry */
+        return 3;
+    }
     if (d->flags & GFX_DRAW_DYNAMIC) {
         return 2;
     }
@@ -1644,7 +1760,8 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
     const float dist = sqrtf(d->sort);
     const uint64_t near_first = (uint64_t)mg_clampf(dist * 256.0f, 0.0f, 65535.0f);
     uint64_t a, b;
-    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_ALPHA) {
+    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_ALPHA ||
+        d->kind == GFX_MAT_GLASS) {
         a = (d->flags & GFX_DRAW_GROUND) ? 0u : 65535u - near_first;
         b = d->mesh;
     } else {
@@ -1835,6 +1952,13 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
                 SDL_BindGPUGraphicsPipeline(pass, ip);
                 bound_pipe = ip;
                 g->stats.pipe_binds++;
+                if (d->kind == GFX_MAT_PATTERN) { /* the patterns ride on the pipeline change: no extra draw */
+                    SDL_GPUTextureSamplerBinding tsb = {g->pattern_tex ? g->pattern_tex : g->dummy_tex,
+                                                        g->pattern_sampler ? g->pattern_sampler : g->linear_clamp};
+                    SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+                    g->stats.tex_binds++;
+                    bound = -1; /* a per-draw text draw after this binds its atlas again */
+                }
             }
             const GfxMeshRec *im = &g->meshes[d->mesh];
             const uint32_t runs = g->run_len[i];
@@ -1889,6 +2013,11 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
 #endif
             if (d->kind == GFX_MAT_TEXT) {
                 SDL_GPUTextureSamplerBinding tsb = {g->ui_atlas ? g->ui_atlas : g->dummy_tex, g->ui_sampler};
+                SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
+                g->stats.tex_binds++;
+            } else if (d->kind == GFX_MAT_PATTERN) {
+                SDL_GPUTextureSamplerBinding tsb = {g->pattern_tex ? g->pattern_tex : g->dummy_tex,
+                                                    g->pattern_sampler ? g->pattern_sampler : g->linear_clamp};
                 SDL_BindGPUFragmentSamplers(pass, 0, &tsb, 1);
                 g->stats.tex_binds++;
             }

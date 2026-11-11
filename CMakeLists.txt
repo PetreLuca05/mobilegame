@@ -138,6 +138,17 @@ add_custom_command(
   VERBATIM
 )
 list(APPEND MG_EMBED_FILES ${MG_MAPB})
+# the institute's detail textures (the reference page's ten patterns + mips), generated at build time (tools/gen_patterns.py)
+set(MG_PATTERNS ${MG_GEN_DIR}/assets/world/inst_patterns.bin)
+add_custom_command(
+  OUTPUT ${MG_PATTERNS}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/world
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_patterns.py ${MG_PATTERNS}
+  DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_patterns.py
+  COMMENT "gen_patterns inst_patterns.bin"
+  VERBATIM
+)
+list(APPEND MG_EMBED_FILES ${MG_PATTERNS})
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
 endif()
@@ -339,6 +350,7 @@ set(MG_GAME_SOURCES
   game/imap.c
   game/institute.c
   game/institute_furniture.c
+  game/inst_patterns.c
   game/nav_check.c
   game/elevator.c
   game/elevator_panel.c

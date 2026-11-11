@@ -73,6 +73,7 @@
 #include "ui/marker_hud.h"
 #include "route_test.h"
 #include "scene.h"
+#include "institute.h"
 #include "scenery.h"
 #include "settings.h"
 #include "settings_menu.h"
@@ -4540,6 +4541,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     int floor = player_floor; /* the view floor */
     g->view_proj = HMM_MulM4(sp.proj, sp.view);
     scene_defaults(&sp, (float)app->time, &g->day_state);
+    if (scene_kind(g->scene) == SCENE_INSTITUTE) {
+        institute_sky(&sp); /* the reference page's background (no fog); its lights live in GFX_MAT_PATTERN */
+    }
 #ifdef MG_RENDER_FULL
     sp.reflection_y = scene_floor_y(g->scene, floor);
 #endif

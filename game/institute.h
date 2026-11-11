@@ -36,6 +36,9 @@
 #define INST_FADE_SEG0 8    /* wall pieces, INST_MAX_SEGS slots */
 
 /* mesh groups of a storey (the site is storey -1, its own set) */
+/* Built into these groups, uploaded merged (institute.c storey_pass): mesh[IG_EXT] = the solid triangles of EXT,
+ * EXT_GLASS and SLAB, mesh[IG_EXT_GLASS] their glass; mesh[IG_INT] / [IG_INT_GLASS] the same for INT, INT_GLASS, FLOOR,
+ * FURN, FURN_GLASS; mesh[IG_TEXT]; the other slots stay GFX_MESH_NONE. */
 enum {
     IG_EXT,        /* facade, slab edges, piers (matte, sunlit outer faces) */
     IG_EXT_GLASS,  /* facade glass and steel (glossy) */
@@ -48,7 +51,7 @@ enum {
     IG_TEXT,       /* floor-painted room labels */
     IG_COUNT
 };
-enum { ISG_MATTE, ISG_GLOSS, ISG_GROUND, ISG_COUNT }; /* site groups */
+enum { ISG_MATTE, ISG_GLOSS, ISG_GROUND, ISG_COUNT }; /* site groups; uploaded as site[ISG_MATTE] solid, [ISG_GLOSS] glass */
 
 /* One fadeable wall piece: a room's south wall (or its north wall onto a corridor), faded as a whole when it stands
  * in front of the player (camera looks north). */
@@ -57,6 +60,7 @@ typedef struct InstSeg {
     int8_t storey;
     bool exterior;          /* south facade: drawn from outside too */
     uint32_t first, count;  /* index range in seg_mesh[storey][exterior] */
+    uint32_t gfirst, gcount; /* its glass: index range in seg_glass[storey][exterior] */
 } InstSeg;
 
 /* A door leaf: hinge, closed along the wall, swings into `open` (unit xz) up to 72 degrees. */
@@ -90,6 +94,7 @@ typedef struct Institute {
     GfxMeshId mesh[INST_STOREYS][IG_COUNT];
     GfxMeshId site[ISG_COUNT];
     GfxMeshId seg_mesh[INST_STOREYS][2];
+    GfxMeshId seg_glass[INST_STOREYS][2];
     GfxMeshId leaf_mesh[3];  /* unit leaves (1 m along +x from the hinge, 1 m high) per colour */
     GfxMeshId car_mesh;      /* one open-topped car, origin at its floor centre, doorway +z */
     GfxMeshId lift_door;     /* one sliding panel */
@@ -126,6 +131,10 @@ typedef struct InstView {
     bool storey_tint;
 } InstView;
 void institute_draw(const Institute *in, GfxContext *g, const InstView *v);
+/* The reference page's sky while the institute is the scene: scene.background 0xbfe6f5, flat, no sun disc. Its fog is
+ * left out (user decision: fog drew a dark circle that followed the camera). The scene's sun and ambient stay the day
+ * lighting's: the avatars and NPCs keep their toon look. */
+void institute_sky(GfxSceneParams *sp);
 
 /* Area kind for test markers: 0 room, 1 corridor / lobby, 2 yard. */
 int institute_area_kind(const IMap *m, float x, float z, int storey);
