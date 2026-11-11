@@ -424,7 +424,8 @@ on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled 
 - **Per-part triangles** are measured since this round: the perf JSON has `tris_rooms`, `tris_props`, `tris_avatars`, `tris_other`
   (`gfx_set_category` around a group of draws; the UI counts as other).
 - **Measured per part (menu, Mac, this round):** rooms 33.3 k, props 3.0 k, avatars 9.9 k average / 11.4 k max, other (UI) 0.3 k;
-  draws 27 average / 39 max at rest; `menu_to_map` 28 / 52 (the move peak, under the 60 for travelling), 0 dropped frames.
+  draws 27 average / 39 max at rest; `menu_to_map` 28 / 52, 0 dropped frames.
+- **Estimate, the Maps / Back move (replaces the <= 45 of the first LIB-1 text): 52 draws**, limit 60 (as for travelling).
   The NPC LOD rule is by size on screen (full above 0.215 of the view's height, coarse below 0.195, a 0.25 s crossfade);
   during the Maps move the LODs come from the menu's resting camera.
 - **Avatars:** LOD0 is ~950 triangles (the suit body 419, head 80, hair 90-120, eyes 2 x 48, hands 2 x 80; glasses / mask +108 / +117),
@@ -438,3 +439,34 @@ on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled 
 - **NPC pathing:** each NPC leg is an A* request on the hall grid through the request queue, serviced once a frame within 0.5 ms
   (one search always runs); the next leg is searched while the NPC waits at its post. Menu frame 0.081 ms (straight legs) -> 0.083 ms;
   `lib.nav` 0.001 ms average, 0.14 ms max (one search); 0 heap allocations (lib_nav uses its own scratch).
+
+### Renderer changes of aedb310 (the seamless Maps move), checked outside the move (Mac Release, `docs/perf/lib1_render/`)
+
+- **Dual light:** a branch on a uniform. The second light set is evaluated only when `u_sun2_dir.w` (the mix) is above 0, and
+  the game sets it above 0 only on the Maps / Back move's frames; at rest in the menu, on the map and in every hospital scene the
+  mix is 0 and every fragment takes the one-set path (the same for the whole draw: no divergence). Mac, cfbdcc1 -> aedb310 (render
+  submit = encode + sort): stress200 0.049-0.050 -> 0.050 ms, 62.0 draws, 67.1 k tris both; lobby4 0.064 -> 0.065, 66.2 draws,
+  65.1 k; yard 0.043 -> 0.045, 51 draws, 34.8 k; menu 0.022-0.028 -> 0.022-0.024. The Mac reports no GPU time (`gpu_main_ms_approx`
+  0). If the iPad trace shows a cost at rest from the shader's larger body, the second set goes to a pipeline variant used only
+  on the move.
+- **Blended toon pipeline:** `gfx_allow_fade` is on only around the move's library draw; a GFX_MAT_DEPTH / GFX_MAT_TOON_FADE draw
+  outside it is dropped, logged once and counted (`fade_violations`); `tools/perf_gate.py` fails on any violation and on any fade
+  draw outside `menu_to_map`. Checked: a fade injected at rest reads 1 violation per frame; `menu_to_map` 2 fade draws, 0 violations.
+- **Sort key** (bucket 3 bits, front-to-back depth in 1/128 m): yard, corridor and the lobby captured on both builds: the only
+  differing pixels are the player's idle pose (x 820-867, y 362-412), as between two runs of one build; draws and triangles equal.
+- **Memory:** the menu's footprint peak was 192-205 MB run to run with our own memory identical; the spread was Metal keeping the
+  mesh uploads' freed staging buffers as reclaimable driver memory (IOAccelerator, 5-12 MB) for a while after the map's preload.
+  `gfx_settle_uploads` waits for the GPU once after each batch of uploads (start, the map preload, the hospital: 0.2-0.8 ms on the
+  Mac). Five menu runs: 193 / 191 / 194 / 193 / 193 MB (min 191, median 193, max 194; the gate is 196). `perf: footprint` lines log
+  any new peak during a run with its time.
+- **LOD crossfade at rest:** with one NPC held mid-crossfade for the whole run (`--lib-lod-fade N`) the peak was 44-48 draws: the 39
+  had not included it. A crossfade now dithers only body, head and hair; eyes, hands and accessories swap at its middle
+  (`AvatarPose.small_own`). Held crossfade: 36 max; normal runs 26.8 avg / 33 max.
+- **Dropped frames:** single dropped frames show up in some 60 s Mac runs on both builds (cfbdcc1 stress200: 2), with no allocation;
+  not explained yet.
+
+### Notes for the combined iPad gate
+
+- The dual-light path and the blended shell need a GPU trace of the Maps move on the iPad (Metal System Trace): the Mac cannot show
+  tile-GPU cost. Also check the menu at rest for any cost of the larger shader body (the second set is behind a uniform branch).
+

@@ -727,7 +727,7 @@ static void draw_contact_shadow(GfxContext *g, const AvatarMeshes *m, const Avat
 static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                         const AvatarAnim *a, const ColWorld *world, const GfxMaterial *override)
 {
-    const DrawCtx dc = {g,
+    DrawCtx dc = {g,
                         override        ? GFX_DRAW_NO_SHADOW
                         : p->preview    ? GFX_DRAW_PREVIEW
                                         : GFX_DRAW_REFLECT | GFX_DRAW_DYNAMIC,
@@ -769,6 +769,12 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     outlined(&dc, m->head, m->head_hull, s.head, look->skin, none);
     if (look->hair_style != HAIR_NONE && look->hair_style < AVATAR_HAIRS) {
         outlined(&dc, m->hair[look->hair_style], m->hair_hull[look->hair_style], s.head, look->hair, none);
+    }
+    if (p->small_own) { /* the small parts from here on */
+        if (p->hide_small >= 0.98f) {
+            return;
+        }
+        dc.hide = p->hide_small;
     }
     const HMM_Vec3 e = m->rig.eye;
     if (look->accessory == ACC_SUNGLASSES || (look->extras & AVATAR_EXTRA_READING_GLASSES)) {

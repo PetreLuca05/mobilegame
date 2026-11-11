@@ -109,6 +109,9 @@ typedef struct AvatarPose {
     float crouch;     /* 0 .. 1: lowered, hands down */
     float sway;       /* side-to-side (mopping), radians */
     float hide;       /* screen-door fade: spawning in or leaving */
+    bool small_own;   /* the small parts (eyes, hands, accessories, cane) use hide_small instead of hide: a LOD crossfade
+                       * dithers only body, head and hair and swaps the small parts at its middle (fewer batches) */
+    float hide_small;
     /* idle touches, radians (0 for players) */
     float head_yaw, head_pitch; /* a look (+ turns to the avatar's left), a nod (+ looks up) */
     float weight_tilt;          /* shifting weight, body roll */

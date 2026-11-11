@@ -169,6 +169,7 @@ typedef struct MenuLibrary {
     uint8_t npc_lod[LIB_NPCS]; /* the LOD each NPC is heading for: 0 full, 1 coarse (npc_lods) */
     float npc_lod_k[LIB_NPCS]; /* 0 full .. 1 coarse: a switch is a short dithered crossfade, never a pop */
     bool lod_ready;            /* the first frame snaps to the targets */
+    int lod_fade_test;         /* --lib-lod-fade N: NPC N - 1 held mid-crossfade (the draw count's worst case; 0 off) */
     bool lod_from_rest;        /* the Maps / Back move: LODs from the menu's resting camera (`eye`), so nobody switches mid-move */
     int lod_counts[2];        /* NPCs drawn at LOD0 / LOD1 this frame (perf, tests) */
     bool creator;      /* the Locker is open */

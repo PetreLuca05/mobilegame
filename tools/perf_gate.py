@@ -87,6 +87,11 @@ def main():
                 print(f"{'PASS' if ui[name] <= 2 * est else 'FAIL'} {dev:6} {sc:12} {name:18} {ui[name]:9.3f} estimate {est} (fails over 2x)")
                 if ui[name] > 2 * est:
                     problems.append(f"{dev} {sc}: {name} {ui[name]:.3f} is over 2x the estimate {est}")
+            fc = d["counters"]
+            if "fade_violations" in fc and fc["fade_violations"]["max"] > 0: # the blended toon pipeline: the Maps move's shell only
+                problems.append(f"{dev} {sc}: {fc['fade_violations']['max']:.0f} whole-object fade draws refused (only the Maps move may fade)")
+            if "fade_draws" in fc and fc["fade_draws"]["max"] > 0 and sc != "menu_to_map":
+                problems.append(f"{dev} {sc}: {fc['fade_draws']['max']:.0f} whole-object fade draws outside the Maps move")
             if "ui_draws" in d["counters"] and d["counters"]["ui_draws"]["max"] > UI_MAX_DRAWS:
                 problems.append(f"{dev} {sc}: {d['counters']['ui_draws']['max']:.0f} UI draws, UI-1 allows {UI_MAX_DRAWS}")
             print(f"INFO {dev:6} {sc:12} passes max {d['counters']['passes']['max']:.0f}")

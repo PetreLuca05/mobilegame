@@ -176,6 +176,8 @@ struct GfxContext {
     GfxInset insets[GFX_MAX_INSETS];
     int inset_count, current_inset; /* current: index + 1, 0 none */
     int current_cat; /* GFX_CAT_* for the next draws */
+    bool fade_allowed, fade_logged; /* gfx_allow_fade; the one log line */
+    uint32_t fade_draws_frame, fade_violations_frame; /* counted at gfx_draw, handed to the stats at the frame's end */
     int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
     PipelineSet pipes[TARGET_COUNT];
@@ -1224,6 +1226,17 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f) {
         return; /* fully faded draws cost nothing */
     }
+    if (mat->kind == GFX_MAT_DEPTH || mat->kind == GFX_MAT_TOON_FADE) { /* the blended pipeline: the Maps move's shell only */
+        if (!g->fade_allowed) {
+            g->fade_violations_frame++;
+            if (!g->fade_logged) {
+                g->fade_logged = true;
+                mg_log_error("gfx: a whole-object fade drawn outside gfx_allow_fade (mesh %u): dropped; everything else is opaque", mesh);
+            }
+            return;
+        }
+        g->fade_draws_frame++;
+    }
     DrawItem *d = &g->draws[g->draw_count++];
     d->model = *model;
     d->tint = mat->tint;
@@ -1239,6 +1252,10 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     HMM_Vec3 pos = model->Columns[3].XYZ;
     d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
 }
+
+void gfx_settle_uploads(GfxContext *g) { SDL_WaitForGPUIdle(g->dev); }
+
+void gfx_allow_fade(GfxContext *g, bool on) { g->fade_allowed = on; }
 
 int gfx_set_category(GfxContext *g, int cat)
 {
@@ -2339,6 +2356,8 @@ static void frame_end(GfxContext *g)
     g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
     SDL_zeroa(g->stats.tris_cat);
+    g->stats.fade_draws = g->fade_draws_frame, g->stats.fade_violations = g->fade_violations_frame; /* this frame's draw calls */
+    g->fade_draws_frame = g->fade_violations_frame = 0;
     g->stats.gpu_main_ms = (float)SDL_GetAtomicInt(&g->gpu_main_us) * 0.001f;
     g->stats.gpu_ui_ms = (float)SDL_GetAtomicInt(&g->gpu_ui_us) * 0.001f;
 #ifdef MG_RENDER_FULL

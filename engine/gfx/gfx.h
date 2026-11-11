@@ -171,6 +171,7 @@ typedef struct GfxStats {
     float main_cpu_ms;       /* CPU time encoding the main pass */
     uint32_t tris, instances, pipe_binds, tex_binds, uniform_bytes, passes;
     uint32_t tris_cat[GFX_CATS]; /* tris by GFX_CAT_* (the main pass; the UI counts as other) */
+    uint32_t fade_draws, fade_violations; /* whole-object fade draws taken / refused (outside gfx_allow_fade) */
     /* Approximate GPU time, submit -> fence on a helper thread (SDL GPU has no
      * timestamps; includes queueing). 0 until gfx_set_gpu_timing. */
     float gpu_main_ms, gpu_ui_ms;
@@ -196,6 +197,14 @@ bool gfx_frame_begin(GfxContext *g);
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene);
 /* The category the next draws count their triangles under (GFX_CAT_*); returns the previous one. */
 int gfx_set_category(GfxContext *g, int cat);
+/* The whole-object fade (GFX_MAT_DEPTH / GFX_MAT_TOON_FADE) is allowed only while this is on: the library's shell on the
+ * Maps move. Anything else is opaque: such a draw is dropped, logged once and counted (GfxStats.fade_violations; the
+ * perf gate fails on it). */
+void gfx_allow_fade(GfxContext *g, bool on);
+/* Once after a batch of mesh uploads (the library at start, the map's preload, the hospital's build): waits for the GPU
+ * (0.2-0.8 ms on the Mac) so the uploads' staging buffers are freed now. Otherwise Metal keeps them as reclaimable
+ * driver memory that still counts in the footprint for a while: 5-12 MB, run to run. */
+void gfx_settle_uploads(GfxContext *g);
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat,
               uint32_t flags);
 /* A slice of a mesh: `first` and `count` are indices inside it. */

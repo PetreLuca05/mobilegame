@@ -964,6 +964,9 @@ static void npc_lods(MenuLibrary *L, float dt)
         }
         const float step = dt / LOD_FADE_S;
         L->npc_lod_k[i] = L->npc_lod[i] ? fminf(L->npc_lod_k[i] + step, 1.0f) : fmaxf(L->npc_lod_k[i] - step, 0.0f);
+        if (L->lod_fade_test == i + 1) {
+            L->npc_lod_k[i] = 0.5f;
+        }
         L->lod_counts[L->npc_lod[i]]++;
     }
     L->lod_ready = true;
@@ -1005,6 +1008,8 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
         AvatarPose p0 = p;
         p0.lod = 0;
         p0.hide = mg_maxf(p.hide, lk);
+        p0.small_own = true; /* eyes, hands, accessories: swapped at the middle, not dithered (each dithered part is a batch) */
+        p0.hide_small = lk < 0.5f ? p.hide : 1.0f;
         avatar_draw(g, m, &n->look, &p0, &n->anim, NULL);
     }
 }

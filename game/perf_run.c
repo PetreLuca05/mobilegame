@@ -135,7 +135,7 @@ static void write_report(const PerfRun *p, MgApp *app)
     static char out[32768];
     static const char *const names[PERF_FIELDS] = {"draws", "tris", "instances", "pipe_binds", "tex_binds", "uniform_bytes",
                                                    "passes", "gpu_main_ms_approx", "gpu_ui_ms_approx", "ui_draws", "ui_instances",
-                                                   "tris_rooms", "tris_props", "tris_avatars", "tris_other"};
+                                                   "tris_rooms", "tris_props", "tris_avatars", "tris_other", "fade_draws", "fade_violations"};
     int n = 0;
 #define PUT(...) n += SDL_snprintf(out + n, sizeof(out) - (size_t)n, __VA_ARGS__)
     const double frames = p->samples ? (double)p->samples : 1.0;
@@ -259,6 +259,8 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     add(&p->f[PERF_TRIS_PROPS], g->tris_cat[GFX_CAT_PROP]);
     add(&p->f[PERF_TRIS_AVATARS], g->tris_cat[GFX_CAT_AVATAR]);
     add(&p->f[PERF_TRIS_OTHER], g->tris_cat[GFX_CAT_OTHER]);
+    add(&p->f[PERF_FADE_DRAWS], g->fade_draws);
+    add(&p->f[PERF_FADE_VIOLATIONS], g->fade_violations);
     add(&p->f[PERF_INST], g->instances);
     add(&p->f[PERF_PIPES], g->pipe_binds);
     add(&p->f[PERF_TEX], g->tex_binds);
@@ -275,6 +277,10 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     int th = device_thermal_state();
     p->thermal_worst = th > p->thermal_worst ? th : p->thermal_worst;
     float mb = device_resident_mb();
+    if (mb > p->resident_max + 0.5f && app->time - p->record_start > 1.0) { /* a new peak during the run: when, and the frame's time */
+        mg_log_info("perf: footprint %.1f MB (was %.1f) at %.2f s, frame %.1f ms", (double)mb, (double)p->resident_max, app->time - p->record_start,
+                    (double)app->frame_dt * 1000.0);
+    }
     p->resident_max = mb > p->resident_max ? mb : p->resident_max;
     if (app->time - p->record_start >= p->seconds) {
         p->done = true;

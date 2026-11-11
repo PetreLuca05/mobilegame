@@ -578,6 +578,7 @@ bool game_init(MgApp *app)
     if (!menu_library_init(&g->lib, app->gfx, &app->perm)) {
         return false; /* LIB-1: the menu has no other backdrop */
     }
+    gfx_settle_uploads(app->gfx); /* the library's meshes are in */
     for (int i = 1; i + 1 < app->argc; i++) { /* --debug turn-page: the hero turns a page every 2.5 s */
         g->lib.debug_turns |= SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "turn-page") == 0;
     }
@@ -595,6 +596,9 @@ bool game_init(MgApp *app)
         }
         g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
         g->lib_still = has_flag(app->argc, app->argv, "--lib-still");
+        if (arg_value(app->argc, app->argv, "--lib-lod-fade")) { /* perf: one NPC always mid-crossfade */
+            g->lib.lod_fade_test = SDL_atoi(arg_value(app->argc, app->argv, "--lib-lod-fade"));
+        }
         if (arg_value(app->argc, app->argv, "--lib-back-loop")) { /* Maps + Back N times, every Back checked */
             g->back_loop.want = SDL_atoi(arg_value(app->argc, app->argv, "--lib-back-loop"));
             g->move_demo = 4;
@@ -1661,6 +1665,7 @@ static void load_step(Game *g, MgApp *app)
             frontend_toast(&g->fe, "Could not load the hospital", app->time);
             g->fe.state = FE_MAIN_MENU;
         }
+        gfx_settle_uploads(app->gfx); /* the hospital's meshes are in */
         break;
     default:
         player_init(&g->player, scene_spawn(g->scene, 0), scene_spawn_yaw(g->scene));
@@ -1873,6 +1878,9 @@ static void map_preload(Game *g, MgApp *app)
     if (!g->wm.loaded && !g->wm_tried) {
         prof_allocs_exempt(true); /* once: the islands' meshes */
         const int r = worldmap_load_step(&g->wm, &g->books, app->gfx, &app->perm);
+        if (r == 1) {
+            gfx_settle_uploads(app->gfx); /* the islands are in: their staging buffers go now, not whenever Metal reclaims them */
+        }
         prof_allocs_exempt(false);
         g->wm_tried = r < 0;
         if (r != 0) {
@@ -1992,7 +2000,9 @@ static void move_frame(Game *g, MgApp *app)
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
     g->lib.lod_from_rest = true; /* the move: the people keep the menu's LODs (no switch while the camera flies) */
+    gfx_allow_fade(app->gfx, true); /* the shell's true fade: the move only */
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
+    gfx_allow_fade(app->gfx, false);
     g->lib.lod_from_rest = false;
     if (g->back_loop.want > 0 && g->move_state == 2) { /* --lib-back-loop: the camera per frame of the move's own clock */
         const int f = g->back_loop.frame++;

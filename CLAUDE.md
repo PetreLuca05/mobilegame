@@ -607,6 +607,9 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   colour blended once per pixel, draw buckets 4 and 5) instead of a screen-door; NPC LODs are taken from the menu's resting
   camera for the whole move. NPC LOD at rest: by size (a fraction of the view's height, full above 0.215, coarse below
   0.195), a switch is a 0.25 s dithered crossfade of the full mesh over the coarse one. Picture: docs/autotest/library/light_move_before_after.png.
+- Guards: `gfx_allow_fade` (the blended toon fade only on the move; perf JSON `fade_violations`, the gate fails on any);
+  `gfx_settle_uploads` after each batch of mesh uploads (else Metal holds the staging buffers as reclaimable driver memory);
+  `--lib-lod-fade N` (perf: NPC N held mid-crossfade, the draw count's worst case).
 - The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
   camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
   of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one

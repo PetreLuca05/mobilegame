@@ -1,0 +1,90 @@
+2026-11-11 13:17:57.707 mobilegame[88800:11790094] render thread priority: 0
+2026-11-11 13:17:57.746 mobilegame[88800:11790094] gfx: backend metal, shaders msl, color fmt 12, depth fmt 60, msaa 4x
+2026-11-11 13:17:58.185 mobilegame[88800:11790094] avatar: library seat top 0.500 m, seat clearance 0.000 m
+2026-11-11 13:17:58.188 mobilegame[88800:11790094] lib_nav: baked 128x136 cells, 81 obstacles, 12621 free, 0.047 ms
+2026-11-11 13:17:58.190 mobilegame[88800:11790094] library: loaded (4 seats, 0 extra chairs), 105840 vertices welded to 82006
+2026-11-11 13:17:58.190 mobilegame[88800:11790094] net: realtime backend ready (offline.invalid, the platform's TLS)
+2026-11-11 13:17:58.191 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:17:58.195 mobilegame[88800:11790094] hospital: 558 colliders
+2026-11-11 13:17:58.196 mobilegame[88800:11790094] nav: baked 3 grids in 1.3 ms
+2026-11-11 13:17:58.196 mobilegame[88800:11790094] rooms: 27 rooms, 21 doors, 104 slots, 0 on blocked cells
+2026-11-11 13:17:58.196 mobilegame[88800:11790094] npc: 14 archetypes, 40/15/40 names
+2026-11-11 13:17:58.210 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:17:58.287 mobilegame[88800:11790094] app: 844x390 pt @ 2.00x, safe insets l0 t0 r0 b0, perm arena 21422 KB used
+2026-11-11 13:17:58.299 mobilegame[88800:11790094] frontend: PLAY
+2026-11-11 13:17:58.300 mobilegame[88800:11790094] ui: system Reduce Motion off
+2026-11-11 13:17:58.302 mobilegame[88800:11790094] gfx: MSAA 2x
+2026-11-11 13:17:58.302 mobilegame[88800:11790094] gfx: targets 1688x780: depth, msaa colour
+2026-11-11 13:18:03.320 mobilegame[88800:11790094] perf: recording stress200 for 60 s
+2026-11-11 13:18:08.225 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:08.228 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:18:18.243 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:18.247 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:18:28.261 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:28.263 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:18:38.269 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:38.271 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:18:48.296 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:48.299 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:18:58.302 mobilegame[88800:11790149] net: attempt HTTPS POST offline.invalid/auth/v1/token
+2026-11-11 13:18:58.304 mobilegame[88800:11790149] WARNING: auth: failed: network error
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> {
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "commit": "cfbdcc1-dirty",
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "run_id": "",
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "scenario": "stress200",
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "seconds": 60,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "backend": "metal",
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "render": [1688, 780],
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "frames": 3601,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "interval_16ms": 3599,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "interval_33ms": 2,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "interval_50ms_plus": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "dropped": 2,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "thermal_worst": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "resident_mb_max": 200,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "heap_allocs": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "frames_with_heap_allocs": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "heap_allocs_screenshot": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "heap_alloc_sites": [],
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "entities_sim_max": 201,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "entities_rendered_max": 151,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "route_failures": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "memory_mb": {"footprint": 199.7, "msaa_color": 10.0, "depth": 10.0, "scene": 0.0, "blur": 0.0, "preview": 0.0, "swapchain_est": 15.1, "ui_atlas": 2.0, "mesh_vb_reserved": 5.0, "mesh_ib_reserved": 2.0, "mesh_vb_used": 3.5, "mesh_ib_used": 0.9, "ui_buffers": 7.0, "instance_buffers": 3.0, "perm_arena_size": 96.0, "perm_arena_used": 20.9, "perm_arena_peak": 49.4, "frame_arena_peak": 0.03, "nav": 7.6, "npc": 0.9},
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "panel_samples": 0,
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf> "counters": {
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf>   "draws": {"avg": 62.00, "max": 83.00},
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf>   "tris": {"avg": 67064.91, "max": 111579.00},
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf>   "instances": {"avg": 367.20, "max": 832.00},
+2026-11-11 13:19:03.338 mobilegame[88800:11790094] perf>   "pipe_binds": {"avg": 9.85, "max": 12.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "tex_binds": {"avg": 2.04, "max": 3.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "uniform_bytes": {"avg": 36620.88, "max": 81712.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "passes": {"avg": 1.00, "max": 1.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "gpu_main_ms_approx": {"avg": 0.00, "max": 0.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "gpu_ui_ms_approx": {"avg": 0.00, "max": 0.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "ui_draws": {"avg": 1.00, "max": 1.00},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   "ui_instances": {"avg": 18.00, "max": 18.00}
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf> },
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf> "scopes": [
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "frame", "depth": 0, "avg": 0.091, "p95": 0.20, "max": 0.38},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "net.poll", "depth": 1, "avg": 0.003, "p95": 0.05, "max": 0.02},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "ui.anim", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.03},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "nav.service", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.23},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "markers", "depth": 1, "avg": 0.000, "p95": 0.05, "max": 0.01},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "input", "depth": 1, "avg": 0.000, "p95": 0.05, "max": 0.01},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "render.cull", "depth": 1, "avg": 0.004, "p95": 0.05, "max": 0.02},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "npc.draw", "depth": 1, "avg": 0.046, "p95": 0.15, "max": 0.20},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "npc.cull", "depth": 2, "avg": 0.020, "p95": 0.05, "max": 0.08},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "ui.fx", "depth": 1, "avg": 0.001, "p95": 0.05, "max": 0.01},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "render", "depth": 0, "avg": 0.161, "p95": 0.30, "max": 0.54},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "render.ui", "depth": 1, "avg": 0.029, "p95": 0.05, "max": 0.14},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "render.sort", "depth": 1, "avg": 0.011, "p95": 0.05, "max": 0.06},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "render.encode", "depth": 1, "avg": 0.032, "p95": 0.10, "max": 0.23},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "tick", "depth": 0, "avg": 0.076, "p95": 0.20, "max": 0.34},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "kinematic", "depth": 1, "avg": 0.006, "p95": 0.05, "max": 0.06},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "interact", "depth": 1, "avg": 0.002, "p95": 0.05, "max": 0.03},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "npc", "depth": 1, "avg": 0.067, "p95": 0.15, "max": 0.33},
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf>   {"name": "autonav", "depth": 1, "avg": 0.000, "p95": 12.80, "max": 0.00}
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf> ]
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf> }
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] perf: wrote /Users/petreluca/Library/Application Support/docvex/mobilegame/perf_stress200.json
+2026-11-11 13:19:03.339 mobilegame[88800:11790094] AUTOTEST PASSED
