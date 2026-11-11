@@ -144,33 +144,35 @@ static bool walkable(const LibNav *n, HMM_Vec2 p)
     return c >= 0 && HMM_LenV2(HMM_SubV2(lib_nav_cell_xz(n, c), p)) <= n->radius + n->cell * 0.71f;
 }
 
-/* Every NPC, every menu frame; the first problem is kept */
+/* Every background person, every menu frame (§7 / §9); the first problem is kept: on a walkable cell (a stop against a shelf
+ * or desk within the body radius of one), at its stop when waiting (or within 0.85 m of it: someone stood there), never
+ * stuck walking over 4 s (+ the step that starts the ignore-others spell; off screen a step is 0.1 s) */
 static void npc_watch(LibraryTest *t, const MenuLibrary *L)
 {
     const LibNav *n = nav();
-    if (!n) {
+    if (!n || !L->people) {
         return;
     }
+    const LibPeople *P = L->people;
     t->npc_frames++;
-    for (int i = 0; i < L->sc.npc_n; i++) {
-        const LibNpcDef *d = &L->sc.npcs[i];
-        const LibNpc *np = &L->npc[i];
+    for (int i = 0; i < L->pcfg->n; i++) {
+        const LibPersonDef *d = &L->pcfg->def[i];
+        const LibPerson *pp = &P->p[i];
         char why[160] = "";
         if (d->seated) {
-            if (HMM_LenV2(HMM_SubV2(np->pos, d->seat_pos)) > 0.01f) {
-                SDL_snprintf(why, sizeof(why), "%s is seated but %.2f m off its seat", d->id, HMM_LenV2(HMM_SubV2(np->pos, d->seat_pos)));
+            if (HMM_LenV2(HMM_SubV2(L->npc[i].pos, d->seat_pos)) > 0.01f) {
+                SDL_snprintf(why, sizeof(why), "%s is seated but %.2f m off its seat", d->id, HMM_LenV2(HMM_SubV2(L->npc[i].pos, d->seat_pos)));
             }
-        } else if (d->route_n > 0) {
-            const LibRouteStep *st = &d->route[np->step];
-            const HMM_Vec2 to = HMM_SubV2(st->p, np->pos);
-            const HMM_Vec2 leg = np->path.n > 0 ? HMM_SubV2(np->path.pts[np->pi], np->pos) : to; /* towards the current waypoint */
-            if (np->waiting && HMM_LenV2(to) > 0.05f) {
-                SDL_snprintf(why, sizeof(why), "%s waits at step %d %.2f m from its post", d->id, np->step, HMM_LenV2(to));
-            } else if (!np->waiting && d->speed > 0.0f && (HMM_LenV2(np->vel) < 0.05f || HMM_DotV2(np->vel, leg) <= 0.0f)) {
-                SDL_snprintf(why, sizeof(why), "%s should walk to step %d but is not moving towards it", d->id, np->step);
-            } else if (!(np->waiting && st->outside) && !walkable(n, np->pos)) {
-                SDL_snprintf(why, sizeof(why), "%s at (%.2f, %.2f) is not on a walkable cell (%s step %d)", d->id, np->pos.X, np->pos.Y,
-                             np->waiting ? "posted at" : "walking to", np->step);
+        } else if (pp->agent >= 0) {
+            const LibStop *st = &d->route[pp->step];
+            const float off = HMM_LenV2(HMM_SubV2(st->p, pp->pos));
+            if (pp->waiting && off > LIB_STOP_NEAR + 0.05f) {
+                SDL_snprintf(why, sizeof(why), "%s waits at stop %d %.2f m from it", d->id, pp->step, off);
+            } else if (!pp->hidden && !walkable(n, pp->pos) && !(P->ag.a[pp->agent].on_last && P->ag.a[pp->agent].path.last_straight)) {
+                SDL_snprintf(why, sizeof(why), "%s at (%.2f, %.2f) is not on a walkable cell (%s stop %d)", d->id, pp->pos.X, pp->pos.Y,
+                             pp->waiting ? "at" : "walking to", pp->step);
+            } else if (pp->still_s > 4.2f) {
+                SDL_snprintf(why, sizeof(why), "%s stuck %.2f s walking to stop %d", d->id, pp->still_s, pp->step);
             }
         }
         if (why[0]) {
@@ -181,14 +183,39 @@ static void npc_watch(LibraryTest *t, const MenuLibrary *L)
     }
 }
 
-/* the end of a run: the NPC watch's verdict */
-static int npc_done(LibraryTest *t)
+/* the end of a run: the watch's verdict, and over the whole run: no two agents (people, carts, members walking) ever
+ * closer than 96 % of their radii, nobody stuck over 4 s (+ one step), every act of the §9 table seen */
+static int npc_done(LibraryTest *t, const MenuLibrary *L)
 {
     if (t->npc_bad) {
         return failf(t, "NPCs: %d problems over %d menu frames, first: %s", t->npc_bad, t->npc_frames, t->npc_why);
     }
-    mg_log_info("autotest library: NPCs: all %d on walkable cells and moving or posted as their routes say over %d menu frames (ok)", s_scene_npcs,
-                t->npc_frames);
+    if (!L->people) {
+        return failf(t, "NPCs: the background people are off (no grid or no npcs)");
+    }
+    const LibPeople *P = L->people;
+    if (P->min_ratio < LIB_HARD_RULE - 1e-3f) {
+        return failf(t, "NPCs: two agents came within %.3f of their radii sum (the hard rule is %.2f)", (double)P->min_ratio, (double)LIB_HARD_RULE);
+    }
+    if (P->stuck_max > 4.2f) {
+        return failf(t, "NPCs: %s stuck %.2f s", P->stuck_who >= 0 ? L->pcfg->def[P->stuck_who].id : "-", (double)P->stuck_max);
+    }
+    if (!t->acts_skip) {
+        char missing[160] = "";
+        for (int a = 1; a < LIB_ACT_COUNT; a++) {
+            if (!(P->acts_seen & (1u << a))) {
+                SDL_strlcat(missing, " ", sizeof(missing));
+                SDL_strlcat(missing, lib_act_name(a), sizeof(missing));
+            }
+        }
+        if (missing[0]) {
+            return failf(t, "NPCs: acts never seen over %.0f s:%s", P->time, missing);
+        }
+    }
+    mg_log_info("autotest library: NPCs: all %d present; over %u ticks (%.0f s): on walkable cells and at their stops over %d menu frames, closest "
+                "pair %.3f of the radii sum, longest stuck %.2f s, %d ignore-others spells, %s; %d path searches, slowest %.3f ms (ok)",
+                L->pcfg->n, P->tick, P->time, t->npc_frames, (double)P->min_ratio, (double)P->stuck_max, P->ghosts,
+                t->acts_skip ? "acts not judged (short run)" : "every act seen", P->ag.q.searches, P->ag.q.search_ms_max);
     return 1;
 }
 
@@ -319,7 +346,8 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             if (t->seen && h->state == LM_STUDY) {
                 mg_log_info("autotest library: 10 onboarding shows the library, the hero walked in (outside the door first %s) and sat (ok)",
                             HMM_LenV2(HMM_SubV2(L->sc.seats[0].path[0], L->sc.door.outside)) < 0.15f ? "yes" : "no");
-                return npc_done(t);
+                t->acts_skip = true; /* onboarding is a short run */
+                return npc_done(t, L);
             }
             if (now - t->at > 12.0) {
                 return failf(t, "onboarding: the hero did not walk in and sit (state %d)", (int)h->state);
@@ -338,15 +366,17 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (L->seat[0].anim.t <= 0.0f || L->seat[0].state != LM_STUDY) {
             return failf(t, "menu: the hero is not drawn in seat 0");
         }
-        int npcs = 0;
-        for (int i = 0; i < L->sc.npc_n; i++) {
-            npcs += L->npc[i].anim.t > 0.0f || (L->sc.npcs[i].route_n && L->sc.npcs[i].route[L->npc[i].step].outside); /* drawn, or waiting outside */
+        int npcs = 0, drawn = 0;
+        for (int i = 0; L->people && i < L->pcfg->n; i++) { /* in the hall: seated, or walking a route (waiting outside counts) */
+            npcs += L->pcfg->def[i].seated || L->people->p[i].agent >= 0;
+            drawn += L->npc[i].drawn;
         }
         nav();
-        if (L->sc.npc_n != s_scene_npcs || s_scene_npcs < 20 || npcs != s_scene_npcs) { /* every NPC of the scene (§9: 25), none dropped */
-            return failf(t, "menu: %d NPCs present, %d loaded, %d in library.scene.json (want all, >= 20)", npcs, L->sc.npc_n, s_scene_npcs);
+        if (L->sc.npc_n != s_scene_npcs || s_scene_npcs != 25 || npcs != s_scene_npcs) { /* every person of the scene (§9: 25), none dropped */
+            return failf(t, "menu: %d people present, %d loaded, %d in library.scene.json (want all 25)", npcs, L->sc.npc_n, s_scene_npcs);
         }
-        mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0, %d NPCs present (ok)", npcs);
+        mg_log_info("autotest library: 1 the menu shows the library, the hero studying in seat 0, all %d people present, %d drawn (bays on screen %x) (ok)",
+                    npcs, drawn, L->visible);
         { /* §5: my table from my lobby's seed: the generator's result, the hero in seat_order[0], every other table dressed */
             const LibDressing *d = &L->dress[L->table_bay];
             LibDressing want;
@@ -438,7 +468,8 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             if (p->fe_state != FE_MAP || now - t->move_start > 0.3 + 2.5 / 60.0) {
                 return failf(t, "reduced: screen %d, dissolve %.3f s", p->fe_state, now - t->move_start);
             }
-            return npc_done(t); /* the rest needs the move: this run checks the dissolve only */
+            t->acts_skip = true;
+            return npc_done(t, L); /* the rest needs the move: this run checks the dissolve only */
         }
         if (p->move_state == 1) {
             if (t->frames == 0) {
@@ -560,7 +591,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             return now - t->at > 3.0 ? failf(t, "locker: not back (creator %.2f, study %.2f)", (double)L->creator_t, (double)L->seat[0].study_w) : 0;
         }
         mg_log_info("autotest library: 9 Locker closed: back on the menu camera, bent over the book again (ok)");
-        return npc_done(t);
+        return npc_done(t, L);
     default:
         return 1;
     }

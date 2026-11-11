@@ -446,6 +446,24 @@ void lib_nav_service(LibNavQueue *q, double budget_ms)
     }
 }
 
+void lib_nav_service_n(LibNavQueue *q, int searches)
+{
+    for (int k = 0; k < searches; k++) {
+        int best = -1;
+        for (int i = 0; i < LIB_NAV_QUEUE_MAX; i++)
+            if (q->r[i].state == LIB_REQ_PENDING && (best < 0 || q->r[i].seq - q->r[best].seq > 0x80000000u))
+                best = i;
+        if (best < 0) return;
+        LibNavReq *r = &q->r[best];
+        double s0 = mg_time_now();
+        bool ok = lib_nav_path(q->nav, r->from, r->to, r->discs, r->ndiscs, &r->path);
+        double ms = (mg_time_now() - s0) * 1000.0;
+        if (ms > q->search_ms_max) q->search_ms_max = ms;
+        q->searches++;
+        r->state = ok ? LIB_REQ_READY : LIB_REQ_FAILED;
+    }
+}
+
 LibReqState lib_nav_poll(LibNavQueue *q, uint32_t ticket, LibPath *out)
 {
     int i = slot_of(q, ticket);
@@ -586,6 +604,7 @@ static int steer_step(LibAgents *s, const LibNav *n, int self, HMM_Vec2 p, float
     float dx = p.X - g.X, dz = p.Y - g.Y, d = sqrtf(dx * dx + dz * dz), step = a->speed * dt;
     if (a->ignore_others_s > 0) a->ignore_others_s -= dt;
     if (d <= step && snap_clear(s, self, p, r, g) && cart_ok(s, self, p, step_yaw(a, g, p, dt))) {
+        a->cart_checked = true;
         a->yaw = step_yaw(a, g, p, dt);
         a->pos = p;
         a->blocked_s = 0;
@@ -617,9 +636,20 @@ static int steer_step(LibAgents *s, const LibNav *n, int self, HMM_Vec2 p, float
     if (step > d) step = d;
     /* the ghost spell also offers a step back at half speed, facing kept (a pusher reverses its cart): in a jam in a
      * narrow aisle the hard rule never gives way, so someone has to make room */
-    const int ncand = ghost ? 5 : 4;
+    /* a jam at a door: the hard rule stays at 96 % for everyone, so the spell also offers the two back diagonals */
+    const float bd = 0.70710678f;
+    const float back[3][2] = {{-ux, -uz}, {(-ux + uz) * bd, (-uz - ux) * bd}, {(-ux - uz) * bd, (-uz + ux) * bd}};
+    /* ... and whoever stands blocked in front of someone in such a spell gives way the same way */
+    bool yield = false;
+    for (int i = 0; i < s->nsnap && !ghost && !yield && a->blocked_s > 0.5f; i++) {
+        const LibAgentSnap *b = &s->snap[i];
+        if (b->owner == self || !b->ghost) continue;
+        float bx = b->p.X - g.X, bz = b->p.Y - g.Y;
+        yield = sqrtf(bx * bx + bz * bz) < r + b->r + LIB_STEER_RANGE;
+    }
+    const int ncand = ghost || yield ? 7 : 4;
     for (int i = 0; i < ncand; i++) {
-        float cx = i < 4 ? cand[i][0] : -ux, cz = i < 4 ? cand[i][1] : -uz, st = i < 4 ? step : 0.5f * step;
+        float cx = i < 4 ? cand[i][0] : back[i - 4][0], cz = i < 4 ? cand[i][1] : back[i - 4][1], st = i < 4 ? step : 0.5f * step;
         HMM_Vec2 np = HMM_V2(g.X + cx * st, g.Y + cz * st);
         if (!(off_grid_ok || !here || lib_nav_free(n, np))) continue;
         if (!snap_clear(s, self, np, r, g)) continue;
@@ -631,6 +661,7 @@ static int steer_step(LibAgents *s, const LibNav *n, int self, HMM_Vec2 p, float
         }
         a->yaw = ny;
         a->pos = np;
+        a->cart_checked = true;
         if (i < 2) a->blocked_s = a->blocked_s - dt > 0 ? a->blocked_s - dt : 0;
         else a->blocked_s += dt * 0.6f;
         return 0;
@@ -678,7 +709,8 @@ static bool walk_to(LibAgents *s, const LibNav *n, int self, HMM_Vec2 p, float d
 void lib_agents_step(LibAgents *s, const LibNav *n, float dt)
 {
     if (!s->q.nav) s->q.nav = n;
-    lib_nav_service(&s->q, s->service_budget_ms);
+    if (s->service_searches > 0) lib_nav_service_n(&s->q, s->service_searches);
+    else lib_nav_service(&s->q, s->service_budget_ms);
     /* AG: everyone standing or walking, carts owned by their pusher */
     int si[LIB_AGENTS_MAX];
     s->nsnap = 0;
@@ -688,11 +720,14 @@ void lib_agents_step(LibAgents *s, const LibNav *n, float dt)
         if (!a->active) continue;
         int owner = a->is_cart && a->cart_of >= 0 ? a->cart_of : i;
         si[i] = s->nsnap;
-        s->snap[s->nsnap++] = (LibAgentSnap){a->pos, a->radius, owner};
+        s->snap[s->nsnap++] = (LibAgentSnap){a->pos, a->radius, owner, s->a[owner].ignore_others_s > 0};
     }
     for (int i = 0; i < s->count; i++) {
         LibAgent *a = &s->a[i];
         if (!a->active || a->is_cart) continue;
+        const int rate = a->rate > 1 ? a->rate : 1;
+        if (rate > 1 && (s->tick + (uint32_t)i) % (uint32_t)rate) continue;
+        const float adt = dt * (float)rate;
         if (a->ticket) {
             LibPath p;
             LibReqState st = lib_nav_poll(&s->q, a->ticket, &p);
@@ -708,10 +743,11 @@ void lib_agents_step(LibAgents *s, const LibNav *n, float dt)
         }
         HMM_Vec2 o = a->pos;
         a->on_last = false;
+        a->cart_checked = false;
         if (a->has_path && !a->arrived && a->next < a->path.n) {
             a->standing_still = false;
             a->on_last = a->next == a->path.n - 1;
-            if (walk_to(s, n, i, a->path.pts[a->next], dt, a->on_last)) {
+            if (walk_to(s, n, i, a->path.pts[a->next], adt, a->on_last)) {
                 a->next++;
                 if (a->next >= a->path.n) {
                     a->arrived = true;
@@ -722,17 +758,27 @@ void lib_agents_step(LibAgents *s, const LibNav *n, float dt)
         } else if (!a->ticket) {
             a->standing_still = true;
         }
-        a->vel = dt > 0 ? HMM_V2((a->pos.X - o.X) / dt, (a->pos.Y - o.Y) / dt) : HMM_V2(0, 0);
+        a->vel = adt > 0 ? HMM_V2((a->pos.X - o.X) / adt, (a->pos.Y - o.Y) / adt) : HMM_V2(0, 0);
         if (a->cart >= 0 && a->cart_pushed) {
             LibAgent *c = &s->a[a->cart];
             HMM_Vec2 cp = HMM_V2(a->pos.X + sinf(a->yaw) * LIB_CART_AHEAD, a->pos.Y + cosf(a->yaw) * LIB_CART_AHEAD);
-            c->vel = dt > 0 ? HMM_V2((cp.X - c->pos.X) / dt, (cp.Y - c->pos.Y) / dt) : HMM_V2(0, 0);
+            const float far = dist2(cp, c->pos), most = LIB_CART_SLIDE * adt;
+            float cy = a->yaw;
+            if (a->cart_catching && far <= most + 1e-4f) a->cart_catching = false;
+            if (a->cart_catching) { /* taken up again after a parked spell: it slides there, round anyone in the way */
+                cp = HMM_V2(c->pos.X + (cp.X - c->pos.X) * most / far, c->pos.Y + (cp.Y - c->pos.Y) * most / far);
+                cy = angle_lerp(c->yaw, a->yaw, ease(adt, 8));
+            }
+            /* the pusher checked this place (cart_ok) if it stepped this tick; otherwise (a cart still catching up) it is checked here */
+            if (far > 1e-6f && (a->cart_catching || !a->cart_checked) && !snap_clear(s, i, cp, c->radius, c->pos)) cp = c->pos, cy = c->yaw;
+            c->vel = adt > 0 ? HMM_V2((cp.X - c->pos.X) / adt, (cp.Y - c->pos.Y) / adt) : HMM_V2(0, 0);
             c->pos = cp;
-            c->yaw = a->yaw;
+            c->yaw = cy;
             if (si[a->cart] >= 0) s->snap[si[a->cart]].p = cp;
         }
         /* the prototype checks against positions from the start of the frame; keeping the snapshot current makes
          * the hard rule exact when two agents step towards each other in the same tick */
         if (si[i] >= 0) s->snap[si[i]].p = a->pos;
     }
+    s->tick++;
 }

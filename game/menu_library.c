@@ -148,22 +148,7 @@ static bool load_scene(LibScene *s)
             d->seat_yaw_deg = jnum(seated, "yaw", 0.0f);
         }
         jfloats(cJSON_GetObjectItemCaseSensitive(nj, "read_s"), d->read_s, 2);
-        for (const cJSON *rj = cJSON_GetObjectItemCaseSensitive(nj, "route") ? cJSON_GetObjectItemCaseSensitive(nj, "route")->child : NULL; rj && d->route_n < LIB_ROUTE_MAX;
-             rj = rj->next) {
-            LibRouteStep *r = &d->route[d->route_n++];
-            r->p = jv2(rj, "p");
-            r->wait_s = jnum(rj, "wait_s", 0.0f);
-            const cJSON *face = cJSON_GetObjectItemCaseSensitive(rj, "face_deg");
-            r->has_face = cJSON_IsNumber(face);
-            r->face_deg = r->has_face ? (float)face->valuedouble : 0.0f;
-            r->outside = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(rj, "outside"));
-            const char *act = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(rj, "act"));
-            /* until the acts of section 9 are in: anything at a shelf browses, anything else stands */
-            r->act = act && (SDL_strcmp(act, "browse") == 0 || SDL_strcmp(act, "take") == 0 || SDL_strcmp(act, "read") == 0 || SDL_strcmp(act, "shelve") == 0 ||
-                             SDL_strcmp(act, "ladder") == 0)
-                         ? LIB_ACT_BROWSE
-                         : act ? LIB_ACT_POST : LIB_ACT_NONE;
-        }
+        d->sleeper = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(nj, "sleeper"));
     }
     cJSON_Delete(root);
     if (n != LIB_SEATS) {
@@ -265,12 +250,12 @@ static void npcs_reset(MenuLibrary *L)
     for (int i = 0; i < L->sc.npc_n; i++) {
         const LibNpcDef *d = &L->sc.npcs[i];
         LibNpc *n = &L->npc[i];
-        n->step = 0, n->waiting = true, n->t = 0.0f;
-        n->pos = d->seated ? d->seat_pos : d->route_n ? d->route[0].p : HMM_V2(0, 0);
-        n->yaw_deg = d->seated ? d->seat_yaw_deg : d->route_n && d->route[0].has_face ? d->route[0].face_deg : 0.0f;
+        const LibPerson *pp = L->people && i < L->pcfg->n ? &L->people->p[i] : NULL;
+        n->pos = pp ? pp->pos : d->seat_pos;
+        n->yaw_deg = pp ? pp->yaw * 57.29578f : d->seat_yaw_deg;
         n->cart_yaw_deg = n->yaw_deg;
-        n->cart = n->pos; /* placed ahead on the first step */
-        n->path.n = 0, n->pi = 0, n->ticket = 0, n->next_ready = false;
+        n->cart = n->pos;
+        n->vel = HMM_V2(0, 0);
         SDL_zero(n->anim);
         lib_study_init(&n->study, &L->sc, 101u + (uint32_t)i);
         if (d->seated && d->read_s[1] > 0.0f) {
@@ -404,8 +389,14 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         if (!lib_nav_bake(L->nav, root)) {
             L->nav = NULL;
         } else {
-            L->queue = ARENA_PUSH(scratch, LibNavQueue, 1);
-            lib_nav_queue_init(L->queue, L->nav);
+            L->pcfg = ARENA_PUSH(scratch, LibPeopleCfg, 1);
+            L->people = ARENA_PUSH(scratch, LibPeople, 1);
+            if (L->pcfg && L->people && lib_people_config(L->pcfg, root) && L->pcfg->n == L->sc.npc_n) {
+                lib_people_init(L->people, L->pcfg, L->nav);
+            } else {
+                mg_log_error("library: the background people are off (%d in lib_people, %d in the scene)", L->pcfg ? L->pcfg->n : -1, L->sc.npc_n);
+                L->people = NULL;
+            }
         }
         cJSON_Delete(root);
     }
@@ -435,6 +426,8 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->leaf_b = upload(L, g, scratch, &mb, "book_leaf_b");
     L->mug = upload(L, g, scratch, &mb, "mug");
     L->pencil = upload(L, g, scratch, &mb, "pencil");
+    L->puff = upload(L, g, scratch, &mb, "puff");
+    L->zee = upload(L, g, scratch, &mb, "zee");
     arena_reset_to(scratch, mark);
     L->ok = rooms && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
@@ -690,6 +683,11 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     }
     L->eye = lib_point(L, eye_l);
     L->target = lib_point(L, target_l);
+    if (L->look_dist > 0.0f) { /* --lib-look: pictures of a spot in the hall, the menu camera's pitch and yaw */
+        const HMM_Vec3 at = HMM_V3(L->look_at.X, 0.9f, L->look_at.Y);
+        L->target = lib_point(L, at);
+        L->eye = lib_point(L, orbit_eye(at, L->look_dist, c->pitch_deg, c->yaw_deg));
+    }
     if (L->closeup) { /* seat 0's book from its front left, 2.7 m away */
         const LibSeat *s0 = &L->tseats[0];
         const float yw = HMM_AngleDeg(s0->yaw_deg);
@@ -839,6 +837,9 @@ static void member_start(MenuLibrary *L, int i, const LobbyRow *r, int place, bo
         mb->pos = path_at(seat, 0.0f, &dir);
         mb->yaw_deg = yaw_of(dir);
         mb->outside_first = HMM_LenV2(HMM_SubV2(mb->pos, L->sc.door.outside)) < 0.15f;
+        if (L->people) { /* §7: an A* walk from the door to the seat's stand among everyone else */
+            lib_people_walker_start(L->people, i, mb->pos, HMM_AngleDeg(mb->yaw_deg), seat->stand);
+        }
     }
 }
 
@@ -868,6 +869,9 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
             if (mb->state == LM_WALK_OUT) {
                 mb->state = LM_WALK_IN;
                 mb->t_left = 0.0;
+                if (L->people) {
+                    lib_people_walker_goal(L->people, at, L->tseats[at].stand);
+                }
             } else if (mb->state == LM_STAND) {
                 mb->state = LM_SIT;
                 mb->t_left = 0.0; /* back before it got up: the next leave is timed afresh */
@@ -886,8 +890,14 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
         }
         if (snap) {
             mb->state = LM_EMPTY;
+            if (L->people) {
+                lib_people_walker_stop(L->people, i);
+            }
         } else if (mb->state == LM_WALK_IN) {
             mb->state = LM_WALK_OUT; /* turns round where it is */
+            if (L->people) {
+                lib_people_walker_goal(L->people, i, L->tseats[i].path[0]);
+            }
         } else if (mb->state == LM_SIT) {
             mb->state = LM_STAND;
         } else if (mb->state == LM_STUDY || mb->state == LM_SETTLE) {
@@ -905,6 +915,9 @@ void menu_library_hero_walk_in(MenuLibrary *L)
     mb->pos = path_at(&L->tseats[0], 0.0f, &dir);
     mb->yaw_deg = yaw_of(dir);
     SDL_zero(mb->anim);
+    if (L->people) {
+        lib_people_walker_start(L->people, 0, mb->pos, HMM_AngleDeg(mb->yaw_deg), L->tseats[0].stand);
+    }
 }
 
 static void member_step(MenuLibrary *L, int i, float dt)
@@ -921,6 +934,34 @@ static void member_step(MenuLibrary *L, int i, float dt)
     case LM_WALK_IN:
     case LM_WALK_OUT: {
         const bool in = mb->state == LM_WALK_IN;
+        if (L->people) { /* §7: the walk is an agent's (lib_people ticks it); this reads where it got to */
+            const LibAgent *a = lib_people_walker(L->people, i);
+            if (a) {
+                mb->pos = a->pos;
+                mb->vel = a->vel;
+                mb->yaw_deg = a->yaw * 57.29578f;
+            }
+            const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
+            mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
+            if (HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, L->table_bay))) < 0.5f) {
+                mb->door_max = fmaxf(mb->door_max, L->door_angle);
+            }
+            if (lib_people_walker_arrived(L->people, i)) {
+                lib_people_walker_stop(L->people, i);
+                mb->vel = HMM_V2(0, 0);
+                if (in) {
+                    mb->state = LM_SIT;
+                    mb->sit_from = mb->pos;
+                } else {
+                    mb->state = LM_EMPTY;
+                    mb->t_gone = L->clock;
+                    L->gone = *mb;
+                    L->gone.t_shut = 0.0;
+                }
+            }
+            break;
+        }
+        /* no grid: the straight legs */
         mb->s = in ? fminf(mb->s + speed * dt, total) : fmaxf(mb->s - speed * dt, 0.0f);
         mb->pos = path_at(seat, mb->s, &dir);
         if (!in) {
@@ -935,6 +976,7 @@ static void member_step(MenuLibrary *L, int i, float dt)
         }
         if (in && mb->s >= total) {
             mb->state = LM_SIT;
+            mb->sit_from = seat->stand;
         } else if (!in && mb->s <= 0.0f) {
             mb->state = LM_EMPTY;
             mb->t_gone = L->clock;
@@ -946,7 +988,7 @@ static void member_step(MenuLibrary *L, int i, float dt)
     case LM_SIT: /* into the seat: position, facing and the seated pose together; the chair slides in */
         mb->blend = fminf(mb->blend + dt / s->study.sit_s, 1.0f);
         mb->chair = 1.0f - mb->blend;
-        mb->pos = HMM_LerpV2(seat->stand, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
+        mb->pos = HMM_LerpV2(mb->sit_from, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
         mb->yaw_deg = seat->yaw_deg;
         if (mb->blend >= 1.0f) {
             mb->state = LM_SETTLE;
@@ -996,6 +1038,9 @@ static void member_step(MenuLibrary *L, int i, float dt)
         if (mb->blend <= 0.0f) {
             mb->state = LM_WALK_OUT;
             mb->s = total;
+            if (L->people) {
+                lib_people_walker_start(L->people, i, mb->pos, HMM_AngleDeg(seat->yaw_deg + 180.0f), seat->path[0]);
+            }
         }
         break;
     default:
@@ -1044,95 +1089,114 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
     }
 }
 
-/* ------------------------------------------------------------------ background NPCs */
+/* ------------------------------------------------------------------ background people (§9) */
 
-static void npc_step(MenuLibrary *L, int i, float dt)
+#define LIB_TICK (1.0 / 60.0)
+#define LIB_TICKS_MAX 6 /* per frame; a longer stall drops the rest (the room goes on from where it was) */
+#define LIB_TAU 6.28318531f
+
+static int bay_at(const MenuLibrary *L, HMM_Vec2 p)
 {
-    const LibNpcDef *d = &L->sc.npcs[i];
-    LibNpc *n = &L->npc[i];
-    n->vel = HMM_V2(0, 0);
-    if (d->seated) {
-        lib_study_step(&n->study, &L->sc, dt);
-        return;
+    if (L->nav) {
+        return lib_nav_bay_of(L->nav, p.X, p.Y);
     }
-    if (d->route_n == 0) {
-        return;
-    }
-    const LibRouteStep *st = &d->route[n->step];
-    const bool grid = L->queue && !L->no_nav;
-    if (n->waiting) {
-        if (st->has_face) {
-            n->yaw_deg = st->face_deg;
-        }
-        n->t += dt;
-        if (grid && !n->next_ready && d->speed > 0.0f) { /* the next leg is searched while waiting here (time-sliced) */
-            if (n->ticket == 0) {
-                n->ticket = lib_nav_request(L->queue, n->pos, d->route[(n->step + 1) % d->route_n].p, NULL, 0);
-            }
-            const LibReqState r = n->ticket ? lib_nav_poll(L->queue, n->ticket, &n->path) : LIB_REQ_PENDING;
-            if (r == LIB_REQ_READY || r == LIB_REQ_FAILED) { /* FAILED: the path is just the stop (lib_nav_path's own fallback) */
-                n->ticket = 0;
-                n->next_ready = true;
-            }
-        }
-        if (!(st->wait_s >= 0.0f && n->t >= st->wait_s && d->speed > 0.0f) || (grid && !n->next_ready)) {
-            return; /* still waiting, or the path is not back yet: stay at the post */
-        }
-        n->waiting = false; /* the wait is over: on to the next stop, walking from this frame */
-        n->step = (n->step + 1) % d->route_n;
-        n->t = 0.0f;
-        st = &d->route[n->step];
-        if (!grid || n->path.n == 0) {
-            n->path.pts[0] = st->p, n->path.n = 1;
-        }
-        n->next_ready = false;
-        n->pi = 0;
-    }
-    float stride = d->speed * dt;
-    for (;;) { /* walk the stride along the waypoints; corners carry the rest of it */
-        const HMM_Vec2 to = HMM_SubV2(n->path.pts[n->pi], n->pos);
-        const float dist = HMM_LenV2(to);
-        if (dist > stride) {
-            const HMM_Vec2 dir = HMM_DivV2F(to, dist);
-            n->pos = HMM_AddV2(n->pos, HMM_MulV2F(dir, stride));
-            n->vel = HMM_MulV2F(dir, d->speed);
-            n->yaw_deg = yaw_of(dir);
-            break;
-        }
-        if (n->pi + 1 >= n->path.n) { /* the post */
-            n->pos = st->p;
-            n->waiting = true;
-            n->t = 0.0f;
-            n->path.n = 0;
-            break;
-        }
-        n->pos = n->path.pts[n->pi++];
-        stride -= dist;
-    }
-    if (d->push_cart && !(n->waiting && st->act == LIB_ACT_BROWSE)) { /* the cart rides 0.75 m ahead while pushed */
-        const float yw = HMM_AngleDeg(n->yaw_deg);
-        n->cart = HMM_AddV2(n->pos, HMM_V2(HMM_SinF(yw) * L->avatar_push_ahead, HMM_CosF(yw) * L->avatar_push_ahead));
-        n->cart_yaw_deg = n->yaw_deg;
-    }
+    return L->home_bay;
 }
 
-/* Walking NPCs near the door count for it, like the lobby's walkers */
-
-/* A walking NPC near bay b's door opens it */
-static bool npc_at_door(const MenuLibrary *L, int i, int b)
+/* The bays in the camera's frustum: each bay's box (16 m wide, floor to ceiling, from behind its back wall to the open floor
+ * in front) through the caller's view-projection; no camera yet: all of them. */
+static uint32_t bays_visible(const MenuLibrary *L)
 {
-    const LibNpc *n = &L->npc[i];
-    return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, door_c(L, b))) < L->sc.door.open_radius;
+    if (!L->has_vp) {
+        return (1u << LIB_BAYS) - 1u;
+    }
+    const HMM_Mat4 m = HMM_MulM4(L->view_proj, L->xf);
+    uint32_t vis = 0;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        const float x0 = L->bay_x[b] - 8.0f, x1 = L->bay_x[b] + 8.0f, z0 = L->bay_z[b] - 7.0f, z1 = L->bay_z[b] + 10.5f, y1 = L->sc.room.Y;
+        int out[5] = {0, 0, 0, 0, 0}; /* corners beyond -x, +x, -y, +y, behind */
+        for (int k = 0; k < 8; k++) {
+            const HMM_Vec4 c = HMM_MulM4V4(m, HMM_V4(k & 1 ? x1 : x0, k & 2 ? y1 : 0.0f, k & 4 ? z1 : z0, 1.0f));
+            out[0] += c.X < -c.W, out[1] += c.X > c.W, out[2] += c.Y < -c.W, out[3] += c.Y > c.W, out[4] += c.W <= 0.0f;
+        }
+        if (out[0] < 8 && out[1] < 8 && out[2] < 8 && out[3] < 8 && out[4] < 8) {
+            vis |= 1u << b;
+        }
+    }
+    return vis;
+}
+
+/* Fixed 60 Hz ticks for everyone in the hall: the background people, the seated readers' study loops and the members'
+ * walks (agents), the doors. A person in a bay off screen steps one tick in six with six ticks' time. */
+static void people_ticks(MenuLibrary *L, float dt)
+{
+    L->visible = bays_visible(L);
+    const LibScene *s = &L->sc;
+    if (!L->people) { /* no grid: the seated read, nobody walks */
+        for (int i = 0; i < s->npc_n; i++) {
+            if (s->npcs[i].seated) {
+                lib_study_step(&L->npc[i].study, s, dt);
+            }
+        }
+        return;
+    }
+    LibPeople *P = L->people;
+    P->straight = L->no_nav;
+    L->tick_acc += dt;
+    int n = 0;
+    while (L->tick_acc >= LIB_TICK && n < LIB_TICKS_MAX) {
+        for (int b = 0; b < LIB_BAYS && b < L->pcfg->bays; b++) { /* the members walking hold doors too */
+            bool want = false;
+            for (int i = 0; i < LIB_SEATS && !want; i++) {
+                const LibMember *mb = &L->seat[i];
+                want = (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(mb->vel) > 0.2f &&
+                       HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, b))) < s->door.open_radius;
+            }
+            P->door_want_extra[b] = want;
+        }
+        const uint32_t tick = P->tick;
+        lib_people_tick(P, L->nav, (float)LIB_TICK, L->visible);
+        for (int i = 0; i < s->npc_n; i++) { /* the seated readers' study loops, at the same rates */
+            const LibNpcDef *d = &s->npcs[i];
+            if (!d->seated || d->sleeper) {
+                continue;
+            }
+            const int rate = (L->visible >> bay_at(L, d->seat_pos)) & 1u ? 1 : LIB_PEOPLE_SLOW;
+            if ((tick + (uint32_t)i) % (uint32_t)rate == 0) {
+                lib_study_step(&L->npc[i].study, s, (float)LIB_TICK * (float)rate);
+            }
+        }
+        n++;
+        L->tick_acc -= LIB_TICK;
+    }
+    if (n == LIB_TICKS_MAX && L->tick_acc > LIB_TICK) {
+        L->tick_acc = LIB_TICK;
+    }
+    for (int i = 0; i < s->npc_n && i < L->pcfg->n; i++) { /* where the drawing finds them */
+        const LibPerson *pp = &P->p[i];
+        LibNpc *np = &L->npc[i];
+        if (L->log_acts && pp->act != L->last_act[i]) {
+            mg_log_info("library: t %.2f %s (bay %d%s) %s at stop %d (%.2f, %.2f)", P->time, L->pcfg->def[i].id, pp->bay, (L->visible >> pp->bay) & 1u ? "" : ", off screen",
+                        pp->act ? lib_act_name(pp->act) : "walks", pp->step, pp->pos.X, pp->pos.Y);
+            L->last_act[i] = pp->act;
+        }
+        if (pp->agent < 0) {
+            continue;
+        }
+        np->pos = pp->pos;
+        np->vel = pp->vel;
+        np->yaw_deg = pp->yaw * 57.29578f;
+        if (pp->cart >= 0) {
+            const LibAgent *c = &P->ag.a[pp->cart];
+            np->cart = c->pos;
+            np->cart_yaw_deg = c->yaw * 57.29578f;
+        }
+    }
 }
 
 bool menu_library_npc_at_door(const MenuLibrary *L, int b)
 {
-    for (int i = 0; i < L->sc.npc_n; i++) {
-        if (npc_at_door(L, i, b)) {
-            return true;
-        }
-    }
-    return false;
+    return L->people && lib_people_at_door(L->people, b);
 }
 
 /* LOD for the NPCs (the menu draws 26 people): by size on screen only, as a fraction of the view's height (the same
@@ -1172,28 +1236,98 @@ static void npc_lods(MenuLibrary *L, float dt)
     L->lod_ready = true;
 }
 
+/* a standing person's hands, head and lean for the act it is in (the prototype's Av.pose, standing half): hands in the
+ * avatar frame, y above the body base (carry_*), mixed in the prototype's order */
+static void act_pose(const MenuLibrary *L, const AvatarMeshes *m, const LibPerson *pp, float ph, AvatarPose *p)
+{
+    const LibPeopleCfg *c = L->pcfg;
+    const AvatarRig *r = &m->rig;
+    const float t = (float)L->people->time, sy = r->stand_y;
+#define ABOVE(v) HMM_V3((v).X, (v).Y - sy, (v).Z)
+#define MIRROR(v) HMM_V3(-(v).X, (v).Y, (v).Z)
+    HMM_Vec3 wl = r->hands_rest, wr = MIRROR(r->hands_rest);
+    if (pp->has_book) {
+        wl = c->carry_book;
+    }
+    const HMM_Vec3 bh = HMM_V3(r->browse_hand.X, r->browse_hand.Y + r->browse_bob_m * HMM_SinF(r->browse_bob_rad_s * t + ph), r->browse_hand.Z);
+    wr = HMM_LerpV3(wr, pp->browse, ABOVE(bh));
+    wl = HMM_LerpV3(wl, pp->read, ABOVE(c->read.hands));
+    wr = HMM_LerpV3(wr, pp->read, ABOVE(MIRROR(c->read.hands)));
+    const float dip = c->stamp.dip_m * powf(fmaxf(0.0f, HMM_SinF(t * LIB_TAU / c->stamp.period_s)), 6.0f);
+    wr = HMM_LerpV3(wr, pp->stamp, ABOVE(HMM_V3(c->stamp.hand.X, c->stamp.hand.Y - dip, c->stamp.hand.Z)));
+    wl = HMM_LerpV3(wl, pp->push, ABOVE(r->push_hands));
+    wr = HMM_LerpV3(wr, pp->push, ABOVE(MIRROR(r->push_hands)));
+    const float sk = smooth01(0.5f + 0.5f * HMM_SinF(t * LIB_TAU / c->shelve.period_s));
+    wr = HMM_LerpV3(wr, pp->shelve, ABOVE(HMM_LerpV3(c->shelve.low, sk, c->shelve.high)));
+    const float ts = pp->talk * pp->spk;
+    wr = HMM_LerpV3(wr, ts, HMM_V3(-0.2f + 0.07f * HMM_SinF(t * 5.0f), 0.52f + 0.05f * HMM_CosF(t * 4.0f), 0.3f));
+    if (!pp->has_book) {
+        wl = HMM_LerpV3(wl, pp->look, c->look.hands);
+    }
+    wr = HMM_LerpV3(wr, pp->look, MIRROR(c->look.hands));
+    wl = HMM_LerpV3(wl, pp->desk, ABOVE(c->desk.hands));
+    wr = HMM_LerpV3(wr, pp->desk, ABOVE(MIRROR(c->desk.hands)));
+    wl = HMM_LerpV3(wl, pp->climb, HMM_V3(0.15f, 0.6f + 0.12f * HMM_SinF(t * 8.0f), 0.3f));
+    wr = HMM_LerpV3(wr, pp->climb, HMM_V3(-0.15f, 0.6f - 0.12f * HMM_SinF(t * 8.0f), 0.3f));
+#undef ABOVE
+#undef MIRROR
+    float w = pp->has_book ? 1.0f : 0.0f;
+    const float ws[9] = {pp->browse, pp->read, pp->stamp, pp->push, pp->shelve, ts, pp->look, pp->desk, pp->climb};
+    for (int k = 0; k < 9; k++) {
+        w = fmaxf(w, ws[k]);
+    }
+    p->carry_w = smooth01(w / 0.25f); /* none: the avatar's own walk swing */
+    p->carry_l = wl, p->carry_r = wr;
+    p->head_pitch = -(r->browse_head_pitch * pp->browse + c->read.head_pitch * pp->read + c->stamp.head_pitch * pp->stamp + pp->look_pitch * pp->look +
+                      0.08f * pp->spk * HMM_SinF(t * 6.0f) + 0.3f * pp->desk); /* AvatarPose: + looks up */
+    p->head_yaw = r->browse_head_yaw * pp->browse * HMM_SinF(r->browse_head_yaw_rad_s * t + ph);
+    p->lean = c->look.lean * pp->look + 0.12f * pp->climb;
+}
+
+/* the sleeper's head in the hall frame (the prototype's stToLib(station, 0, headY, headZ)) */
+static HMM_Vec3 sleeper_head(const MenuLibrary *L, const LibNpcDef *d)
+{
+    const float lean = L->pcfg->sleeper.lean, yw = HMM_AngleDeg(d->seat_yaw_deg);
+    const float hy = L->sc.study.seat_y + 0.86f * HMM_CosF(lean), hz = 0.86f * HMM_SinF(lean);
+    return HMM_V3(d->seat_pos.X + hz * HMM_SinF(yw), hy, d->seat_pos.Y + hz * HMM_CosF(yw));
+}
+
 static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i, float dt)
 {
     const LibNpcDef *d = &L->sc.npcs[i];
     LibNpc *n = &L->npc[i];
-    const LibRouteStep *st = d->route_n ? &d->route[n->step] : NULL;
-    if (st && n->waiting && st->outside) {
-        return; /* outside the door, waiting to come in */
+    const LibPerson *pp = L->people && i < L->pcfg->n && L->people->p[i].agent >= 0 ? &L->people->p[i] : NULL;
+    n->drawn = !(pp && pp->hidden) && ((L->visible >> bay_at(L, n->pos)) & 1u);
+    if (!n->drawn) {
+        return; /* outside the door, waiting to come in; or in a bay off screen */
     }
+    const float ph = 1.7f * (float)i;
+    const float t = L->people ? (float)L->people->time : (float)L->clock;
     AvatarPose p;
     if (d->seated) {
         study_pose_at(L, d->seat_pos, d->seat_yaw_deg, &n->study, 1.0f, &p);
+        if (d->sleeper && L->pcfg) { /* leaned onto the table, head rolled, slow deep breathing */
+            const LibPeopleCfg *c = L->pcfg;
+            p.lean = c->sleeper.lean;
+            p.head_pitch = -c->sleeper.head_pitch;
+            p.head_yaw = p.body_yaw = 0.0f;
+            p.head_roll = c->sleeper.head_roll;
+            p.hand_l = c->sleeper.hand_left, p.hand_r = c->sleeper.hand_right;
+            p.hands_w = 1.0f;
+            p.breath_k = c->sleeper.breath_scale / fmaxf(m->rig.breath_scale, 1e-4f);
+            p.breath_rad_s = 0.9f; /* the prototype's sleeping rate */
+        }
     } else {
         SDL_zero(p);
-        p.feet = lib_point(L, HMM_V3(n->pos.X, 0.0f, n->pos.Y));
+        p.feet = lib_point(L, HMM_V3(n->pos.X, pp ? pp->lift : 0.0f, n->pos.Y));
         p.yaw = HMM_AngleDeg(n->yaw_deg) + HMM_PI32 + lib_yaw(L);
         p.scale = L->scale;
         p.vel = HMM_MulM4V4(L->rot, HMM_V4(n->vel.X, 0.0f, n->vel.Y, 0.0f)).XYZ;
         p.grounded = true;
         p.flat_ground = true;
-        const bool browsing = st && n->waiting && st->act == LIB_ACT_BROWSE;
-        p.browse = browsing ? 1.0f : 0.0f;
-        p.push = d->push_cart && !browsing ? 1.0f : 0.0f;
+        if (pp) {
+            act_pose(L, m, pp, ph, &p);
+        }
     }
     avatar_animate(m, &n->anim, &p, dt);
     /* a switch: the coarse mesh stays solid underneath (it sits inside the full one's silhouette) and only the full mesh
@@ -1211,6 +1345,53 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
         p0.small_own = true; /* eyes, hands, accessories: swapped at the middle, not dithered (each dithered part is a batch) */
         p0.hide_small = lk < 0.5f ? p.hide : 1.0f;
         avatar_draw(g, m, &n->look, &p0, &n->anim, NULL);
+    }
+    const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    if (pp && (pp->read > 0.25f || pp->has_book)) { /* the book in the hands: open (read), or closed under the left hand / on the desk */
+        const LibPeopleCfg *c = L->pcfg;
+        AvatarSolved sv;
+        avatar_solve(m, &n->look, &p, &n->anim, &sv);
+        if (pp->read > 0.25f) {
+            const HMM_Mat4 bm = HMM_MulM4(HMM_MulM4(HMM_MulM4(sv.root, HMM_Translate(c->read.book)), HMM_Rotate_RH(c->read.book_tilt, HMM_V3(1, 0, 0))),
+                                          HMM_Scale(HMM_V3(c->read.book_scale, c->read.book_scale, c->read.book_scale)));
+            GfxMaterial om = toon;
+            om.extra = cover_extra(1);
+            gfx_draw(g, L->book_open, &bm, &om, 0);
+        } else {
+            HMM_Mat4 bk;
+            if (pp->desk > 0.5f) {
+                bk = HMM_MulM4(HMM_MulM4(sv.root, HMM_Translate(c->desk.book)), HMM_Rotate_RH(0.2f, HMM_V3(0, 1, 0)));
+            } else {
+                bk = HMM_MulM4(sv.root, HMM_Rotate_RH(0.25f, HMM_V3(1, 0, 0)));
+                bk.Columns[3] = HMM_V4V(HMM_AddV3(sv.hand[0], HMM_MulM4V4(sv.root, HMM_V4(0.0f, -0.075f, 0.03f, 0.0f)).XYZ), 1.0f);
+            }
+            GfxMaterial bc = toon;
+            bc.extra = cover_extra((int)(SDL_strlen(d->id) * 3u % LIB_COVER_COUNT));
+            gfx_draw(g, L->book_closed, &bk, &bc, 0);
+        }
+    }
+    if (pp && pp->talk * pp->spk >= 0.5f && L->puff != GFX_MESH_NONE) { /* the speaker's three white dots */
+        const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
+        for (int k = 0; k < 3; k++) {
+            const float y = 1.78f + 0.03f * fmaxf(0.0f, HMM_SinF(t * 7.0f - (float)k * 0.9f));
+            const HMM_Mat4 dm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(HMM_V3(n->pos.X + (float)(k - 1) * 0.09f, y, n->pos.Y)), HMM_Scale(HMM_V3(0.03f, 0.03f, 0.03f))));
+            gfx_draw(g, L->puff, &dm, &white, 0);
+        }
+    }
+    if (d->sleeper && L->pcfg && L->zee != GFX_MESH_NONE) { /* three zees rising, growing 0.6x -> 1.8x, gone over the last 20 % */
+        const LibPeopleCfg *c = L->pcfg;
+        const HMM_Vec3 hp = sleeper_head(L, d);
+        for (int k = 0; k < 3; k++) {
+            float f = fmodf(t / c->sleeper.zee_period_s + (float)k / 3.0f, 1.0f);
+            const float sc = (0.6f + 1.2f * f) * (1.0f - smooth01((f - 0.8f) / 0.2f)) * smooth01(f / 0.1f);
+            if (sc <= 1e-3f) {
+                continue;
+            }
+            const HMM_Mat4 zm = HMM_MulM4(L->xf, HMM_MulM4(HMM_MulM4(HMM_Translate(HMM_V3(hp.X + 0.2f + 0.12f * f, hp.Y + 0.3f + c->sleeper.zee_rise_m * f, hp.Z)),
+                                                                    HMM_Rotate_RH(0.25f * HMM_SinF(t * 1.5f + (float)k), HMM_V3(0, 0, 1))),
+                                                          HMM_Scale(HMM_V3(sc, sc, sc))));
+            gfx_draw(g, L->zee, &zm, &toon, 0);
+        }
     }
 }
 
@@ -1334,25 +1515,18 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     }
     L->avatar_push_ahead = m->rig.push_ahead_m;
     {
-        PROF_SCOPE("lib.nav");
-        if (L->queue) {
-            lib_nav_service(L->queue, LIB_NAV_BUDGET_MS);
-        }
-    }
-    {
         PROF_SCOPE("lib.npcs");
-        for (int i = 0; i < s->npc_n; i++) {
-            npc_step(L, i, dt);
-        }
+        people_ticks(L, dt);
     }
     for (int i = 0; i < LIB_SEATS; i++) {
         member_step(L, i, dt);
     }
-    for (int b = 0; b < LIB_BAYS; b++) { /* each bay's door: open while a walker is near it */
-        bool walker = false;
-        for (int i = 0; i < s->npc_n && !walker; i++) {
-            walker = npc_at_door(L, i, b);
+    for (int b = 0; b < LIB_BAYS; b++) { /* each bay's door: open while anyone walking is near it (lib_people's ticks) */
+        if (L->people && b < L->pcfg->bays) {
+            L->door_open[b] = L->people->door[b];
+            continue;
         }
+        bool walker = false;
         for (int i = 0; i < LIB_SEATS && !walker; i++) {
             const LibMember *mb = &L->seat[i];
             walker = (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, b))) < s->door.open_radius;
@@ -1395,15 +1569,17 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         const HMM_Mat4 cm = placed(L, s->extra_chairs[i][0], s->extra_chairs[i][1], s->extra_chairs[i][2]);
         gfx_draw(g, L->chair, &cm, &room, 0);
     }
-    for (int i = 0; i < s->npc_n; i++) { /* the reader NPC's chair and open book; the cart */
+    for (int i = 0; i < s->npc_n; i++) { /* the readers' chairs and open books (not the sleeper's); the cart; bays on screen */
         const LibNpcDef *d = &s->npcs[i];
-        if (d->seated) {
+        if (d->seated && ((L->visible >> bay_at(L, d->seat_pos)) & 1u)) {
             const HMM_Mat4 cm = placed(L, d->seat_pos.X, d->seat_pos.Y, d->seat_yaw_deg);
             gfx_draw(g, L->chair, &cm, &room, 0);
             const LibSeat at = {d->seat_pos, d->seat_yaw_deg, d->seat_pos, {{{0}}}, 0};
-            draw_book(L, g, &at, true, &L->npc[i].study, 1.0f, 8); /* the readers' books: the prototype's b9 */
+            if (!d->sleeper) {
+                draw_book(L, g, &at, true, &L->npc[i].study, 1.0f, 8); /* the readers' books: the prototype's b9 */
+            }
         }
-        if (d->push_cart) {
+        if (d->push_cart && ((L->visible >> bay_at(L, L->npc[i].cart)) & 1u)) {
             const HMM_Mat4 cart = placed(L, L->npc[i].cart.X, L->npc[i].cart.Y, L->npc[i].cart_yaw_deg);
             gfx_draw(g, L->cart, &cart, &room, 0);
         }
