@@ -34,6 +34,17 @@ def load(guard):
     return set(l.strip() for l in open(guard) if l.strip() and not l.startswith('#'))
 
 
+PRIVATE = ('content_private/',)       # the real pack and figures live there on the build machine: never staged, never tracked
+
+
+def private(names):
+    """paths under content_private/ are refused whatever they hold"""
+    bad = [n for n in names if n and any(n.startswith(p) or ('/' + p) in n for p in PRIVATE)]
+    for n in bad:
+        print(f'leakguard: {n}: under content_private/ (the real content never enters the repository)', file=sys.stderr)
+    return len(bad)
+
+
 SKIP = ('third_party/', 'shaders/compiled/', 'assets/fonts/', '.png', '.jpg', '.mgf', '.ttf', '.otf', '.pdf', '.zip', '.ico')
 
 
@@ -79,6 +90,7 @@ def main():
         repo = sys.argv[3]
         names = subprocess.run(['git', '-C', repo, 'diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'],
                                capture_output=True).stdout.split(b'\0')
+        priv = private([f.decode() for f in names])
         named = []
         for f in names:
             if f and not f.endswith(b'leakguard.txt') and not any(x in f.decode() for x in SKIP):
@@ -89,6 +101,7 @@ def main():
     elif cmd == 'repo':
         repo = sys.argv[3]
         files = subprocess.run(['git', '-C', repo, 'ls-files', '-z'], capture_output=True).stdout.split(b'\0')
+        priv = private([f.decode() for f in files])
         named = []
         for f in files:
             if f and not f.endswith(b'leakguard.txt') and not any(x in f.decode() for x in SKIP):
@@ -110,7 +123,8 @@ def main():
                     if len(data) < 5_000_000:
                         named.append((f'{rev[:8]}:{path.decode()}', data))
         bad = scan_blobs(guard, named)
-    print('leakguard:', 'FAIL' if bad else 'clean', f'({bad} runs of >= {N} book words)')
+    bad += locals().get('priv', 0)
+    print('leakguard:', 'FAIL' if bad else 'clean', f'({bad} runs of >= {N} book words or private paths)')
     sys.exit(1 if bad else 0)
 
 

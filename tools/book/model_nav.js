@@ -69,7 +69,10 @@ const doorRep = DOORS.map(d => {
   const ex = d.x + d.cx * d.len, ez = d.z + d.cz * d.len, x0 = Math.min(d.x, ex), x1 = Math.max(d.x, ex), z0 = Math.min(d.z, ez), z1 = Math.max(d.z, ez);
   const zone = [Math.min(x0, x0 + d.nx, x0 - d.nx), Math.min(z0, z0 + d.nz, z0 - d.nz), Math.max(x1, x1 + d.nx, x1 - d.nx), Math.max(z1, z1 + d.nz, z1 - d.nz)];
   const hits = solid.filter(p => p.f === d.f && p.r[0] < zone[2] - .02 && zone[0] < p.r[2] - .02 && p.r[1] < zone[3] - .02 && zone[1] < p.r[3] - .02).map(p => p.id + ' (' + p.kind + ')');
-  return {f: d.f, room: d.room, x: +d.x.toFixed(2), z: +d.z.toFixed(2), len: d.len, zone: zone.map(v => +v.toFixed(2)), blockers: hits};
+  // walkable cells across the opening: rows through the wall (normal offsets -0.25, 0, +0.25 m); the fewest counts
+  let cells = 1e9;
+  for (const o of [-.25, 0, .25]) { const seen = new Set(); for (let t = 0; t <= d.len + 1e-6; t += .05) { const k = idx(d.x + d.cx * t + d.nx * o, d.z + d.cz * t + d.nz * o); if (k >= 0 && WALK[d.f][k]) seen.add(k); } cells = Math.min(cells, seen.size); }
+  return {f: d.f, room: d.room, x: +d.x.toFixed(2), z: +d.z.toFixed(2), len: d.len, cells_across: cells, zone: zone.map(v => +v.toFixed(2)), blockers: hits};
 });
 // rooms: walkable floor, reachable floor, pockets (walkable, unreachable); a pocket is allowed only behind a counter
 const COUNTER = new Set(['dispensing_counter', 'station_counter', 'nurse_counter', 'reception_desk']);
@@ -88,7 +91,12 @@ const doorsBad = doorRep.filter(d => d.blockers.length && !STAIRS.has(d.room)), 
 fs.writeFileSync(out, JSON.stringify({note: 'walk grid of the 3D page (everything drawn is solid), map checks; built by tools/book/model_nav.js',
   grid: {cs: NV.cs, x0: NV.x0, z0: NV.z0, nx: NV.nx, nz: NV.nz, walk: WALK.map(bits), reach: REACH.map(bits)}, lifts: LIFTS, lift_z: LZ, corr: ctx.CORR,
   exempt: ROOMS.filter(r => r.stairs).map(r => r.id),
-  doors: doorRep, rooms: roomRep, doors_blocked: doorsBad.length, rooms_failing: roomsBad.map(r => r.id)}));
+  doors: doorRep, rooms: roomRep, doors_blocked: doorsBad.length, rooms_failing: roomsBad.map(r => r.id),
+  doors_narrow: doorRep.filter(d => d.cells_across < 2 && !STAIRS.has(d.room)).map(d => d.room + ' ' + d.x + ',' + d.z)}));
+const cw = doorRep.filter(d => !STAIRS.has(d.room)).map(d => d.cells_across), byLen = {};
+doorRep.filter(d => !STAIRS.has(d.room)).forEach(d => { const k = d.len.toFixed(2); byLen[k] = byLen[k] || [1e9, 0]; byLen[k][0] = Math.min(byLen[k][0], d.cells_across); byLen[k][1]++; });
+console.log(`model_nav: door openings (stairwells exempt): walkable cells across min ${Math.min(...cw)}, max ${Math.max(...cw)}; ${cw.filter(c => c < 2).length} doors with fewer than 2; by leaf width ` +
+  Object.keys(byLen).sort().map(k => `${k} m: min ${byLen[k][0]} (${byLen[k][1]} doors)`).join(', '));
 console.log(`model_nav: ${DOORS.length} doors, ${doorsBad.length} without a free 1.0 m approach; ${ROOMS.length} rooms, ${roomsBad.length} with floor not reachable from the entrance (stairwells exempt: ${STAIRS.size})`);
 for (const d of doorsBad) console.log(`  door ${d.room} (storey ${d.f}) at ${d.x},${d.z}: ${d.blockers.join(', ')}`);
 for (const r of roomsBad) console.log(`  room ${r.id}: reachable ${r.reach} / ${r.cells} cells; pockets ${r.pockets.filter(p => !p.behind_counter.length).map(p => p.m2 + ' m2 at ' + p.at).join('; ')}`);

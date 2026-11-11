@@ -103,14 +103,21 @@ The institute scene exists (step 1 of "Order of work") and loads `iprop` / `islo
   `-std=c11`; glibc defines it only with `_DEFAULT_SOURCE` / `_GNU_SOURCE`). BOOK-1 did not touch that file; fix it in the
   engine step.
 
-- **Open question for the author (propose, do not decide):** where the pack lives. Proposal: a private repository (or
-  private bucket) holding `gastro-pack.zip`, pinned in `content/CONTENT.lock` (path | sha256 | source, same format and
-  checker as `assets/ASSETS.lock` / `tools/assets_lock.py`), fetched at configure time with a token from the environment.
-- CMake: when `content/src/gastro-pack.zip` (or an unpacked `content/gastro/` with `atoms.jsonl`) is present and matches the
-  lock, run `content/gastro/check.py` (must pass) and `tools/book/packbin.py` into `${MG_GEN_DIR}/content/gastro.mgpack` and add
-  it and the figure atlas to `MG_EMBED_FILES`. When absent (public CI), embed a **stub pack** generated from the public
-  files (ids, rooms, props, counts; placeholder strings) so the public build and tests stay green.
-- No JSON parsing of the pack at run time; `packbin.py` is the only producer of the binary.
+- **The repository is public: the real pack never enters it.** The real `gastro.mgpack` (v4), its header and the figure
+  crops live in a git-ignored folder on the build machine, **`content_private/gastro/`** (in `.gitignore`; the leak guard
+  refuses any staged or tracked path under it, and `check.py --leak` fails on one). The engine bundle the author hands over
+  (`BOOK-1_engine_bundle.zip`) unpacks there.
+- CMake: when `content_private/gastro/gastro.mgpack` is present, embed it and its figure crops (`MG_EMBED_FILES`, under the
+  name `content/gastro.mgpack`). When it is absent, embed the **dummy pack** committed at `content/gastro_demo/gastro.mgpack`
+  (2 arcs, 3 cases, 6 rooms of invented filler, every item type, dialogue, people; same v4 format, regenerated with
+  `python3 -I tools/book/make_dummy_pack.py content/gastro_demo`, accepted by `content/gastro/mgpack_read.c`), so the
+  public repository and CI always build and run every test. A compile definition (`MG_CONTENT_DEMO=1`) marks the dummy
+  build, and the game shows a small **„conținut demo”** tag (Jelly Pop chip, top left, under the account chip) whenever it
+  runs on the dummy pack.
+- A shipped build (`tools/archive_ios.sh`, `tools/build_aab.sh`, any Release archive) **fails at configure time** if the
+  real pack is missing: never ship the demo.
+- No JSON parsing of the pack at run time; `packbin.py` is the only producer of the binary; the loader runs the same
+  checks as `mgpack_read.c` (header, record sizes, indices, strings) on whichever pack is embedded.
 
 ### S2. Loader: zero-copy, zero allocation per frame
 
@@ -181,6 +188,12 @@ longest {DLG_LONGEST} bytes (text scrolls, never cut).
   drawn solid, 0.25 m cells, capsule 0.3 m, the same rules as `navgrid.c`). A presenter behind a counter is spoken to
   across it. The map check also requires a free 1.0 m approach on both sides of every door and every room's floor
   reachable from the entrance (stairwells exempt: the stair flight fills them and collides as one box).
+- **Doors and the grid:** every door opening must hold at least **2 walkable cells across its width** (checked: {DOOR_MIN}
+  to {DOOR_MAX} on the {DOORS_CHECKED} doors that are not stairwells). With 0.25 m cells and the 0.3 m capsule inflation the
+  grid supports doors of **1.2 m** (1.1 m leaf) or wider, as in `navgrid.c`; 0.9–1.0 m doors give 0–1 cells and the room
+  behind is unreachable (the institute's toilets were widened from 0.9 m to 1.2 m for this). Two cells are guaranteed at any
+  offset to the grid from a 1.25 m clear opening; MAP-2 keeps door centres on the model's 0.05 m grid, where 1.2 m gives
+  exactly 2.
 - **Reused, unchanged:** the objective marker is `markers.c` (one marker, the chapter colour, edge icon, distance, floor
   badge, tap = autonav); talking is the proximity interaction of `interact.h` (10 Hz scan, 2.0 / 2.5 m, the bottom-right
   panel with the NPC's floating head, `IA_PRIORITY` for the objective's presenter, others greet for 2.5 s and nod); the
@@ -225,9 +238,10 @@ nobody outdoors). Per storey:
 |---:|---:|---:|---:|
 {PEOPLE_ROWS}
 
-Maximum on one storey: **{PEOPLE_MAX}**. Static people ({STATIC_N}) are instanced with the avatar batches and take no
-pathfinding; only the {WALKERS} walkers run steering, on the staggered update rates of the M7 sim (every tick near the
-player on the view storey, 1/3 far, 1/6 on other storeys). They are drawn-only and outside the deterministic NPC sim.
+Maximum on one storey: **{PEOPLE_MAX}**. **The institute scene shows only these {PEOPLE} people from the pack's people
+table; the old hospital's ambient roster (M7, 47 NPCs) does not run in this scene.** The {WALKERS} walkers use the existing
+NPC steering (`npc_sim` path following on the staggered update rates: every tick near the player on the view storey, 1/3
+far, 1/6 on other storeys); the {STATIC_N} static people are placed once at load and never path.
 
 ### S5. Script player and item widgets (UI-1 Jelly Pop)
 
@@ -279,9 +293,9 @@ player on the view storey, 1/3 far, 1/6 on other storeys). They are drawn-only a
 | CPU tick | 5.0 ms | < 0.02 ms: ≤ {MAX_ANCHORS_STOREY} more entries in the 10 Hz interaction scan through the spatial hash; progress is a bit set | estimate, measure |
 | CPU render submission | 2.0 ms | + instance building for ≤ {PROPS} props (< 0.05 ms) | estimate, measure |
 | Memory | 300 MB | pack {PACK_MB} MB (embedded, read in place) + figure atlas ≤ {FIG_MB} MB RGBA8 (2048² pages; ASTC 4×4 would be a quarter) + derived tables < 0.1 MB | measured / estimate |
-| NPCs | 200 | {NPC_TOTAL} at most: the M7 roster (47) + {PEOPLE} people of the missions ({PEOPLE_MAX} at most on one storey); {WALKERS} of them steer | data |
-| Draw calls (people) | in the 150 | +0 for static people (they join the avatar instanced batches: same meshes and pipelines), +1 x-ray pass already counted | instancing |
-| CPU tick (people) | in the 5.0 ms | static: 0; {WALKERS} walkers steering on the staggered rates (< 0.05 ms); staging one presenter per step change | estimate, measure |
+| NPCs | 200 | {PEOPLE}: the pack's people table only (the M7 roster does not run in the institute); {PEOPLE_MAX} at most on one storey; {WALKERS} steer, {STATIC_N} never path | data |
+| Draw calls (people) | in the 150 | the {PEOPLE} people (≤ {PEOPLE_MAX} drawn: only the view storey) share the avatar instanced batches (same meshes and pipelines): the same draw count as any crowd, no draw per person; the x-ray pass is already counted | instancing |
+| CPU tick (people) | in the 5.0 ms | {STATIC_N} static: 0 (placed once); {WALKERS} walkers on the existing steering at the staggered rates (< 0.05 ms, well under the 200-NPC stress scenario); staging one presenter per step change | estimate, measure |
 | Heap allocations in the frame loop | 0 | 0: fixed-size player state, arena tables built at load; the people table ({PEOPLE_KB} KB) and dialogue are read in place from the pack | |
 | GPU frame | 8.0 ms | props are small toon meshes; the card is one SDF batch | measure with Instruments |
 
@@ -302,6 +316,7 @@ blocks sign-off.
 - [ ] the pack loader accepts what `content/gastro/mgpack_read.c` accepts (same checks) and the final simulation's question
       counts and scoring are left unset (constants marked TODO) for the author
 - [ ] `content/gastro/check.py` passes in the build; the public build uses the stub pack and stays green
-- [ ] the content location is proposed in `content/README` and left as an open question for the author
+- [ ] the real pack is read from `content_private/gastro/` (git-ignored) when present; otherwise the committed dummy pack
+      builds and runs every test and the game shows „conținut demo”; a shipped build fails without the real pack
 - [ ] `--autotest book` and `--autotest book_ui` pass; pack ctest passes; `link_test.sql` passes
 - [ ] `--autotest perf` within budget; `docs/perf/` updated

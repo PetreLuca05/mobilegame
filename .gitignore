@@ -43,3 +43,6 @@ assets/*.preview.png
 supabase/.temp/
 supabase/.branches/
 .env
+
+# BOOK-1: the real content pack and figures live here on the build machine; never committed (public repository)
+content_private/

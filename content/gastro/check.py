@@ -85,6 +85,9 @@ def leak_scan(pack, repo):
     bad = []
     for f in files:
         f = f.decode()
+        if f.startswith('content_private/') or '/content_private/' in f:
+            bad.append(f'{f}: tracked under content_private/ (the real content never enters the repository)')
+            continue
         p = os.path.join(repo, f)
         if not f or any(x in f for x in skip) or not os.path.isfile(p) or os.path.getsize(p) > 5_000_000:
             continue
@@ -991,6 +994,8 @@ def main():
         NVJ = json.load(open(nvp, encoding='utf-8'))
         ex = set(NVJ.get('exempt', []))
         for d in NVJ['doors']:
+            if d.get('cells_across', 2) < 2 and d['room'] not in ex:
+                E['map'].append(f"door of {d['room']} (storey {d['f']}) at {d['x']},{d['z']}: {d['cells_across']} walkable cells across the opening (2 needed)")
             if d['blockers'] and d['room'] not in ex:
                 E['map'].append(f"door of {d['room']} (storey {d['f']}): no free 1.0 m approach: {', '.join(d['blockers'])}")
         for r in NVJ['rooms']:
@@ -999,6 +1004,9 @@ def main():
             bad_p = [p_ for p_ in r['pockets'] if p_['m2'] >= .5 and not p_['behind_counter']]
             if not r['reach'] or bad_p:
                 E['map'].append(f"room {r['id']}: floor not reachable from the entrance ({r['reach']} of {r['cells']} cells; pockets {[p_['m2'] for p_ in bad_p]} m2)")
+        _dw = [d.get('cells_across', 0) for d in NVJ['doors'] if d['room'] not in ex]
+        stats['door openings'] = (f"{len(_dw)} doors (stairwells exempt): walkable cells across min {min(_dw)}, max {max(_dw)}; "
+                                  f"fewer than 2: {sum(1 for c in _dw if c < 2)}; the 1.2 m doors (1.1 m leaf) give exactly 2")
         stats['map (all furniture solid)'] = (f"{len(NVJ['doors'])} doors with a free 1.0 m approach on both sides, {len(NVJ['rooms']) - len(ex)} rooms reachable "
                                               f"from the entrance (stairwells exempt: {len(ex)})" if not E.get('map') else 'FAIL')
     elif os.path.exists(os.path.join(pack, 'missions_src.json')):

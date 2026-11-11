@@ -131,7 +131,11 @@ def main(pack, mgpack):
                  'PEOPLE_ROWS': '\n'.join(f'| {f} | {per[f]} | {sum(1 for x in ppl if x["f"] == f and x["cast"])} | {walk[f]} |' for f in range(4)),
                  'DLG_LINES': f'{int(kv.get("dialogue_lines", 0)):,}', 'DLG_BYTES': f'{int(kv.get("dialogue_bytes", 0)):,}',
                  'DLG_LONGEST': kv.get('longest_dialogue_line_bytes', '0'), 'CASE_BYTES': kv.get('case_state_bytes', '0'),
-                 'PEOPLE_KB': f'{len(ppl) * 44 / 1024:.1f}', 'NPC_TOTAL': str(len(ppl) + 47)})
+                 'PEOPLE_KB': f'{len(ppl) * 44 / 1024:.1f}', 'NPC_TOTAL': str(len(ppl))})
+    nvp = os.path.join(pack, 'model_nav.json')
+    NVJ = json.load(open(nvp, encoding='utf-8')) if os.path.exists(nvp) else {'doors': [], 'exempt': []}
+    dw = [d.get('cells_across', 0) for d in NVJ['doors'] if d['room'] not in set(NVJ.get('exempt', []))] or [0]
+    vals.update({'DOOR_MIN': str(min(dw)), 'DOOR_MAX': str(max(dw)), 'DOORS_CHECKED': str(len(dw))})
     for k, v in vals.items():
         tpl = tpl.replace('{' + k + '}', v)
     left = sorted(set(re.findall(r'\{[A-Z][A-Z_]+\}', tpl)) - {'{MG_GEN_DIR}'})

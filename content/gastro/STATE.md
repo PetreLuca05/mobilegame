@@ -4,6 +4,19 @@ Resume from these files alone (the zip = `content/gastro/` + `content/src/` + `t
 22 PDF pages, printed 1147, 1162–1166, 1172–1176, 1198–1208. Rebuild: `tools/book/make.sh content/gastro` (23 s; ends
 with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
 
+## Status (end of the BOOK-1 session)
+
+**Content complete.** Waiting for the author's `review_errata.csv` and `review_hidden.csv` (then
+`check.py content/gastro --apply-review` → rebuild with `make.sh`). The final exam's question counts and scoring are unset
+(the author's). The engine step (MAP-2, then BOOK-ENGINE via `ENGINE_PROMPT.md`) has not started.
+
+- Engine hand-over: `BOOK-1_engine_bundle.zip` = `gastro.mgpack` (v4) + header + `mgpack_read.c` + `institute.map` + the walk
+  grid it was checked on (`model_nav.json`) + the 18 figure crops + `ENGINE_PROMPT.md`; it unpacks into the git-ignored
+  `content_private/gastro/`. The public repository builds on the dummy pack `content/gastro_demo/gastro.mgpack`
+  (`tools/book/make_dummy_pack.py`, invented filler, same format) and shows „conținut demo”.
+- Door check: every door opening holds ≥ 2 walkable cells across (101 doors: 2–3; stairwells exempt); the grid supports
+  1.2 m doors and wider.
+
 ## Phase
 
 | phase | state |
