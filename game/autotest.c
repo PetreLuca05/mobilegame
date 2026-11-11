@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY, AUTOTEST_INSTITUTE };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library", "institute"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -52,7 +52,8 @@ bool autotest_starts_in_game(int argc, char **argv)
                    SDL_strcmp(argv[i + 1], "stress200") == 0 || SDL_strcmp(argv[i + 1], "determinism") == 0 || SDL_strcmp(argv[i + 1], "npcs") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0 ||
-                   SDL_strcmp(argv[i + 1], "stick") == 0 || SDL_strcmp(argv[i + 1], "netsoak") == 0 || SDL_strcmp(argv[i + 1], "levelswitch") == 0;
+                   SDL_strcmp(argv[i + 1], "stick") == 0 || SDL_strcmp(argv[i + 1], "netsoak") == 0 || SDL_strcmp(argv[i + 1], "levelswitch") == 0 ||
+                   SDL_strcmp(argv[i + 1], "institute") == 0;
         }
     }
     return false;
@@ -212,6 +213,96 @@ static bool run_stickdir(Autotest *t, MgApp *app, const AutotestProbe *p, double
 }
 
 static bool fail(Autotest *t, const char *what, const char *detail);
+
+/* MAP-2: the institute end to end (run with --scene institute, which the game sets for this test): 3 lifts and 5 floors,
+ * auto-nav from the forecourt to a room on every storey and the roof deck and back out, each leg ARRIVED within 0.6 m on
+ * the right storey (cross-storey legs ride a lift), a picture at each stop; over the whole walk at most 150 draws a frame
+ * and no heap allocation in the frame loop. Targets are cells with 0.75 m of clearance on the reference grid (model_nav). */
+static bool run_institute(Autotest *t, const AutotestProbe *p, AutotestOut *out, double el)
+{
+    enum { ARRIVED_ = 4, FAILED_ = 6 }; /* AutonavState */
+    static const struct { float x, y, z; int storey; const char *name; } legs[] = {
+        {8.125f, 0.0f, -15.125f, 0, "g_fiziologie"},   {-2.625f, 4.0f, 14.375f, 1, "e_endo2"},    {-12.375f, 8.0f, -12.875f, 2, "w_genetica"},
+        {13.375f, 12.0f, 16.125f, 3, "o_biblioteca"}, {0.0f, 16.0f, 10.6f, 4, "roof"},            {1.875f, 12.0f, -12.375f, 3, "o_comisie"},
+        {0.0f, -0.25f, 24.0f, -1, "forecourt"},
+    };
+    const int n = (int)MG_ARRAY_COUNT(legs);
+    if (el < 3.0) {
+        return false;
+    }
+    if (p->draws > t->inst_draws_max) {
+        t->inst_draws_max = p->draws;
+    }
+    t->inst_allocs += p->frame_allocs;
+    if (p->ride_lift >= 0) {
+        t->inst_lifts |= 1u << p->ride_lift;
+    }
+    switch (t->stage) {
+    case 0:
+        if (p->scene_kind != 1 /* SCENE_INSTITUTE */ || p->lift_count != 3 || p->floor_count != 5) {
+            char why[96];
+            SDL_snprintf(why, sizeof(why), "scene %d with %d lifts and %d floors (want the institute, 3, 5)", p->scene_kind, p->lift_count, p->floor_count);
+            return fail(t, "institute", why);
+        }
+        mg_log_info("autotest institute: the institute, 3 lifts, 5 floors");
+        t->stage = 1;
+        break;
+    case 1:
+        out->nav_go = true;
+        out->nav_pos = HMM_V3(legs[t->step].x, legs[t->step].y, legs[t->step].z);
+        out->nav_to = legs[t->step].storey;
+        t->step_start = el;
+        t->stage = 2;
+        break;
+    case 2: {
+        const double local = el - t->step_start;
+        if (local < 0.1) {
+            break;
+        }
+        if (p->nav_state == ARRIVED_) {
+            const float dx = p->player_pos.X - legs[t->step].x, dz = p->player_pos.Z - legs[t->step].z;
+            const float dist = sqrtf(dx * dx + dz * dz);
+            const int storey = p->nav_storey >= 0 ? p->nav_storey : p->floor > 0 ? p->floor : -1;
+            const bool ok = dist <= 0.6f && (storey == legs[t->step].storey || (legs[t->step].storey == 4 && p->floor == 4));
+            mg_log_info("autotest institute: %s arrived %.2f m from the target in %.1f s, storey %d / floor %d (%s)", legs[t->step].name, (double)dist, local,
+                        p->nav_storey, p->floor, ok ? "ok" : "FAIL");
+            if (!ok) {
+                return fail(t, "institute", legs[t->step].name);
+            }
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "inst_at_%s", legs[t->step].name);
+            t->wait_until = el + 0.5;
+            t->stage = 3;
+        } else if (p->nav_state == FAILED_ || local > 90.0) {
+            return fail(t, "institute", p->nav_state == FAILED_ ? "auto-nav failed" : "auto-nav took over 90 s");
+        }
+        break;
+    }
+    case 3:
+        if (el >= t->wait_until) {
+            t->step++;
+            t->stage = t->step == n ? 4 : 1;
+        }
+        break;
+    case 4: {
+        const int lifts = (t->inst_lifts & 1) + (t->inst_lifts >> 1 & 1) + (t->inst_lifts >> 2 & 1);
+        mg_log_info("autotest institute: %d rides on %d of 3 lifts (mask %u), worst %u draws a frame (budget 150), %u heap allocations in the frame loop",
+                    p->rides, lifts, t->inst_lifts, t->inst_draws_max, t->inst_allocs);
+        if (t->inst_draws_max > 150) {
+            return fail(t, "institute", "over 150 draws in a frame");
+        }
+        if (t->inst_allocs > 0) {
+            return fail(t, "institute", "heap allocations in the frame loop");
+        }
+        if (p->rides < 4) {
+            return fail(t, "institute", "fewer than 4 lift rides");
+        }
+        mg_log_info("AUTOTEST PASSED");
+        t->passed = true;
+        return true;
+    }
+    }
+    return false;
+}
 
 /* Auto-nav legs: each must end ARRIVED within 0.6 m. Leg 1 also pushes the
  * stick after 2 s: navigation must stop at once and the stick must drive. */
@@ -634,7 +725,13 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         t->stage = 1;
         return false;
     case 1:
-        if (p->playing) {
+        if (p->playing && p->scene_kind == 1) { /* Gastro is the institute (MAP-2): auto-nav to a room on floor 2 */
+            out->nav_go = true;
+            out->nav_pos = HMM_V3(-12.375f, 8.0f, -12.875f); /* w_genetica */
+            out->nav_to = 2;
+            t->stage = 4;
+            t->step_start = app->time;
+        } else if (p->playing) {
             out->start_route = true;
             t->stage = 3;
             t->step_start = app->time;
@@ -656,8 +753,8 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     default:
         break;
     }
-    /* the route's first ride goes to floor 2; stop once off the car there */
-    if (p->floor == 2 && !p->riding && p->route_step > 8) {
+    /* the route's first ride goes to floor 2 (the institute: auto-nav's ride); stop once off the car there */
+    if (t->stage == 4 ? p->floor == 2 && p->nav_state == 4 /* ARRIVED */ : p->floor == 2 && !p->riding && p->route_step > 8) {
         mg_log_info("autotest save: on floor 2 at (%.2f, %.2f, %.2f), killing the app", p->player_pos.X,
                     p->player_pos.Y, p->player_pos.Z);
         mg_log_info("AUTOTEST PASSED");
@@ -665,7 +762,9 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         out->kill = true;
         return true;
     }
-    return app->time - t->step_start > 90.0 || p->route_step < 0 ? fail(t, "save", "never reached floor 2") : false;
+    return app->time - t->step_start > 90.0 || (t->stage == 3 && p->route_step < 0) || (t->stage == 4 && p->nav_state == 6)
+               ? fail(t, "save", "never reached floor 2")
+               : false;
 }
 
 static bool run_continue(Autotest *t, MgApp *app, const AutotestProbe *p)
@@ -680,7 +779,7 @@ static bool run_continue(Autotest *t, MgApp *app, const AutotestProbe *p)
     if (app->time - t->step_start < 1.0) { /* let the elevator place the car */
         return false;
     }
-    mg_log_info("autotest continue: floor %d at (%.2f, %.2f, %.2f)", p->floor, p->player_pos.X, p->player_pos.Y,
+    mg_log_info("autotest continue: scene %d, floor %d at (%.2f, %.2f, %.2f)", p->scene_kind, p->floor, p->player_pos.X, p->player_pos.Y,
                 p->player_pos.Z);
     t->passed = p->floor == 2;
     mg_log_info("AUTOTEST %s", t->passed ? "PASSED" : "FAILED");
@@ -1099,6 +1198,9 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     case AUTOTEST_AUTONAV:
         finished = run_autonav(t, app, p, out, el);
+        break;
+    case AUTOTEST_INSTITUTE:
+        finished = run_institute(t, p, out, el);
         break;
     case AUTOTEST_MARKERS:
         finished = run_markers(t, app, p, el);

@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|levelswitch|screenshot NAME`, `--scene hospital|institute|devroom` (every level load),
+`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|levelswitch|institute|screenshot NAME`, `--scene hospital|institute|devroom` (every level load),
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -648,3 +648,26 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   reference reader of `gastro.mgpack` (v4; 32 table slots in the header), built and run by `check.py`.
 - Author review: `review_errata.csv` / `review_hidden.csv` (zip only) → `check.py content/gastro --apply-review` → lists
   what must be rebuilt. Hand-over: `content/gastro/ENGINE_PROMPT.md` (MAP-2 first, then BOOK-ENGINE).
+
+## Book engine (BOOK-ENGINE)
+
+- Institute (MAP-2): books.json Gastro `scene` = `institute`. `tools/mapc.py` compiles `content/gastro/institute.map` to
+  `assets/world/institute.mapb` (MGMP v1, read in place by `game/imap.c`); `game/institute.c` (+ `institute_furniture.c`)
+  builds the shell, furniture merged per storey and material, 3 lifts x 5 landings (G 1 2 3 R), wall pieces, door leaves,
+  nav at the capsule's 0.35 m, room graph. Nav vs the reference grid: `MG_NAV_CHECK=<file>` (`game/nav_check.c`, last report
+  `docs/autotest/institute/nav_check.txt`). Pictures: `tools/institute_shots.sh`. No ambient NPC roster in the institute.
+- Landing call (`lifts_call` in game.c): with several lifts a car stays where it was used; standing within 1.6 m of an idle
+  car's plan on another storey calls it there (the hospital's single car is always on the player's floor).
+- `--autotest institute` (sets the scene itself): auto-nav to a room on every storey, the roof deck and back to the
+  forecourt, a picture per stop (`inst_at_*`), worst frame <= 150 draws, 0 frame-loop allocations, >= 4 rides. Perf scenario
+  `institute` (G lobby, both wings, a ride to floor 2). `save` / `continue` play Gastro = the institute (auto-nav to floor 2).
+- Pack: `game/book_pack.c` (the reader's checks, zero copy; `book_pack_test`), `MG_CONTENT_DIR`, `MG_CONTENT_DEMO` +
+  the „conținut demo” chip, `MG_REQUIRE_REAL_CONTENT=ON` in the release scripts. Text: `text_wrap` (`engine/ui/text_layout.c`),
+  `ui_text_area` (re-wraps on change, draws only visible lines). Glyphs „ ” – ’ › → − † α β γ (Greek from Comfortaa).
+- Progress (decision 4): `game/book_progress.c`, one file per account `book_gastro_<uid>.bin` (MGBP: facts bitset + 2 bits
+  per case, atomic write from a fixed buffer); on account load the bits go to `book_progress_merge` and the merged row comes
+  back (`NET_EV_BOOK_PROGRESS`); Erase progress resets file and row; Gastro's map completion = facts set / facts.
+  `--debug book-fact N` sets one. ctest `book_progress`.
+- Figures (decision 7): `tools/book/figpack.py FIGDIR OUT astc|rgba8` -> `.mgfig` (MGFG v1, sorted ids, 16-aligned, top row
+  first); ASTC 4x4 through macOS ImageIO (`tools/book/astc_encode.swift`, flips the image: ImageIO writes the bottom row
+  first), RGBA8 decoded without Pillow. `game/book_figs.c` reads it in place; ctest `book_figs` on the dummy pack's figure.
