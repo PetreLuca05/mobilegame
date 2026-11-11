@@ -40,6 +40,9 @@ void mb_cone(MeshBuilder *mb, HMM_Mat4 xform, float radius, float height, int se
 void mb_sprite_quad(MeshBuilder *mb);
 
 GfxMeshId mb_upload(MeshBuilder *mb, GfxContext *g);
+/* A triangle soup (3 vertices per triangle) uploaded with identical vertices welded (a flat quad's shared corners);
+ * scratch is used and released. *kept (optional) gets the vertex count after welding. */
+GfxMeshId mesh_upload_welded(GfxContext *g, Arena *scratch, const GfxVertex *v, uint32_t n, uint32_t *kept);
 
 HMM_Mat4 mg_trs(HMM_Vec3 t, HMM_Quat r, HMM_Vec3 s);
 

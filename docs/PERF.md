@@ -402,3 +402,29 @@ Estimates (LIB-1 section 7): menu <= 22 draws / ~18 k triangles: 23.6 / 22.6 k (
 <= 45 draws: 40 at most. `menu_to_map` first showed 7 allocations in 2 frames (SDL's per-command-buffer uniform-buffer lists growing
 on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled command buffer; one `prefs.json` write per Back
 (cJSON) is exempt like the map's one load. GPU numbers come from the combined iPad gate.
+
+### The square hall (2 x 2 bays, mg-library 10), Mac Release, `docs/perf/lib1/`
+
+| Scenario | Draws max | Triangles max | Passes | Allocations | Resident MB | Note |
+|---|---|---|---|---|---|---|
+| menu (before this round, 35be897) | 21 | 61.6 k | 1 | 0 | 211 | 26 avatars at LOD0, pools 12 + 6 MB |
+| menu (now) | 27 | 47.4 k | 1 | 0 | 194 | NPC LOD, pools 5 + 2 MB, meshes welded |
+| menu `--lib-no-nav` (A/B) | 27 | 47.4 k | 1 | 0 | 198 | the straight-leg runner |
+| yard | 51 | 34.8 k | 1 | 0 | 199 | vertex pool 3.5 / 5 MB, index 0.9 / 2 MB |
+| lobby4 | 69 | 75.8 k | 1 | 0 | 199 | vertex pool 3.5 / 5 MB |
+| worldmap | 23 | 63.0 k | 1 | 0 | 185 | |
+
+- **Estimate, rooms (replaces the 18 k of LIB-1 §7):** the four bays are **33.3 k triangles** (room_0..3: 7.5 / 9.7 / 7.7 / 8.5 k),
+  all drawn in the menu because the back rooms show through the open doors. Props ~3.3 k (10 chairs, books, mugs, pencils, 4 doors,
+  the cart).
+- **Avatars:** LOD0 is ~950 triangles (the suit body 419, head 80, hair 90-120, eyes 2 x 48, hands 2 x 80; glasses / mask +108 / +117),
+  LOD1 ~154. Rule: NPCs in another bay or under 60 pt tall on screen are LOD1, of the rest the 4 nearest the camera LOD0; my table
+  always LOD0. Menu avatars: 25 k -> ~11 k (8 at LOD0, 21 at LOD1; measured total minus rooms and props). The LOD1 parts are their
+  own instanced batches: draws 21 -> 27.
+- **Memory against step 5 (180 MB; the 191 MB record is step 6):** 211 -> 194 MB = +14. The step-6 map preload is +11, the mesh pools
+  (5 + 2 against 4 + 2 MB) +1, the perm arena (the hall's nav grid and its request queue, the larger MenuLibrary) +2. Every triangle soup
+  is welded at upload (`mesh_upload_welded`: identical position + normal + colour): the hall 105,840 -> 82,006 vertices; the vertex
+  pool peaks at 3.5 MB (yard, lobby4) of 5.
+- **NPC pathing:** each NPC leg is an A* request on the hall grid through the request queue, serviced once a frame within 0.5 ms
+  (one search always runs); the next leg is searched while the NPC waits at its post. Menu frame 0.081 ms (straight legs) -> 0.083 ms;
+  `lib.nav` 0.001 ms average, 0.14 ms max (one search); 0 heap allocations (lib_nav uses its own scratch).

@@ -160,6 +160,7 @@ typedef struct MenuLibrary {
     LibMember seat[LIB_SEATS];
     LibNpc npc[LIB_NPCS];
     LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
+    uint32_t weld_in, weld_out; /* the meshes' vertices before / after welding at load (log) */
     LibNavQueue *queue; /* the NPCs' path requests, serviced once a frame within LIB_NAV_BUDGET_MS */
     bool no_nav;        /* --lib-no-nav: straight legs (the runner before the grid; perf A/B only) */
     HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */

@@ -66,16 +66,12 @@ static GfxMeshId upload_soup(GfxContext *g, Arena *arena, const GfxVertex *const
     }
     const size_t mark = arena_mark(arena);
     GfxVertex *v = ARENA_PUSH(arena, GfxVertex, total);
-    uint32_t *idx = ARENA_PUSH(arena, uint32_t, total);
     uint32_t at = 0;
     for (int i = 0; i < n; i++) {
         SDL_memcpy(v + at, parts[i], sizeof(GfxVertex) * counts[i]);
         at += counts[i];
     }
-    for (uint32_t i = 0; i < total; i++) {
-        idx[i] = i;
-    }
-    const GfxMeshId id = gfx_mesh_upload(g, v, total, idx, total);
+    const GfxMeshId id = mesh_upload_welded(g, arena, v, total, NULL); /* identical corners welded */
     arena_reset_to(arena, mark);
     return id;
 }

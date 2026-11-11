@@ -1,5 +1,7 @@
 #include "mesh.h"
 
+#include <SDL3/SDL_stdinc.h>
+
 #include <string.h>
 
 #include <math.h>
@@ -291,4 +293,50 @@ HMM_Mat4 mg_trs(HMM_Vec3 t, HMM_Quat r, HMM_Vec3 s)
     HMM_Mat4 m = HMM_MulM4(HMM_QToM4(r), HMM_Scale(s));
     m.Columns[3] = HMM_V4V(t, 1.0f);
     return m;
+}
+
+GfxMeshId mesh_upload_welded(GfxContext *g, Arena *scratch, const GfxVertex *v, uint32_t n, uint32_t *kept)
+{
+    if (n == 0) {
+        return GFX_MESH_NONE;
+    }
+    const size_t mark = arena_mark(scratch);
+    uint32_t cap = 1;
+    while (cap < 2u * n) {
+        cap <<= 1;
+    }
+    uint32_t *idx = ARENA_PUSH(scratch, uint32_t, n);
+    uint32_t *table = ARENA_PUSH(scratch, uint32_t, cap);
+    GfxVertex *out = ARENA_PUSH(scratch, GfxVertex, n);
+    if (!idx || !table || !out) {
+        arena_reset_to(scratch, mark);
+        return GFX_MESH_NONE;
+    }
+    SDL_memset(table, 0xFF, sizeof(uint32_t) * cap);
+    uint32_t nv = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        const uint8_t *b = (const uint8_t *)&v[i];
+        uint32_t h = 2166136261u; /* FNV-1a over the vertex's 28 bytes */
+        for (size_t k = 0; k < sizeof(GfxVertex); k++) {
+            h = (h ^ b[k]) * 16777619u;
+        }
+        for (h &= cap - 1;; h = (h + 1) & (cap - 1)) {
+            if (table[h] == UINT32_MAX) {
+                table[h] = nv;
+                out[nv] = v[i];
+                idx[i] = nv++;
+                break;
+            }
+            if (SDL_memcmp(&out[table[h]], &v[i], sizeof(GfxVertex)) == 0) {
+                idx[i] = table[h];
+                break;
+            }
+        }
+    }
+    if (kept) {
+        *kept = nv;
+    }
+    const GfxMeshId id = gfx_mesh_upload(g, out, nv, idx, n);
+    arena_reset_to(scratch, mark);
+    return id;
 }

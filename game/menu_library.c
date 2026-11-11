@@ -9,6 +9,7 @@
 #include "core/prof.h"
 #include "gfx/camera.h"
 #include "gfx/material.h"
+#include "gfx/mesh.h"
 #include "world_data.h"
 
 /* ------------------------------------------------------------------ library.scene.json */
@@ -172,20 +173,17 @@ static bool load_scene(LibScene *s)
 
 /* ------------------------------------------------------------------ meshes */
 
-static GfxMeshId upload(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
+static GfxMeshId upload(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
 {
     const MgmbGroup *gr = mgmb_group(mb, name);
     if (!gr || gr->vert_count == 0) {
         mg_log_error("library: group %s missing from library.mgmesh", name);
         return GFX_MESH_NONE;
     }
-    const size_t mark = arena_mark(arena);
-    uint32_t *idx = ARENA_PUSH(arena, uint32_t, gr->vert_count);
-    for (uint32_t i = 0; i < gr->vert_count; i++) {
-        idx[i] = i;
-    }
-    const GfxMeshId id = gfx_mesh_upload(g, gr->verts, gr->vert_count, idx, gr->vert_count);
-    arena_reset_to(arena, mark);
+    /* identical vertices of the soup welded (about a quarter of the hall's vertex memory) */
+    uint32_t kept = 0;
+    const GfxMeshId id = mesh_upload_welded(g, arena, gr->verts, gr->vert_count, &kept);
+    L->weld_in += gr->vert_count, L->weld_out += kept;
     return id;
 }
 
@@ -270,19 +268,19 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     for (int b = 0; b < LIB_BAYS; b++) {
         char name[16];
         SDL_snprintf(name, sizeof(name), "room_%d", b);
-        L->room[b] = upload(g, scratch, &mb, name);
+        L->room[b] = upload(L, g, scratch, &mb, name);
         rooms = rooms && L->room[b] != GFX_MESH_NONE;
     }
-    L->shell = upload(g, scratch, &mb, "shell");
-    L->chair = upload(g, scratch, &mb, "chair");
-    L->door = upload(g, scratch, &mb, "door");
-    L->cart = upload(g, scratch, &mb, "cart");
-    L->book_open = upload(g, scratch, &mb, "book_open");
-    L->book_closed = upload(g, scratch, &mb, "book_closed");
-    L->leaf_a = upload(g, scratch, &mb, "book_leaf_a");
-    L->leaf_b = upload(g, scratch, &mb, "book_leaf_b");
-    L->mug = upload(g, scratch, &mb, "mug");
-    L->pencil = upload(g, scratch, &mb, "pencil");
+    L->shell = upload(L, g, scratch, &mb, "shell");
+    L->chair = upload(L, g, scratch, &mb, "chair");
+    L->door = upload(L, g, scratch, &mb, "door");
+    L->cart = upload(L, g, scratch, &mb, "cart");
+    L->book_open = upload(L, g, scratch, &mb, "book_open");
+    L->book_closed = upload(L, g, scratch, &mb, "book_closed");
+    L->leaf_a = upload(L, g, scratch, &mb, "book_leaf_a");
+    L->leaf_b = upload(L, g, scratch, &mb, "book_leaf_b");
+    L->mug = upload(L, g, scratch, &mb, "mug");
+    L->pencil = upload(L, g, scratch, &mb, "pencil");
     arena_reset_to(scratch, mark);
     L->ok = rooms && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
@@ -299,7 +297,8 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->seat[0].blend = L->seat[0].study_w = L->seat[0].place = 1.0f;
     L->seat[0].pos = L->tseats[0].pos, L->seat[0].yaw_deg = L->tseats[0].yaw_deg;
     lib_study_init(&L->seat[0].study, &L->sc, 1u);
-    mg_log_info("library: %s (%d seats, %d extra chairs)", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n);
+    mg_log_info("library: %s (%d seats, %d extra chairs), %u vertices welded to %u", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n, L->weld_in,
+                L->weld_out);
     return L->ok;
 }
 

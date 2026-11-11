@@ -126,14 +126,7 @@ static GfxMeshId upload_verts(GfxContext *g, Arena *arena, const GfxVertex *v, u
     if (n == 0) {
         return GFX_MESH_NONE;
     }
-    const size_t mark = arena_mark(arena);
-    uint32_t *idx = ARENA_PUSH(arena, uint32_t, n);
-    for (uint32_t i = 0; i < n; i++) {
-        idx[i] = i;
-    }
-    const GfxMeshId id = gfx_mesh_upload(g, v, n, idx, n);
-    arena_reset_to(arena, mark);
-    return id;
+    return mesh_upload_welded(g, arena, v, n, NULL); /* smooth parts share their corners: welded */
 }
 
 static GfxMeshId upload_group(GfxContext *g, Arena *arena, const Mgmb *mb, const char *name)
