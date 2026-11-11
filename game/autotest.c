@@ -8,12 +8,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY, AUTOTEST_INSTITUTE, AUTOTEST_BOOKPEOPLE };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY, AUTOTEST_INSTITUTE, AUTOTEST_BOOKPEOPLE, AUTOTEST_MISSIONS };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library", "institute", "bookpeople"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library", "institute", "bookpeople", "missions"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -53,7 +53,8 @@ bool autotest_starts_in_game(int argc, char **argv)
                    SDL_strcmp(argv[i + 1], "npcs-bench") == 0 || SDL_strcmp(argv[i + 1], "npcs-save") == 0 ||
                    SDL_strcmp(argv[i + 1], "npcs-continue") == 0 || SDL_strcmp(argv[i + 1], "layout") == 0 ||
                    SDL_strcmp(argv[i + 1], "stick") == 0 || SDL_strcmp(argv[i + 1], "netsoak") == 0 || SDL_strcmp(argv[i + 1], "levelswitch") == 0 ||
-                   SDL_strcmp(argv[i + 1], "institute") == 0 || SDL_strcmp(argv[i + 1], "bookpeople") == 0;
+                   SDL_strcmp(argv[i + 1], "institute") == 0 || SDL_strcmp(argv[i + 1], "bookpeople") == 0 ||
+                   SDL_strcmp(argv[i + 1], "missions") == 0;
         }
     }
     return false;
@@ -1206,6 +1207,16 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         const int r = bt_run(&t->bt, app, p, out, el);
         if (r < 0) {
             finished = fail(t, "bookpeople", t->bt.why);
+        } else if (r > 0) {
+            mg_log_info("AUTOTEST PASSED");
+            t->passed = finished = true;
+        }
+        break;
+    }
+    case AUTOTEST_MISSIONS: {
+        const int r = mt_run(&t->mt, app, p, out, app->time);
+        if (r < 0) {
+            finished = fail(t, "missions", t->mt.why);
         } else if (r > 0) {
             mg_log_info("AUTOTEST PASSED");
             t->passed = finished = true;

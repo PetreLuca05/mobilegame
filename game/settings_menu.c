@@ -401,9 +401,9 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
     MenuAction action = MENU_NONE;
     const float row = 50.0f, pad = 18.0f, gutter = 16.0f;
 #ifdef MG_PROF
-    const int rows = (m->is_guest ? 5 : 4) + 2; /* + Map, + the test row */
+    const int rows = (m->is_guest ? 5 : 4) + 2 + (m->journal_row ? 1 : 0); /* + Map, + the test row, + Misiuni */
 #else
-    const int rows = (m->is_guest ? 5 : 4) + 1;
+    const int rows = (m->is_guest ? 5 : 4) + 1 + (m->journal_row ? 1 : 0);
 #endif
     const float room = h_pt - safe_t - safe_b - 12.0f;
     const float wanted = pad * 2.0f + 40.0f + (float)rows * (row + 8.0f);
@@ -430,6 +430,13 @@ static MenuAction pause_card(SettingsMenu *m, Ui *ui, GameSettings *s, float w_p
         m->card = false;
     }
     y += row + 8.0f;
+    if (m->journal_row) { /* BOOK-ENGINE S4: the missions' journal */
+        SDL_snprintf(label, sizeof(label), "%s##p_journal", str("journal_row"));
+        if (ui_button(ui, label, bx, y, bw, row, false)) {
+            action = MENU_JOURNAL; /* the page is drawn instead of the card; the menu stays open (the game is paused) */
+        }
+        y += row + 8.0f;
+    }
     SDL_snprintf(label, sizeof(label), "%s##p_settings", str("settings_row"));
     if (ui_button(ui, label, bx, y, bw, row, false)) {
         m->card = false;

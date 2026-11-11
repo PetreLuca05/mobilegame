@@ -375,7 +375,20 @@ set(MG_GAME_SOURCES
   game/book_pack.c
   game/book_people.c
   game/autotest_book.c
+  game/book_check.c
+  game/missions.c
+  game/missions_ui.c
+  game/autotest_missions.c
 )
+# BOOK-ENGINE integration: a thin stand-in for the script player until game/script_player.c lands; then these lines,
+# the stub and the MG_SCRIPT_PLAYER_STUB code in game.c go.
+if(NOT EXISTS ${CMAKE_SOURCE_DIR}/game/script_player.c)
+  list(APPEND MG_GAME_SOURCES game/script_player_stub.c)
+  set(MG_BOOK_STUB_DEFS ${MG_BOOK_STUB_DEFS} MG_SCRIPT_PLAYER_STUB=1)
+endif()
+if(MG_BOOK_STUB_DEFS)
+  set_source_files_properties(game/game.c PROPERTIES COMPILE_DEFINITIONS "${MG_BOOK_STUB_DEFS}")
+endif()
 
 # --------------------------------------------------------------- targets
 if(MG_PLATFORM STREQUAL "desktop")

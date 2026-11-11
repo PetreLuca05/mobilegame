@@ -1,6 +1,11 @@
 #include "book_progress.h"
 
 #include <SDL3/SDL.h>
+#ifndef _WIN32
+#include <fcntl.h>
+#include <stdio.h> /* rename */
+#include <unistd.h>
+#endif
 
 #define BP_MAGIC "MGBP"
 #define BP_VERSION 1u
@@ -118,7 +123,16 @@ bool book_progress_save(BookProgress *p)
     SDL_memcpy(b + BP_HEAD + p->fact_bytes, p->cases, (size_t)p->case_bytes);
     char tmp[520];
     SDL_snprintf(tmp, sizeof(tmp), "%s.tmp", p->path);
-    const bool ok = SDL_SaveFile(tmp, b, (size_t)(BP_HEAD + p->fact_bytes + p->case_bytes)) && SDL_RenamePath(tmp, p->path);
+    const size_t n = (size_t)(BP_HEAD + p->fact_bytes + p->case_bytes);
+#ifndef _WIN32
+    /* plain POSIX calls: a step ends inside the frame loop, and SDL's file streams allocate (PERF-1: none there) */
+    const int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    bool ok = fd >= 0 && write(fd, b, n) == (ssize_t)n;
+    ok = fd >= 0 && close(fd) == 0 && ok;
+    ok = ok && rename(tmp, p->path) == 0;
+#else
+    const bool ok = SDL_SaveFile(tmp, b, n) && SDL_RenamePath(tmp, p->path);
+#endif
     if (ok) {
         p->dirty = false;
     }

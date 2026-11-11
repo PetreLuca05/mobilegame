@@ -680,3 +680,18 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   "...", a tap calls `book_people_on_talk`'s callback; background people greet with the pack's greetings by kind.
   `AvatarPose.talk` = the speaking gesture (`book_people_speaking`). Missions API: `book_people_find_cast / set_objective /
   stage / stage_patient / unstage / pos`. `--autotest bookpeople` (pictures `docs/autotest/book/`), `--avatar-gallery book`.
+- Missions (S4): `game/missions.c` = the state machine over the pack (arcs > cases > quests > msteps): tracked case, objective
+  (offer at the giver / next undone step in book order at its presenter / debrief at the giver), step done = every fact of its
+  script's items set (no other step state), quest / case / arc done = all steps; the two gates only (a case closes at its giver
+  once its steps are done; `missions_exam_open` = every topic of the chapter complete). Talk flow: `missions_talk(cast)` (the
+  people layer's talk callback) -> dialogue (arc intro + case intro + case line, Accept / Later; quest intro on its first step +
+  the step line, Start / Later; reply after_good / after_mixed + the quest's done line; outro + arc outro -> closed, T3 reward).
+  Staging: the objective step's presenter at its stand point, a case step's patient at its place; a case step starts only with
+  the patient there (`ME_NO_PATIENT`). Events (`missions_take_events`): `ME_COMMIT` -> `progress_commit(g, true)`.
+  `game/missions_ui.c`: objective pill (under the account chip; tap = journal), dialogue card (head-icon portrait, name, role,
+  lines, Continue / two choices), journal (pause card -> Misiuni: arc tabs, case cards with quest stages, Track / Take me there).
+  One `MARKER_OBJECTIVE` marker in the chapter colour (`k_ui.chapter`) on whoever the objective is, no marker interactable (the
+  NPC's Talk is the interaction). `game/book_check.c`: the load-time data check (`book: data check: ...`). Until the people
+  layer and the script player land, `game/book_people_stub.c` / `script_player_stub.c` stand in (CMake picks them while
+  `game/book_people.c` / `script_player.c` are missing; `MG_*_STUB` code in game.c). `--autotest missions` (pictures `book_*`
+  in `docs/autotest/book/`). Progress saves with POSIX open / write / rename (SDL's file streams allocate in the frame loop).
