@@ -22,7 +22,11 @@ typedef struct BookCheck {
     int patients_off;          /* its place is not inside a room of its storey */
     int steps_without_facts;   /* scripts with no item: done before they are played (note, not a problem) */
     float worst_talk_m;        /* the farthest presenter's distance to its nearest reachable cell */
-    int problems;              /* the sum of the counts above except the note */
+    /* reach from each storey's lift landing (a walkable cell within 2.0 m connected to it on the storey's grid): every
+     * mission step's stand point, object point and patient place, every pack person, every NPC point of the map, every book prop */
+    int reach_checked, reach_failed;
+    int reach_failed_steps, reach_failed_people, reach_failed_points, reach_failed_props;
+    int problems;              /* the sum of the counts above except the note (reach failures included) */
 } BookCheck;
 
 /* The nearest walkable cell centre within BOOK_TALK_RANGE of (x, z) on `storey` that can be reached from `from`

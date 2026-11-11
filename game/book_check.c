@@ -99,8 +99,57 @@ BookCheck book_check(const BookPack *p, const IMap *map, const NavWorld *nav, HM
             }
         }
     }
+    /* reach from the lifts: per storey, the landing in front of the first lift that serves it */
+    HMM_Vec3 landing[8];
+    bool have_landing[8] = {false};
+    for (int st = 0; st < 8; st++) {
+        for (int l = 0; l < map->lift_count && !have_landing[st]; l++) {
+            const ImLift *lf = &map->lifts[l];
+            float cx = 0.0f, cz = 0.0f, d = 0.0f;
+            if ((lf->landing_mask >> st) & 1u &&
+                nearest_walkable(nav, st, lf->x, lf->z + 2.1f, &cx, &cz, &d, NULL, 0)) { /* the doorway faces +z: the landing in front */
+                landing[st] = HMM_V3(cx, 0.0f, cz);
+                have_landing[st] = true;
+            }
+        }
+    }
+#define REACH(kind_count, what, i, st, x, z)                                                                                                         \
+    do {                                                                                                                                             \
+        c.reach_checked++;                                                                                                                           \
+        float cx_ = 0.0f, cz_ = 0.0f, d_ = 0.0f;                                                                                                    \
+        if ((st) < 0 || (st) >= 8 || !have_landing[(st)] ||                                                                                           \
+            !nearest_walkable(nav, (st), (x), (z), &cx_, &cz_, &d_, &landing[(st)], (st))) {                                                        \
+            c.reach_failed++;                                                                                                                        \
+            c.kind_count++;                                                                                                                          \
+            NOTE("book: data check: %s %u at %.2f %.2f (storey %d): no cell within %.1f m reachable from the storey's lift", what, (unsigned)(i),   \
+                 (double)(x), (double)(z), (int)(st), (double)BOOK_TALK_RANGE);                                                                      \
+        }                                                                                                                                            \
+    } while (0)
+    for (uint32_t s = 0; s < p->mstep_count; s++) {
+        const mgpk_mstep_t *ms = &p->msteps[s];
+        REACH(reach_failed_steps, "step stand point", s, ms->floor, ms->stand_x, ms->stand_z);
+        REACH(reach_failed_steps, "step object", s, ms->floor, ms->at_x, ms->at_z);
+        if (ms->kind == MSTEP_KIND_CASE && ms->patient != 0xFFFFu) {
+            REACH(reach_failed_steps, "step patient place", s, ms->floor, ms->pat_x, ms->pat_z);
+        }
+    }
+    for (uint32_t i = 0; i < p->person_count; i++) {
+        const mgpk_person_t *pe = &p->people[i];
+        REACH(reach_failed_people, "person", i, pe->floor, pe->x, pe->z);
+    }
+    for (int i = 0; i < map->islot_count; i++) {
+        const ImISlot *pt = &map->islots[i];
+        REACH(reach_failed_points, "NPC point", i, pt->storey, pt->x, pt->z);
+    }
+    for (uint32_t i = 0; i < p->prop_count; i++) {
+        const mgpk_prop_t *pr = &p->props[i];
+        REACH(reach_failed_props, "book prop", i, pr->floor, pr->x, pr->z);
+    }
+#undef REACH
 #undef NOTE
-    c.problems = c.presenters_far + c.presenters_unreachable + c.rooms_missing + c.scripts_missing + c.patients_off;
+    c.problems = c.presenters_far + c.presenters_unreachable + c.rooms_missing + c.scripts_missing + c.patients_off + c.reach_failed;
+    mg_log_info("book: data check: reach from each storey's lift: %d checked, %d failed (steps %d, people %d, NPC points %d, book props %d)",
+                c.reach_checked, c.reach_failed, c.reach_failed_steps, c.reach_failed_people, c.reach_failed_points, c.reach_failed_props);
     mg_log_info("book: data check: %d steps, %d problems: presenters beyond %.1f m %d, unreachable %d (worst %.2f m to a walkable cell); "
                 "rooms missing %d; scripts missing %d; patients %d, off their storey %d; steps without facts %d",
                 c.steps, c.problems, (double)BOOK_TALK_RANGE, c.presenters_far, c.presenters_unreachable, (double)c.worst_talk_m, c.rooms_missing,
