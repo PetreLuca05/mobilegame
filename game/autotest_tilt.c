@@ -240,8 +240,8 @@ static int check_math(TiltTest *t)
                 zero_at = (float)i / 60.0f;
             }
         }
-        if (zero_at < 0.0f || zero_at > 1.5f || a.ceilings != 1 || !a.ceiling_logged) {
-            return failf(t, "ceiling: back to 0 at %.2f s (max 1.5), fired %d times", (double)zero_at, a.ceilings);
+        if (zero_at < 1.5f || zero_at > 1.9f || a.ceilings != 1 || !a.ceiling_logged) { /* the 1.5 s ceiling, then the spring */
+            return failf(t, "ceiling: back to 0 at %.2f s (want 1.5..1.9), fired %d times", (double)zero_at, a.ceilings);
         }
         mg_log_info("autotest tilt: ceiling: a stuck target with the sensor still is back to 0 at %.2f s, logged once", (double)zero_at);
     }

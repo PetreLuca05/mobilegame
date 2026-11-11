@@ -4,7 +4,7 @@
  *   per axis -> minus a reference that follows it (0.35 s): a tilt gives a push that starts decaying at once
  *   -> 1 deg dead zone, +-16 deg = +-1 -> a 4 Hz spring, damping 0.7 (at most one ~5 % overshoot) -> (tx, ty).
  *   Still (rotation < 3 deg/s for 150 ms): the target is 0, the reference snaps, and below 0.25 pt the
- *   offsets are set to exactly 0. Ceiling: displaced more than 1 pt for 1.1 s while gravity is still -> the
+ *   offsets are set to exactly 0. Ceiling: displaced more than 1 pt for 1.5 s while gravity is still -> the
  *   target is forced to 0 (logged once: a stuck sensor or a mapping bug); while the device keeps turning the
  *   effect stays live. Backstop: more than 1 pt off rest for 4 s, whatever the sensor says -> 0, logged once.
  *   A shake (|velocity| > 6 / s) is reported at most every 2 s.
