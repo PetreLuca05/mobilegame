@@ -16,6 +16,7 @@
 #include "core/log.h"
 #include "core/time.h"
 #include "lib_nav.h"
+#include "lib_people.h"
 
 double mg_time_now(void)
 {
@@ -250,6 +251,10 @@ static SimStats simulate(int nwalkers, int ncarts, bool small, float seconds, bo
                 if (a->cart == j || b->cart == i) continue; /* a pusher and its own cart */
                 float ratio = v2len(a->pos, b->pos) / (a->radius + b->radius);
                 if (ratio < st.min_ratio) st.min_ratio = ratio;
+                if (ratio < LIB_HARD_RULE - 1e-3f && getenv("DBG96"))
+                    printf("      t=%.2f agents %d,%d at %.4f (cart %d/%d is_cart %d/%d ghost %.2f/%.2f still %d/%d) a %.3f,%.3f<-%.3f,%.3f b %.3f,%.3f<-%.3f,%.3f p0 %.3f,%.3f<-%.3f,%.3f yaw %.3f\n", t * dt, i, j, ratio, a->cart, b->cart,
+                           a->is_cart, b->is_cart, a->ignore_others_s, b->ignore_others_s, a->standing_still, b->standing_still,
+                           a->pos.X, a->pos.Y, before[i].X, before[i].Y, b->pos.X, b->pos.Y, before[j].X, before[j].Y, s->a[0].pos.X, s->a[0].pos.Y, before[0].X, before[0].Y, s->a[0].yaw);
                 if (ratio < 0.9f) {
                     if (verbose && (st.pair_viol < 5 || ratio < 0.5f))
                         printf("      t=%.2f agents %d,%d at %.3f of radii (ghost %.2f / %.2f)\n", t * dt, i, j, ratio,
@@ -310,6 +315,240 @@ int cmp(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
     return x < y ? -1 : x > y;
+}
+
+/* ---- §7 rules one at a time: the taken stop, the re-path at 1.2 s, the ignore-others spell at 4 s ---- */
+static float pair_min(const LibAgents *s, int who)
+{
+    float m = 1e9f;
+    for (int j = 0; j < s->count; j++) {
+        if (j == who || !s->a[j].active) continue;
+        float r = v2len(s->a[who].pos, s->a[j].pos) / (s->a[who].radius + s->a[j].radius);
+        if (r < m) m = r;
+    }
+    return m;
+}
+
+static void rules_tests(void)
+{
+    const LibNav *n = &g_nav;
+    LibAgents *s = &g_ag;
+    const float dt = 1.0f / 60.0f;
+    /* someone stands on my stop: I stop within 0.85 m of it, never closer than the hard rule */
+    {
+        lib_agents_init(s, n);
+        s->service_searches = 1;
+        HMM_Vec2 stop = HMM_V2(-3.0f, 8.0f);
+        int a = lib_agent_add(s, stop, 0.3f, 1.2f);
+        int b = lib_agent_add(s, HMM_V2(1.0f, 8.0f), 0.3f, 1.2f);
+        lib_agent_go(s, n, b, stop);
+        float closest = 1e9f, t = 0;
+        while (t < 10.0f && !(s->a[b].arrived && !s->a[b].ticket)) {
+            lib_agents_step(s, n, dt);
+            t += dt;
+            float r = pair_min(s, b);
+            closest = r < closest ? r : closest;
+        }
+        float d = v2len(s->a[b].pos, stop);
+        check(s->a[b].arrived && d <= LIB_STOP_NEAR + 0.03f && closest >= LIB_HARD_RULE - 1e-3f && v2len(s->a[a].pos, stop) < 1e-5f,
+              "rules: a taken stop: stop within 0.85 m", "arrived %s after %.2f s, %.3f m from the stop, closest %.3f of the radii",
+              s->a[b].arrived ? "yes" : "no", t, d, closest);
+    }
+    /* a doorway held by someone standing in it: blocked; on the tick its blocked time passes 1.2 s it asks for a new path
+     * with the people within 2.5 m stamped in, and goes round by the other door */
+    {
+        lib_agents_init(s, n);
+        s->service_searches = 1;
+        const float bx = g_nav.bx[1], mw = g_nav.mid_wall_z;
+        lib_agent_add(s, HMM_V2(bx + 4.4f, mw - 0.1f), 0.3f, 0.0f); /* in bay 1's door */
+        HMM_Vec2 goal = HMM_V2(bx + 4.4f, mw - 2.5f);
+        int b = lib_agent_add(s, HMM_V2(bx + 4.4f, mw + 2.0f), 0.3f, 1.3f);
+        lib_agent_go(s, n, b, goal);
+        float t = 0, over_at = -1, repath_at = -1, closest = 1e9f;
+        int stamped = -1;
+        while (t < 60.0f && !(s->a[b].arrived && !s->a[b].ticket)) {
+            bool asked = s->a[b].repathed;
+            lib_agents_step(s, n, dt);
+            t += dt;
+            if (s->a[b].blocked_s > LIB_REPATH_S && over_at < 0) over_at = t;
+            if (s->a[b].repathed && !asked && repath_at < 0) {
+                repath_at = t;
+                for (int k = 0; k < LIB_NAV_QUEUE_MAX; k++)
+                    if (s->q.r[k].state == LIB_REQ_PENDING && s->q.r[k].ticket == s->a[b].ticket) stamped = s->q.r[k].ndiscs;
+            }
+            float r = pair_min(s, b);
+            closest = r < closest ? r : closest;
+        }
+        check(over_at > 0 && repath_at > 0 && repath_at - over_at < 1.5f * dt && stamped == 1 && s->a[b].arrived && v2len(s->a[b].pos, goal) < 0.05f &&
+                  closest >= LIB_HARD_RULE - 1e-3f,
+              "rules: blocked 1.2 s -> new path round them", "blocked past 1.2 s at %.2f s, new path asked at %.2f s with %d stamped, arrived %s at %.1f s, closest %.3f",
+              over_at, repath_at, stamped, s->a[b].arrived ? "yes" : "no", t, closest);
+    }
+    /* boxed in by eight people: idle, a new path at 1.2 s, others ignored for 1.2 s from 4 s; the hard rule holds */
+    {
+        lib_agents_init(s, n);
+        s->service_searches = 1;
+        HMM_Vec2 c = HMM_V2(-3.0f, 8.0f);
+        for (int k = 0; k < 8; k++) {
+            float an = (float)k * 0.785398f;
+            lib_agent_add(s, HMM_V2(c.X + 0.59f * cosf(an), c.Y + 0.59f * sinf(an)), 0.3f, 0.0f);
+        }
+        int b = lib_agent_add(s, c, 0.3f, 1.2f);
+        lib_agent_go(s, n, b, HMM_V2(c.X + 4.0f, c.Y));
+        float t = 0, repath_at = -1, ghost_at = -1, start_ratio = pair_min(s, b), closest = 1e9f;
+        bool moved = false;
+        while (t < 6.0f) {
+            HMM_Vec2 o = s->a[b].pos;
+            lib_agents_step(s, n, dt);
+            t += dt;
+            moved |= v2len(o, s->a[b].pos) > 1e-6f && ghost_at < 0;
+            if (s->a[b].repathed && repath_at < 0) repath_at = t;
+            if (s->a[b].ignore_others_s > 0 && ghost_at < 0) ghost_at = t;
+            float r = pair_min(s, b);
+            closest = r < closest ? r : closest;
+        }
+        check(!moved && repath_at >= LIB_REPATH_S - 0.05f && repath_at <= LIB_REPATH_S + 0.25f && ghost_at >= LIB_GHOST_AFTER_S - 0.05f &&
+                  ghost_at <= LIB_GHOST_AFTER_S + 0.1f && closest >= LIB_HARD_RULE - 1e-3f,
+              "rules: boxed in: idle, path 1.2 s, ignore 4 s", "still until the spell %s, new path at %.2f s, others ignored from %.2f s, closest %.3f (start %.3f)",
+              moved ? "no" : "yes", repath_at, ghost_at, closest, start_ratio);
+    }
+}
+
+/* ---- §9: the scene's 25 background people and three members walking in and out, through lib_people ---- */
+static LibPeopleCfg g_pc;
+static LibPeople g_pp, g_pp2;
+static HMM_Vec2 g_stands[4];
+
+static uint32_t mask_at(float t) /* the bays on screen: all, my bay alone, my bay and its neighbour, a back bay */
+{
+    static const uint32_t m[4] = {0xF, 1u << 1, (1u << 1) | (1u << 0), 1u << 3};
+    return m[((int)(t / 37.0f)) % 4];
+}
+
+static bool near_free(const LibNav *n, HMM_Vec2 p)
+{
+    if (lib_nav_free(n, p)) return true;
+    int c = lib_nav_near(n, p);
+    return c >= 0 && v2len(lib_nav_cell_xz(n, c), p) <= n->radius + n->cell * 0.71f;
+}
+
+typedef struct MemberRun { int state; float t; HMM_Vec2 out, stand; int seat; } MemberRun; /* 0 away, 1 walking in, 2 seated, 3 walking out */
+
+static void people_run(LibPeople *P, float seconds, bool members, int *cell_bad, double *ms_avg, double *ms_max, char *why, size_t wn)
+{
+    const LibNav *n = &g_nav;
+    lib_people_init(P, &g_pc, n);
+    const float dt = 1.0f / 60.0f;
+    MemberRun mr[LIB_PEOPLE_WALKERS] = {{0}};
+    const int bay = 1;
+    for (int k = 1; k < LIB_PEOPLE_WALKERS; k++) {
+        mr[k].out = HMM_V2(g_nav.bx[bay] + 4.4f, g_nav.bz[bay] - 6.7f);
+        mr[k].t = 2.0f + 7.0f * (float)k;
+        mr[k].stand = g_stands[k];
+    }
+    double sum = 0;
+    *ms_max = 0;
+    *cell_bad = 0;
+    int ticks = (int)(seconds * 60.0f);
+    for (int t = 0; t < ticks; t++) {
+        float now = (float)t * dt;
+        if (members) {
+            for (int k = 1; k < LIB_PEOPLE_WALKERS; k++) {
+                MemberRun *m = &mr[k];
+                m->t -= dt;
+                if (m->state == 0 && m->t <= 0) {
+                    lib_people_walker_start(P, k, m->out, 3.14159f, m->stand);
+                    m->state = 1;
+                } else if (m->state == 1 && lib_people_walker_arrived(P, k)) {
+                    lib_people_walker_stop(P, k);
+                    m->state = 2;
+                    m->t = 6.0f + 3.0f * (float)k;
+                } else if (m->state == 2 && m->t <= 0) {
+                    lib_people_walker_start(P, k, m->stand, 0.0f, m->out);
+                    m->state = 3;
+                } else if (m->state == 3 && lib_people_walker_arrived(P, k)) {
+                    lib_people_walker_stop(P, k);
+                    m->state = 0;
+                    m->t = 5.0f;
+                }
+            }
+        }
+        double t0 = mg_time_now();
+        lib_people_tick(P, n, dt, mask_at(now));
+        double ms = (mg_time_now() - t0) * 1000.0;
+        sum += ms;
+        if (ms > *ms_max) *ms_max = ms;
+        for (int i = 0; i < g_pc.n; i++) {
+            const LibPerson *p = &P->p[i];
+            if (p->agent < 0 || p->hidden) continue;
+            const LibAgent *a = &P->ag.a[p->agent];
+            bool ok = p->waiting ? near_free(n, p->pos) : (lib_nav_free(n, p->pos) || (a->on_last && a->path.last_straight) || near_free(n, p->pos));
+            if (!ok) {
+                if (!*cell_bad) snprintf(why, wn, "%s at (%.2f, %.2f) t %.1f", g_pc.def[i].id, p->pos.X, p->pos.Y, now);
+                (*cell_bad)++;
+            }
+        }
+    }
+    *ms_avg = sum / ticks;
+}
+
+static void people_tests(const cJSON *root, float seconds)
+{
+    bool ok = lib_people_config(&g_pc, root);
+    int routes = 0, seated = 0, sleepers = 0;
+    for (int i = 0; i < g_pc.n; i++) {
+        routes += g_pc.def[i].route_n > 0 && !g_pc.def[i].seated;
+        seated += g_pc.def[i].seated;
+        sleepers += g_pc.def[i].sleeper;
+    }
+    check(ok && g_pc.n == 25, "people: the scene's npcs", "%d people: %d with routes, %d seated (%d asleep)", g_pc.n, routes, seated, sleepers);
+    if (!ok) return;
+    /* the members' stands: bay 1's seats */
+    const cJSON *seats = cJSON_GetObjectItemCaseSensitive(root, "seats");
+    for (int k = 0; k < 4; k++) {
+        HMM_Vec2 st = jv2(cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(seats, k), "stand"));
+        g_stands[k] = HMM_V2(st.X + g_nav.bx[1], st.Y + g_nav.bz[1]);
+    }
+    int cell_bad;
+    double avg, mx;
+    char why[160] = "";
+    if (seconds < 120) seconds = 120;
+    LibPeople *P = &g_pp;
+    printf("      %d people + 3 members walking in and out of bay 1, %.0f s at 60 Hz, the on-screen bays changing every 37 s\n", g_pc.n, seconds);
+    people_run(P, seconds, true, &cell_bad, &avg, &mx, why, sizeof why);
+    check(P->min_ratio >= LIB_HARD_RULE - 1e-3f, "people: never closer than 96 % of radii", "closest %.4f of the radii sum", P->min_ratio);
+    /* 4 s blocked starts the ignore-others spell; off screen a person steps every 0.1 s, so its spell starts up to 0.1 s later */
+    check(P->stuck_max <= 4.0f + 0.1f + 0.1f, "people: nobody stuck over 4 s (+ one step)", "longest %.2f s (%s); %d ignore-others spells", P->stuck_max,
+          P->stuck_who >= 0 ? g_pc.def[P->stuck_who].id : "-", P->ghosts);
+    char missing[160] = "";
+    for (int a = 1; a < LIB_ACT_COUNT; a++)
+        if (!(P->acts_seen & (1u << a))) {
+            strncat(missing, " ", sizeof missing - strlen(missing) - 1);
+            strncat(missing, lib_act_name(a), sizeof missing - strlen(missing) - 1);
+        }
+    check(!missing[0], "people: every act seen", "%s%s", missing[0] ? "missing:" : "all 12", missing);
+    int fewest = 1 << 30;
+    const char *who = "-";
+    for (int i = 0; i < g_pc.n; i++) {
+        const LibPersonDef *d = &g_pc.def[i];
+        if (d->seated || d->speed <= 0 || d->route_n < 2) continue;
+        if (P->p[i].loops < fewest) fewest = P->p[i].loops, who = d->id;
+    }
+    check(fewest >= 2, "people: every walker loops its route twice", "fewest %d (%s)", fewest, who);
+    check(cell_bad == 0, "people: nobody off the walk grid", "%d person-ticks %s", cell_bad, why);
+    check(avg < 0.15, "people: tick time (25 people + members)", "avg %.4f ms, max %.3f ms; %d searches, slowest %.3f ms", avg, mx, P->ag.q.searches,
+          P->ag.q.search_ms_max);
+    /* determinism: the same ticks and masks give the same hall */
+    {
+        people_run(&g_pp2, 90.0f, true, &cell_bad, &avg, &mx, why, sizeof why);
+        LibPeople *A = &g_pp2;
+        static HMM_Vec2 pa[LIB_AGENTS_MAX];
+        for (int i = 0; i < A->ag.count; i++) pa[i] = A->ag.a[i].pos;
+        people_run(&g_pp2, 90.0f, true, &cell_bad, &avg, &mx, why, sizeof why);
+        int diff = 0;
+        for (int i = 0; i < A->ag.count; i++) diff += memcmp(&pa[i], &A->ag.a[i].pos, sizeof pa[i]) != 0;
+        check(diff == 0, "people: deterministic (same ticks, same hall)", "%d of %d agents differ after 90 s", diff, A->ag.count);
+    }
 }
 
 int main(int argc, char **argv)
@@ -528,19 +767,23 @@ int main(int argc, char **argv)
     /* ---- the walk ---- */
     printf("      walking %.0f s at 60 Hz: 25 people (2 pushing carts) + 1 small agent r 0.2\n", seconds);
     SimStats st = simulate(25, 2, true, seconds, true);
-    check(st.pair_viol == 0, "walk: never closer than 90 % of radii", "closest %.3f of the radii sum, %d ticks under", st.min_ratio,
-          st.pair_viol);
+    check(st.pair_viol == 0 && st.min_ratio >= LIB_HARD_RULE - 1e-3f, "walk: never closer than 96 % of radii", "closest %.4f of the radii sum, %d ticks under 90 %%",
+          st.min_ratio, st.pair_viol);
     check(st.cell_viol == 0, "walk: no walker in a blocked cell", "%d agent-ticks off the grid (plus %d on a last stretch)", st.cell_viol,
           st.last_blocked_ticks);
-    check(st.blocked_max <= 6.0f, "walk: nobody blocked over 6 s", "longest %.2f s; %d ghost spells", st.blocked_max, st.ghosts);
+    /* 4 s blocked starts the ignore-others spell; its first step lands on the next tick or two */
+    check(st.blocked_max <= 4.1f, "walk: nobody stuck over 4 s", "longest %.2f s; %d ghost spells", st.blocked_max, st.ghosts);
     check(st.min_loops >= 2, "walk: every agent completes 2 loops", "fewest loops %d", st.min_loops);
     check(st.tick_avg_ms < 0.15, "walk: step time (25 + 2 carts + 1)", "avg %.4f ms, p99 %.4f ms, max %.3f ms (includes path searches; %d searches, slowest %.3f ms)",
           st.tick_avg_ms, st.tick_p99_ms, st.tick_max_ms, g_ag.q.searches, g_ag.q.search_ms_max);
 
     g_rng = 12345;
     SimStats s10 = simulate(10, 0, false, seconds < 60 ? seconds : 60, false);
-    check(s10.tick_avg_ms < 0.15 && s10.pair_viol == 0 && s10.cell_viol == 0, "walk: 10 agents, 60 s", "avg %.4f ms, p99 %.4f ms, max %.3f ms, closest %.3f",
+    check(s10.tick_avg_ms < 0.15 && s10.min_ratio >= LIB_HARD_RULE - 1e-3f && s10.cell_viol == 0, "walk: 10 agents, 60 s", "avg %.4f ms, p99 %.4f ms, max %.3f ms, closest %.3f",
           s10.tick_avg_ms, s10.tick_p99_ms, s10.tick_max_ms, s10.min_ratio);
+
+    rules_tests();
+    people_tests(root, seconds);
 
     cJSON_Delete(root);
     free(txt);

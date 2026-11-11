@@ -11,6 +11,7 @@
 #include "lobby.h"
 #include "lib_move.h"
 #include "lib_nav.h"
+#include "lib_people.h"
 #include "lib_dressing.h"
 #include "platform/app.h"
 
@@ -18,43 +19,25 @@
 #define LIB_PATH_MAX 8
 #define LIB_EXTRA_CHAIRS 4
 #define LIB_NPCS 32
-#define LIB_ROUTE_MAX 12
 #define LIB_BAYS 4
 
-enum { LIB_ACT_NONE, LIB_ACT_BROWSE, LIB_ACT_POST };
-
-typedef struct LibRouteStep {
-    HMM_Vec2 p;
-    float wait_s;   /* -1: forever */
-    float face_deg; /* while waiting; has_face false: keeps the walking direction */
-    bool has_face, outside; /* outside: hidden while it waits */
-    int act;        /* LIB_ACT_* while waiting */
-} LibRouteStep;
-
+/* A background person as the drawing sees it; routes, stops and acts live in lib_people (library.scene.json npcs) */
 typedef struct LibNpcDef {
     char id[24];
     float speed;
-    bool push_cart, uses_door, seated;
-    HMM_Vec2 seat_pos; /* seated readers */
+    bool push_cart, uses_door, seated, sleeper;
+    HMM_Vec2 seat_pos; /* seated readers and the sleeper */
     float seat_yaw_deg, read_s[2];
-    LibRouteStep route[LIB_ROUTE_MAX];
-    int route_n;
 } LibNpcDef;
 
-/* One background NPC at run time (a small route runner, not the M7 packages). */
+/* One background person at run time: its look, its animation and (seated) its study loop; the rest is lib_people's */
 typedef struct LibNpc {
     AvatarLook look;
-    int step;
-    bool waiting;
-    float t;
     HMM_Vec2 pos, vel, cart;
     float yaw_deg, cart_yaw_deg;
     AvatarAnim anim;
     LibStudy study;
-    LibPath path; /* the leg being walked, or the next one (searched while waiting at a post) */
-    int pi;       /* the waypoint walked to */
-    uint32_t ticket; /* the next leg's pending path request, 0 none */
-    bool next_ready; /* path holds the next leg */
+    bool drawn; /* this frame: in a bay on screen and not outside the door */
 } LibNpc;
 
 typedef struct LibSeat {
@@ -139,6 +122,7 @@ typedef struct LibMember {
     float door_max;      /* the door's angle while this walker passed it */
     float blend_seated;  /* its sit blend when it started studying (> 0.9: the book is open) */
     bool outside_first;  /* it appeared at door.outside */
+    HMM_Vec2 sit_from;   /* where its walk ended (within 0.85 m of the stand if someone stood there): the sit starts here */
 } LibMember;
 
 typedef struct MenuLibrary {
@@ -181,8 +165,19 @@ typedef struct MenuLibrary {
     GfxVertex *build;    /* the rebuild's buffer (max of the caps) */
     uint32_t *build_idx; /* 0 1 2 ... */
     GfxContext *gfx;
-    LibNavQueue *queue; /* the NPCs' path requests, serviced once a frame within LIB_NAV_BUDGET_MS */
-    bool no_nav;        /* --lib-no-nav: straight legs (the runner before the grid; perf A/B only) */
+    /* §7 / §9: the background people and everyone walking, on fixed 60 Hz ticks (lib_people) */
+    LibPeopleCfg *pcfg;
+    LibPeople *people;  /* NULL when the grid or the scene's npcs failed: nobody walks, members take the old straight legs */
+    double tick_acc;
+    uint32_t visible;   /* bit b: bay b is in the camera's frustum this frame (people elsewhere tick at 1/6, are not drawn) */
+    HMM_Mat4 view_proj; /* world: set by the caller with view_eye (has_vp) */
+    bool has_vp;
+    GfxMeshId puff, zee;
+    bool no_nav;        /* --lib-no-nav: straight legs (perf A/B only) */
+    bool log_acts;      /* --lib-log-acts: log each background person's act as it starts */
+    int last_act[LIB_NPCS];
+    HMM_Vec2 look_at;   /* --lib-look x,z,d: the menu camera's target (hall frame) and distance for pictures; d 0 = off */
+    float look_dist;
     HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
     float screen_h_pt;        /* the menu camera's view height (pt), for the NPCs' LOD */
@@ -208,7 +203,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
 void menu_library_set_table(MenuLibrary *L, int bay);
 /* My lobby's seed (lib_seed_of the host's user id): dresses my table and orders its seats; the other tables keep theirs */
 void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed);
-/* A background NPC is walking through bay b's door (it holds the door open): tests */
+/* A background person is walking through bay b's door (it holds the door open): tests */
 bool menu_library_npc_at_door(const MenuLibrary *L, int b);
 /* desktop pictures (--lib-guest B): a player seated at bay B's table, seat 1 (drawn like a seated reader, a player's skin) */
 void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look);

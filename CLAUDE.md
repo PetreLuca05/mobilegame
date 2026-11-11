@@ -593,14 +593,18 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   from it). A cutaway (the shell is not drawn in the menu); the camera from `camera.menu`, backed off and re-centred until the table and
   its four seats fit the free rect. `game/lib_study.c` = STUDY (read / page turn, the right hand rides the leaf tip). Seats: walk in
   through the door along the seat's path, sit (`sit_s`, the chair slides), study; leavers stand and walk out; already-listed members
-  are seated on the frame the menu opens; the door eases while a walker is near it. Six NPCs on a small route runner (+ the cart and the
-  seated reader). The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
+  are seated on the frame the menu opens. The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
+- People (step 4, `game/lib_people.c`, pure C): the scene's 25 `npcs` (routes, stops, `wait_s` / `face_deg` / `outside` / `book` /
+  `leave_cart`, every act of LIB1.md §9 with the prototype's eased weights; seated readers, the sleeper with zees) and the members'
+  walks, all `lib_nav` agents (96 % hard rule, also during the ignore-others spell; steering; re-path at 1.2 s; spell at 4 s; stop
+  within 0.85 m of a taken stop; cart 0.75 m ahead, parked and slid back). Fixed 60 Hz ticks, one path search per tick (deterministic:
+  ticks + the visible-bay mask); a bay outside the frustum ticks 1 in 6 and is not drawn. Doors (rate 8 /s) in the tick. ctest
+  `lib_nav` runs the real 25 + three members (96 %, stuck <= 4 s + one step, every act, two loops, determinism) and the rules alone.
 - The hall is square (user decision): 2 x 2 bays of 16 x 16 m = 32 x 32 m (`hall.bx` / `bz`, front row 0 1, back row 2 3, home bay 1).
   A bay's back wall is at local z -5.5, the extra depth is open floor up to +10.5; the front row's back wall (doors) parts the rows, the
   back row's doors lead outside. Draw rule: the menu camera backs off to 11.8 m, so with my table in the back row the eye stands 0.3-1.1 m
   south of the middle wall; then the front rooms (and doors) dither out while the eye is below the wall tops, and dither back in over 2 m of
-  height above them (the Maps move). Nothing else is skipped (avatars, chairs, books, back rooms behind open doors). NPCs walk A* legs on
-  the hall's nav grid. Desktop `--lib-bay N` puts my table in bay N, `--lib-guest B` seats a stand-in player at bay B's table (pictures:
+  height above them (the Maps move). Nothing else is skipped (chairs, books, back rooms behind open doors; people only by bay). Desktop `--lib-bay N` puts my table in bay N, `--lib-guest B` seats a stand-in player at bay B's table (pictures:
   docs/autotest/library/bays/).
 - The library stands on the island played last (island JSON `library`, `library_pad`, `library_path`; `tools/place_library.py`: the spot
   nearest `start` with the 15 x 15 pad (the 32 x 32 m hall x 0.35 + 1.9 round it) >= 30 from every hospital plot and >= 8 from the road
@@ -611,7 +615,8 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   move (`game/lib_move.c`: log-distance + hump, target along the cumulative distance, the shell dithers in, the map UI enters at t 0.9);
   Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch.
 - Desktop: `--debug turn-page`, `--lib-closeup [side]`, `--lib-demo-join`, `--lib-move-demo`, `--ui-motion reduced`, `--lib-back-loop N`
-  (Maps + Back N times, every Back's camera checked), `--lib-still` (the library at dt 0, comparison pictures), `--lib-no-nav` (perf A/B).
+  (Maps + Back N times, every Back's camera checked), `--lib-still` (the library at dt 0, comparison pictures), `--lib-no-nav` (perf A/B: straight legs),
+  `--lib-look x,z,d` (the menu camera on a hall point, pictures: docs/autotest/library/step4/), `--lib-log-acts` (each person's act as it starts).
 - The Maps / Back move changes nothing in a step (user decision: no visible switch, no jitter): the library's light
   (two-band ramp, its sun) and the map's are both evaluated per surface and the results mixed along the move
   (`GfxSceneParams.sun2_* / ambient2 / two_band2 / light_mix`, `cel_light_day`), so no toon band flips as the light changes;

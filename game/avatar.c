@@ -577,7 +577,8 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     body = HMM_MulM4(body, HMM_Rotate_RH(lean, HMM_V3(1, 0, 0)));
     body = HMM_MulM4(body, HMM_Rotate_RH(-roll, HMM_V3(0, 0, 1)));
     s->body = body;
-    const float breath = 1.0f + r->breath_scale * HMM_SinF(r->breath_rad_s * t + a->seed * 1.37f) * (p->breath_k > 0.0f ? p->breath_k : 1.0f);
+    const float breath = 1.0f + r->breath_scale * HMM_SinF((p->breath_rad_s > 0.0f ? p->breath_rad_s : r->breath_rad_s) * t + a->seed * 1.37f) *
+                                    (p->breath_k > 0.0f ? p->breath_k : 1.0f);
     s->body_s = HMM_MulM4(body, HMM_Scale(HMM_V3(1.0f, breath, 1.0f)));
 
     /* head: 0.86 m up the body's own axis (it moves forward when the body leans), plus the chat pop */
@@ -590,6 +591,9 @@ void avatar_solve(const AvatarMeshes *m, const AvatarLook *look, const AvatarPos
     HMM_Mat4 head = p->head_only ? root : HMM_MulM4(body, HMM_Translate(HMM_V3(0, r->head_up * breath + p->head_lift / kc, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(hyaw, HMM_V3(0, 1, 0)));
     head = HMM_MulM4(head, HMM_Rotate_RH(-hpitch, HMM_V3(1, 0, 0))); /* + looks up */
+    if (p->head_roll != 0.0f) {
+        head = HMM_MulM4(head, HMM_Rotate_RH(p->head_roll, HMM_V3(0, 0, 1)));
+    }
     head = HMM_MulM4(head, HMM_Scale(HMM_V3(hk, hk, hk)));
     s->head = head;
     s->head_centre = head.Columns[3].XYZ;

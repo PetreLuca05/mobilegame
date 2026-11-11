@@ -52,6 +52,7 @@ typedef struct LibraryTest {
     bool rebase;    /* the next judged step only sets the baseline speed (after a picture) */
     double door_clear; /* the last moment a background NPC was at my table's door (after the friend left) */
     bool canary;    /* the third Maps / Back: one stale camera frame injected into the Back, which must be caught */
+    bool acts_skip; /* a short run (onboarding, Reduse): the acts are not judged */
     char npc_why[160];
     char why[200];
 } LibraryTest;

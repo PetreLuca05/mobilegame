@@ -950,6 +950,13 @@ bool game_init(MgApp *app)
         }
         g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
         g->lib_still = has_flag(app->argc, app->argv, "--lib-still");
+        g->lib.log_acts = has_flag(app->argc, app->argv, "--lib-log-acts"); /* every background person's act as it starts (pictures) */
+        if (arg_value(app->argc, app->argv, "--lib-look")) { /* desktop pictures: the menu camera on hall point x,z from d m */
+            float x = 0.0f, z = 0.0f, d = 0.0f;
+            if (SDL_sscanf(arg_value(app->argc, app->argv, "--lib-look"), "%f,%f,%f", &x, &z, &d) == 3 && d > 0.0f) {
+                g->lib.look_at = HMM_V2(x, z), g->lib.look_dist = d;
+            }
+        }
         if (arg_value(app->argc, app->argv, "--lib-lod-fade")) { /* perf: one NPC always mid-crossfade */
             g->lib.lod_fade_test = SDL_atoi(arg_value(app->argc, app->argv, "--lib-lod-fade"));
         }
@@ -2310,6 +2317,7 @@ static bool menu_world(Game *g, MgApp *app)
     g->menu_hero = g->menu_slots[0];
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
+    g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, g->lib_still ? 0.0f : mg_minf(app->frame_dt, 0.1f));
     return true;
 }
@@ -2495,6 +2503,7 @@ static void move_frame(Game *g, MgApp *app)
     g->last_cam_dist = c.dist;
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
+    g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
     g->lib.lod_from_rest = true; /* the move: the people keep the menu's LODs (no switch while the camera flies) */
     gfx_allow_fade(app->gfx, true); /* the shell's true fade: the move only */
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
@@ -2584,6 +2593,7 @@ static void map_flow(Game *g, MgApp *app)
     if (g->lib_placed) { /* the library stands on the island played last: the closed building */
         g->lib.shell_k = 1.0f;
         g->lib.view_eye = g->last_eye;
+    g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
         menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
     }
     if (g->prefs.world.rides.unsynced) { /* a trip drew a vehicle: the account's copy follows */

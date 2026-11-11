@@ -92,6 +92,7 @@ typedef struct LibNavQueue {
 void lib_nav_queue_init(LibNavQueue *q, const LibNav *n);
 uint32_t lib_nav_request(LibNavQueue *q, HMM_Vec2 from, HMM_Vec2 to, const HMM_Vec3 *discs, int ndiscs); /* 0 = queue full */
 void lib_nav_service(LibNavQueue *q, double budget_ms); /* at least one search per call when any is pending */
+void lib_nav_service_n(LibNavQueue *q, int searches);  /* the oldest `searches` pending requests: the same on every device */
 LibReqState lib_nav_poll(LibNavQueue *q, uint32_t ticket, LibPath *out); /* READY / FAILED release the ticket */
 void lib_nav_cancel(LibNavQueue *q, uint32_t ticket);
 
@@ -104,14 +105,15 @@ void lib_nav_cancel(LibNavQueue *q, uint32_t ticket);
 #define LIB_REPATH_S 1.2f
 #define LIB_GHOST_AFTER_S 4.0f
 #define LIB_GHOST_S 1.2f
-/* While ignoring others the prototype drops the hard rule entirely (0 here); that lets a stuck walker or cart pass
- * through someone, which breaks "never closer than 90 % of the radii sum". The spell instead ignores others for
- * steering and the stop rule and keeps a hard rule floor of 91 %. */
-#define LIB_GHOST_HARD_RULE 0.91f
+/* While ignoring others the prototype drops the hard rule entirely; that lets a stuck walker or cart pass through
+ * someone. The spell here ignores others for steering and the stop rule, keeps the 96 % hard rule, and adds steps
+ * back (straight and both diagonals, half speed); whoever stands blocked right in front of it gives way the same way. */
+#define LIB_GHOST_HARD_RULE 0.96f
 #define LIB_STAMP_RANGE 2.5f
 #define LIB_STAMP_PAD 0.35f
 #define LIB_CART_AHEAD 0.75f
 #define LIB_CART_RADIUS 0.42f
+#define LIB_CART_SLIDE 2.0f /* m/s: a parked cart taken up again slides to its place ahead (never a jump) */
 
 typedef struct LibAgent {
     HMM_Vec2 pos, vel;
@@ -133,11 +135,14 @@ typedef struct LibAgent {
     int cart_of;          /* a cart: its pusher; a pusher: -1 */
     int cart;             /* a pusher: its cart, -1 none */
     bool cart_pushed;     /* the pusher has the cart in hand (checks its place; the cart follows) */
+    bool cart_checked;    /* this tick's step checked the cart's place ahead */
+    bool cart_catching;   /* the cart was parked and is taken up again: it slides to its place at LIB_CART_SLIDE */
     uint32_t ticket;      /* pending path request, 0 none */
     bool ticket_is_repath;
+    int rate;             /* 0 / 1: steps every tick; N: one tick in N with N x dt (a bay that is not on screen) */
 } LibAgent;
 
-typedef struct LibAgentSnap { HMM_Vec2 p; float r; int owner; } LibAgentSnap;
+typedef struct LibAgentSnap { HMM_Vec2 p; float r; int owner; bool ghost; } LibAgentSnap; /* ghost: its owner ignores others */
 
 typedef struct LibAgents {
     LibAgent a[LIB_AGENTS_MAX];
@@ -146,6 +151,8 @@ typedef struct LibAgents {
     int nsnap;
     LibNavQueue q;
     double service_budget_ms; /* per lib_agents_step, default 1 ms */
+    int service_searches;     /* > 0: exactly this many searches per step instead of the time budget (deterministic) */
+    uint32_t tick;            /* lib_agents_step calls so far (the rate phase) */
 } LibAgents;
 
 void lib_agents_init(LibAgents *s, const LibNav *n);

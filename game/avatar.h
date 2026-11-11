@@ -128,6 +128,8 @@ typedef struct AvatarPose {
     HMM_Vec3 carry_l, carry_r;
     HMM_Vec3 hand_l, hand_r;
     float breath_k;   /* 0 = 1 */
+    float breath_rad_s; /* 0 = the rig's rate (a sleeper breathes slower and deeper) */
+    float head_roll;  /* radians about the head's forward axis (+ tips towards the avatar's left) */
     float body_yaw;   /* the body and head turn about the body base (+ to its left); the hands stay */
     float scale;      /* the whole avatar, 0 = 1 (the library on the island: lib_scale) */
     /* BOOK-ENGINE */
