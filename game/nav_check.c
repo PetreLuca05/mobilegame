@@ -117,9 +117,43 @@ static int cells_across(const uint8_t *w, float x, float z, float cx, float cz, 
     return best;
 }
 
+/* the page's rule: a pocket behind a counter (within 0.8 m of one) is allowed */
+static bool near_counter(const IMap *m, int storey, float x, float z)
+{
+    for (int i = 0; i < m->prop_count; i++) {
+        const ImProp *q = &m->props[i];
+        if (q->storey != storey || (q->kind != IMF_DISPENSING_COUNTER && q->kind != IMF_STATION_COUNTER &&
+                                    q->kind != IMF_NURSE_COUNTER && q->kind != IMF_RECEPTION_DESK)) {
+            continue;
+        }
+        Rect r = rect_of(q->x, q->z, q->yaw, q->w, q->d);
+        if (x > r.x0 - .8f && x < r.x1 + .8f && z > r.z0 - .8f && z < r.z1 + .8f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* the colliders that block a cell centre (capsule r 0.35 m, 0.35 .. 1.8 m above the floor) */
+static void blockers_of(FILE *fp, const ColWorld *w, float x, float z, float fy)
+{
+    for (int i = 0; i < w->count; i++) {
+        const ColBox *b = &w->boxes[i];
+        if (b->aabb_max.Y <= fy + 0.35f || b->aabb_min.Y >= fy + 1.8f) {
+            continue;
+        }
+        const float dx = x < b->aabb_min.X ? b->aabb_min.X - x : (x > b->aabb_max.X ? x - b->aabb_max.X : 0.0f);
+        const float dz = z < b->aabb_min.Z ? b->aabb_min.Z - z : (z > b->aabb_max.Z ? z - b->aabb_max.Z : 0.0f);
+        if (dx * dx + dz * dz < 0.35f * 0.35f) {
+            fprintf(fp, "      cell %.3f,%.3f: collider %d x %.2f..%.2f z %.2f..%.2f y %.2f..%.2f\n", (double)x, (double)z, i,
+                    (double)b->aabb_min.X, (double)b->aabb_max.X, (double)b->aabb_min.Z, (double)b->aabb_max.Z,
+                    (double)b->aabb_min.Y, (double)b->aabb_max.Y);
+        }
+    }
+}
+
 int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *world, const char *path)
 {
-    (void)world;
     const IMap *m = &in->map;
     const char *ref_path = SDL_getenv("MG_NAV_REF");
     char *json = load_text(ref_path && *ref_path ? ref_path : "content/gastro/model_nav.json");
@@ -184,7 +218,7 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
 
     /* 2. door openings and approaches */
     fprintf(fp, "\n== door leaves (stairwells exempt): cells across the opening (min of 3 rows), approach 1.0 m both sides\n");
-    int doors = 0, narrow = 0, blocked_data = 0, blocked_grid = 0, ref_narrow = 0;
+    int doors = 0, narrow = 0, blocked_data = 0, blocked_grid = 0, ref_narrow = 0, approach_1m = 0;
     for (int i = 0; i < m->prop_count; i++) {
         const ImProp *p = &m->props[i];
         if (p->kind != IMF_DOOR_LEAF) {
@@ -237,14 +271,19 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
         }
         /* the baked grid: the opening's centre line, 0.25 .. 1.0 m out on both sides */
         const float mx = p->x + cx * len * 0.5f, mz = p->z + cz * len * 0.5f;
-        int miss = 0;
+        int miss = 0, miss1 = 0;
         for (int s = -1; s <= 1; s += 2) {
             for (int dstep = 1; dstep <= 4; dstep++) {
                 const float dd = 0.25f * (float)dstep * (float)s;
                 const int k = ridx(mx + nx * dd, mz + nz * dd);
-                miss += k < 0 || !w[k];
+                if (dstep < 4) {
+                    miss += k < 0 || !w[k];
+                } else {
+                    miss1 += k < 0 || !w[k];
+                }
             }
         }
+        approach_1m += miss1 > 0;
         if (stairs) {
             continue;
         }
@@ -253,14 +292,26 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
         ref_narrow += racross < 2;
         blocked_data += nb > 0;
         blocked_grid += miss > 0;
-        if (across < 2 || nb > 0 || miss > 0 || across != racross) {
+        if (across < 2 || nb > 0 || miss > 0 || miss1 > 0 || across != racross) {
             fprintf(fp, "  %-28s storey %d at %6.2f,%6.2f len %.2f: across %d (ref %d)%s%s%s%s\n", imap_str(m, p->id), p->storey,
                     (double)p->x, (double)p->z, (double)len, across, racross, across < 2 ? " NARROW" : "",
-                    miss ? " approach-cells-blocked" : "", nb ? " furniture-in-zone: " : "", nb ? blockers : "");
+                    miss ? " approach-cells-blocked" : (miss1 ? " (the cell 1.0 m out is within 0.35 m of furniture)" : ""), nb ? " furniture-in-zone: " : "", nb ? blockers : "");
+            for (int s = -1; s <= 1 && (miss || miss1); s += 2) {
+                for (int dstep = 1; dstep <= 4; dstep++) {
+                    const float dd = 0.25f * (float)dstep * (float)s;
+                    const int k = ridx(mx + nx * dd, mz + nz * dd);
+                    if (k >= 0 && !w[k]) {
+                        float cxw, czw;
+                        rcentre(k, &cxw, &czw);
+                        blockers_of(fp, world, cxw, czw, (float)p->storey * INST_FH);
+                    }
+                }
+            }
         }
     }
-    fprintf(fp, "door leaves %d: %d with < 2 cells across (reference: %d), %d with furniture in the 1.0 m zone, %d with a "
-                "blocked baked approach line\n", doors, narrow, ref_narrow, blocked_data, blocked_grid);
+    fprintf(fp, "door leaves %d: %d with < 2 cells across (reference: %d), %d with furniture in the 1.0 m zone (the page's "
+                "check), %d with a blocked baked cell 0.25 .. 0.75 m out, %d with the cell 1.0 m out next to furniture\n",
+            doors, narrow, ref_narrow, blocked_data, blocked_grid, approach_1m);
     fails += narrow + blocked_data + blocked_grid;
 
     /* 3. reachability from the entrance, lifts joining the storeys */
@@ -340,11 +391,15 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
                 reached += rr[k];
                 if (!rr[k] && !seen[k]) { /* a pocket: flood it inside the room */
                     int ps = 0, cnt = 0;
+                    bool counter = false;
                     stack[ps++] = k;
                     seen[k] = 1;
                     while (ps > 0) {
                         const int c = stack[--ps];
                         cnt++;
+                        float qx, qz;
+                        rcentre(c, &qx, &qz);
+                        counter = counter || near_counter(m, r->storey, qx, qz);
                         const int ci = c % RNX, cj = c / RNX;
                         static const int d4[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
                         for (int q = 0; q < 4; q++) {
@@ -362,7 +417,18 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
                         }
                     }
                     const float m2 = (float)cnt * CS * CS;
-                    if (m2 >= 0.5f) {
+                    if (m2 >= 0.5f && counter) {
+                        fprintf(fp, "  %-14s storey %d: %.2f m2 pocket behind a counter (allowed)\n", imap_str(m, r->id), r->storey,
+                                (double)m2);
+                    } else if (m2 >= 0.5f) {
+                        float ax, az;
+                        rcentre(k, &ax, &az);
+                        fprintf(fp, "  %-14s storey %d: %.2f m2 unreachable pocket at %.2f,%.2f\n", imap_str(m, r->id), r->storey,
+                                (double)m2, (double)ax, (double)az);
+                        blockers_of(fp, world, ax, az - 0.25f, (float)r->storey * INST_FH);
+                        blockers_of(fp, world, ax, az + 0.25f, (float)r->storey * INST_FH);
+                        blockers_of(fp, world, ax - 0.25f, az, (float)r->storey * INST_FH);
+                        blockers_of(fp, world, ax + 0.25f, az, (float)r->storey * INST_FH);
                         pockets++;
                         pocket_m2 += m2;
                     }

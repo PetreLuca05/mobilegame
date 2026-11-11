@@ -104,6 +104,7 @@ typedef struct Institute {
     HMM_Vec3 spawns[INST_SPAWNS];
     HMM_Vec3 entrance_spawn, roof_spawn;
     InstLive *live;
+    const ColWorld *world;   /* the static colliders (free spots for the room graph's slots) */
     InstStats stats;
 } Institute;
 
@@ -134,6 +135,8 @@ int institute_area_kind(const IMap *m, float x, float z, int storey);
 typedef struct FurnOut {
     MeshBuilder *solid, *glass;
     uint32_t tris;
+    int sub_n;              /* the piece's boxes in the world (first 16), for composite colliders */
+    HMM_Vec3 sub_mn[16], sub_mx[16];
 } FurnOut;
 void furn_build_prop(FurnOut *o, const IMap *m, const ImProp *p, HMM_Vec3 *mn, HMM_Vec3 *mx);
 void furn_build_iprop(FurnOut *o, const IMap *m, const ImIProp *p, HMM_Vec3 *mn, HMM_Vec3 *mx);

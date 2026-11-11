@@ -855,7 +855,9 @@ static void build_site(IBuild *b)
 
 static bool blocks_people(HMM_Vec3 mn, HMM_Vec3 mx, float floor_y)
 {
-    return mn.Y < floor_y + 1.8f && mx.Y > floor_y + 0.2f;
+    /* standing on the floor (things hung on walls or set on a counter or desk from 0.5 m up never block: the wall,
+     * counter or desk under them does) and taller than a kerb */
+    return mn.Y < floor_y + 0.5f && mx.Y > floor_y + 0.2f;
 }
 
 static void build_furniture(IBuild *b, int f)
@@ -902,7 +904,13 @@ static void build_furniture(IBuild *b, int f)
         HMM_Vec3 mn, mx;
         furn_build_prop(&fo, m, p, &mn, &mx);
         in->stats.furn_pieces++;
-        if (p->mount != IM_MOUNT_FLOOR && blocks_people(mn, mx, fy)) {
+        if (p->kind == IMF_STATION_COUNTER) { /* a U: the staff stand inside it, so its three boxes collide */
+            for (int k = 0; k < fo.sub_n; k++) {
+                if (blocks_people(fo.sub_mn[k], fo.sub_mx[k], fy) && fo.sub_mn[k].Y < fy + 0.5f) {
+                    collide(b, fo.sub_mn[k].X, fo.sub_mn[k].Y, fo.sub_mn[k].Z, fo.sub_mx[k].X, fo.sub_mx[k].Y, fo.sub_mx[k].Z);
+                }
+            }
+        } else if (p->mount != IM_MOUNT_FLOOR && blocks_people(mn, mx, fy)) {
             collide(b, mn.X, mn.Y, mn.Z, mx.X, mx.Y, mx.Z);
         }
     }
@@ -1078,6 +1086,7 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
         return false;
     }
     memset(in->live, 0, sizeof(*in->live));
+    in->world = world;
     for (int i = 0; i < COL_MAX_BOXES; i++) {
         in->box_seg[i] = -1;
     }
@@ -1385,14 +1394,14 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
 
 /* ------------------------------------------------------------------ nav */
 
-/* grid 0: the site round the building (yard + storey G, one area); 1..3 the storeys; 4 the roof deck. Same 0.25 m
+/* grid 0: the site round the building (x -46..46, z -30..46: the front gate, the car park's free bays) (yard + storey G, one area); 1..3 the storeys; 4 the roof deck. Same 0.25 m
  * lattice as content/gastro/model_nav.json (x0 -34, z0 -27), so the grids compare cell for cell. */
 NavWorld *institute_nav_bake(Institute *in, Arena *perm, ColWorld *world)
 {
     NavBakeDesc d;
     memset(&d, 0, sizeof(d));
     d.grid_count = INST_STOREYS;
-    d.grids[0] = (NavGridDesc){-40.0f, -30.0f, (int)(80.0f / NAV_CELL), (int)(70.0f / NAV_CELL), 0.0f};
+    d.grids[0] = (NavGridDesc){-46.0f, -30.0f, (int)(92.0f / NAV_CELL), (int)(76.0f / NAV_CELL), 0.0f};
     for (int f = 1; f < INST_STOREYS; f++) {
         d.grids[f] = (NavGridDesc){-27.0f, -19.0f, (int)(54.0f / NAV_CELL), (int)(38.0f / NAV_CELL), (float)f * INST_FH};
     }
@@ -1570,13 +1579,60 @@ static void map_slots(const IMap *m, RoomGraph *g, int f, int *group)
             const ImProp *p = &m->props[k];
             if (p->storey == 0 && p->kind == IMF_RECEPTION_DESK) {
                 for (int i = 0; i < 5; i++) {
-                    const float z = p->z + p->d * .5f + .75f + .7f * (float)i;
+                    const float z = p->z + p->d * .5f + 1.7f + .7f * (float)i;
                     slot_set_group(g, slot_add(g, SLOT_RECEPTION_QUEUE, 0, p->x, z, YAW_NZ), GROUP_QUEUE, i);
                 }
                 break;
             }
         }
     }
+}
+
+/* the capsule (r 0.35 m, 0.35 .. 1.8 m above the floor) at (x, z) touches no collider */
+static bool spot_free(const ColWorld *w, float x, float z, float fy)
+{
+    for (int i = 0; i < w->count; i++) {
+        const ColBox *b = &w->boxes[i];
+        if (b->aabb_max.Y <= fy + 0.35f || b->aabb_min.Y >= fy + 1.8f) {
+            continue;
+        }
+        const float dx = x < b->aabb_min.X ? b->aabb_min.X - x : (x > b->aabb_max.X ? x - b->aabb_max.X : 0.0f);
+        const float dz = z < b->aabb_min.Z ? b->aabb_min.Z - z : (z > b->aabb_max.Z ? z - b->aabb_max.Z : 0.0f);
+        if (dx * dx + dz * dz < 0.40f * 0.40f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Slots of the map that stand in furniture (a chair slot is the chair itself) move to the nearest free spot. */
+static void free_slots(const Institute *in, RoomGraph *g)
+{
+    if (!in->world) {
+        return;
+    }
+    int moved = 0, stuck = 0;
+    for (int i = 0; i < g->slot_count; i++) {
+        Slot *s = &g->slots[i];
+        const float fy = s->storey < 0 ? 0.0f : (float)s->storey * INST_FH;
+        if (spot_free(in->world, s->x, s->z, fy)) {
+            continue;
+        }
+        bool found = false;
+        for (float r = 0.25f; r <= 1.5f && !found; r += 0.25f) {
+            for (int k = 0; k < 16 && !found; k++) {
+                const float a = (float)k * HMM_PI32 / 8.0f, x = s->x + r * cosf(a), z = s->z + r * sinf(a);
+                if (spot_free(in->world, x, z, fy) && room_at(g, x, z, s->storey) == room_at(g, s->x, s->z, s->storey)) {
+                    s->x = x;
+                    s->z = z;
+                    found = true;
+                }
+            }
+        }
+        moved += found;
+        stuck += !found;
+    }
+    mg_log_info("institute: %d slots moved out of furniture, %d without a free spot within 1.5 m", moved, stuck);
 }
 
 void institute_rooms_build(const Institute *in, RoomGraph *g)
@@ -1661,4 +1717,5 @@ void institute_rooms_build(const Institute *in, RoomGraph *g)
             slot_add(g, SLOT_LIFT_LOBBY, f, in->lift_x[0], 9.4f, YAW_NZ);
         }
     }
+    free_slots(in, g);
 }

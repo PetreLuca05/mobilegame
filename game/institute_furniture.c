@@ -511,6 +511,7 @@ static void emit(FurnOut *o, const Loc *L, const Frame *F, float y, float tx0, f
     float sx = (tx1 - tx0) / (bx1 - bx0), sz = (tz1 - tz0) / (bz1 - bz0);
     float bcx = (bx0 + bx1) * 0.5f, bcz = (bz0 + bz1) * 0.5f, tcx = (tx0 + tx1) * 0.5f, tcz = (tz0 + tz1) * 0.5f;
     float sr = sqrtf(sx * sz);
+    o->sub_n = 0;
     for (int i = 0; i < L->n; i++) {
         const LP *p = &L->p[i];
         float cx = p->u * F->ux + p->v * F->vx, cz = p->u * F->uz + p->v * F->vz;
@@ -523,6 +524,10 @@ static void emit(FurnOut *o, const Loc *L, const Frame *F, float y, float tx0, f
             float hx = (fabsf(F->ux) * p->su * 0.5f + fabsf(F->vx) * p->sv * 0.5f) * sx;
             float hz = (fabsf(F->uz) * p->su * 0.5f + fabsf(F->vz) * p->sv * 0.5f) * sz;
             ibox(mb, wx - hx, y + p->y0, wz - hz, wx + hx, y + p->y0 + p->h, wz + hz, p->col, 0, false);
+            if (o->sub_n < 16) {
+                o->sub_mn[o->sub_n] = HMM_V3(wx - hx, y + p->y0, wz - hz);
+                o->sub_mx[o->sub_n++] = HMM_V3(wx + hx, y + p->y0 + p->h, wz + hz);
+            }
         }
         o->tris += (mb->ni - before) / 3;
     }
