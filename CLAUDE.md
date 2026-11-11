@@ -653,7 +653,7 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 
 - Institute (MAP-2): books.json Gastro `scene` = `institute`. `tools/mapc.py` compiles `content/gastro/institute.map` to
   `assets/world/institute.mapb` (MGMP v1, read in place by `game/imap.c`); `game/institute.c` (+ `institute_furniture.c`)
-  builds the shell, furniture merged per storey and material, 3 lifts x 5 landings (G 1 2 3 R), wall pieces, open doorways (frames only: the map's `door_leaf` records mark doorways, no leaf is built; only the lifts have doors),
+  builds the shell, furniture merged per storey and material, 3 lifts x 5 landings (G 1 2 3 R), wall pieces, open doorways (frames only; only the lifts have doors). The map's `door_leaf` record name is historical: no leaf exists, the records only mark where doorways are (the pack's furniture table must keep matching the map; `nav_check` reports them as doorways),
   nav at the capsule's 0.35 m, room graph. Nav vs the reference grid: `MG_NAV_CHECK=<file>` (`game/nav_check.c`, last report
   `docs/autotest/institute/nav_check.txt`). Pictures: `tools/institute_shots.sh`. No ambient NPC roster in the institute.
 - Landing call (`lifts_call` in game.c): with several lifts a car stays where it was used; standing within 1.6 m of an idle

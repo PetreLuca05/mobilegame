@@ -141,7 +141,7 @@ typedef struct ImIProp {
 
 typedef struct ImProp {
     uint32_t id;
-    float x, z;        /* footprint centre (door_leaf: the hinge) */
+    float x, z;        /* footprint centre (door_leaf: the hinge; the name is historical: no leaf is built, it marks a doorway) */
     float yaw;         /* 0 faces +z; the room's door side: S 0, E 90, N 180, W 270 */
     float w, d, h;     /* w across the facing direction, d along it, h top above the floor */
     float open_x, open_z; /* door_leaf: the side it swings to */
