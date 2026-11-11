@@ -10,6 +10,9 @@ Standing rules for every milestone. Numbers and history are in [PERF.md](PERF.md
 - A milestone is not signed off if any budget is exceeded or regresses by more than 10 %.
 - Each prompt's done checklist gets: `[ ] --autotest perf within budget on iPad Air 4; docs/perf/ updated.`
 - Never commit an optimisation without its measured delta in PERF.md.
+- The Gastro institute (INST-LIGHT) is fully lit and textured: every institute pixel samples the pattern texture (one R8 2D array
+  sample) and runs the reference light set, and its glass is blended. Measured on the Mac only so far (CPU `render` scope, draws);
+  the combined iPad gate must include a GPU trace (Instruments, Metal System Trace) of the institute scenario.
 
 ## Budgets (iPad Air 4, 60 fps, 200 NPCs)
 

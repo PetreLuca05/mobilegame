@@ -45,6 +45,7 @@ typedef struct SceneView {
     float lamp_on;      /* day cycle: exterior lamps 0..1 */
     const float *fade;  /* the scene's fade slots (FloorFade.vis), NULL = all drawn */
     bool storey_tint;   /* debug: colour meshes by storey id */
+    bool inst_fill_1;   /* debug (--debug inst-fill-1): the institute's indoor fill lowered so sun + fill = 1.0 facing up */
 } SceneView;
 
 /* ------------------------------------------------------------ kinds */

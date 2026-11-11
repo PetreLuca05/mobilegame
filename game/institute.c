@@ -11,6 +11,7 @@
 #include "core/time.h"
 #include "gfx/floorfade.h"
 #include "gfx/material.h"
+#include "inst_patterns.h"
 #include "rooms.h"
 
 /* COL of the JS page (the ones the shell and the site use) */
@@ -903,6 +904,89 @@ static void build_furniture(IBuild *b, int f)
 
 /* ------------------------------------------------------------------ upload */
 
+/* The reference's light set on every institute mesh (GFX_MAT_PATTERN, user decision: lit, nothing casts a shadow): the
+ * builders' alpha (the old outdoor flag) becomes the pattern of the vertex's palette colour (KIND_OF) | INST_PAT_LIT. */
+static void paint(GfxVertex *v, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; i++) {
+        const uint32_t hex = ((uint32_t)v[i].r << 16) | ((uint32_t)v[i].g << 8) | v[i].b;
+        v[i].a = (uint8_t)((uint32_t)inst_pattern_of(hex) | INST_PAT_LIT);
+    }
+}
+
+static bool is_glass(const GfxVertex *v) { return ((uint32_t)v->r << 16 | (uint32_t)v->g << 8 | v->b) == C_GLASS; }
+
+/* The triangles of `n` builders that are glass (COL.glass: drawn with GFX_MAT_GLASS, as the page's mesh() does) or that
+ * are not, into `out` (vertices compacted, painted). */
+static void part_into(MeshBuilder *out, MeshBuilder *const *src, int n, bool glass, Arena *scratch)
+{
+    for (int k = 0; k < n; k++) {
+        const MeshBuilder *m = src[k];
+        if (m->ni == 0) {
+            continue;
+        }
+        const size_t mark = arena_mark(scratch);
+        uint32_t *remap = ARENA_PUSH(scratch, uint32_t, m->nv);
+        if (!remap) {
+            out->overflow = true;
+            return;
+        }
+        memset(remap, 0xff, sizeof(uint32_t) * m->nv);
+        for (uint32_t t = 0; t + 2 < m->ni; t += 3) {
+            if (is_glass(&m->v[m->idx[t]]) != glass) {
+                continue;
+            }
+            uint32_t id[3];
+            for (int c = 0; c < 3; c++) {
+                const uint32_t vi = m->idx[t + (uint32_t)c];
+                if (remap[vi] == UINT32_MAX) {
+                    if (out->nv >= out->cap_v) {
+                        out->overflow = true;
+                        arena_reset_to(scratch, mark);
+                        return;
+                    }
+                    out->v[out->nv] = m->v[vi];
+                    paint(&out->v[out->nv], 1);
+                    remap[vi] = out->nv++;
+                }
+                id[c] = remap[vi];
+            }
+            mb_triangle_idx(out, id[0], id[1], id[2]);
+        }
+        arena_reset_to(scratch, mark);
+    }
+}
+
+static GfxMeshId upload(IBuild *b, MeshBuilder *mb, int stat_slot);
+
+/* One mesh from the glass (or the other) triangles of several builders. */
+static GfxMeshId upload_part(IBuild *b, MeshBuilder *const *src, int n, bool glass, int stat_slot)
+{
+    uint32_t nv = 0, ni = 0;
+    for (int k = 0; k < n; k++) {
+        if (src[k]->overflow) {
+            mg_log_error("institute: a mesh builder overflowed (%u vertices)", src[k]->cap_v);
+            b->ok = false;
+        }
+        nv += src[k]->nv;
+        ni += src[k]->ni;
+    }
+    if (ni == 0) {
+        return GFX_MESH_NONE;
+    }
+    const size_t mark = arena_mark(b->scratch);
+    MeshBuilder out;
+    GfxMeshId id = GFX_MESH_NONE;
+    if (!mb_init(&out, b->scratch, nv, ni)) {
+        b->ok = false;
+    } else {
+        part_into(&out, src, n, glass, b->scratch);
+        id = upload(b, &out, stat_slot);
+    }
+    arena_reset_to(b->scratch, mark);
+    return id;
+}
+
 static GfxMeshId upload(IBuild *b, MeshBuilder *mb, int stat_slot)
 {
     if (mb->overflow) {
@@ -961,10 +1045,20 @@ static bool storey_pass(IBuild *b, int f)
         build_roof(b);
     }
     build_towers(b, f);
+    /* One material for the whole building now (unlit, patterned), so the groups drawn under the same condition merge:
+     * the slab goes with the facade (always drawn), floors and furniture with the interior walls (drawn with the
+     * interiors); every glass triangle goes to the glass mesh of its side (GFX_MAT_GLASS), the rest to the solid one. */
+    MeshBuilder *ext_src[3] = {&b->g[IG_EXT], &b->g[IG_EXT_GLASS], &b->g[IG_SLAB]};
+    MeshBuilder *int_src[5] = {&b->g[IG_INT], &b->g[IG_INT_GLASS], &b->g[IG_FLOOR], &b->g[IG_FURN], &b->g[IG_FURN_GLASS]};
     for (int k = 0; k < IG_COUNT; k++) {
-        in->mesh[f][k] = upload(b, &b->g[k], 1 + f);
+        in->mesh[f][k] = GFX_MESH_NONE;
     }
-    /* wall pieces: one mesh per [interior, exterior]; a piece is an index range of it */
+    in->mesh[f][IG_EXT] = upload_part(b, ext_src, 3, false, 1 + f);
+    in->mesh[f][IG_EXT_GLASS] = upload_part(b, ext_src, 3, true, 1 + f);
+    in->mesh[f][IG_INT] = upload_part(b, int_src, 5, false, 1 + f);
+    in->mesh[f][IG_INT_GLASS] = upload_part(b, int_src, 5, true, 1 + f);
+    in->mesh[f][IG_TEXT] = upload(b, &b->g[IG_TEXT], 1 + f);
+    /* wall pieces: one solid and one glass mesh per [interior, exterior]; a piece is an index range of each */
     for (int ext = 0; ext < 2; ext++) {
         uint32_t nv = 0, ni = 0;
         for (int i = 0; i < b->seg_used; i++) {
@@ -978,22 +1072,42 @@ static bool storey_pass(IBuild *b, int f)
             }
         }
         in->seg_mesh[f][ext] = GFX_MESH_NONE;
+        in->seg_glass[f][ext] = GFX_MESH_NONE;
         if (ni == 0) {
             continue;
         }
-        MeshBuilder all;
-        if (!mb_init(&all, b->scratch, nv, ni)) {
-            b->ok = false;
-            continue;
-        }
-        for (int i = 0; i < b->seg_used; i++) {
-            InstSeg *sg = &in->segs[b->seg_global[i]];
-            if ((int)sg->exterior == ext) {
-                sg->first = mb_append(&all, &b->seg[i]);
-                sg->count = b->seg[i].ni;
+        for (int glass = 0; glass < 2; glass++) {
+            const size_t smark = arena_mark(b->scratch);
+            MeshBuilder all;
+            if (!mb_init(&all, b->scratch, nv, ni)) {
+                b->ok = false;
+                continue;
             }
+            for (int i = 0; i < b->seg_used; i++) {
+                InstSeg *sg = &in->segs[b->seg_global[i]];
+                if ((int)sg->exterior == ext) {
+                    MeshBuilder *one = &b->seg[i];
+                    const uint32_t first = all.ni;
+                    part_into(&all, &one, 1, glass != 0, b->scratch);
+                    if (glass) {
+                        sg->gfirst = first;
+                        sg->gcount = all.ni - first;
+                    } else {
+                        sg->first = first;
+                        sg->count = all.ni - first;
+                    }
+                }
+            }
+            if (all.ni > 0) {
+                const GfxMeshId id = upload(b, &all, 1 + f);
+                if (glass) {
+                    in->seg_glass[f][ext] = id;
+                } else {
+                    in->seg_mesh[f][ext] = id;
+                }
+            }
+            arena_reset_to(b->scratch, smark);
         }
-        in->seg_mesh[f][ext] = upload(b, &all, 1 + f);
     }
     arena_reset_to(b->scratch, mark);
     return true;
@@ -1012,10 +1126,11 @@ static bool site_pass(IBuild *b)
     }
     b->storey = -1;
     build_site(b);
-    /* kerbs come from the ground storey's core: built here (site groups) */
-    for (int k = 0; k < ISG_COUNT; k++) {
-        in->site[k] = upload(b, &b->site[k], 0);
-    }
+    /* kerbs come from the ground storey's core: built here (site groups). One solid mesh and one glass mesh. */
+    MeshBuilder *src[ISG_COUNT] = {&b->site[ISG_MATTE], &b->site[ISG_GLOSS], &b->site[ISG_GROUND]};
+    in->site[ISG_MATTE] = upload_part(b, src, ISG_COUNT, false, 0);
+    in->site[ISG_GLOSS] = upload_part(b, src, ISG_COUNT, true, 0);
+    in->site[ISG_GROUND] = GFX_MESH_NONE;
     arena_reset_to(b->scratch, mark);
     return true;
 }
@@ -1031,6 +1146,7 @@ static GfxMeshId small_mesh(IBuild *b, int which)
         } else { /* a landing door panel 0.85 x 2.3 x 0.06, centred */
             jbox(&mb, 0, CAR_H * .5f, 0, .85f, CAR_H, .06f, C_STEEL, 0);
         }
+        paint(mb.v, mb.nv);
         id = upload(b, &mb, 0);
     }
     arena_reset_to(b->scratch, mark);
@@ -1055,6 +1171,9 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
     }
     memset(in->live, 0, sizeof(*in->live));
     in->world = world;
+    if (g && !inst_patterns_upload(g)) { /* once per run: the reference's ten detail patterns */
+        mg_log_error("institute: no pattern textures; the building draws with the toon material");
+    }
     for (int i = 0; i < COL_MAX_BOXES; i++) {
         in->box_seg[i] = -1;
     }
@@ -1086,7 +1205,17 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
         mg_log_error("institute: out of memory building the site");
         return false;
     }
-    in->car_mesh = small_mesh(b, 3);
+    { /* the car: solid + its see-through glass panel, as every other glass */
+        const size_t mark = arena_mark(b->scratch);
+        MeshBuilder cab;
+        if (mb_init(&cab, b->scratch, 2048, 4096)) {
+            build_cab(&cab);
+            MeshBuilder *src = &cab;
+            in->car_mesh = upload_part(b, &src, 1, false, 0);
+            in->car_glass = upload_part(b, &src, 1, true, 0);
+        }
+        arena_reset_to(b->scratch, mark);
+    }
     in->lift_door = small_mesh(b, 4);
     /* spawns: the yard ones (storey -1), the entrance hall, the roof */
     int ns = 0;
@@ -1197,6 +1326,13 @@ int institute_area_kind(const IMap *m, float x, float z, int storey)
 
 int institute_group_storey(int storey_slot) { return storey_slot; }
 
+void institute_sky(GfxSceneParams *sp)
+{
+    const HMM_Vec4 bg = HMM_V4(0xbf / 255.0f, 0xe6 / 255.0f, 0xf5 / 255.0f, 1.0f);
+    sp->sky_horizon = sp->sky_zenith = bg;
+    sp->sun_disc.W = 0.0f; /* the page's sky has no sun disc */
+}
+
 /* ------------------------------------------------------------------ draw */
 
 static GfxMaterial tinted(GfxMaterial m, const InstView *v, int storey)
@@ -1219,15 +1355,20 @@ static void draw_mesh(GfxContext *g, GfxMeshId id, const GfxMaterial *mat, uint3
 
 static float svis(const InstView *v, int s) { return !v->fade || s < 0 ? 1.0f : v->fade[INST_FADE_STOREY0 + s]; }
 
+/* The reference page's materials: everything patterned and lit by its light set (GFX_MAT_PATTERN), the glass
+ * see-through (GFX_MAT_GLASS). */
 void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
 {
-    const GfxMaterial matte = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f), glossy = mat_toon_glossy(HMM_V4(1, 1, 1, 1), 0.0f, 1.0f);
-    const GfxMaterial ground = mat_floor_plain(HMM_V4(1, 1, 1, 1), 0.0f), text = mat_text(HMM_V4(1, 1, 1, 1));
+    GfxMaterial matte = gfx_has_patterns(g) ? mat_pattern(HMM_V4(1, 1, 1, 1)) : mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    GfxMaterial site_matte = matte;
+    if (v->fill_1 && matte.kind == GFX_MAT_PATTERN) {
+        matte.params.X = 0.38f; /* the building only (the site keeps the page's 0.5) */
+    }
+    const GfxMaterial glossy = mat_glass(), text = mat_text(HMM_V4(1, 1, 1, 1));
     {
-        GfxMaterial sm = tinted(matte, v, -1), sg = tinted(glossy, v, -1), sgr = tinted(ground, v, -1);
+        GfxMaterial sm = tinted(site_matte, v, -1);
         draw_mesh(g, in->site[ISG_MATTE], &sm, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->site[ISG_GLOSS], &sg, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->site[ISG_GROUND], &sgr, GFX_DRAW_NO_SHADOW);
+        draw_mesh(g, in->site[ISG_GLOSS], &glossy, GFX_DRAW_NO_SHADOW);
     }
     const bool interiors = svis(v, INST_ROOF) < 1.0f;
     for (int f = 0; f < INST_STOREYS; f++) {
@@ -1235,54 +1376,57 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
         if (vis <= 0.02f) {
             continue;
         }
-        GfxMaterial mt = tinted(matte, v, f), gl = tinted(glossy, v, f), tx = text;
-        GfxMaterial fl = tinted(mat_floor_tiles(HMM_V4(1, 1, 1, 1), 0.6f), v, f);
-        mt.hide = gl.hide = fl.hide = tx.hide = floorfade_hide(vis);
+        GfxMaterial mt = tinted(matte, v, f), gl = glossy, tx = text;
+        mt.hide = gl.hide = tx.hide = floorfade_hide(vis);
         draw_mesh(g, in->mesh[f][IG_EXT], &mt, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->mesh[f][IG_EXT_GLASS], &gl, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->mesh[f][IG_SLAB], &mt, GFX_DRAW_REFLECT);
+        draw_mesh(g, in->mesh[f][IG_EXT_GLASS], &gl, GFX_DRAW_NO_SHADOW);
         if (f == 0 || f == INST_ROOF) {
             draw_mesh(g, in->mesh[f][IG_TEXT], &tx, GFX_DRAW_NO_SHADOW); /* the entrance sign is outside */
         }
-        /* wall pieces: the facade ones always, interior ones with the interiors; neighbours at the same fade = one range */
+        /* wall pieces: the facade ones always, interior ones with the interiors; neighbours at the same fade = one range
+         * (of the solid mesh, then of the glass mesh) */
         for (int ext = 0; ext < 2; ext++) {
-            if (in->seg_mesh[f][ext] == GFX_MESH_NONE || (!ext && !interiors)) {
+            if (!ext && !interiors) {
                 continue;
             }
-            uint32_t run_first = 0, run_end = 0;
-            float run_vis = -1.0f;
-            for (int i = 0; i <= in->seg_count; i++) {
-                const InstSeg *sg = i < in->seg_count ? &in->segs[i] : NULL;
-                if (sg && (sg->storey != f || (int)sg->exterior != ext || sg->count == 0)) {
+            for (int glass = 0; glass < 2; glass++) {
+                const GfxMeshId mesh = glass ? in->seg_glass[f][ext] : in->seg_mesh[f][ext];
+                if (mesh == GFX_MESH_NONE) {
                     continue;
                 }
-                float sv = sg ? vis * (v->fade ? v->fade[INST_FADE_SEG0 + i] : 1.0f) : -2.0f;
-                if (sg && sv <= 0.02f) {
-                    sv = -2.0f;
+                uint32_t run_first = 0, run_end = 0;
+                float run_vis = -1.0f;
+                for (int i = 0; i <= in->seg_count; i++) {
+                    const InstSeg *sg = i < in->seg_count ? &in->segs[i] : NULL;
+                    const uint32_t first = sg ? (glass ? sg->gfirst : sg->first) : 0, count = sg ? (glass ? sg->gcount : sg->count) : 0;
+                    if (sg && (sg->storey != f || (int)sg->exterior != ext || count == 0)) {
+                        continue;
+                    }
+                    float sv = sg ? vis * (v->fade ? v->fade[INST_FADE_SEG0 + i] : 1.0f) : -2.0f;
+                    if (sg && sv <= 0.02f) {
+                        sv = -2.0f;
+                    }
+                    if (sg && sv == run_vis && first == run_end) {
+                        run_end += count;
+                        continue;
+                    }
+                    if (run_vis > 0.0f && run_end > run_first) {
+                        GfxMaterial m = glass ? gl : mt;
+                        m.hide = floorfade_hide(run_vis);
+                        HMM_Mat4 id = HMM_M4D(1.0f);
+                        gfx_draw_range(g, mesh, run_first, run_end - run_first, &id, &m, glass ? GFX_DRAW_NO_SHADOW : GFX_DRAW_REFLECT);
+                    }
+                    run_vis = sv;
+                    run_first = first;
+                    run_end = first + count;
                 }
-                if (sg && sv == run_vis && sg->first == run_end) {
-                    run_end += sg->count;
-                    continue;
-                }
-                if (run_vis > 0.0f && run_end > run_first) {
-                    GfxMaterial m = mt;
-                    m.hide = floorfade_hide(run_vis);
-                    HMM_Mat4 id = HMM_M4D(1.0f);
-                    gfx_draw_range(g, in->seg_mesh[f][ext], run_first, run_end - run_first, &id, &m, GFX_DRAW_REFLECT);
-                }
-                run_vis = sv;
-                run_first = sg ? sg->first : 0;
-                run_end = sg ? sg->first + sg->count : 0;
             }
         }
         if (!interiors && f != INST_ROOF) {
             continue;
         }
         draw_mesh(g, in->mesh[f][IG_INT], &mt, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->mesh[f][IG_INT_GLASS], &gl, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->mesh[f][IG_FLOOR], &fl, GFX_DRAW_NO_SHADOW);
-        draw_mesh(g, in->mesh[f][IG_FURN], &mt, GFX_DRAW_REFLECT);
-        draw_mesh(g, in->mesh[f][IG_FURN_GLASS], &gl, GFX_DRAW_REFLECT);
+        draw_mesh(g, in->mesh[f][IG_INT_GLASS], &gl, GFX_DRAW_NO_SHADOW);
         if (f != 0 && f != INST_ROOF) {
             draw_mesh(g, in->mesh[f][IG_TEXT], &tx, GFX_DRAW_NO_SHADOW);
         }
@@ -1293,7 +1437,7 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
             for (int s = 0; s < 2; s++) {
                 const float dir = s == 0 ? -1.0f : 1.0f;
                 HMM_Mat4 m = HMM_Translate(HMM_V3(in->lift_x[k] + dir * (.425f + .85f * open), (float)f * INST_FH, DOOR_Z));
-                gfx_draw(g, in->lift_door, &m, &gl, GFX_DRAW_REFLECT);
+                gfx_draw(g, in->lift_door, &m, &mt, GFX_DRAW_REFLECT);
             }
         }
     }
@@ -1309,6 +1453,9 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
         mt.hide = floorfade_hide(vis);
         HMM_Mat4 m = HMM_Translate(HMM_V3(in->lift_x[k], e->car_y, CAR_Z));
         gfx_draw(g, in->car_mesh, &m, &mt, GFX_DRAW_REFLECT);
+        GfxMaterial cg = glossy;
+        cg.hide = mt.hide;
+        gfx_draw(g, in->car_glass, &m, &cg, GFX_DRAW_NO_SHADOW); /* +1 draw per car drawn */
     }
 }
 

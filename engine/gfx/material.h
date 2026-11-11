@@ -43,5 +43,7 @@ GfxMaterial mat_floor_tiles(HMM_Vec4 color, float tile_m);
 GfxMaterial mat_text(HMM_Vec4 color);                           /* mesh from text_mesh() */
 GfxMaterial mat_sprite(HMM_Vec4 color, float shape);
 GfxMaterial mat_ghost(HMM_Vec4 color);
+GfxMaterial mat_pattern(HMM_Vec4 color); /* GFX_MAT_PATTERN (the patterns must be uploaded: gfx_set_patterns) */
+GfxMaterial mat_glass(void);             /* GFX_MAT_GLASS */
 
 #endif
