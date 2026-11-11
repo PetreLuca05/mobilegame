@@ -169,6 +169,30 @@ add_custom_command(
 )
 add_custom_target(mg_content_pack DEPENDS ${MG_CONTENT_OUT})
 list(APPEND MG_EMBED_FILES ${MG_CONTENT_OUT})
+# BOOK-ENGINE figures (decision 7): the pack's crops (fig/*.png next to it) -> content/figures.mgfig (tools/book/figpack.py),
+# read in place by game/book_figs.c and uploaded one at a time (gfx_set_figure). ASTC 4x4 where the GPU samples it (Apple;
+# Android when built on a Mac: the encoder is macOS ImageIO), RGBA8 elsewhere.
+if(MG_CONTENT_DEMO)
+  set(MG_FIG_DIR ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig)
+else()
+  set(MG_FIG_DIR ${MG_CONTENT_DIR}/fig)
+endif()
+if(APPLE OR (ANDROID AND CMAKE_HOST_APPLE))
+  set(MG_FIG_FORMAT astc)
+else()
+  set(MG_FIG_FORMAT rgba8)
+endif()
+file(GLOB MG_FIG_PNGS CONFIGURE_DEPENDS ${MG_FIG_DIR}/*.png)
+set(MG_FIG_OUT ${MG_GEN_DIR}/content/figures.mgfig)
+add_custom_command(
+  OUTPUT ${MG_FIG_OUT}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${MG_FIG_DIR} ${MG_FIG_OUT} ${MG_FIG_FORMAT}
+  DEPENDS ${MG_FIG_PNGS} ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift
+  COMMENT "figpack ${MG_FIG_DIR} (${MG_FIG_FORMAT})"
+  VERBATIM
+)
+list(APPEND MG_EMBED_FILES ${MG_FIG_OUT})
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
   OUTPUT ${MG_EMBED_C}
@@ -347,6 +371,9 @@ set(MG_GAME_SOURCES
   game/lib_dressing.c
   game/book_progress.c
   game/book_figs.c
+  game/book_exam.c
+  game/script_player.c
+  game/autotest_book.c
   game/lib_nav.c
   game/lib_fidget.c
   game/lib_life.c

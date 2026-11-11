@@ -80,6 +80,7 @@
 #include "ui/ui_textarea.h"
 #include "book_pack.h"
 #include "book_progress.h"
+#include "script_player.h"
 #include "ui/haptics.h"
 #include "ui/stick_view.h"
 #include "ui/tilt.h"
@@ -295,6 +296,7 @@ typedef struct Game {
     TextLine *book_lines;
     char *book_text;
     uint32_t book_area_inst; /* UI instances the text area emitted last frame */
+    ScriptPlayer sp;       /* BOOK-ENGINE S5: the script player (a modal card over play) */
 } Game;
 
 static bool parse_vec3_arg(int argc, char **argv, const char *flag, HMM_Vec3 *out)
@@ -787,6 +789,7 @@ bool game_init(MgApp *app)
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     g->has_save = save_exists(g->profile_name);
     book_pack_load(&g->book); /* BOOK-1: logs its summary or its problems; the game runs either way */
+    script_player_init(&g->sp, app->gfx); /* BOOK-ENGINE: the figures embedded, the GPU texture for the largest reserved */
     if (!world_books_load(&g->books)) {
         mg_log_error("world: assets/world/books.json has no book");
         return false;
@@ -1019,7 +1022,7 @@ bool game_init(MgApp *app)
     g->scene_override = -1;
     g->panel_lift = g->ride_lift = -1;
     g->level_switch_test = atest && SDL_strcmp(atest, "levelswitch") == 0 ? 120 : 0;
-    if ((atest && SDL_strcmp(atest, "institute") == 0) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario */
+    if ((atest && (SDL_strcmp(atest, "institute") == 0 || SDL_strcmp(atest, "book_ui") == 0)) || perf_run_scene(&g->perf)) { /* MAP-2: the institute test and perf scenario; BOOK-ENGINE book_ui */
         g->scene_override = (int)scene_kind_from_id(perf_run_scene(&g->perf) ? perf_run_scene(&g->perf) : "institute");
     }
     {
@@ -3748,6 +3751,15 @@ static void game_frame_inner(MgApp *app, float alpha)
         probe.draws = gs.draws;
     }
     probe.frame_allocs = prof_allocs_last_frame();
+    probe.sp = &g->sp;
+    probe.book = &g->book;
+    probe.progress = g->progress_uid[0] ? &g->progress : NULL;
+    {
+        GfxStats gs;
+        gfx_get_stats(app->gfx, &gs);
+        probe.ui_draws = gs.ui_draws;
+        probe.passes = gs.passes;
+    }
     probe.hud_res = g->hud_res;
     probe.hud_res_count = g->hud_res_count;
     if (g->text_test) {
@@ -4045,6 +4057,13 @@ static void game_frame_inner(MgApp *app, float alpha)
         frontend_flow(g, app, back);
         return;
     }
+    const bool sp_on = script_player_active(&g->sp); /* BOOK-ENGINE: the script card is a modal over everything in play */
+    if (back && sp_on) {
+        script_player_close(&g->sp);
+        progress_commit(g, true);
+        back = false;
+    }
+    g->ui.input_off = g->ui.input_off || sp_on; /* what is under the card takes no touches */
     if (back) { /* in game: the back key opens / closes the settings panel */
         if (!g->menu.open) {
             g->menu.open = true;
@@ -4127,9 +4146,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->cam.fov_y = HMM_AngleDeg(s->fov_deg);
 #else
 #endif
-    if (g->menu.open || riding) {
+    if (g->menu.open || riding || sp_on) {
         touch_controls_reset(&g->touch);
-        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open, g->ui_anim.reduced); /* fades out under a menu */
+        stick_view_update(&g->stick_view, &g->touch, &g->touch_cfg, &g->ui_fx, app->time, g->menu.open || sp_on, g->ui_anim.reduced); /* fades out under a menu */
     } else {
         /* iPad: bigger controls so thumbs reach them */
         float k = mg_clampf(app->height_pt / 390.0f, 1.0f, 1.4f);
@@ -4567,6 +4586,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
 #endif
     draw_net_badge(g, app);
+    if (script_player_active(&g->sp)) { /* BOOK-ENGINE S5: last, on top; it takes the touches */
+        g->ui.input_off = false;
+        if (script_player_frame(&g->sp, &g->ui, app, &g->progress, wall_clock_ms())) {
+            progress_commit(g, true); /* a script ended (finished or closed): the file now, the server when online */
+        }
+    }
 }
 
 /* Window point -> the horizontal plane at height y. */

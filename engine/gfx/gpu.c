@@ -214,6 +214,12 @@ struct GfxContext {
     SDL_GPUTexture *preview_color, *preview_msaa, *preview_depth;
     SDL_GPUTexture *head_atlas;                  /* 8 x 8 cells of GFX_HEAD_PX */
     SDL_GPUTexture *head_color, *head_msaa, *head_depth; /* room for GFX_HEADS_PER_FRAME cells */
+    /* BOOK-ENGINE: the one resident figure (gfx_set_figure) in the top-left of a texture made at the largest size */
+    SDL_GPUTexture *fig_tex;
+    SDL_GPUTransferBuffer *fig_staging;
+    int fig_tex_w, fig_tex_h, fig_fmt; /* fig_fmt -1: none reserved / unsupported */
+    int fig_w, fig_h;                  /* the resident figure, 0 none */
+    uint64_t fig_bytes;
     ShaderCacheEntry shaders[GFX_MAX_SHADERS];
     uint32_t shader_count;
 
@@ -599,7 +605,7 @@ static bool create_pipelines(GfxContext *g)
     }
     PipeDesc ui = {
         .vs = load_shader(g, "ui.vert", 1, 0),
-        .fs = load_shader(g, "ui.frag", 0, 2),
+        .fs = load_shader(g, "ui.frag", 0, 3), /* SDF atlas, head atlas, book figure */
         .layout = LAYOUT_UI,
         .blend = true,
         .cull = SDL_GPU_CULLMODE_NONE,
@@ -1099,11 +1105,14 @@ void gfx_shutdown(GfxContext *g)
         SDL_ReleaseGPUSampler(g->dev, g->point_clamp);
     }
 #endif
-    SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth, g->head_atlas, g->head_color, g->head_msaa, g->head_depth};
+    SDL_GPUTexture *pv[] = {g->preview_color, g->preview_msaa, g->preview_depth, g->head_atlas, g->head_color, g->head_msaa, g->head_depth, g->fig_tex};
     for (size_t i = 0; i < MG_ARRAY_COUNT(pv); i++) {
         if (pv[i]) {
             SDL_ReleaseGPUTexture(g->dev, pv[i]);
         }
+    }
+    if (g->fig_staging) {
+        SDL_ReleaseGPUTransferBuffer(g->dev, g->fig_staging);
     }
     release_pipelines(g);
     SDL_ReleaseGPUBuffer(g->dev, g->vb);
@@ -1223,6 +1232,143 @@ bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t
     g->ui_atlas = make_texture(g, SDL_GPU_TEXTUREFORMAT_R8_UNORM, w, h, SDL_GPU_TEXTUREUSAGE_SAMPLER,
                                SDL_GPU_SAMPLECOUNT_1);
     return g->ui_atlas && upload_texture(g, g->ui_atlas, pixels, w, h, 1);
+}
+
+/* ------------------------------------------------------------------ book figures */
+
+static SDL_GPUTextureFormat fig_format(int format)
+{
+    return format == GFX_FIG_ASTC4 ? SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+}
+
+bool gfx_figure_reserve(GfxContext *g, int max_w, int max_h, int format)
+{
+    if (max_w <= 0 || max_h <= 0 || (format != GFX_FIG_RGBA8 && format != GFX_FIG_ASTC4)) {
+        return false;
+    }
+    if (g->fig_tex && g->fig_fmt == format && g->fig_tex_w >= max_w && g->fig_tex_h >= max_h) {
+        return true;
+    }
+    const SDL_GPUTextureFormat tf = fig_format(format);
+    if (!SDL_GPUTextureSupportsFormat(g->dev, tf, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_SAMPLER)) {
+        mg_log_error("gfx: figures: the GPU cannot sample %s; figures show as a placeholder", format == GFX_FIG_ASTC4 ? "ASTC 4x4" : "RGBA8");
+        g->fig_fmt = -1;
+        return false;
+    }
+    if (g->fig_tex) {
+        SDL_WaitForGPUIdle(g->dev);
+        SDL_ReleaseGPUTexture(g->dev, g->fig_tex);
+        g->fig_tex = NULL;
+    }
+    const int w = (max_w + 3) & ~3, h = (max_h + 3) & ~3; /* whole ASTC blocks */
+    g->fig_tex = make_texture(g, tf, (uint32_t)w, (uint32_t)h, SDL_GPU_TEXTUREUSAGE_SAMPLER, SDL_GPU_SAMPLECOUNT_1);
+    if (!g->fig_tex) {
+        mg_log_error("gfx: figures: no %dx%d texture (%s)", w, h, SDL_GetError());
+        g->fig_fmt = -1;
+        return false;
+    }
+    if (!g->fig_staging) {
+        SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, GFX_FIG_STAGING_BYTES, 0};
+        g->fig_staging = SDL_CreateGPUTransferBuffer(g->dev, &tci);
+        if (!g->fig_staging) {
+            mg_log_error("gfx: figures: no staging buffer (%s)", SDL_GetError());
+            g->fig_fmt = -1;
+            return false;
+        }
+    }
+    g->fig_tex_w = w, g->fig_tex_h = h, g->fig_fmt = format, g->fig_w = g->fig_h = 0;
+    g->fig_bytes = SDL_CalculateGPUTextureFormatSize(tf, (uint32_t)w, (uint32_t)h, 1);
+    mg_log_info("gfx: figures: %dx%d %s texture resident (%llu KB) + %u KB staging", w, h, format == GFX_FIG_ASTC4 ? "ASTC 4x4" : "RGBA8",
+                (unsigned long long)(g->fig_bytes >> 10), GFX_FIG_STAGING_BYTES >> 10);
+    return true;
+}
+
+bool gfx_set_figure(GfxContext *g, int w, int h, int format, const void *data, uint32_t size)
+{
+    if (!data || w <= 0 || h <= 0) {
+        g->fig_w = g->fig_h = 0;
+        return false;
+    }
+    if ((!g->fig_tex || g->fig_fmt != format || w > g->fig_tex_w || h > g->fig_tex_h) && !gfx_figure_reserve(g, w, h, format)) {
+        g->fig_w = g->fig_h = 0;
+        return false;
+    }
+    /* rows of texels (RGBA8) or of 4x4 blocks (ASTC), as many as the staging buffer holds per copy */
+    const bool astc = format == GFX_FIG_ASTC4;
+    const uint32_t row_bytes = astc ? (uint32_t)((w + 3) / 4) * 16u : (uint32_t)w * 4u;
+    const uint32_t rows = astc ? (uint32_t)((h + 3) / 4) : (uint32_t)h;
+    const uint32_t region_w = astc ? (uint32_t)((w + 3) & ~3) : (uint32_t)w; /* Metal: rows of the region's width, packed */
+    if (size < row_bytes * rows || row_bytes > GFX_FIG_STAGING_BYTES) {
+        mg_log_error("gfx: figures: %dx%d needs %u bytes, got %u", w, h, row_bytes * rows, size);
+        g->fig_w = g->fig_h = 0;
+        return false;
+    }
+    const uint32_t per = GFX_FIG_STAGING_BYTES / row_bytes;
+    const uint8_t *src = (const uint8_t *)data;
+    if (g->in_frame && g->cmd && rows <= per) { /* inside a frame, one strip: a copy pass at the head of the frame's own commands */
+        void *map = SDL_MapGPUTransferBuffer(g->dev, g->fig_staging, true); /* cycles if last frame's copy is still in flight */
+        if (map) {
+            memcpy(map, src, (size_t)rows * row_bytes);
+            SDL_UnmapGPUTransferBuffer(g->dev, g->fig_staging);
+            SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+            SDL_GPUTextureTransferInfo tsrc = {g->fig_staging, 0, 0, 0};
+            SDL_GPUTextureRegion region;
+            SDL_zero(region);
+            region.texture = g->fig_tex;
+            region.w = region_w;
+            region.h = astc ? rows * 4u : rows;
+            region.d = 1;
+            SDL_UploadToGPUTexture(cp, &tsrc, &region, false);
+            SDL_EndGPUCopyPass(cp);
+            g->fig_w = w, g->fig_h = h;
+            return true;
+        }
+    }
+    bool ok = true; /* outside a frame, or larger than the staging buffer: strip by strip, each waited for */
+    for (uint32_t r = 0; r < rows && ok; r += per) {
+        const uint32_t n = rows - r < per ? rows - r : per;
+        void *map = SDL_MapGPUTransferBuffer(g->dev, g->fig_staging, false); /* the previous strip finished (fence below) */
+        if (!map) {
+            ok = false;
+            break;
+        }
+        memcpy(map, src + (size_t)r * row_bytes, (size_t)n * row_bytes);
+        SDL_UnmapGPUTransferBuffer(g->dev, g->fig_staging);
+        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+        SDL_GPUTextureTransferInfo tsrc = {g->fig_staging, 0, 0, 0};
+        SDL_GPUTextureRegion region;
+        SDL_zero(region);
+        region.texture = g->fig_tex;
+        region.y = astc ? r * 4u : r;
+        region.w = region_w;
+        region.h = astc ? n * 4u : n;
+        region.d = 1;
+        SDL_UploadToGPUTexture(cp, &tsrc, &region, false);
+        SDL_EndGPUCopyPass(cp);
+        SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+        if (!fence) {
+            ok = false;
+            break;
+        }
+        SDL_WaitForGPUFences(g->dev, true, &fence, 1);
+        SDL_ReleaseGPUFence(g->dev, fence);
+    }
+    g->fig_w = ok ? w : 0, g->fig_h = ok ? h : 0;
+    if (!ok) {
+        mg_log_error("gfx: figures: upload of %dx%d failed (%s)", w, h, SDL_GetError());
+    }
+    return ok;
+}
+
+bool gfx_figure_uv(const GfxContext *g, float *u1, float *v1)
+{
+    if (!g->fig_tex || g->fig_w <= 0 || g->fig_h <= 0) {
+        return false;
+    }
+    *u1 = (float)g->fig_w / (float)g->fig_tex_w;
+    *v1 = (float)g->fig_h / (float)g->fig_tex_h;
+    return true;
 }
 
 /* ------------------------------------------------------------------ frame */
@@ -2622,8 +2768,10 @@ static void frame_end(GfxContext *g)
         SDL_PushGPUVertexUniformData(g->cmd, 0, &u, sizeof(u));
         SDL_GPUBufferBinding vbb = {g->ui_vb_ring[g->ring % GFX_BUFFER_RING], 0};
         SDL_BindGPUVertexBuffers(pass, 0, &vbb, 1);
-        SDL_GPUTextureSamplerBinding tsb[2] = {{g->ui_atlas, g->ui_sampler}, {g->head_atlas ? g->head_atlas : g->dummy_tex, g->linear_clamp}};
-        SDL_BindGPUFragmentSamplers(pass, 0, tsb, 2);
+        SDL_GPUTextureSamplerBinding tsb[3] = {{g->ui_atlas, g->ui_sampler},
+                                               {g->head_atlas ? g->head_atlas : g->dummy_tex, g->linear_clamp},
+                                               {g->fig_tex ? g->fig_tex : g->dummy_tex, g->linear_clamp}};
+        SDL_BindGPUFragmentSamplers(pass, 0, tsb, 3);
         g->stats.pipe_binds++;
         g->stats.tex_binds++;
         g->stats.uniform_bytes += (uint32_t)sizeof(u);
@@ -2697,4 +2845,6 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->mesh_ib_used = g->pool.ib_used;
     o->ui_buffers = GFX_MAX_UI * sizeof(GfxUiInst) * 2u * GFX_BUFFER_RING;
     o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u * GFX_BUFFER_RING;
+    o->figure = g->fig_tex ? g->fig_bytes : 0;
+    o->figure_staging = g->fig_staging ? GFX_FIG_STAGING_BYTES : 0;
 }

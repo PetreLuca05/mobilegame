@@ -505,7 +505,17 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
     return clicked;
 }
 
-static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, bool warning)
+static void modal_at(Ui *ui, const char *id, float w, float h, float *x, float *y, bool warning, bool placed);
+static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, bool warning) { modal_at(ui, id, w, h, x, y, warning, false); }
+
+void ui_modal_rect(Ui *ui, const char *id, float x, float y, float w, float h)
+{
+    float px = x, py = y;
+    modal_at(ui, id, w, h, &px, &py, false, true);
+}
+
+/* placed: the caller chose (*x, *y) (a card inside the safe rect); else centred on the screen */
+static void modal_at(Ui *ui, const char *id, float w, float h, float *x, float *y, bool warning, bool placed)
 {
     const uint32_t key = ui_key(id);
     if (ui->modal_prev != key) { /* it opens this frame */
@@ -520,7 +530,9 @@ static void modal(Ui *ui, const char *id, float w, float h, float *x, float *y, 
     ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, W, H, C(k_ui.scrim)); /* flat scrim, no blur; it does not move */
     ui->depth_base = k_ui.tilt_depth[4];                         /* a modal and everything in it: the nearest layer */
     ui_depth_end(ui);
-    *x = (W - w) * 0.5f, *y = (H - h) * 0.5f;
+    if (!placed) {
+        *x = (W - w) * 0.5f, *y = (H - h) * 0.5f;
+    }
     if (ui->anim && ui_anim_fresh(ui->anim, key)) { /* enter: from 0.8 (550 ms, overshoot), or a 150 ms move when reduced */
         const bool red = ui->anim->reduced;
         ui_anim_to(ui->anim, key, UI_SX, red ? 0.96f : 0.8f, 1.0f, red ? k_ui.reduced_s : k_ui.enter_s, red ? UI_EASE_LINEAR : UI_EASE_BEZIER, &k_ui.enter, false);

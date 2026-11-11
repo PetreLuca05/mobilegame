@@ -44,6 +44,7 @@
 #include "autotest_avatar.h"
 #include "autotest_library.h"
 #include "autotest_ui.h"
+#include "autotest_book.h"
 #include "autotest_world.h"
 #include "platform/app.h"
 #include "ui/marker_hud.h"
@@ -135,6 +136,11 @@ typedef struct AutotestProbe {
     int ride_lift;             /* the lift carrying the player, -1 none */
     uint32_t draws;            /* last frame's main-pass draws */
     uint32_t frame_allocs;     /* last frame's heap allocations in the frame loop */
+    /* BOOK-ENGINE: --autotest book_ui */
+    struct ScriptPlayer *sp;
+    const struct BookPack *book;
+    struct BookProgress *progress; /* NULL: no progress file open */
+    uint32_t ui_draws, passes;     /* last frame's */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -198,6 +204,7 @@ typedef struct Autotest {
     TiltTest tt;
     AvatarTest at;
     LibraryTest lt;
+    BookUiTest bt;
     struct {
         int cycles, worst_ms, total_ms;
         double dropped_at, next_drop;

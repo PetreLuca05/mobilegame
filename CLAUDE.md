@@ -671,3 +671,18 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - Figures (decision 7): `tools/book/figpack.py FIGDIR OUT astc|rgba8` -> `.mgfig` (MGFG v1, sorted ids, 16-aligned, top row
   first); ASTC 4x4 through macOS ImageIO (`tools/book/astc_encode.swift`, flips the image: ImageIO writes the bottom row
   first), RGBA8 decoded without Pillow. `game/book_figs.c` reads it in place; ctest `book_figs` on the dummy pack's figure.
+  Embedded as `content/figures.mgfig` (CMake runs figpack on the pack's `fig/`, the demo's without it; astc on Apple and on
+  Android built on a Mac, else rgba8). GPU: one figure resident (`gfx_figure_reserve` at start at the largest size,
+  `gfx_set_figure` into its corner through a fixed 2 MB staging buffer, RGBA8 in strips of rows; no allocation on a change),
+  sampled by `GFX_UI_FIGURE` quads (`ui_figure_quad`) as `ui.frag`'s third texture: still the one UI draw. A format the GPU
+  cannot sample logs once and the card shows a placeholder.
+- Script player (S5, `game/script_player.c`): `script_player_init` (start), `_open(sp, pack, script, presenter)`, `_active`,
+  `_frame(sp, ui, app, progress, now_ms)` (1 = ended: commit progress), `_finished`, `_close`. One modal card in the safe rect
+  (`ui_modal_rect`), steps predict / teach / check, widgets for the 8 item types, explanation + multiplu whys; only a check
+  answered right sets the item's facts. Pack text wraps and scrolls (per-step line cache, visible lines only); chrome strings
+  `sp_*`. Back closes it; the stick and the UI under it take no touches. Widget ids in `script_player.h`.
+- Exams (S7, `game/book_exam.c`): the 7 pools as constants, `book_room_complete`, `book_chapter_complete`, `book_pool_open`
+  (shut while a count is a `TODO(author)` 0).
+- `--autotest book_ui` (`tools/book_ui_test.sh`: default, iphone, iphone-flip, ipad; pictures `docs/autotest/book/`): every
+  item type answered wrong (facts stay unset), then right (facts set), by taps and real drags; fails on a target < 44 pt or
+  outside the safe rect, > 3 UI draws, a frame allocation with the card up. `MG_BOOK_UI_FROM=N` starts at run N.

@@ -53,6 +53,7 @@ void prof_run_reset(void);
 int prof_run_rows(ProfRow *out, int max);
 ProfFrames prof_run_frames(void);
 uint32_t prof_allocs_last_frame(void);
+uint32_t prof_allocs_this_frame(void); /* so far in this frame: a piece of code measures its own (before / after) */
 uint32_t prof_allocs_run(void);          /* inside the frame loop since prof_run_reset */
 /* Screenshots may allocate (PNG, readback): between these, allocations go to
  * their own counter and cannot fail the gate. */
@@ -75,6 +76,7 @@ static inline void prof_run_reset(void) {}
 static inline int prof_run_rows(ProfRow *out, int max) { (void)out; (void)max; return 0; }
 static inline ProfFrames prof_run_frames(void) { ProfFrames f = {0, 0, 0, 0}; return f; }
 static inline uint32_t prof_allocs_last_frame(void) { return 0; }
+static inline uint32_t prof_allocs_this_frame(void) { return 0; }
 static inline uint32_t prof_allocs_run(void) { return 0; }
 static inline uint32_t prof_alloc_frames_run(void) { return 0; }
 static inline void prof_allocs_exempt(bool on) { (void)on; }

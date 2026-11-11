@@ -251,6 +251,7 @@ int prof_run_rows(ProfRow *out, int max)
 
 ProfFrames prof_run_frames(void) { return P.intervals; }
 uint32_t prof_allocs_last_frame(void) { return P.allocs_last; }
+uint32_t prof_allocs_this_frame(void) { return P.allocs; }
 uint32_t prof_allocs_run(void) { return P.allocs_run; }
 uint32_t prof_alloc_frames_run(void) { return P.alloc_frames; }
 void prof_allocs_exempt(bool on) { P.exempt += on ? 1 : -1; }

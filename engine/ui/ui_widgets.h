@@ -59,6 +59,8 @@ bool ui_answer(Ui *ui, const char *id, const char *text, float x, float y, float
 /* Scrim + a centred card that enters from 0.8 (550 ms); returns the card's rect. */
 void ui_modal(Ui *ui, const char *id, float w, float h, float *x, float *y);
 void ui_modal_warning(Ui *ui, const char *id, float w, float h, float *x, float *y); /* destructive: the WARNING haptic */
+/* The same at a rect the caller chose (BOOK-ENGINE: a card that fills the safe rect, which is not centred on a phone). */
+void ui_modal_rect(Ui *ui, const char *id, float x, float y, float w, float h);
 void ui_modal_end(Ui *ui); /* after the card's content: ends its enter scale */
 /* Screen changes: the whole UI layer enters from the left edge (550 ms, the enter curve; reduced:
  * a 150 ms fade). `age` = seconds since the screen changed, `shake_x` the UI shake. */
