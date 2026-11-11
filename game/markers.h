@@ -17,7 +17,7 @@ typedef enum MarkerState { MARKER_IDLE, MARKER_TAPPED, MARKER_ACTIVE, MARKER_REA
 typedef struct marker_t {
     uint32_t id;         /* 0 = free slot */
     HMM_Vec3 pos;        /* on the floor */
-    int8_t storey;       /* -1 yard, 0..2 */
+    int8_t storey;       /* -1 yard, 0 .. scene_floor_count - 1 (hospital 0..2, institute 0..4 with the roof deck) */
     uint8_t kind;        /* MarkerKind */
     uint8_t state;       /* MarkerState */
     float anim_t;        /* seconds in this state */
@@ -47,7 +47,7 @@ marker_t *marker_get(Markers *ms, uint32_t id);
 void markers_tick(Markers *ms, float dt);
 void marker_set_state(marker_t *m, MarkerState s);
 
-/* `vis`: per storey 0..3 visibility (scene fade slots), `view_floor`: V. */
+/* `vis`: per floor visibility, the scene fade slots 0 .. floor count - 1 (each scene puts its floors first), `view_floor`: V. */
 void markers_draw(const Markers *ms, GfxContext *g, const float *vis, int view_floor, float time, GfxMeshId sprite);
 /* Dotted preview along the rest of a path on the view floor, near the player. */
 void markers_draw_path(const Markers *ms, GfxContext *g, const NavPath *path, int next, HMM_Vec3 feet, int view_floor,

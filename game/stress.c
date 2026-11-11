@@ -47,7 +47,7 @@ void stress_spawn(StressCrowd *c, struct NavWorld *nav, int n)
         const int i = p->count;
         int storey = 0;
         HMM_Vec3 at;
-        if (!nav_random_point(nav, (int)(spawn_rnd(c) % 3u), &c->spawn_rng, &at, &storey)) {
+        if (!nav_random_point(nav, (int)(spawn_rnd(c) % (uint32_t)nav_grid_count(nav)), &c->spawn_rng, &at, &storey)) { /* every storey (the hospital: 3) */
             return;
         }
         npc_hot_t h;

@@ -33,6 +33,7 @@ typedef struct TextFont {
 #define TEXT_BULLET "\x02"
 #define TEXT_GEAR "\x03"
 #define TEXT_ARROW_UP "\x04"
+/* „ ” – ’ › → − † α β γ: written as UTF-8 in strings, drawn from control-char slots 14-24 (text_extra_slot) */
 
 typedef struct UiColor {
     uint8_t r, g, b, a;
@@ -47,12 +48,34 @@ static inline UiColor ui_rgba(uint32_t rgba)
 /* The faces of assets/font_atlas.mgf in order (TEXT_FACE_*), all in one atlas: one UI texture. */
 enum { TEXT_FACE_DISPLAY, TEXT_FACE_BODY, TEXT_FACE_BOLD, TEXT_FACE_COUNT };
 bool text_init_faces(TextFont *faces, int count, GfxContext *g);
-/* Strings are UTF-8. */
+/* Strings are UTF-8. Measuring (text_layout.c, no drawing): */
 bool text_has_glyph(const TextFont *f, uint32_t cp);
+/* The glyph of a code point ('?' when the font has none). */
+const TextGlyph *text_glyph(const TextFont *f, uint32_t cp);
+/* The control-char slot a code point above the table lives in (TEXT_DEGREE ..., „ ” – ’ › → − † α β γ), or -1. */
+int text_extra_slot(uint32_t cp);
+/* The next code point of a UTF-8 string, never past `end` (NULL: up to the NUL); a broken sequence is one '?' per byte. */
+uint32_t text_next_cp(const char **ps, const char *end);
 float text_width(const TextFont *f, const char *s, float size_pt);
+float text_width_n(const TextFont *f, const char *s, size_t len, float size_pt); /* the first len bytes (or up to a NUL) */
 float text_line_height(const TextFont *f, float size_pt);
+
+/* Word wrap: one line of a laid-out text, bytes [start, start + len) of it, `width` pt wide (no trailing spaces). */
+typedef struct TextLine {
+    uint32_t start, len;
+    float width;
+} TextLine;
+/* Lays out the first `len` bytes of `s` (or up to a NUL) at size_pt into lines no wider than max_w: breaks at spaces
+ * (a space run at a break belongs to no line), '\n' ends a line ("\n\n" = an empty line between; a final '\n' adds
+ * none), a word wider than max_w is cut between code points (UTF-8 sequences stay whole; every line takes at least one).
+ * Writes at most `cap` lines into `out` and returns how many the text needs (> cap: the rest was not written).
+ * No allocation: the caller owns `out`. */
+int text_wrap(const TextFont *f, const char *s, size_t len, float size_pt, float max_w, TextLine *out, int cap);
+
 /* (x, y) is the top-left of the line box. Returns the advance width. */
 float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s);
+/* The first len bytes of s (a TextLine: text_draw_n(..., s + line.start, line.len)). */
+float text_draw_n(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s, size_t len);
 /* Text with a soft drop shadow for readability over the 3D scene. */
 float text_draw_shadow(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s);
 void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, float size_pt, UiColor c,

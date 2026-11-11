@@ -60,7 +60,7 @@ Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
-`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|screenshot NAME`,
+`--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|levelswitch|screenshot NAME`, `--scene hospital|institute|devroom` (every level load),
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
 `--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
@@ -70,7 +70,14 @@ Args also work on a phone: `xcrun devicectl device process launch --console
 Any of the first group skips the launch screen. iOS: `MG_IOS_DEVICE=ipad|iphone|<id>`
 picks the device for `tools/run_ios.sh`.
 
-Scene: `-DMG_SCENE=hospital` (default) or `devroom` (M1 engine test room).
+Scene: chosen per level at load (`game/scene.h` `SceneKind`, books.json level `scene`: `hospital_v1`, `institute`;
+`game/scene.c` dispatches to `scene_<kind>_*`, declared in `game/scene_impl.h`). `-DMG_SCENE=hospital` (default) is
+only the kind of a direct start into play; `devroom` (M1 engine test room) forces it everywhere. Level scenes live in
+their own arena (`Game.level`, 64 MB reserved in perm) and above a GPU mesh mark (`gfx_mesh_mark` /
+`gfx_mesh_reset_to`): building another kind frees the old one (the world map, UI, avatar, library stay under the mark).
+A scene has N lifts (`scene_elevator_count` / `scene_elevator(s, i)`, landing f = floor f, nav car i = lift i); the
+panel works the car the player stands in, autonav rides the car its path chose (shortest walk). `--autotest levelswitch`
+(hospital -> institute -> dev room -> hospital x 3, identical pools each time); `level_mem` in ctest.
 `PLAYER_JUMP_ENABLED` (game/player.h, default 0) brings jumping back.
 `PLAYER_SPRINT_ENABLED` (game/player.h, default 0): one speed, walk 4.5 m/s
 (full speed from a 3/4 stick push, slower below; Shift does nothing; the
@@ -311,7 +318,8 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   Sign-out keeps settings + save, clears the cache and `onboarding_done`.
 - `save_slot0.bin` (offline New Game / Continue): "MGS1", version u32,
   pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
-  visited_rooms u64 (bit = storey * 16 + chunk), npc_seed, npc_tick, (v5) book_id, level_id char[16]; every 30 s, on background,
+  visited_rooms u64 (bit = storey * 16 + chunk), npc_seed, npc_tick, (v5) book_id, level_id char[16], (v6) rides, (v7) scene_id char[16]
+  + visited_rooms_hi u64 (storeys 4..7); a Continue whose save is in another scene than its level's now starts at the entrance; every 30 s, on background,
   exit and "Save & back to menu". Offline play joins no Realtime room.
 
 ## Friends and lobbies (FRIENDS-1)

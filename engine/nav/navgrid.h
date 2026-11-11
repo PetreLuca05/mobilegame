@@ -1,7 +1,8 @@
 /* Walkability grids baked from the static colliders at scene load (M6).
  * 0.25 m cells on XZ. Grid 0 holds the ground level: the yard and storey G
  * are one connected area (cells outside the footprint are NAV_OUTDOOR);
- * upper storeys get a grid each and connect only through NAV_ELEVATOR cells. */
+ * upper storeys get a grid each and connect only through NAV_ELEVATOR cells (one or more
+ * lift cars; a path between storeys rides the car that makes the walk shortest). */
 #ifndef MG_NAVGRID_H
 #define MG_NAVGRID_H
 
@@ -10,9 +11,9 @@
 
 #define NAV_CELL 0.25f
 #define NAV_MAX_GRIDS 5 /* MAP-2 institute: G (+ yard), 1, 2, 3, roof */
-#define NAV_MAX_CARS 4  /* lift cars flagged NAV_ELEVATOR (paths ride `car`) */
 #define NAV_MAX_POINTS 128
 #define NAV_UNREACHABLE (-1)
+#define NAV_MAX_CARS 4 /* lift cars (the institute has three) */
 
 enum {
     NAV_WALKABLE = 1u << 0,
@@ -32,8 +33,7 @@ typedef struct NavBakeDesc {
     NavGridDesc grids[NAV_MAX_GRIDS];
     int grid_count;
     float footprint[4]; /* x0, z0, x1, z1: inside it is not outdoors */
-    float car[4];       /* x0, z0, x1, z1 of the elevator car the paths ride */
-    float cars[NAV_MAX_CARS][4]; /* every car (several lifts): their cells are NAV_ELEVATOR too */
+    float cars[NAV_MAX_CARS][4]; /* x0, z0, x1, z1 of each lift car: NAV_ELEVATOR cells on every grid */
     int car_count;
     float radius, height, step;
 } NavBakeDesc;
@@ -56,6 +56,7 @@ typedef struct NavPath {
     int count;
     int ride_at;     /* index of the point in the car before the ride, -1 none */
     int ride_from, ride_to; /* storeys */
+    int ride_car;    /* which car (NavBakeDesc.cars), -1 none; kept after the ride */
     float length;    /* metres */
 } NavPath;
 

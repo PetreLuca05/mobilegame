@@ -1,5 +1,5 @@
-/* One elevator car serving stacked storeys, simulated locally on each client
- * (no shared car). A ride (M5): doors close 0.4 s, the car travels 0.6 s per
+/* One elevator car serving stacked storeys (landing f = floor f), simulated locally on each
+ * client (no shared car). A scene has 0..SCENE_MAX_LIFTS of them (scene_elevator(s, i)). A ride (M5): doors close 0.4 s, the car travels 0.6 s per
  * storey (ease in-out; the game moves the rider and the camera with it, so
  * the floors cross-fade as it passes the slabs), ding, doors open 0.4 s -
  * 1.4 s for one storey, 2.0 s for two. Input is locked from the request
@@ -9,7 +9,7 @@
 
 #include "core/mg_types.h"
 
-#define ELEV_MAX_FLOORS 4
+#define ELEV_MAX_FLOORS 8 /* landings: the institute has 5 (G 1 2 3 R) */
 
 typedef enum ElevState {
     ELEV_IDLE,

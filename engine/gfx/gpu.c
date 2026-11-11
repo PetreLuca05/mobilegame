@@ -16,6 +16,7 @@
 #include "core/prof.h"
 #include "core/time.h"
 #include "gfx.h"
+#include "mesh_pool.h"
 #include "material.h"
 #ifdef MG_RENDER_FULL
 #include "reflection.h"
@@ -218,10 +219,8 @@ struct GfxContext {
 
     SDL_GPUBuffer *vb;
     SDL_GPUBuffer *ib;
-    uint32_t vb_used;
-    uint32_t ib_used;
+    GfxMeshPool pool; /* count, vb_used, ib_used: linear, freed only by gfx_mesh_reset_to */
     GfxMeshRec meshes[GFX_MAX_MESHES];
-    uint32_t mesh_count;
 
     SDL_GPUBuffer *ui_vb_ring[GFX_BUFFER_RING];
     SDL_GPUTransferBuffer *ui_tb_ring[GFX_BUFFER_RING];
@@ -943,6 +942,7 @@ bool gfx_init(GfxContext **out, struct SDL_Window *window, Arena *perm)
     SDL_GPUBufferCreateInfo vbci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_VB_BYTES, 0};
     SDL_GPUBufferCreateInfo ibci = {SDL_GPU_BUFFERUSAGE_INDEX, GFX_IB_BYTES, 0};
     g->vb = SDL_CreateGPUBuffer(g->dev, &vbci);
+    g->pool = (GfxMeshPool){.max = GFX_MAX_MESHES, .vb_cap = GFX_VB_BYTES, .ib_cap = GFX_IB_BYTES};
     g->ib = SDL_CreateGPUBuffer(g->dev, &ibci);
 
     SDL_GPUBufferCreateInfo uvci = {SDL_GPU_BUFFERUSAGE_VERTEX, GFX_MAX_UI * sizeof(GfxUiInst), 0};
@@ -1127,24 +1127,22 @@ void gfx_shutdown(GfxContext *g)
 GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indices)
 {
     const uint32_t vbytes = max_verts * (uint32_t)sizeof(GfxVertex), ibytes = max_indices * (uint32_t)sizeof(uint32_t);
-    if (g->mesh_count >= GFX_MAX_MESHES || g->vb_used + vbytes > GFX_VB_BYTES || g->ib_used + ibytes > GFX_IB_BYTES || max_indices == 0) {
-        mg_log_error("gfx: mesh pool full reserving %u vertices (%u/%u vb bytes)", max_verts, g->vb_used, GFX_VB_BYTES);
+    if (!mesh_pool_fits(&g->pool, vbytes, ibytes) || max_indices == 0) {
+        mg_log_error("gfx: mesh pool full reserving %u vertices (%u/%u vb bytes)", max_verts, g->pool.vb_used, GFX_VB_BYTES);
         return GFX_MESH_NONE;
     }
-    GfxMeshRec *m = &g->meshes[g->mesh_count];
+    GfxMeshRec *m = &g->meshes[g->pool.count];
     SDL_zerop(m);
-    m->vertex_offset = (int32_t)(g->vb_used / sizeof(GfxVertex));
-    m->first_index = g->ib_used / (uint32_t)sizeof(uint32_t);
+    m->vertex_offset = (int32_t)(g->pool.vb_used / sizeof(GfxVertex));
+    m->first_index = g->pool.ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = 0; /* nothing to draw until the first update */
     m->vcap = max_verts, m->icap = max_indices;
-    g->vb_used += vbytes;
-    g->ib_used += ibytes;
-    return (GfxMeshId)g->mesh_count++;
+    return (GfxMeshId)mesh_pool_take(&g->pool, vbytes, ibytes);
 }
 
 bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices, uint32_t index_count)
 {
-    if (id == GFX_MESH_NONE || id >= g->mesh_count) {
+    if (id == GFX_MESH_NONE || id >= g->pool.count) {
         return false;
     }
     GfxMeshRec *m = &g->meshes[id];
@@ -1167,15 +1165,14 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
 {
     uint32_t vbytes = vert_count * (uint32_t)sizeof(GfxVertex);
     uint32_t ibytes = index_count * (uint32_t)sizeof(uint32_t);
-    if (g->mesh_count >= GFX_MAX_MESHES || g->vb_used + vbytes > GFX_VB_BYTES ||
-        g->ib_used + ibytes > GFX_IB_BYTES || index_count == 0) {
-        mg_log_error("gfx: mesh pool full (%u meshes, %u/%u vb bytes)", g->mesh_count, g->vb_used, GFX_VB_BYTES);
+    if (!mesh_pool_fits(&g->pool, vbytes, ibytes) || index_count == 0) {
+        mg_log_error("gfx: mesh pool full (%u meshes, %u/%u vb bytes)", g->pool.count, g->pool.vb_used, GFX_VB_BYTES);
         return GFX_MESH_NONE;
     }
-    if (!upload_bytes(g, g->vb, g->vb_used, verts, vbytes) || !upload_bytes(g, g->ib, g->ib_used, indices, ibytes)) {
+    if (!upload_bytes(g, g->vb, g->pool.vb_used, verts, vbytes) || !upload_bytes(g, g->ib, g->pool.ib_used, indices, ibytes)) {
         return GFX_MESH_NONE;
     }
-    GfxMeshRec *m = &g->meshes[g->mesh_count];
+    GfxMeshRec *m = &g->meshes[g->pool.count];
     m->bmin = HMM_V3(1e9f, 1e9f, 1e9f);
     m->bmax = HMM_V3(-1e9f, -1e9f, -1e9f);
     for (uint32_t i = 0; i < vert_count; i++) {
@@ -1185,12 +1182,36 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
             m->bmax.Elements[k] = mg_maxf(m->bmax.Elements[k], p.Elements[k]);
         }
     }
-    m->vertex_offset = (int32_t)(g->vb_used / sizeof(GfxVertex));
-    m->first_index = g->ib_used / (uint32_t)sizeof(uint32_t);
+    m->vertex_offset = (int32_t)(g->pool.vb_used / sizeof(GfxVertex));
+    m->first_index = g->pool.ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = index_count;
-    g->vb_used += vbytes;
-    g->ib_used += ibytes;
-    return (GfxMeshId)g->mesh_count++;
+    return (GfxMeshId)mesh_pool_take(&g->pool, vbytes, ibytes);
+}
+
+GfxMeshMark gfx_mesh_mark(const GfxContext *g) { return mesh_pool_mark(&g->pool); }
+
+bool gfx_mesh_reset_to(GfxContext *g, GfxMeshMark mark)
+{
+    if (mark.meshes == g->pool.count) {
+        return true; /* nothing above it */
+    }
+    SDL_WaitForGPUIdle(g->dev); /* no frame in flight still reads what goes, and the next upload may overwrite it */
+    const GfxMeshPool before = g->pool;
+    if (!mesh_pool_reset_to(&g->pool, mark)) {
+        mg_log_error("gfx: stale mesh mark %u (pool at %u)", mark.meshes, g->pool.count);
+        return false;
+    }
+    SDL_memset(&g->meshes[mark.meshes], 0, sizeof(GfxMeshRec) * (before.count - mark.meshes));
+    mg_log_info("gfx: dropped meshes %u..%u (%u KB vertices, %u KB indices)", mark.meshes, before.count - 1, (before.vb_used - mark.vb_bytes) >> 10,
+                (before.ib_used - mark.ib_bytes) >> 10);
+    return true;
+}
+
+void gfx_mesh_usage(const GfxContext *g, uint32_t *meshes, uint32_t *vb_bytes, uint32_t *ib_bytes)
+{
+    *meshes = g->pool.count;
+    *vb_bytes = g->pool.vb_used;
+    *ib_bytes = g->pool.ib_used;
 }
 
 bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t h)
@@ -1262,7 +1283,7 @@ void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene) { g->scene = *sce
 
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat, uint32_t flags)
 {
-    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->mesh_count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f ||
+    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->pool.count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f ||
         g->meshes[mesh].index_count == 0) {
         return; /* fully faded draws (and an empty reserved mesh) cost nothing */
     }
@@ -2672,8 +2693,8 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->ui_atlas = g->ui_atlas_bytes;
     o->mesh_vb_reserved = GFX_VB_BYTES;
     o->mesh_ib_reserved = GFX_IB_BYTES;
-    o->mesh_vb_used = g->vb_used;
-    o->mesh_ib_used = g->ib_used;
+    o->mesh_vb_used = g->pool.vb_used;
+    o->mesh_ib_used = g->pool.ib_used;
     o->ui_buffers = GFX_MAX_UI * sizeof(GfxUiInst) * 2u * GFX_BUFFER_RING;
     o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u * GFX_BUFFER_RING;
 }

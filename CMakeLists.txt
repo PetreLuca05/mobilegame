@@ -16,8 +16,8 @@ option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store buil
 # without it the provisioning profile rejects the entitlement.
 option(MG_TEST_AUTH "--autotest link: email + password stand in for the ID-token grant (Debug test builds only)" OFF)
 option(MG_IOS_APPLE_SIGNIN "iOS: Sign in with Apple entitlement + button" OFF)
-set(MG_SCENE "hospital" CACHE STRING "Playable scene: hospital | devroom (M1 engine test room) | institute (MAP-2, from content/gastro/institute.map)")
-set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom institute)
+set(MG_SCENE "hospital" CACHE STRING "Default scene for direct starts: hospital | devroom (M1 engine test room; forces it everywhere). Levels choose theirs at run time (books.json)")
+set_property(CACHE MG_SCENE PROPERTY STRINGS hospital devroom)
 set(MG_RENDER "minimal" CACHE STRING
     "Renderer: minimal (one directional light, no shadows/lights/reflection) | full (M3 path, reference only)")
 set_property(CACHE MG_RENDER PROPERTY STRINGS minimal full)
@@ -43,6 +43,9 @@ function(mg_stamp_build target)
   add_dependencies(${target} mg_buildinfo)
   target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR}/generated)
 endfunction()
+if(MG_SCENE STREQUAL "devroom")
+  add_compile_definitions(MG_SCENE_DEVROOM=1)
+endif()
 if(MG_CAMERA STREQUAL "thirdperson")
   add_compile_definitions(MG_CAMERA_THIRDPERSON=1)
 endif()
@@ -138,6 +141,34 @@ list(APPEND MG_EMBED_FILES ${MG_MAPB})
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
 endif()
+# BOOK-1: the content pack, embedded as content/gastro.mgpack (8-byte aligned: read in place, game/book_pack.c). The real pack
+# lives in content_private/gastro/ (ignored, never committed); without it the public dummy pack is embedded and the game
+# shows its "continut demo" chip (MG_CONTENT_DEMO). Store builds pass -DMG_REQUIRE_REAL_CONTENT=ON.
+set(MG_CONTENT_DIR ${CMAKE_SOURCE_DIR}/content_private/gastro CACHE PATH "Folder holding the real BOOK-1 pack gastro.mgpack (never committed)")
+option(MG_REQUIRE_REAL_CONTENT "Fail configure when the real content pack is missing (store builds)" OFF)
+if(EXISTS ${MG_CONTENT_DIR}/gastro.mgpack)
+  set(MG_CONTENT_PACK ${MG_CONTENT_DIR}/gastro.mgpack)
+  set(MG_CONTENT_DEMO OFF)
+  message(STATUS "BOOK-1: embedding the real pack ${MG_CONTENT_PACK}")
+elseif(MG_REQUIRE_REAL_CONTENT)
+  message(FATAL_ERROR "BOOK-1: the real pack ${MG_CONTENT_DIR}/gastro.mgpack is missing; a shipped build never carries the demo "
+                      "(unpack the BOOK-1 engine bundle into content_private/gastro/ or set MG_CONTENT_DIR)")
+else()
+  set(MG_CONTENT_PACK ${CMAKE_SOURCE_DIR}/content/gastro_demo/gastro.mgpack)
+  set(MG_CONTENT_DEMO ON)
+  message(STATUS "BOOK-1: no real pack in ${MG_CONTENT_DIR}: embedding the dummy pack (MG_CONTENT_DEMO)")
+endif()
+set(MG_CONTENT_OUT ${MG_GEN_DIR}/content/gastro.mgpack)
+add_custom_command(
+  OUTPUT ${MG_CONTENT_OUT}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
+  COMMAND ${CMAKE_COMMAND} -E copy ${MG_CONTENT_PACK} ${MG_CONTENT_OUT}
+  DEPENDS ${MG_CONTENT_PACK}
+  COMMENT "content pack ${MG_CONTENT_PACK}"
+  VERBATIM
+)
+add_custom_target(mg_content_pack DEPENDS ${MG_CONTENT_OUT})
+list(APPEND MG_EMBED_FILES ${MG_CONTENT_OUT})
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
   OUTPUT ${MG_EMBED_C}
@@ -193,6 +224,8 @@ add_library(mg_engine STATIC
   engine/gfx/weld.c
   engine/gfx/floorfade.c
   engine/ui/text.c
+  engine/ui/text_layout.c
+  engine/ui/ui_textarea.c
   engine/ui/widgets.c
   engine/ui/ui_anim.c
   engine/ui/ui_fx.c
@@ -256,6 +289,9 @@ if(MG_PROF)
 endif()
 string(TOUPPER "${MG_PLATFORM}" MG_PLATFORM_UPPER)
 target_compile_definitions(mg_engine PUBLIC MG_PLATFORM_${MG_PLATFORM_UPPER}=1)
+if(MG_CONTENT_DEMO)
+  target_compile_definitions(mg_engine PUBLIC MG_CONTENT_DEMO=1)
+endif()
 if(MG_TEST_AUTH)
   if(CMAKE_BUILD_TYPE STREQUAL "Release")
     message(FATAL_ERROR "MG_TEST_AUTH is for test builds only")
@@ -269,7 +305,10 @@ endif()
 set(MG_GAME_SOURCES
   game/main.c
   game/game.c
-  game/scene_${MG_SCENE}.c
+  game/scene.c
+  game/scene_hospital.c
+  game/scene_devroom.c
+  game/scene_institute.c
   game/devroom.c
   game/devroom_layout.c
   game/hospital.c
@@ -306,6 +345,8 @@ set(MG_GAME_SOURCES
   game/lib_study.c
   game/lib_move.c
   game/lib_dressing.c
+  game/book_progress.c
+  game/book_figs.c
   game/lib_nav.c
   game/lib_fidget.c
   game/lib_life.c
@@ -331,6 +372,7 @@ set(MG_GAME_SOURCES
   game/world_data.c
   game/world_progress.c
   game/worldmap.c
+  game/book_pack.c
 )
 
 # --------------------------------------------------------------- targets
@@ -349,6 +391,43 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(mg_tests PRIVATE mg_physics SDL3::Headers) # headers only: the stick test drives touch_controls without SDL
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
+  # BOOK-ENGINE: the device's book progress file (writes into the build directory)
+  add_executable(book_progress_test tests/book_progress_test.c game/book_progress.c)
+  target_include_directories(book_progress_test PRIVATE game)
+  target_link_libraries(book_progress_test PRIVATE SDL3::SDL3-static)
+  target_compile_options(book_progress_test PRIVATE ${MG_WARNINGS})
+  add_test(NAME book_progress COMMAND book_progress_test ${CMAKE_BINARY_DIR})
+  # BOOK-ENGINE figures: the demo pack's crops through tools/book/figpack.py (ASTC via ImageIO on Apple, RGBA8 elsewhere)
+  if(APPLE)
+    set(MG_FIG_TEST_FORMAT astc)
+  else()
+    set(MG_FIG_TEST_FORMAT rgba8)
+  endif()
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/generated/figtest.mgfig
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig
+            ${CMAKE_BINARY_DIR}/generated/figtest.mgfig ${MG_FIG_TEST_FORMAT}
+    DEPENDS ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_demo.png)
+  add_custom_target(figtest_mgfig DEPENDS ${CMAKE_BINARY_DIR}/generated/figtest.mgfig)
+  add_executable(book_figs_test tests/book_figs_test.c game/book_figs.c)
+  target_include_directories(book_figs_test PRIVATE game)
+  target_compile_options(book_figs_test PRIVATE ${MG_WARNINGS})
+  add_dependencies(book_figs_test figtest_mgfig)
+  add_test(NAME book_figs COMMAND book_figs_test ${CMAKE_BINARY_DIR}/generated/figtest.mgfig fig_demo)
+  # BOOK-1: the pack loader on the embedded pack (the generated copy) and the committed dummy, plus corrupted copies
+  add_executable(book_pack_test tests/book_pack_test.c game/book_pack.c)
+  target_include_directories(book_pack_test PRIVATE game engine)
+  target_compile_options(book_pack_test PRIVATE ${MG_WARNINGS})
+  if(MG_CONTENT_DEMO)
+    target_compile_definitions(book_pack_test PRIVATE MG_CONTENT_DEMO=1)
+  endif()
+  add_dependencies(book_pack_test mg_content_pack)
+  add_test(NAME book_pack COMMAND book_pack_test ${MG_CONTENT_OUT} ${CMAKE_SOURCE_DIR}/content/gastro_demo/gastro.mgpack)
+  # word wrap (engine/ui/text_layout.c) on a font with known advances
+  add_executable(text_wrap_test tests/text_wrap_test.c engine/ui/text_layout.c)
+  target_include_directories(text_wrap_test PRIVATE engine)
+  target_link_libraries(text_wrap_test PRIVATE mg_thirdparty)
+  target_compile_options(text_wrap_test PRIVATE ${MG_WARNINGS})
+  add_test(NAME text_wrap COMMAND text_wrap_test)
   # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
   add_executable(weld_test tests/weld_test.c engine/gfx/weld.c)
 target_include_directories(weld_test PRIVATE engine)
@@ -356,6 +435,13 @@ target_link_libraries(weld_test PRIVATE mg_thirdparty)
 target_compile_options(weld_test PRIVATE ${MG_WARNINGS})
 add_dependencies(weld_test mobilegame) # the generated meshes
 add_test(NAME weld COMMAND weld_test ${CMAKE_BINARY_DIR}/generated/assets)
+
+# level scenes: mesh pool mark / reset, level arena, nav with several lift cars, five landings, save bits (pure C)
+add_executable(level_mem_test tests/level_mem_test.c engine/nav/navgrid.c engine/nav/astar.c engine/core/arena.c game/elevator.c)
+target_include_directories(level_mem_test PRIVATE game engine)
+target_link_libraries(level_mem_test PRIVATE mg_physics m)
+target_compile_options(level_mem_test PRIVATE ${MG_WARNINGS})
+add_test(NAME level_mem COMMAND level_mem_test)
 
 foreach(lib dressing nav fidget life)
     add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c)

@@ -21,6 +21,7 @@ typedef struct MarkerHudIn {
     float shake;        /* icon x offset, pt */
     float ring;         /* active ring 0..1 */
     UiColor tint;
+    char badge[4];      /* the floor badge on another storey: "G", "1" .. "R" (the floor name's first letter); "" = by number */
 } MarkerHudIn;
 
 typedef struct MarkerHudOut {

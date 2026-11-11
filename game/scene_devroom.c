@@ -1,63 +1,69 @@
-/* MG_SCENE=devroom: the M1 dev room behind the scene interface. */
+/* SCENE_DEVROOM: the M1 dev room behind the scene interface (MG_SCENE=devroom). */
 #include "rooms.h"
-#include "scene.h"
+#include "scene_impl.h"
 
 #include "devroom.h"
 
-struct Scene {
+typedef struct DevroomScene {
+    Scene base;
     DevRoom room;
-};
+} DevroomScene;
 
-Scene *scene_create(GfxContext *g, Arena *perm, ColWorld *world, const TextFont *font)
+#define DS(s) ((DevroomScene *)(s))
+#define CDS(s) ((const DevroomScene *)(s))
+
+Scene *scene_devroom_create(GfxContext *g, Arena *arena, ColWorld *world, const TextFont *font)
 {
     (void)font;
-    Scene *s = ARENA_PUSH(perm, Scene, 1);
-    if (!s || !devroom_init(&s->room, g, perm)) {
+    DevroomScene *s = ARENA_PUSH(arena, DevroomScene, 1);
+    if (!s || !devroom_init(&s->room, g, arena)) {
         return NULL;
     }
+    s->base.kind = SCENE_DEVROOM;
     devroom_colliders(&s->room, world);
-    return s;
+    return &s->base;
 }
 
-SceneryShape scene_scenery_shape(void)
+SceneryShape scene_devroom_scenery_shape(const Scene *s)
 {
-    SceneryShape s = {12.4f, 12.4f, -0.6f, 2.2f};
-    return s;
+    (void)s;
+    SceneryShape sh = {12.4f, 12.4f, -0.6f, 2.2f};
+    return sh;
 }
 
-HMM_Vec3 scene_spawn(const Scene *s, int slot)
+HMM_Vec3 scene_devroom_spawn(const Scene *s, int slot)
 {
-    return s->room.spawns[slot >= 0 && slot < DEVROOM_SPAWNS ? slot : 0];
+    return CDS(s)->room.spawns[slot >= 0 && slot < DEVROOM_SPAWNS ? slot : 0];
 }
 
-float scene_spawn_yaw(const Scene *s)
+float scene_devroom_spawn_yaw(const Scene *s)
 {
     (void)s;
     return 0.0f;
 }
 
-int scene_floor_of(const Scene *s, HMM_Vec3 p)
+int scene_devroom_floor_of(const Scene *s, HMM_Vec3 p)
 {
     (void)s;
     (void)p;
     return 0;
 }
 
-float scene_floor_y(const Scene *s, int floor)
+float scene_devroom_floor_y(const Scene *s, int floor)
 {
     (void)s;
     (void)floor;
     return 0.0f;
 }
 
-bool scene_indoors(const Scene *s, HMM_Vec3 p)
+bool scene_devroom_indoors(const Scene *s, HMM_Vec3 p)
 {
     (void)s;
     (void)p;
     return false;
 }
 
-void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
+void scene_devroom_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
 {
     (void)s;
     float a = t * 0.07f + 0.6f;
@@ -65,43 +71,43 @@ void scene_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec3 *target)
     *target = HMM_V3(0, 0.5f, 0);
 }
 
-void scene_draw(Scene *s, GfxContext *g, const SceneView *v)
+void scene_devroom_draw(Scene *s, GfxContext *g, const SceneView *v)
 {
     (void)v;
-    devroom_draw(&s->room, g, false);
+    devroom_draw(&DS(s)->room, g, false);
 }
 
-int scene_area_kind(float x, float z, int storey)
+int scene_devroom_area_kind(const Scene *s, float x, float z, int storey)
 {
-    (void)x, (void)z, (void)storey;
+    (void)s, (void)x, (void)z, (void)storey;
     return 0;
 }
 
-void scene_rooms_build(Scene *s, struct RoomGraph *g)
+void scene_devroom_rooms_build(Scene *s, struct RoomGraph *g)
 {
     (void)s;
     rooms_clear(g);
 }
 
-struct NavWorld *scene_nav_bake(Scene *s, Arena *perm, ColWorld *world)
+struct NavWorld *scene_devroom_nav_bake(Scene *s, Arena *arena, ColWorld *world)
 {
-    (void)s, (void)perm, (void)world;
+    (void)s, (void)arena, (void)world;
     return NULL; /* no pathfinding in the engine test room */
 }
 
-bool scene_box_cut_away(const Scene *s, int box, const float *fade)
+bool scene_devroom_box_cut_away(const Scene *s, int box, const float *fade)
 {
     (void)s, (void)box, (void)fade;
     return false;
 }
 
-void scene_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
+void scene_devroom_fade_targets(const Scene *s, float *target, int view_floor, bool inside, HMM_Vec3 player, HMM_Vec3 eye)
 {
     (void)s, (void)target, (void)view_floor, (void)inside, (void)player, (void)eye; /* one storey: nothing fades */
 }
 
 #ifdef MG_RENDER_FULL
-int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
+int scene_devroom_lights(Scene *s, GfxContext *g, const SceneView *v)
 {
     (void)s;
     (void)g;
@@ -110,31 +116,51 @@ int scene_lights(Scene *s, GfxContext *g, const SceneView *v)
 }
 #endif
 
-void scene_tick(Scene *s, ColWorld *world, float dt)
+void scene_devroom_tick(Scene *s, ColWorld *world, float dt)
 {
     (void)s;
     (void)world;
     (void)dt;
 }
 
-Elevator *scene_elevator(Scene *s)
+int scene_devroom_elevator_count(const Scene *s)
 {
     (void)s;
+    return 0;
+}
+
+Elevator *scene_devroom_elevator(Scene *s, int index)
+{
+    (void)s, (void)index;
     return NULL;
 }
 
-const char *scene_name(void) { return "devroom"; }
-
-int scene_floor_count(void) { return 1; }
-
-const char *scene_floor_name(int floor)
+bool scene_devroom_ambient_npcs(const Scene *s)
 {
-    (void)floor;
+    (void)s;
+    return false;
+}
+
+const char *scene_devroom_name(const Scene *s)
+{
+    (void)s;
+    return "devroom";
+}
+
+int scene_devroom_floor_count(const Scene *s)
+{
+    (void)s;
+    return 1;
+}
+
+const char *scene_devroom_floor_name(const Scene *s, int floor)
+{
+    (void)s, (void)floor;
     return "Dev room";
 }
 
-HMM_Vec3 scene_floor_lobby(const Scene *s, int floor)
+HMM_Vec3 scene_devroom_floor_lobby(const Scene *s, int floor)
 {
     (void)floor;
-    return scene_spawn(s, 0);
+    return scene_devroom_spawn(s, 0);
 }

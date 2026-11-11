@@ -80,12 +80,9 @@ static void bake_grid(NavGrid *g, Cell *cells, const ColWorld *world, const NavB
                 if (wx < nb->footprint[0] || wx > nb->footprint[2] || wz < nb->footprint[1] || wz > nb->footprint[3]) {
                     f |= NAV_OUTDOOR;
                 }
-                if (wx >= nb->car[0] && wx <= nb->car[2] && wz >= nb->car[1] && wz <= nb->car[3]) {
-                    f |= NAV_ELEVATOR;
-                }
                 for (int k = 0; k < nb->car_count && k < NAV_MAX_CARS; k++) {
-                    const float *cr = nb->cars[k];
-                    if (wx >= cr[0] && wx <= cr[2] && wz >= cr[1] && wz <= cr[3]) {
+                    const float *car = nb->cars[k];
+                    if (wx >= car[0] && wx <= car[2] && wz >= car[1] && wz <= car[3]) {
                         f |= NAV_ELEVATOR;
                     }
                 }
@@ -171,7 +168,8 @@ NavWorld *nav_bake(Arena *perm, const ColWorld *world, const NavBakeDesc *desc)
     }
     memset(n, 0, sizeof(*n));
     n->grid_count = desc->grid_count;
-    memcpy(n->car, desc->car, sizeof(n->car));
+    n->car_count = desc->car_count < 0 ? 0 : (desc->car_count > NAV_MAX_CARS ? NAV_MAX_CARS : desc->car_count);
+    memcpy(n->cars, desc->cars, sizeof(n->cars));
     int largest = 0;
     for (int i = 0; i < desc->grid_count; i++) {
         NavGrid *g = &n->grids[i];

@@ -237,10 +237,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         y += 52.0f;
         ui_label_caps(ui, x, y + 4.0f, "Teleport to floor");
         y += 22.0f;
-        static const char *const labels[3] = {"G##tp", "1##tp", "2##tp"};
-        float tw = (cw - 16.0f) / 3.0f;
-        for (int i = 0; i < 3; i++) {
-            if (ui_button(ui, labels[i], x + (float)i * (tw + 8.0f), y, tw, 44.0f, false)) {
+        const int nf = m->tp_floors < 1 ? 1 : (m->tp_floors > 8 ? 8 : m->tp_floors);
+        float tw = (cw - 8.0f * (float)(nf - 1)) / (float)nf;
+        for (int i = 0; i < nf; i++) {
+            if (ui_button(ui, m->tp_label[i][0] ? m->tp_label[i] : "G##tp", x + (float)i * (tw + 8.0f), y, tw, 44.0f, false)) {
                 s->teleport_floor = i;
                 *action = MENU_TELEPORT;
                 m->open = false;

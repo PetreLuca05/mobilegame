@@ -1400,10 +1400,7 @@ NavWorld *institute_nav_bake(Institute *in, Arena *perm, ColWorld *world)
     memcpy(d.footprint, fp, sizeof(fp));
     for (int k = 0; k < INST_LIFTS; k++) {
         const float car[4] = {in->lift_x[k] - CAR_HX, CAR_Z0, in->lift_x[k] + CAR_HX, CAR_Z1};
-        if (k == 0) {
-            memcpy(d.car, car, sizeof(car)); /* the one paths ride (lift A) */
-        }
-        if (d.car_count < NAV_MAX_CARS) {
+        if (d.car_count < NAV_MAX_CARS) { /* nav car k = scene lift k */
             memcpy(d.cars[d.car_count++], car, sizeof(car));
         }
     }

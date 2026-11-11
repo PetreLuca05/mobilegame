@@ -60,6 +60,8 @@ typedef struct SettingsMenu {
     const char *my_name;
     const NetSkin *my_skin;
     bool is_guest;  /* set by the game: the card offers linking */
+    int tp_floors;  /* set by the game per level scene: Developer -> Teleport to floor, one button each */
+    char tp_label[8][8]; /* "G##tp", "1##tp" .. "R##tp" */
     UiScroll players_scroll, card_scroll;
     int tab; /* 0 game, 1 skin */
     bool dev_open;
