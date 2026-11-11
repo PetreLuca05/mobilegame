@@ -97,6 +97,7 @@ typedef struct Institute {
     GfxMeshId seg_glass[INST_STOREYS][2];
     GfxMeshId leaf_mesh[3];  /* unit leaves (1 m along +x from the hinge, 1 m high) per colour */
     GfxMeshId car_mesh;      /* one open-topped car, origin at its floor centre, doorway +z */
+    GfxMeshId car_glass;     /* its glass panel (see-through, GFX_MAT_GLASS) */
     GfxMeshId lift_door;     /* one sliding panel */
     InstSeg segs[INST_MAX_SEGS];
     int seg_count;
@@ -129,6 +130,7 @@ typedef struct InstView {
     int view_floor;
     const float *fade;
     bool storey_tint;
+    bool fill_1; /* --debug inst-fill-1: the building's hemisphere at 0.38 (sun 0.62 + 0.38 = 1.0 on an up face), not 0.5 */
 } InstView;
 void institute_draw(const Institute *in, GfxContext *g, const InstView *v);
 /* The reference page's sky while the institute is the scene: scene.background 0xbfe6f5, flat, no sun disc. Its fog is

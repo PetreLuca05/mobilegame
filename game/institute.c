@@ -1177,12 +1177,10 @@ static GfxMeshId small_mesh(IBuild *b, int which)
             static const uint32_t col[3] = {C_DOOR, C_STEEL, C_GLASS};
             jbox(&mb, .5f, .5f, 0, 1, 1, .05f, col[which], 0);
             jbox(&mb, .86f, .48f, 0, .1f, .03f, .11f, C_STEEL, 0);
-        } else if (which == 3) {
-            build_cab(&mb);
         } else { /* a landing door panel 0.85 x 2.3 x 0.06, centred */
             jbox(&mb, 0, CAR_H * .5f, 0, .85f, CAR_H, .06f, C_STEEL, 0);
         }
-        paint(mb.v, mb.nv); /* the cab's glass panel stays in it: drawn opaque (INST_PAT_GLASS) */
+        paint(mb.v, mb.nv);
         id = upload(b, &mb, 0);
     }
     arena_reset_to(b->scratch, mark);
@@ -1244,7 +1242,17 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
     for (int i = 0; i < 3; i++) {
         in->leaf_mesh[i] = small_mesh(b, i);
     }
-    in->car_mesh = small_mesh(b, 3);
+    { /* the car: solid + its see-through glass panel, as every other glass */
+        const size_t mark = arena_mark(b->scratch);
+        MeshBuilder cab;
+        if (mb_init(&cab, b->scratch, 2048, 4096)) {
+            build_cab(&cab);
+            MeshBuilder *src = &cab;
+            in->car_mesh = upload_part(b, &src, 1, false, 0);
+            in->car_glass = upload_part(b, &src, 1, true, 0);
+        }
+        arena_reset_to(b->scratch, mark);
+    }
     in->lift_door = small_mesh(b, 4);
     /* spawns: the yard ones (storey -1), the entrance hall, the roof */
     int ns = 0;
@@ -1418,10 +1426,14 @@ static float svis(const InstView *v, int s) { return !v->fade || s < 0 ? 1.0f : 
  * see-through (GFX_MAT_GLASS). */
 void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
 {
-    const GfxMaterial matte = gfx_has_patterns(g) ? mat_pattern(HMM_V4(1, 1, 1, 1)) : mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    GfxMaterial matte = gfx_has_patterns(g) ? mat_pattern(HMM_V4(1, 1, 1, 1)) : mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    GfxMaterial site_matte = matte;
+    if (v->fill_1 && matte.kind == GFX_MAT_PATTERN) {
+        matte.params.X = 0.38f; /* the building only (the site keeps the page's 0.5) */
+    }
     const GfxMaterial glossy = mat_glass(), text = mat_text(HMM_V4(1, 1, 1, 1));
     {
-        GfxMaterial sm = tinted(matte, v, -1);
+        GfxMaterial sm = tinted(site_matte, v, -1);
         draw_mesh(g, in->site[ISG_MATTE], &sm, GFX_DRAW_REFLECT);
         draw_mesh(g, in->site[ISG_GLOSS], &glossy, GFX_DRAW_NO_SHADOW);
     }
@@ -1523,6 +1535,9 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
         mt.hide = floorfade_hide(vis);
         HMM_Mat4 m = HMM_Translate(HMM_V3(in->lift_x[k], e->car_y, CAR_Z));
         gfx_draw(g, in->car_mesh, &m, &mt, GFX_DRAW_REFLECT);
+        GfxMaterial cg = glossy;
+        cg.hide = mt.hide;
+        gfx_draw(g, in->car_glass, &m, &cg, GFX_DRAW_NO_SHADOW); /* +1 draw per car drawn */
     }
 }
 

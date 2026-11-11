@@ -18,7 +18,7 @@ struct PatOut
     [[vk::location(2)]] float4 col : TEXCOORD2;
     [[vk::location(3)]] float3 lpos : TEXCOORD3;
     [[vk::location(4)]] nointerpolation min16float4 tint : TEXCOORD4;
-    [[vk::location(5)]] nointerpolation min16float4 params : TEXCOORD5; // w hide (instanced)
+    [[vk::location(5)]] nointerpolation float4 params : TEXCOORD5; // x fill, w hide (instanced)
 };
 
 // metres per repeat, by id (TEX sizes)
@@ -26,15 +26,16 @@ static const float k_pat_size[12] = {1.0, 1.2, 1.6, 2.0, 3.0, 1.2, 4.0, 11.0, 3.
 
 // The page's lights: HemisphereLight(0xffffff, 0xb8d6a0, 0.5) + DirectionalLight(0xfff6e0) 0.25 (shadowed) + 0.37
 // (not), both from (-45, 85, 55), through the gradient map {165, 255} (nearest): n.l < 0 takes 165 / 255. Nothing
-// casts a shadow here (user decision): the whole sun, 0.25 + 0.37, everywhere.
-float3 pattern_light(float3 n)
+// casts a shadow here (user decision): the whole sun, 0.25 + 0.37, everywhere. `fill`: the hemisphere's intensity
+// (material params.x; 0 = the page's 0.5; --debug inst-fill-1 passes 0.38 for the building).
+float3 pattern_light(float3 n, float fill)
 {
-    float3 hemi = lerp(float3(0xb8, 0xd6, 0xa0) / 255.0, float3(1.0, 1.0, 1.0), n.y * 0.5 + 0.5) * 0.5;
+    float3 hemi = lerp(float3(0xb8, 0xd6, 0xa0) / 255.0, float3(1.0, 1.0, 1.0), n.y * 0.5 + 0.5) * (fill > 0.0 ? fill : 0.5);
     float ramp = dot(n, k_glass_sun) < 0.0 ? 165.0 / 255.0 : 1.0;
     return hemi + ramp * float3(1.0, 0xf6 / 255.0, 0xe0 / 255.0) * (0.25 + 0.37);
 }
 
-float3 pattern_shade(PatOut i, float3 tint)
+float3 pattern_shade(PatOut i, float3 tint, float fill)
 {
     uint code = (uint)(i.col.a * 255.0 + 0.5);
     uint id = code & 15u;
@@ -49,6 +50,6 @@ float3 pattern_shade(PatOut i, float3 tint)
     if (id == 11u)
         c = glass_color(i.wpos, i.nrm).rgb;
     if ((code & 16u) != 0u)
-        c *= pattern_light(n);
+        c *= pattern_light(n, fill);
     return saturate(c * tint);
 }

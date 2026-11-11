@@ -277,6 +277,7 @@ typedef struct Game {
     bool lib_placed;
     HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
+    bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
@@ -855,6 +856,9 @@ bool game_init(MgApp *app)
             g->tilt_debug = true;
             g->tilt_debug_x = (float)SDL_atof(app->argv[i + 2]), g->tilt_debug_y = (float)SDL_atof(app->argv[i + 3]);
         }
+    }
+    for (int i = 1; i + 1 < app->argc; i++) { /* --debug inst-fill-1: test only, default off, not saved */
+        g->inst_fill_1 |= SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "inst-fill-1") == 0;
     }
     for (int i = 1; i + 2 < app->argc; i++) { /* --debug ride <plane|helicopter|boat|submarine>: the next trip */
         if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "ride") == 0) {
@@ -4581,7 +4585,8 @@ static void game_frame_inner(MgApp *app, float alpha)
 #endif
                       .lamp_on = g->lamp_on,
                       .fade = g->fade.vis,
-                      .storey_tint = s->show_storeys};
+                      .storey_tint = s->show_storeys,
+                      .inst_fill_1 = g->inst_fill_1};
 #ifdef MG_RENDER_FULL
     g->shadowed_lights = scene_lights(g->scene, app->gfx, &view);
 #endif

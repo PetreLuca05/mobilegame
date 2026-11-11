@@ -11,7 +11,7 @@ PatOut VSMain(VSIn i)
     o.col = i.col;
     o.lpos = i.pos;
     o.tint = min16float4(1.0, 1.0, 1.0, 1.0);
-    o.params = min16float4(0.0, 0.0, 0.0, 0.0);
+    o.params = float4(0.0, 0.0, 0.0, 0.0);
     o.pos = mul(u_view_proj, w);
     return o;
 }

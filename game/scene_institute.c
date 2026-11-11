@@ -85,7 +85,7 @@ void scene_institute_launch_view(const Scene *s, float t, HMM_Vec3 *eye, HMM_Vec
 
 void scene_institute_draw(Scene *s, GfxContext *g, const SceneView *v)
 {
-    InstView iv = {v->floor, v->fade, v->storey_tint};
+    InstView iv = {v->floor, v->fade, v->storey_tint, v->inst_fill_1};
     institute_draw(&IS(s)->in, g, &iv);
 }
 

@@ -713,13 +713,19 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 
 ## Institute look (INST-LIGHT)
 
-- The Gastro institute takes the reference page's materials, lit by its light set, no shadows (user decision: "lit, but don't cast
-  shadows"): `GFX_MAT_PATTERN` = vertex colour x one sample of a detail pattern x (hemisphere 0xffffff / 0xb8d6a0 at 0.5 + sun
-  0xfff6e0 x 0.62 from (-45, 85, 55) through the two-step ramp 165 / 255 -> 1). Building, wall pieces, furniture, props, lifts,
-  site, roof and the terrain beyond the fence (`SceneryShape.grass_pattern`); avatars keep the day light (`cel_light_day`).
+- The Gastro institute is fully lit with no shadows. The reference page's unlit interior (MeshBasicMaterial) and its soft outdoor
+  shadows were left out on purpose (user decision: "lit, but don't cast shadows"): no shadow maps, pass, bake or decal.
+- `GFX_MAT_PATTERN` = vertex colour x one sample of a detail pattern x (hemisphere 0xffffff / 0xb8d6a0 at 0.5 + sun 0xfff6e0 x
+  0.62 from (-45, 85, 55) through the two-step ramp 165 / 255 -> 1). Building, wall pieces, furniture, props, lifts, site, roof
+  and the terrain beyond the fence (`SceneryShape.grass_pattern`); avatars keep the day light (`cel_light_day`). An up face gets
+  1.12, so light floors read near white (the page's light); `--debug inst-fill-1` (test only, not saved, default off) drops the
+  building's hemisphere to 0.38 so sun + fill = 1.0 facing up (material params.x).
 - Patterns: `tools/gen_patterns.py` at build time (the page's seeded canvas drawing, + mips) -> embedded
   `assets/world/inst_patterns.bin`, one R8 2D array (873 KB), uploaded once (`gfx_set_patterns`). Vertex alpha = pattern id
   (`inst_pattern_of`, KIND_OF by palette colour) | 16 lit; UVs from the face's dominant axis over the pattern's size (pattern.hlsli).
-- Glass (COL.glass triangles, blankets included as on the page): `GFX_MAT_GLASS`, the page's glass shader, blended, drawn in
-  bucket 3 (after the avatars). The groups merge by draw condition (slab with the facade, floors + furniture with the interior),
-  so the institute draws fewer calls than before. Sky #BFE6F5, no fog. Pictures: docs/autotest/institute/lighting/.
+- Glass (COL.glass triangles, blankets included as on the page, the lift cars' panel too): `GFX_MAT_GLASS`, the page's glass shader,
+  blended, drawn in bucket 3 (after the avatars); one draw per lift car drawn. The groups merge by draw condition (slab with the
+  facade, floors + furniture with the interior), so the institute draws fewer calls than before. Back faces stay culled.
+  Sky #BFE6F5, no fog. Pictures: docs/autotest/institute/lighting/.
+- iPad gate: every institute pixel now samples the pattern texture and runs the light set (and glass blends), so the institute
+  needs a GPU trace on the iPad at the combined gate (docs/PERF_RULES.md).
