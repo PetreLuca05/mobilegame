@@ -26,7 +26,6 @@
 #define INST_BX 26.0f      /* building half extents */
 #define INST_BZ 18.0f
 #define INST_MAX_SEGS 192  /* fadeable wall pieces */
-#define INST_MAX_LEAVES 128
 #define INST_SPAWNS 4
 /* landings the lifts serve: G, 1, 2, 3, R (the roof needs ELEV_MAX_FLOORS >= 5) */
 #define INST_LIFT_FLOORS (ELEV_MAX_FLOORS < INST_STOREYS ? ELEV_MAX_FLOORS : INST_STOREYS)
@@ -59,19 +58,6 @@ typedef struct InstSeg {
     uint32_t first, count;  /* index range in seg_mesh[storey][exterior] */
 } InstSeg;
 
-/* A door leaf: hinge, closed along the wall, swings into `open` (unit xz) up to 72 degrees. */
-typedef struct InstLeaf {
-    float x, y, z;
-    float cx, cz;     /* closed direction from the hinge (unit) */
-    float nx, nz;     /* swing side */
-    float len, h;
-    uint8_t mesh;     /* 0 blue, 1 steel, 2 glass */
-    int8_t storey;
-    int16_t room;
-    int box;          /* collider index */
-    float open;       /* 0 shut .. 1 open */
-} InstLeaf;
-
 /* What the scene tick needs from outside (written while drawing / fading: the scene API has no player in the tick). */
 typedef struct InstLive {
     HMM_Vec3 player;
@@ -82,7 +68,7 @@ typedef struct InstStats {
     uint32_t vb_bytes, ib_bytes, tris;
     uint32_t furn_tris, furn_pieces, iprops;
     uint32_t storey_tris[INST_STOREYS + 1]; /* [0] site, [1 + s] storey s */
-    int colliders, segs, leaves;
+    int colliders, segs;
 } InstStats;
 
 typedef struct Institute {
@@ -90,14 +76,11 @@ typedef struct Institute {
     GfxMeshId mesh[INST_STOREYS][IG_COUNT];
     GfxMeshId site[ISG_COUNT];
     GfxMeshId seg_mesh[INST_STOREYS][2];
-    GfxMeshId leaf_mesh[3];  /* unit leaves (1 m along +x from the hinge, 1 m high) per colour */
     GfxMeshId car_mesh;      /* one open-topped car, origin at its floor centre, doorway +z */
     GfxMeshId lift_door;     /* one sliding panel */
     InstSeg segs[INST_MAX_SEGS];
     int seg_count;
     int16_t *box_seg;        /* collider -> wall piece (-1 none), COL_MAX_BOXES */
-    InstLeaf leaves[INST_MAX_LEAVES];
-    int leaf_count;
     Elevator lifts[INST_LIFTS];
     float lift_x[INST_LIFTS], lift_z0, lift_z1;   /* car centres, door line */
     int lift_door_box[INST_LIFTS][INST_STOREYS][2];
@@ -117,7 +100,7 @@ int institute_group_storey(int storey_slot);
 void institute_fade_targets(const Institute *in, float *target, int view_floor, bool inside, HMM_Vec3 player);
 bool institute_box_cut_away(const Institute *in, int box, const float *fade);
 void institute_tick(Institute *in, ColWorld *world, float dt);
-/* Leaves and lift doors to their colliders (all open for the nav bake when `all_open`). */
+/* The lifts' landing doors to their colliders (all open for the nav bake when `all_open`). Room doorways have no leaves. */
 void institute_apply_doors(Institute *in, ColWorld *world, bool all_open);
 
 typedef struct InstView {

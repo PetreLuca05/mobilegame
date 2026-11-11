@@ -217,7 +217,7 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
     }
 
     /* 2. door openings and approaches */
-    fprintf(fp, "\n== door leaves (stairwells exempt): cells across the opening (min of 3 rows), approach 1.0 m both sides\n");
+    fprintf(fp, "\n== doorways (the map's door_leaf records, no leaf built; stairwells exempt): cells across the opening (min of 3 rows), approach 1.0 m both sides\n");
     int doors = 0, narrow = 0, blocked_data = 0, blocked_grid = 0, ref_narrow = 0, approach_1m = 0;
     for (int i = 0; i < m->prop_count; i++) {
         const ImProp *p = &m->props[i];
@@ -309,7 +309,7 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
             }
         }
     }
-    fprintf(fp, "door leaves %d: %d with < 2 cells across (reference: %d), %d with furniture in the 1.0 m zone (the page's "
+    fprintf(fp, "doorways %d: %d with < 2 cells across (reference: %d), %d with furniture in the 1.0 m zone (the page's "
                 "check), %d with a blocked baked cell 0.25 .. 0.75 m out, %d with the cell 1.0 m out next to furniture\n",
             doors, narrow, ref_narrow, blocked_data, blocked_grid, approach_1m);
     fails += narrow + blocked_data + blocked_grid;
@@ -453,7 +453,7 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
     fails += rooms_bad;
     fprintf(fp, "\nRESULT: %s (%d failed checks)\n", fails ? "FAIL" : "PASS", fails);
     fclose(fp);
-    mg_log_info("nav_check: %d door leaves (%d narrow, %d furniture in the approach, %d blocked approach cells), %d rooms "
+    mg_log_info("nav_check: %d doorways (%d narrow, %d furniture in the approach, %d blocked approach cells), %d rooms "
                 "unreachable or with pockets, %d rooms differ from the reference: %s -> %s",
                 doors, narrow, blocked_data, blocked_grid, rooms_bad, rooms_diff, fails ? "FAIL" : "PASS", path);
     SDL_free(ref);

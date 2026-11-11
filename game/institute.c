@@ -83,8 +83,6 @@ enum { F_PX = 1, F_NX = 2, F_PY = 4, F_NY = 8, F_PZ = 16, F_NZ = 32, F_ALL = 63 
 #define CAR_Z1 7.75f
 #define CAR_H 2.3f
 #define DOOR_Z 7.88f /* the towers' south wall centre line */
-#define LEAF_OPEN_RAD 1.25f /* 72 degrees */
-#define INST_DOOR_LEAVES 0  /* 0: the map's door leaves are not built (no leaf, no collider): open doorways in their frames */
 #define SEG_POOL 64
 
 typedef struct Tower {
@@ -852,7 +850,7 @@ static void build_site(IBuild *b)
     }
 }
 
-/* ------------------------------------------------------------------ furniture, book props, door leaves */
+/* ------------------------------------------------------------------ furniture, book props */
 
 static bool blocks_people(HMM_Vec3 mn, HMM_Vec3 mx, float floor_y)
 {
@@ -872,37 +870,7 @@ static void build_furniture(IBuild *b, int f)
         if (p->storey != f) {
             continue;
         }
-        if (p->kind == IMF_DOOR_LEAF) {
-            if (!INST_DOOR_LEAVES) { /* doorways stay open: only the frames are built (user decision) */
-                continue;
-            }
-            if (in->leaf_count >= INST_MAX_LEAVES) {
-                b->ok = false;
-                continue;
-            }
-            InstLeaf *l = &in->leaves[in->leaf_count++];
-            const float a = p->yaw * HMM_PI32 / 180.0f;
-            l->x = p->x;
-            l->y = fy;
-            l->z = p->z;
-            l->cx = roundf(sinf(a));
-            l->cz = roundf(cosf(a));
-            l->nx = p->open_x;
-            l->nz = p->open_z;
-            l->len = p->w;
-            l->h = p->h;
-            l->storey = (int8_t)f;
-            l->room = p->room;
-            const ImRoom *r = p->room >= 0 ? &m->rooms[p->room] : NULL;
-            l->mesh = r && r->type == IM_TERRACE ? 2 : (r && (r->type == IM_OR || r->type == IM_ICU_BAY) ? 1 : 0);
-            if (r && r->type == IM_TERRACE) {
-                l->h = 1.0f;
-            }
-            l->open = 0.0f;
-            const float ex = l->x + l->cx * l->len, ez = l->z + l->cz * l->len;
-            l->box = b->world->count;
-            collide(b, fminf(l->x, ex) - (l->cx == 0 ? .025f : 0), fy, fminf(l->z, ez) - (l->cz == 0 ? .025f : 0),
-                    fmaxf(l->x, ex) + (l->cx == 0 ? .025f : 0), fy + l->h, fmaxf(l->z, ez) + (l->cz == 0 ? .025f : 0));
+        if (p->kind == IMF_DOOR_LEAF) { /* the map's door records mark doorways only: open, in their frames, no leaf (user decision) */
             continue;
         }
         HMM_Vec3 mn, mx;
@@ -1058,11 +1026,7 @@ static GfxMeshId small_mesh(IBuild *b, int which)
     MeshBuilder mb;
     GfxMeshId id = GFX_MESH_NONE;
     if (mb_init(&mb, b->scratch, 2048, 4096)) {
-        if (which < 3) { /* unit door leaf: 1 m from the hinge along +x, 1 m high, 5 cm thick (buildLeaf) */
-            static const uint32_t col[3] = {C_DOOR, C_STEEL, C_GLASS};
-            jbox(&mb, .5f, .5f, 0, 1, 1, .05f, col[which], 0);
-            jbox(&mb, .86f, .48f, 0, .1f, .03f, .11f, C_STEEL, 0);
-        } else if (which == 3) {
+        if (which == 3) {
             build_cab(&mb);
         } else { /* a landing door panel 0.85 x 2.3 x 0.06, centred */
             jbox(&mb, 0, CAR_H * .5f, 0, .85f, CAR_H, .06f, C_STEEL, 0);
@@ -1122,9 +1086,6 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
         mg_log_error("institute: out of memory building the site");
         return false;
     }
-    for (int i = 0; i < 3; i++) {
-        in->leaf_mesh[i] = small_mesh(b, i);
-    }
     in->car_mesh = small_mesh(b, 3);
     in->lift_door = small_mesh(b, 4);
     /* spawns: the yard ones (storey -1), the entrance hall, the roof */
@@ -1145,11 +1106,10 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
     }
     in->stats.colliders = world->count;
     in->stats.segs = in->seg_count;
-    in->stats.leaves = in->leaf_count;
     institute_apply_doors(in, world, false);
-    mg_log_info("institute: %d colliders, %d wall pieces, %d door leaves, %u furniture + %u book props (%u tris); "
+    mg_log_info("institute: %d colliders, %d wall pieces, %u furniture + %u book props (%u tris); "
                 "meshes %u tris, vb %.2f MB, ib %.2f MB; built in %.0f ms",
-                world->count, in->seg_count, in->leaf_count, in->stats.furn_pieces, in->stats.iprops, in->stats.furn_tris,
+                world->count, in->seg_count, in->stats.furn_pieces, in->stats.iprops, in->stats.furn_tris,
                 in->stats.tris, (double)in->stats.vb_bytes / 1048576.0, (double)in->stats.ib_bytes / 1048576.0,
                 (mg_time_now() - t0) * 1000.0);
     mg_log_info("institute: tris site %u, G %u, 1 %u, 2 %u, 3 %u, roof %u", in->stats.storey_tris[0],
@@ -1160,23 +1120,8 @@ bool institute_init(Institute *in, GfxContext *g, Arena *perm, Arena *scratch, C
 
 /* ------------------------------------------------------------------ doors */
 
-static void leaf_closed_box(const InstLeaf *l, HMM_Vec3 *c)
-{
-    const float ex = l->x + l->cx * l->len, ez = l->z + l->cz * l->len;
-    *c = HMM_V3((l->x + ex) * 0.5f, l->y + l->h * 0.5f, (l->z + ez) * 0.5f);
-}
-
 void institute_apply_doors(Institute *in, ColWorld *world, bool all_open)
 {
-    for (int i = 0; i < in->leaf_count; i++) {
-        const InstLeaf *l = &in->leaves[i];
-        HMM_Vec3 c;
-        leaf_closed_box(l, &c);
-        if (all_open || l->open > 0.02f) {
-            c.Y = -100.0f - (float)i; /* parked out of the way while open */
-        }
-        colworld_move_box(world, l->box, c);
-    }
     for (int k = 0; k < INST_LIFTS; k++) {
         const Elevator *e = &in->lifts[k];
         for (int f = 0; f < INST_STOREYS; f++) {
@@ -1194,20 +1139,6 @@ void institute_tick(Institute *in, ColWorld *world, float dt)
 {
     for (int k = 0; k < INST_LIFTS; k++) {
         elevator_tick(&in->lifts[k], dt);
-    }
-    const InstLive *lv = in->live;
-    const int pf = lv->have_player ? (int)floorf((lv->player.Y + 1.0f) / INST_FH) : -9;
-    for (int i = 0; i < in->leaf_count; i++) {
-        InstLeaf *l = &in->leaves[i];
-        bool near = false;
-        if (lv->have_player && pf == l->storey) {
-            const float mx = l->x + l->cx * l->len * 0.5f, mz = l->z + l->cz * l->len * 0.5f;
-            const float dx = lv->player.X - mx, dz = lv->player.Z - mz;
-            near = dx * dx + dz * dz < 1.9f * 1.9f;
-        }
-        const float target = near ? 1.0f : 0.0f;
-        const float step = dt * 3.0f;
-        l->open = l->open < target ? fminf(target, l->open + step) : fmaxf(target, l->open - step);
     }
     institute_apply_doors(in, world, false);
 }
@@ -1355,21 +1286,6 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
         if (f != 0 && f != INST_ROOF) {
             draw_mesh(g, in->mesh[f][IG_TEXT], &tx, GFX_DRAW_NO_SHADOW);
         }
-        /* door leaves: same mesh + material = one instanced draw per colour */
-        for (int i = 0; i < in->leaf_count; i++) {
-            const InstLeaf *l = &in->leaves[i];
-            if (l->storey != f) {
-                continue;
-            }
-            const float a = l->open * LEAF_OPEN_RAD, ca = cosf(a), sa = sinf(a);
-            const float dx = ca * l->cx + sa * l->nx, dz = ca * l->cz + sa * l->nz;
-            HMM_Mat4 m = HMM_M4D(1.0f);
-            m.Columns[0] = HMM_V4(dx * l->len, 0, dz * l->len, 0);
-            m.Columns[1] = HMM_V4(0, l->h, 0, 0);
-            m.Columns[2] = HMM_V4(-dz, 0, dx, 0);
-            m.Columns[3] = HMM_V4(l->x, l->y, l->z, 1);
-            gfx_draw(g, in->leaf_mesh[l->mesh], &m, l->mesh == 0 ? &mt : &gl, GFX_DRAW_REFLECT);
-        }
         /* landing doors of the lifts */
         for (int k = 0; k < INST_LIFTS; k++) {
             const Elevator *e = &in->lifts[k];
@@ -1420,7 +1336,7 @@ NavWorld *institute_nav_bake(Institute *in, Arena *perm, ColWorld *world)
     d.radius = 0.35f;
     d.height = 1.8f;
     d.step = 0.35f;
-    institute_apply_doors(in, world, true); /* every leaf and landing door open */
+    institute_apply_doors(in, world, true); /* every landing door open */
     NavWorld *n = nav_bake(perm, world, &d);
     institute_apply_doors(in, world, false);
     return n;
