@@ -16,6 +16,7 @@ typedef struct MaterialProgram {
     bool cull_back;
     bool cull_front;     /* inverted hull (outlines) */
     bool depth_greater;  /* x-ray: only behind what is already drawn */
+    bool no_color;       /* depth only (GFX_MAT_DEPTH) */
 } MaterialProgram;
 
 const MaterialProgram *material_program(GfxMaterialKind kind);
@@ -26,6 +27,9 @@ GfxMaterial mat_unlit(HMM_Vec4 color);
  * (draw it first, in black). `always`: ignore depth (debug "X-ray always"). */
 GfxMaterial mat_xray(HMM_Vec4 color, bool rim, bool always);
 GfxMaterial mat_toon(HMM_Vec4 color, float rim); /* matte */
+/* A whole-object fade (draw the mesh with both, same transform): its depth, then its colour at `alpha` over it */
+GfxMaterial mat_depth_only(void);
+GfxMaterial mat_toon_fade(HMM_Vec4 color, float alpha);
 GfxMaterial mat_toon_glossy(HMM_Vec4 color, float rim, float gloss); /* gloss 0..1: specular spot */
 GfxMaterial mat_toon_flat(HMM_Vec4 color); /* unlit toon (eyes, seams) */
 GfxMaterial mat_toon_emissive(HMM_Vec4 color, float glow); /* lamps: base colour added `glow` times */

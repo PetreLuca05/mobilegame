@@ -60,6 +60,9 @@ struct FrameFS
     float4 u_eye;
     float4 u_misc;
     float4 u_fog;
+    float4 u_sun2_dir;
+    float4 u_sun2_color;
+    float4 u_ambient2;
 };
 
 constant spvUnsafeArray<float, 16> _65 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });

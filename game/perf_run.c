@@ -134,7 +134,8 @@ static void write_report(const PerfRun *p, MgApp *app)
 {
     static char out[32768];
     static const char *const names[PERF_FIELDS] = {"draws", "tris", "instances", "pipe_binds", "tex_binds", "uniform_bytes",
-                                                   "passes", "gpu_main_ms_approx", "gpu_ui_ms_approx", "ui_draws", "ui_instances"};
+                                                   "passes", "gpu_main_ms_approx", "gpu_ui_ms_approx", "ui_draws", "ui_instances",
+                                                   "tris_rooms", "tris_props", "tris_avatars", "tris_other"};
     int n = 0;
 #define PUT(...) n += SDL_snprintf(out + n, sizeof(out) - (size_t)n, __VA_ARGS__)
     const double frames = p->samples ? (double)p->samples : 1.0;
@@ -254,6 +255,10 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     const GfxStats *g = &s->gs;
     add(&p->f[PERF_DRAWS], g->draws);
     add(&p->f[PERF_TRIS], g->tris);
+    add(&p->f[PERF_TRIS_ROOMS], g->tris_cat[GFX_CAT_ROOM]);
+    add(&p->f[PERF_TRIS_PROPS], g->tris_cat[GFX_CAT_PROP]);
+    add(&p->f[PERF_TRIS_AVATARS], g->tris_cat[GFX_CAT_AVATAR]);
+    add(&p->f[PERF_TRIS_OTHER], g->tris_cat[GFX_CAT_OTHER]);
     add(&p->f[PERF_INST], g->instances);
     add(&p->f[PERF_PIPES], g->pipe_binds);
     add(&p->f[PERF_TEX], g->tex_binds);

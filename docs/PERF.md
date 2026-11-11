@@ -396,6 +396,10 @@ step before; 1 pass and 0 heap allocations everywhere unless noted.
 | 4 | menu | 23.0 -> 23.6 (24) | 14.7 k -> 22.6 k | 0.085 -> 0.084 / 0.195 -> 0.18 | six NPCs, the cart |
 | 5 | menu | 23.6 (24) | 22.6 k | 0.084 -> 0.094 / 0.18 -> 0.205 | the Locker only (run-to-run noise) |
 | 6 | menu | 23.6 (24) | 22.6 k | 0.098 / 0.208 | resident 180 -> 191 MB: the map preloaded |
+
+**Memory baselines for later comparisons:** step 5 = **180 MB**, step 6 (the map preloaded) = **191 MB** (Mac menu, resident max).
+The menu's LIB-1 allowance is +16 MB over step 5. An earlier report quoted 191 MB as step 5: that record was measured at step 6.
+
 | 6 | menu_to_map | 26.1 (40) | 27.8 k (36.9 k) | 0.058 / 0.175 | new: the move looped; the estimate was <= 45 draws |
 
 Estimates (LIB-1 section 7): menu <= 22 draws / ~18 k triangles: 23.6 / 22.6 k (1.07x / 1.25x, under the 2x stop rule); the move
@@ -417,6 +421,12 @@ on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled 
 - **Estimate, rooms (replaces the 18 k of LIB-1 §7):** the four bays are **33.3 k triangles** (room_0..3: 7.5 / 9.7 / 7.7 / 8.5 k),
   all drawn in the menu because the back rooms show through the open doors. Props ~3.3 k (10 chairs, books, mugs, pencils, 4 doors,
   the cart).
+- **Per-part triangles** are measured since this round: the perf JSON has `tris_rooms`, `tris_props`, `tris_avatars`, `tris_other`
+  (`gfx_set_category` around a group of draws; the UI counts as other).
+- **Measured per part (menu, Mac, this round):** rooms 33.3 k, props 3.0 k, avatars 9.9 k average / 11.4 k max, other (UI) 0.3 k;
+  draws 27 average / 39 max at rest; `menu_to_map` 28 / 52 (the move peak, under the 60 for travelling), 0 dropped frames.
+  The NPC LOD rule is by size on screen (full above 0.215 of the view's height, coarse below 0.195, a 0.25 s crossfade);
+  during the Maps move the LODs come from the menu's resting camera.
 - **Avatars:** LOD0 is ~950 triangles (the suit body 419, head 80, hair 90-120, eyes 2 x 48, hands 2 x 80; glasses / mask +108 / +117),
   LOD1 ~154. Rule: NPCs in another bay or under 60 pt tall on screen are LOD1, of the rest the 4 nearest the camera LOD0; my table
   always LOD0. Menu avatars: 25 k -> ~11 k (8 at LOD0, 21 at LOD1; measured total minus rooms and props). The LOD1 parts are their

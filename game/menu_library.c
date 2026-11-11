@@ -935,45 +935,38 @@ static bool npc_at_door(const MenuLibrary *L, int i, int b)
     return L->sc.npcs[i].uses_door && HMM_LenV2(n->vel) > 0.0f && HMM_LenV2(HMM_SubV2(n->pos, door_c(L, b))) < L->sc.door.open_radius;
 }
 
-/* LOD for the NPCs (the menu draws 26 people): full detail only for the few that are big on screen. My table's
- * members are drawn by member_* at LOD0 always. An NPC in another bay, or under LOD_MIN_PT tall on screen, is coarse;
- * of the rest, the LOD_FULL_MAX nearest the camera are full. */
-#define LOD_MIN_PT 60.0f
-#define LOD_FULL_MAX 4
-#define LOD_HEIGHT_M 1.7f
-
+/* LOD for the NPCs (the menu draws 26 people): by size on screen only, as a fraction of the view's height (the same
+ * people on every device), with hysteresis; a switch is a LOD_FADE_S dithered crossfade of the two meshes, so it never
+ * pops. Nobody switches because of a ranking or a bay. My table's members are drawn by member_* at LOD0 always. */
 #define LIB_NAV_BUDGET_MS 0.5 /* per frame for the NPCs' path searches (one search always runs) */
+#define LOD_COARSE_BELOW 0.195f /* of the view's height */
+#define LOD_FULL_ABOVE 0.215f
+#define LOD_HEIGHT_M 1.7f
+#define LOD_FADE_S 0.25f
 
-static void npc_lods(MenuLibrary *L)
+static void npc_lods(MenuLibrary *L, float dt)
 {
-    const HMM_Vec3 eye = L->view_eye;
-    const float k = (L->screen_h_pt > 0.0f ? L->screen_h_pt : 390.0f) / (2.0f * HMM_TanF(HMM_AngleDeg(L->sc.fov_deg) * 0.5f));
-    float dist[LIB_NPCS];
+    const HMM_Vec3 eye = L->lod_from_rest ? L->eye : L->view_eye;
+    const float h = L->screen_h_pt > 0.0f ? L->screen_h_pt : 390.0f;
+    const float k = h / (2.0f * HMM_TanF(HMM_AngleDeg(L->sc.fov_deg) * 0.5f));
     L->lod_counts[0] = L->lod_counts[1] = 0;
     for (int i = 0; i < L->sc.npc_n; i++) {
         const LibNpc *n = &L->npc[i];
         const HMM_Vec3 at = lib_point(L, HMM_V3(n->pos.X, 0.9f, n->pos.Y));
-        dist[i] = HMM_LenV3(HMM_SubV3(at, eye));
-        const int bay = L->nav ? lib_nav_bay_of(L->nav, n->pos.X, n->pos.Y) : L->table_bay;
-        const float tall_pt = LOD_HEIGHT_M * L->scale / mg_maxf(dist[i], 1e-3f) * k;
-        L->npc_lod[i] = bay != L->table_bay || tall_pt < LOD_MIN_PT ? 1 : 0;
-    }
-    for (int full = 0;; full++) { /* the nearest LOD_FULL_MAX candidates stay full */
-        int best = -1;
-        for (int i = 0; i < L->sc.npc_n; i++) {
-            if (L->npc_lod[i] == 0 && (best < 0 || dist[i] < dist[best])) {
-                best = i;
-            }
+        const float tall = LOD_HEIGHT_M * L->scale / mg_maxf(HMM_LenV3(HMM_SubV3(at, eye)), 1e-3f) * k / h;
+        if (!L->lod_ready) {
+            L->npc_lod[i] = tall < 0.5f * (LOD_COARSE_BELOW + LOD_FULL_ABOVE) ? 1 : 0;
+            L->npc_lod_k[i] = (float)L->npc_lod[i];
+        } else if (L->npc_lod[i] == 0 && tall < LOD_COARSE_BELOW) {
+            L->npc_lod[i] = 1;
+        } else if (L->npc_lod[i] == 1 && tall > LOD_FULL_ABOVE) {
+            L->npc_lod[i] = 0;
         }
-        if (best < 0) {
-            break;
-        }
-        L->npc_lod[best] = full < LOD_FULL_MAX ? 2 : 1; /* 2: chosen (0 after the loop) */
-    }
-    for (int i = 0; i < L->sc.npc_n; i++) {
-        L->npc_lod[i] = L->npc_lod[i] == 2 ? 0 : 1;
+        const float step = dt / LOD_FADE_S;
+        L->npc_lod_k[i] = L->npc_lod[i] ? fminf(L->npc_lod_k[i] + step, 1.0f) : fmaxf(L->npc_lod_k[i] - step, 0.0f);
         L->lod_counts[L->npc_lod[i]]++;
     }
+    L->lod_ready = true;
 }
 
 static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i, float dt)
@@ -999,9 +992,21 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
         p.browse = browsing ? 1.0f : 0.0f;
         p.push = d->push_cart && !browsing ? 1.0f : 0.0f;
     }
-    p.lod = L->npc_lod[i];
     avatar_animate(m, &n->anim, &p, dt);
-    avatar_draw(g, m, &n->look, &p, &n->anim, NULL);
+    /* a switch: the coarse mesh stays solid underneath (it sits inside the full one's silhouette) and only the full mesh
+     * dithers in or out over it, so the crossfade adds the full mesh's dithered batches and nothing else */
+    const float lk = L->npc_lod_k[i];
+    if (lk > 0.0f) {
+        AvatarPose p1 = p;
+        p1.lod = 1;
+        avatar_draw(g, m, &n->look, &p1, &n->anim, NULL);
+    }
+    if (lk < 1.0f) {
+        AvatarPose p0 = p;
+        p0.lod = 0;
+        p0.hide = mg_maxf(p.hide, lk);
+        avatar_draw(g, m, &n->look, &p0, &n->anim, NULL);
+    }
 }
 
 bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_Vec3 *top, const char **name, bool *host)
@@ -1024,7 +1029,16 @@ LibCamPose menu_library_cam_pose(const MenuLibrary *L)
     return c;
 }
 
+static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt);
+
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
+{
+    const int cat = gfx_set_category(g, GFX_CAT_PROP); /* the perf counters: rooms, props (furniture, books, mugs), avatars */
+    draw_body(L, g, m, hero, dt);
+    gfx_set_category(g, cat);
+}
+
+static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     if (!L->ok) {
         return;
@@ -1032,10 +1046,12 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
     const LibScene *s = &L->sc;
     if (L->shell_k >= 1.0f) { /* closed: the building alone, nothing inside drawn or simulated */
         const GfxMaterial room = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+        gfx_set_category(g, GFX_CAT_ROOM);
         for (int b = 0; b < LIB_BAYS; b++) {
             gfx_draw(g, L->room[b], &L->xf, &room, 0);
         }
         gfx_draw(g, L->shell, &L->xf, &room, 0);
+        gfx_set_category(g, GFX_CAT_PROP);
         for (int b = 0; b < LIB_BAYS; b++) {
             const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, L->bay_z[b] + s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
             gfx_draw(g, L->door, &door, &room, 0);
@@ -1043,9 +1059,20 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         return;
     }
     if (L->shell_k > 0.0f) { /* fading in over the cutaway */
-        GfxMaterial shell = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
-        shell.hide = 1.0f - L->shell_k;
-        gfx_draw(g, L->shell, &L->xf, &shell, 0);
+        /* a true fade (the prototype's shell opacity): the shell's depth, then its colour blended at shell_k over the
+         * room, each pixel's nearest shell surface once; no screen-door pattern crawling while the camera flies */
+        gfx_set_category(g, GFX_CAT_ROOM);
+        if (L->shell_k < 0.999f) {
+            const GfxMaterial depth = mat_depth_only(), fade = mat_toon_fade(HMM_V4(1, 1, 1, 1), L->shell_k);
+            if (L->shell_k > 0.02f) {
+                gfx_draw(g, L->shell, &L->xf, &depth, 0);
+                gfx_draw(g, L->shell, &L->xf, &fade, 0);
+            }
+        } else {
+            const GfxMaterial shell = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+            gfx_draw(g, L->shell, &L->xf, &shell, 0);
+        }
+        gfx_set_category(g, GFX_CAT_PROP);
     }
     L->avatar_push_ahead = m->rig.push_ahead_m;
     {
@@ -1085,7 +1112,9 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         hide[b] = bay_hide(L, b);
         GfxMaterial rm = room;
         rm.hide = hide[b];
+        gfx_set_category(g, GFX_CAT_ROOM);
         gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
+        gfx_set_category(g, GFX_CAT_PROP);
     }
     for (int b = 0; b < LIB_BAYS; b++) { /* one door per bay */
         GfxMaterial dm = room;
@@ -1146,7 +1175,7 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
             gfx_draw(g, L->mug, &mg, &room, 0);
         }
     }
-    npc_lods(L);
+    npc_lods(L, dt);
     for (int i = 0; i < s->npc_n; i++) {
         npc_draw(L, g, m, i, dt);
     }

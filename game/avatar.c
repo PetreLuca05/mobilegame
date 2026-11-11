@@ -810,11 +810,15 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                  const AvatarAnim *a, const ColWorld *world)
 {
+    const int cat = gfx_set_category(g, GFX_CAT_AVATAR);
     draw_avatar(g, m, look, p, a, world, NULL);
+    gfx_set_category(g, cat);
 }
 
 void avatar_draw_with(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
                       const AvatarAnim *a, const GfxMaterial *mat)
 {
+    const int cat = gfx_set_category(g, GFX_CAT_AVATAR);
     draw_avatar(g, m, look, p, a, NULL, mat);
+    gfx_set_category(g, cat);
 }

@@ -54,6 +54,7 @@ typedef struct DrawItem {
     GfxMeshId mesh;
     uint8_t kind;
     uint8_t flags;
+    uint8_t cat; /* GFX_CAT_*: the perf counters' triangle category */
 #ifdef MG_RENDER_FULL
     int8_t lights[GFX_LIGHTS_PER_DRAW]; /* indices into the frame's light list, -1 = none */
 #endif
@@ -107,6 +108,9 @@ typedef struct FrameFSUniforms {
     HMM_Vec4 eye;
     HMM_Vec4 misc;
     HMM_Vec4 fog;
+    HMM_Vec4 sun2_dir; /* w: the mix towards the second light set */
+    HMM_Vec4 sun2_color;
+    HMM_Vec4 ambient2; /* w: its two-band ramp */
 } FrameFSUniforms;
 
 typedef struct SkyFSUniforms {
@@ -171,6 +175,7 @@ struct GfxContext {
     uint64_t ui_atlas_bytes;
     GfxInset insets[GFX_MAX_INSETS];
     int inset_count, current_inset; /* current: index + 1, 0 none */
+    int current_cat; /* GFX_CAT_* for the next draws */
     int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
     PipelineSet pipes[TARGET_COUNT];
@@ -353,6 +358,7 @@ typedef struct PipeDesc {
     bool depth_bias;
     bool depth_always;     /* tile clear: write depth whatever is there */
     bool depth_greater;    /* x-ray material */
+    bool no_color;         /* colour writes off (GFX_MAT_DEPTH) */
     bool instanced;        /* LAYOUT_MESH + GfxInstance in slot 1 */
 } PipeDesc;
 
@@ -394,6 +400,10 @@ static SDL_GPUGraphicsPipeline *make_pipeline(GfxContext *g, const PipeDesc *d)
     SDL_GPUColorTargetDescription ctd;
     SDL_zero(ctd);
     ctd.format = d->color_fmt;
+    if (d->no_color) {
+        ctd.blend_state.enable_color_write_mask = true;
+        ctd.blend_state.color_write_mask = 0;
+    }
     if (d->blend) {
         ctd.blend_state.enable_blend = true;
         ctd.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
@@ -480,6 +490,7 @@ static bool create_pipelines(GfxContext *g)
                 .color_fmt = fmt,
                 .samples = samples,
                 .depth_greater = mp->depth_greater,
+                .no_color = mp->no_color,
             };
             g->pipes[t].mat[k] = make_pipeline(g, &d);
             if (!g->pipes[t].mat[k]) {
@@ -1221,11 +1232,19 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->hide = mat->hide;
     d->range_first = d->range_count = 0;
     d->inset = (uint8_t)g->current_inset;
+    d->cat = (uint8_t)g->current_cat;
     d->mesh = mesh;
     d->kind = (uint8_t)mat->kind;
     d->flags = (uint8_t)flags;
     HMM_Vec3 pos = model->Columns[3].XYZ;
     d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
+}
+
+int gfx_set_category(GfxContext *g, int cat)
+{
+    const int prev = g->current_cat;
+    g->current_cat = cat >= 0 && cat < GFX_CATS ? cat : GFX_CAT_OTHER;
+    return prev;
 }
 
 void gfx_draw_range(GfxContext *g, GfxMeshId mesh, uint32_t first, uint32_t count, const HMM_Mat4 *model, const GfxMaterial *mat,
@@ -1348,6 +1367,9 @@ static int draw_bucket(const DrawItem *d)
     if (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) {
         return 1;
     }
+    if (d->kind == GFX_MAT_DEPTH || d->kind == GFX_MAT_TOON_FADE) { /* whole-object fades last: depth, then colour */
+        return d->kind == GFX_MAT_DEPTH ? 4 : 5;
+    }
     if (d->flags & GFX_DRAW_DYNAMIC) {
         return 2;
     }
@@ -1381,11 +1403,12 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
         b = d->mesh;
     } else {
         a = d->mesh;
-        b = near_first;
+        b = near_first >> 1; /* 15 bits: 1/128 m */
     }
     (void)g;
     const uint64_t always = (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f;
-    return ((uint64_t)draw_bucket(d) << 62) | ((uint64_t)d->kind << 58) | (always << 57) | (a << 41) | (b << 25) | (uint64_t)index;
+    /* bucket 3 bits | kind 4 | always 1 | a 16 | b 15 | index 25 */
+    return ((uint64_t)draw_bucket(d) << 61) | ((uint64_t)d->kind << 57) | (always << 56) | (a << 40) | ((b & 0x7FFFu) << 25) | (uint64_t)index;
 }
 
 /* Stable LSD radix sort on the key bits above the position field. */
@@ -1489,10 +1512,13 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     FrameFSUniforms f;
     f.sun_dir = HMM_V4V(g->scene.sun_dir, 0.0f);
     f.sun_color = HMM_V4V(g->scene.sun_color, 0.0f);
-    f.ambient = HMM_V4V(g->scene.ambient, g->scene.two_band ? 1.0f : 0.0f); /* w: the two-band ramp */
+    f.ambient = HMM_V4V(g->scene.ambient, mg_clampf(g->scene.two_band, 0.0f, 1.0f)); /* w: towards the two-band ramp */
     f.eye = HMM_V4V(eye, 1.0f);
     f.misc = HMM_V4(g->scene.time, reflection, 1.0f / target_w, 1.0f / target_h);
     f.fog = HMM_V4V(g->scene.fog_color, g->scene.fog_density);
+    f.sun2_dir = HMM_V4V(g->scene.sun2_dir, mg_clampf(g->scene.light_mix, 0.0f, 1.0f));
+    f.sun2_color = HMM_V4V(g->scene.sun2_color, 0.0f);
+    f.ambient2 = HMM_V4V(g->scene.ambient2, mg_clampf(g->scene.two_band2, 0.0f, 1.0f));
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
 #ifndef MG_RENDER_FULL
     (void)reflection;
@@ -1570,6 +1596,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             SDL_DrawGPUIndexedPrimitives(pass, ic, runs, im->first_index + d->range_first, im->vertex_offset, g->run_first[i]);
             count++;
             g->stats.tris += (ic / 3) * runs;
+            g->stats.tris_cat[d->cat] += (ic / 3) * runs; /* a run is one mesh: one category */
             g->stats.instances += runs;
             i += runs - 1;
             continue;
@@ -1634,6 +1661,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
         SDL_DrawGPUIndexedPrimitives(pass, ic, 1, m->first_index + d->range_first, m->vertex_offset, 0);
         count++;
         g->stats.tris += ic / 3;
+        g->stats.tris_cat[d->cat] += ic / 3;
         g->stats.instances++;
         g->stats.uniform_bytes += (uint32_t)(sizeof(vu) + sizeof(fu));
     }
@@ -2310,6 +2338,7 @@ static void frame_end(GfxContext *g)
     g->stats.reflect_draws = 0;
     g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
+    SDL_zeroa(g->stats.tris_cat);
     g->stats.gpu_main_ms = (float)SDL_GetAtomicInt(&g->gpu_main_us) * 0.001f;
     g->stats.gpu_ui_ms = (float)SDL_GetAtomicInt(&g->gpu_ui_us) * 0.001f;
 #ifdef MG_RENDER_FULL
@@ -2524,6 +2553,7 @@ static void frame_end(GfxContext *g)
         g->stats.draws++;
         g->stats.ui_draws++;
         g->stats.tris += g->ui_count * 2;
+        g->stats.tris_cat[GFX_CAT_OTHER] += g->ui_count * 2;
     }
     if (scaled && g->preview_on && g->preview_color && g->ui_w_pt > 0.0f) {
         /* over the panel it sits in (no UI is drawn on top of the preview) */

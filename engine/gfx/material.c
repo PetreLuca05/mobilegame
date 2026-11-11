@@ -15,6 +15,8 @@ static const MaterialProgram k_programs[GFX_MAT_COUNT] = {
     [GFX_MAT_GHOST] = {"mesh.vert", "ghost.frag", 2, 2, 0, true, false, false},
     [GFX_MAT_XRAY_RIM] = {"xray_rim.vert", "xray.frag", 2, 1, 0, false, false, true, false, true},
     [GFX_MAT_XRAY] = {"mesh.vert", "xray.frag", 2, 1, 0, false, false, true, false, true},
+    [GFX_MAT_DEPTH] = {"mesh.vert", "unlit.frag", 2, 1, 0, false, true, true, false, false, true},
+    [GFX_MAT_TOON_FADE] = {"mesh.vert", "toon_fade.frag", 2, 2, 0, true, false, true},
 };
 
 const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_programs[kind]; }
@@ -22,6 +24,19 @@ const MaterialProgram *material_program(GfxMaterialKind kind) { return &k_progra
 GfxMaterial mat_unlit(HMM_Vec4 color)
 {
     GfxMaterial m = {GFX_MAT_UNLIT, color, HMM_V4(0, 0, 0, 0)};
+    return m;
+}
+
+GfxMaterial mat_depth_only(void)
+{
+    GfxMaterial m = {GFX_MAT_DEPTH, HMM_V4(1, 1, 1, 1), HMM_V4(0, 0, 0, 0)};
+    return m;
+}
+
+GfxMaterial mat_toon_fade(HMM_Vec4 color, float alpha)
+{
+    GfxMaterial m = {GFX_MAT_TOON_FADE, color, HMM_V4(0, 0, 0, 0)};
+    m.hide = 1.0f - alpha;
     return m;
 }
 

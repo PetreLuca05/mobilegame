@@ -58,6 +58,9 @@ typedef enum GfxMaterialKind {
     GFX_MAT_GHOST,  /* translucent x-ray overlay (debug colliders) */
     GFX_MAT_XRAY_RIM, /* x-ray: 2 px black rim of what is hidden behind geometry (drawn first) */
     GFX_MAT_XRAY,     /* x-ray: flat dithered fill of what is hidden behind geometry */
+    GFX_MAT_DEPTH,    /* depth only, no colour: the first half of a whole-object fade (drawn after everything opaque) */
+    GFX_MAT_TOON_FADE, /* toon, alpha-blended at 1 - hide over the depth GFX_MAT_DEPTH left: each pixel blends the object's
+                        * nearest surface once (a true fade, no screen-door pattern) */
     GFX_MAT_COUNT
 } GfxMaterialKind;
 
@@ -137,7 +140,11 @@ typedef struct GfxSceneParams {
     HMM_Vec4 sun_disc;    /* xyz direction, w visibility (sky) */
     HMM_Vec4 moon_disc;
     float stars;          /* 0..1 */
-    bool two_band;        /* LIB-1: the library prototype's toon ramp: lit (n.l >= 0) or 105/255 of the sun, no half band */
+    float two_band;       /* LIB-1, 0..1: towards the library prototype's toon ramp (lit at n.l >= 0, else 105/255 of the sun); blends */
+    /* A second light set and the mix towards it (0 = only the one above): each surface is lit with both and the results
+     * mixed, so a change of light (the library -> the map) never flips a toon band. */
+    HMM_Vec3 sun2_dir, sun2_color, ambient2;
+    float two_band2, light_mix;
 #ifdef MG_RENDER_FULL
     float reflection_y;   /* height of the mirror plane */
     float shadow_focus;   /* eye-to-player distance for the cascade splits, 0 = fixed 12 / 45 m */
@@ -145,6 +152,9 @@ typedef struct GfxSceneParams {
 #endif
     float time;
 } GfxSceneParams;
+
+/* Triangle categories for the perf counters (what a frame's triangles are): set the current one around a group of draws */
+enum { GFX_CAT_OTHER, GFX_CAT_ROOM, GFX_CAT_PROP, GFX_CAT_AVATAR, GFX_CATS };
 
 typedef struct GfxStats {
     uint32_t draws;
@@ -160,6 +170,7 @@ typedef struct GfxStats {
 #endif
     float main_cpu_ms;       /* CPU time encoding the main pass */
     uint32_t tris, instances, pipe_binds, tex_binds, uniform_bytes, passes;
+    uint32_t tris_cat[GFX_CATS]; /* tris by GFX_CAT_* (the main pass; the UI counts as other) */
     /* Approximate GPU time, submit -> fence on a helper thread (SDL GPU has no
      * timestamps; includes queueing). 0 until gfx_set_gpu_timing. */
     float gpu_main_ms, gpu_ui_ms;
@@ -183,6 +194,8 @@ bool gfx_set_ui_atlas(GfxContext *g, const uint8_t *pixels, uint32_t w, uint32_t
 
 bool gfx_frame_begin(GfxContext *g);
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene);
+/* The category the next draws count their triangles under (GFX_CAT_*); returns the previous one. */
+int gfx_set_category(GfxContext *g, int cat);
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat,
               uint32_t flags);
 /* A slice of a mesh: `first` and `count` are indices inside it. */

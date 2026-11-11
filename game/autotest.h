@@ -148,6 +148,7 @@ typedef struct AutotestOut {
     bool add_marker_left;  /* stick: an objective marker 5 m west of the player */
     int set_haptics;       /* haptics: 1 + the Vibrații level to set, 0 none */
     bool net_drop;         /* netsoak: drop the realtime socket now */
+    bool stale_eye_once;   /* library: the next Back keeps one frame's camera stale past t 0.3 (the jump rule's canary) */
 } AutotestOut;
 
 void autotest_finger(MgApp *app, SDL_EventType type, SDL_FingerID id, float x_pt, float y_pt);

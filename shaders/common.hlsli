@@ -41,6 +41,11 @@ cbuffer FrameFS : register(b1, space3)
     float4 u_eye;        // camera position
     float4 u_misc;       // x time, y reflection strength, z 1/target width, w 1/target height
     float4 u_fog;        // rgb colour, a density (per metre)
+    // A second light set, for a crossfade (the library's light <-> the map's, LIB-1): each surface is lit with both and the
+    // two results are mixed, so no toon band flips while the light changes. w of u_sun2_dir: the mix (0 = only the first).
+    float4 u_sun2_dir;
+    float4 u_sun2_color;
+    float4 u_ambient2;   // rgb, w: the second set's two-band ramp
 };
 
 // Zone-coded meshes (LIB-1 avatar suits). extra = outfit, trim, accent as 0xRRGGBB, w = zone mask (bit z) |

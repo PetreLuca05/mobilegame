@@ -68,6 +68,9 @@ struct FrameFS
     float4 u_eye;
     float4 u_misc;
     float4 u_fog;
+    float4 u_sun2_dir;
+    float4 u_sun2_color;
+    float4 u_ambient2;
 };
 
 struct LightsFS

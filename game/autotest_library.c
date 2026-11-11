@@ -448,6 +448,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (!tap(t, app, p, "wm_back", now)) {
             return now - t->at > 6.0 ? failf(t, "back: the map's Back did not take the tap") : 0;
         }
+        out->stale_eye_once = t->canary;
         t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f, t->shot_frame = -100;
         t->stage = 8;
         return 0;
@@ -467,6 +468,16 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (now - t->move_start < (double)L->sc.transition.duration_s + 0.3) {
             return 0; /* a few menu frames: the camera settles where the move left it */
         }
+        if (t->canary) { /* the jump rule must not be blind: the injected stale frame has to read as a jump */
+            if (t->worst_jump <= 0.0f) {
+                return failf(t, "back canary: one stale camera frame was injected and the jump rule did not see it");
+            }
+            mg_log_info("autotest library: 8 Back canary: the injected stale camera frame read as a jump of %.3f camera distances/s (the rule sees it)",
+                        (double)t->worst_jump);
+            t->at = now;
+            t->stage = 9;
+            return 0;
+        }
         {
             const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
             const double took = t->back_took;
@@ -485,7 +496,8 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             t->stage = 5;
             return 0;
         }
-        t->stage = 9;
+        t->canary = true; /* and a third time: the Back carries the stale-camera canary */
+        t->stage = 5;
         return 0;
     case 9: /* 9: Locker */
         if (now - t->at < 0.8) {

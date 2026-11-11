@@ -424,7 +424,7 @@ build/desktop/mg_nettest friends PROFILE SEC [CODE]  # user:<uid> channel, list,
 Both need a display (Xvfb on headless Linux).
 `build/desktop/mg_nettest profile PROFILE [NAME P H A]` reads/writes an account.
 Menu scripts tap real widgets by id (`ui_find`), on desktop or device:
-`--autotest onboarding` (fresh prefs: Welcome -> guest -> Username -> Creator,
+`--autotest onboarding` (without `--profile` it uses its own `autotest-onboarding` profile, wiped first incl. the guest token: Welcome -> guest -> Username -> Creator,
 a tile per tab + Randomise -> Done -> Main menu), `--autotest save` (New
 Game, route walk + ride to floor 2, background + hard exit) then
 `--autotest continue` (back on floor 2). Logs carry `frontend: <SCREEN>`,
@@ -520,6 +520,9 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   and a dithered one used only when 0 < hide < 0.98; hide >= 0.98 is dropped in `gfx_draw`. The draw list is radix-sorted
   on a u64 key (bucket | kind | mesh or depth | position). Static hospital meshes are merged per storey and material;
   wall pieces are index ranges of them (`gfx_draw_range`). Keep the `draw_bucket` order (x-ray note above).
+- Triangle soups (mgmb: the library, islands, vehicles, avatar parts) are uploaded through `mesh_upload_welded` (`engine/gfx/weld.c`):
+  vertices merge only when all 28 bytes match (position, normal, colour + zone), so every drawn triangle is the soup's (`weld` ctest
+  rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools 5 MB vertices + 2 MB indices.
 - Avatar LOD: `AvatarPose.lod` 0 full, 1 coarse, 2 body + head; chosen in `crowd_cull_job`, with frustum culling.
 - Frame: main pass + UI pass; the UI pass starts by upscaling the 3D image (`present.frag`). Metal shaders get real
   `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).
@@ -595,6 +598,19 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - The map preloads behind the menu (`worldmap_load_step`, one island per frame; the Maps row waits). Maps / Back / New Game are one camera
   move (`game/lib_move.c`: log-distance + hump, target along the cumulative distance, the shell dithers in, the map UI enters at t 0.9);
   Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch.
-- Desktop: `--debug turn-page`, `--lib-closeup [side]`, `--lib-demo-join`, `--lib-move-demo`, `--ui-motion reduced`. Tests:
+- Desktop: `--debug turn-page`, `--lib-closeup [side]`, `--lib-demo-join`, `--lib-move-demo`, `--ui-motion reduced`, `--lib-back-loop N`
+  (Maps + Back N times, every Back's camera checked), `--lib-still` (the library at dt 0, comparison pictures), `--lib-no-nav` (perf A/B).
+- The Maps / Back move changes nothing in a step (user decision: no visible switch, no jitter): the library's light
+  (two-band ramp, its sun) and the map's are both evaluated per surface and the results mixed along the move
+  (`GfxSceneParams.sun2_* / ambient2 / two_band2 / light_mix`, `cel_light_day`), so no toon band flips as the light changes;
+  sky, fog and discs blend; the shell fades with real transparency (`mat_depth_only` + `mat_toon_fade`: its depth, then its
+  colour blended once per pixel, draw buckets 4 and 5) instead of a screen-door; NPC LODs are taken from the menu's resting
+  camera for the whole move. NPC LOD at rest: by size (a fraction of the view's height, full above 0.215, coarse below
+  0.195), a switch is a 0.25 s dithered crossfade of the full mesh over the coarse one. Picture: docs/autotest/library/light_move_before_after.png.
+- The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
+  camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
+  of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one
+  stale camera frame (`AutotestOut.stale_eye_once`) and fails if the rule does not see it. The full LIB-1 text with the accepted
+  changes: docs/LIB1.md. Tests:
   `--autotest library` (`tools/library_test.sh`: + Reduse, a fresh install, the free rect on the iPhone presets and the iPad), the
   two-instance join / kick in `tools/friends2_test.sh` (role ma), perf scenario `menu_to_map` (the move looped).

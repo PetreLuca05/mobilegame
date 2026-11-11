@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "weld.h"
 
 #include <SDL3/SDL_stdinc.h>
 
@@ -312,26 +313,14 @@ GfxMeshId mesh_upload_welded(GfxContext *g, Arena *scratch, const GfxVertex *v, 
         arena_reset_to(scratch, mark);
         return GFX_MESH_NONE;
     }
-    SDL_memset(table, 0xFF, sizeof(uint32_t) * cap);
-    uint32_t nv = 0;
-    for (uint32_t i = 0; i < n; i++) {
-        const uint8_t *b = (const uint8_t *)&v[i];
-        uint32_t h = 2166136261u; /* FNV-1a over the vertex's 28 bytes */
-        for (size_t k = 0; k < sizeof(GfxVertex); k++) {
-            h = (h ^ b[k]) * 16777619u;
+    uint32_t nv;
+    if (SDL_getenv("MG_NO_WELD")) { /* comparisons only: the soup as it was */
+        for (uint32_t i = 0; i < n; i++) {
+            out[i] = v[i], idx[i] = i;
         }
-        for (h &= cap - 1;; h = (h + 1) & (cap - 1)) {
-            if (table[h] == UINT32_MAX) {
-                table[h] = nv;
-                out[nv] = v[i];
-                idx[i] = nv++;
-                break;
-            }
-            if (SDL_memcmp(&out[table[h]], &v[i], sizeof(GfxVertex)) == 0) {
-                idx[i] = table[h];
-                break;
-            }
-        }
+        nv = n;
+    } else {
+        nv = mesh_weld(v, n, out, idx, table, cap);
     }
     if (kept) {
         *kept = nv;

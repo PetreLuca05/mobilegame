@@ -50,6 +50,7 @@ typedef struct LibraryTest {
     int npc_frames, npc_bad;
     int shot_frame; /* the move frame a picture was taken on (its capture stalls the next frame: not judged) */
     bool rebase;    /* the next judged step only sets the baseline speed (after a picture) */
+    bool canary;    /* the third Maps / Back: one stale camera frame injected into the Back, which must be caught */
     char npc_why[160];
     char why[200];
 } LibraryTest;

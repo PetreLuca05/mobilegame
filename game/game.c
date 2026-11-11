@@ -255,6 +255,8 @@ typedef struct Game {
     bool lib_placed;
     HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
+    bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
+    bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
     double dissolve_t0;    /* Reduced motion: the 300 ms cross-dissolve's start (0 none) */
     bool force_reduced;    /* --ui-motion reduced (not saved) */
@@ -461,11 +463,35 @@ static double lobby_epoch(void *user)
     return wall_clock_ms() - (double)tick / 0.06;
 }
 
+/* --autotest onboarding without --profile: its own profile, wiped first, so every run is a new install */
+#define ONBOARDING_PROFILE "autotest-onboarding"
+
+static SDL_EnumerationResult wipe_one(void *user, const char *dir, const char *name)
+{
+    (void)user;
+    if (SDL_strncmp(name, ONBOARDING_PROFILE "-", sizeof(ONBOARDING_PROFILE)) == 0 || SDL_strstr(name, "." ONBOARDING_PROFILE ".")) { /* prefs, save; the guest token */
+        char path[1024];
+        SDL_snprintf(path, sizeof(path), "%s%s", dir, name);
+        SDL_RemovePath(path);
+    }
+    return SDL_ENUM_CONTINUE;
+}
+
 bool game_init(MgApp *app)
 {
     Game *g = ARENA_PUSH(&app->perm, Game, 1);
     app->game = g;
     const char *profile = arg_value(app->argc, app->argv, "--profile");
+    const char *at_first = arg_value(app->argc, app->argv, "--autotest");
+    if (!profile && at_first && SDL_strcmp(at_first, "onboarding") == 0) {
+        char *dir = SDL_GetPrefPath("docvex", "mobilegame");
+        if (dir) {
+            SDL_EnumerateDirectory(dir, wipe_one, NULL);
+            SDL_free(dir);
+        }
+        profile = ONBOARDING_PROFILE;
+        mg_log_info("autotest onboarding: a fresh profile (%s, wiped)", profile);
+    }
     SDL_snprintf(g->profile_name, sizeof(g->profile_name), "%s", profile ? profile : "");
     if (!strings_init(&app->perm) || !frontend_init(&g->fe, app->gfx, &app->perm)) {
         return false;
@@ -568,6 +594,7 @@ bool game_init(MgApp *app)
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
         }
         g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
+        g->lib_still = has_flag(app->argc, app->argv, "--lib-still");
         if (arg_value(app->argc, app->argv, "--lib-back-loop")) { /* Maps + Back N times, every Back checked */
             g->back_loop.want = SDL_atoi(arg_value(app->argc, app->argv, "--lib-back-loop"));
             g->move_demo = 4;
@@ -1727,8 +1754,26 @@ static void library_lighting(GfxSceneParams *sp, float time)
     sp->fog_density = 0.0f;
     sp->sun_disc.W = sp->moon_disc.W = 0.0f;
     sp->stars = 0.0f;
-    sp->two_band = true;
+    sp->two_band = 1.0f;
     sp->time = time;
+}
+
+/* out = a .. b by k: the light sets mixed (each surface lit by both), sky, fog, discs and stars blended: no step anywhere */
+static void lighting_mix(GfxSceneParams *out, const GfxSceneParams *a, const GfxSceneParams *b, float k)
+{
+    /* the sun is not turned (a toon band would flip somewhere as it turns): both sets are lit and the results mixed */
+    const HMM_Vec3 sun2_dir = b->sun_dir, sun2_color = b->sun_color, ambient2 = b->ambient;
+    const float two_band2 = b->two_band;
+    out->sun_dir = a->sun_dir, out->sun_color = a->sun_color, out->ambient = a->ambient, out->two_band = a->two_band;
+    out->sun2_dir = sun2_dir, out->sun2_color = sun2_color, out->ambient2 = ambient2, out->two_band2 = two_band2;
+    out->light_mix = k;
+    out->sky_horizon = HMM_LerpV4(a->sky_horizon, k, b->sky_horizon);
+    out->sky_zenith = HMM_LerpV4(a->sky_zenith, k, b->sky_zenith);
+    out->fog_color = HMM_LerpV3(a->fog_color, k, b->fog_color);
+    out->fog_density = mg_lerpf(a->fog_density, b->fog_density, k);
+    out->sun_disc.W = mg_lerpf(a->sun_disc.W, b->sun_disc.W, k);
+    out->moon_disc.W = mg_lerpf(a->moon_disc.W, b->moon_disc.W, k);
+    out->stars = mg_lerpf(a->stars, b->stars, k);
 }
 
 /* The main menu's backdrop (LIB-1): the library reading room, the hero studying in seat 0. Also behind
@@ -1772,7 +1817,7 @@ static bool menu_world(Game *g, MgApp *app)
     g->menu_hero = g->menu_slots[0];
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
-    menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, mg_minf(app->frame_dt, 0.1f));
+    menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, g->lib_still ? 0.0f : mg_minf(app->frame_dt, 0.1f));
     return true;
 }
 
@@ -1929,20 +1974,26 @@ static void move_frame(Game *g, MgApp *app)
     g->wm.hud_off = !(g->move_state == 1 && g->move_entered);
     GfxSceneParams sp = {0};
     scene_defaults(&sp, (float)app->time, &g->day_state);
-    const HMM_Vec4 sky_h = sp.sky_horizon, sky_z = sp.sky_zenith;
     (void)worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
-    { /* the sky becomes the sea's clear colour on the way out (and back) */
+    { /* the library's light becomes the map's along the move (and back): e 0 is exactly the menu's, e 1 the map's */
+        GfxSceneParams lib = sp;
+        library_lighting(&lib, sp.time);
         const float k = e * e * (3.0f - 2.0f * e);
-        sp.sky_horizon = HMM_LerpV4(sky_h, k, sp.sky_horizon);
-        sp.sky_zenith = HMM_LerpV4(sky_z, k, sp.sky_zenith);
+        lighting_mix(&sp, &lib, &sp, k);
         gfx_set_scene(app->gfx, &sp);
     }
     g->view_proj = HMM_MulM4(proj, view);
-    g->last_eye = eye;
+    if (g->stale_eye_armed && g->move_state == 2 && g->move.t > 0.3f) {
+        g->stale_eye_armed = false; /* the canary: this frame's camera is not reported (as a stale eye would be) */
+    } else {
+        g->last_eye = eye;
+    }
     g->last_cam_dist = c.dist;
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
+    g->lib.lod_from_rest = true; /* the move: the people keep the menu's LODs (no switch while the camera flies) */
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
+    g->lib.lod_from_rest = false;
     if (g->back_loop.want > 0 && g->move_state == 2) { /* --lib-back-loop: the camera per frame of the move's own clock */
         const int f = g->back_loop.frame++;
         const float mdt = (g->move.t - g->back_loop.prev_t) * g->move.duration;
@@ -3344,6 +3395,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     if (ato.force_ride > 0) { /* --autotest worldmap2 */
         g->prefs.world.rides.forced = ato.force_ride - 1;
+    }
+    if (ato.stale_eye_once) {
+        g->stale_eye_armed = true;
     }
     if (ato.last_book[0]) {
         SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", ato.last_book);

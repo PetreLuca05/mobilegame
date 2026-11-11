@@ -173,6 +173,7 @@ add_library(mg_engine STATIC
   engine/gfx/gpu.c
   engine/gfx/material.c
   engine/gfx/mesh.c
+  engine/gfx/weld.c
   engine/gfx/floorfade.c
   engine/ui/text.c
   engine/ui/widgets.c
@@ -328,7 +329,14 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_compile_options(mg_tests PRIVATE ${MG_WARNINGS})
   add_test(NAME controller COMMAND mg_tests)
   # LIB-1 modules: pure C, each test reads assets/menu/library.scene.json from the repo (lib_nav_test brings its own log/time stubs)
-  foreach(lib dressing nav fidget life)
+  add_executable(weld_test tests/weld_test.c engine/gfx/weld.c)
+target_include_directories(weld_test PRIVATE engine)
+target_link_libraries(weld_test PRIVATE mg_thirdparty)
+target_compile_options(weld_test PRIVATE ${MG_WARNINGS})
+add_dependencies(weld_test mobilegame) # the generated meshes
+add_test(NAME weld COMMAND weld_test ${CMAKE_BINARY_DIR}/generated/assets)
+
+foreach(lib dressing nav fidget life)
     add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c)
     target_include_directories(lib_${lib}_test PRIVATE game engine)
     target_link_libraries(lib_${lib}_test PRIVATE mg_thirdparty m)

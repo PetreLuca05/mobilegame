@@ -166,7 +166,10 @@ typedef struct MenuLibrary {
     HMM_Vec3 view_eye; /* world: the camera this frame draws with (set by the caller before menu_library_draw) */
     float avatar_push_ahead; /* avatar.json push.cart_ahead_m */
     float screen_h_pt;        /* the menu camera's view height (pt), for the NPCs' LOD */
-    uint8_t npc_lod[LIB_NPCS]; /* this frame: 0 full, 1 coarse (npc_lods) */
+    uint8_t npc_lod[LIB_NPCS]; /* the LOD each NPC is heading for: 0 full, 1 coarse (npc_lods) */
+    float npc_lod_k[LIB_NPCS]; /* 0 full .. 1 coarse: a switch is a short dithered crossfade, never a pop */
+    bool lod_ready;            /* the first frame snaps to the targets */
+    bool lod_from_rest;        /* the Maps / Back move: LODs from the menu's resting camera (`eye`), so nobody switches mid-move */
     int lod_counts[2];        /* NPCs drawn at LOD0 / LOD1 this frame (perf, tests) */
     bool creator;      /* the Locker is open */
     float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
