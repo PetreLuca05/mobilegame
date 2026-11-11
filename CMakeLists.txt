@@ -243,6 +243,7 @@ add_library(mg_engine STATIC
   engine/core/log.c
   engine/core/png_write.c
   engine/core/prof.c
+  engine/core/frame_notes.c
   engine/core/jobs.c
   engine/nav/navgrid.c
   engine/nav/astar.c

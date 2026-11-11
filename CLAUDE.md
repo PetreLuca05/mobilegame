@@ -536,6 +536,10 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).
 - `-DMG_BAKE=ON`: prototype that bakes sun shadow + AO into static vertex colours, cached in the pref path. Off: the
   meshes have too few vertices for it to look right.
+- Late frames (tracked bug, rare Mac stalls): `engine/core/frame_notes.c`. Expensive one-off work calls `frame_note("...")`
+  (GPU idle waits, mesh uploads, figure upload, screenshot, MSAA change, level build, map preload step); a frame over 50 ms
+  logs `late frame: <ms> at <s>, screen, scene, during it: <notes>` at the start of the next one, and the last 32 go into the
+  perf JSON (`late_frames`), so device runs bring them to the iPad gate.
 - Thermal state serious or worse: NPC detail radius 22 -> 11 m and MSAA off, logged (`update_thermal` in `game.c`).
 
 ## Commit rules
