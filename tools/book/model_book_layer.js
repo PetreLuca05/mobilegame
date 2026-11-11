@@ -1,7 +1,7 @@
 /* ===== book layer: Kumar ch. 32 inside the institute (props, NPC points, room stations, the player, progress) ===== */
 var BK=window.BOOK||null,bookOn=true,selA=null,CHC=['c0','c1','c2','c3','c4'];
 var KIND_RO={station:'Stație',inspect:'Inspectează',read:'Citește',case:'Caz',colleague:'Coleg',dispense:'Eliberează',directory:'Panou',sort:'Sortează',sequence:'Ordine'};
-var PR={done:{},fin:{}};try{var pj=JSON.parse(localStorage.getItem('gastro-book-v1')||'{}');PR.done=pj.done||{};PR.fin=pj.fin||{}}catch(e){}
+var PR={done:{},fin:{},mis:{acc:{},end:{},arc:{},track:-1},pos:null};try{var pj=JSON.parse(localStorage.getItem('gastro-book-v1')||'{}');PR.done=pj.done||{};PR.fin=pj.fin||{};if(pj.mis)PR.mis=pj.mis;PR.pos=pj.pos||null}catch(e){}
 function saveP(){try{localStorage.setItem('gastro-book-v1',JSON.stringify(PR))}catch(e){}}
 var ROOMBY={};ROOMS.forEach(function(r){ROOMBY[r.id]=r});
 var factsOfTopic={},anchorsOfRoom={};
@@ -40,7 +40,7 @@ if(BK){var bm=[new MB(),new MB(),new MB(),new MB()];
     var m=new THREE.Mesh(mkGeo,mkMat[a.ch]||mkMat[0]);m.position.set(a.x,y+2.45,a.z);m.userData.ph=a.x*.7+a.z;bookMarks[a.f].add(m);AMK[i]=m});
   bm.forEach(function(b,f){var g=mesh(b,false,2);FL[f].g.add(g);bookGroups.push(g)})}
 function anchorDone(i){var a=BK.anchors[i];return a.s.length&&a.s.every(scriptDone)}
-function bookHit(ray){selA=null;if(!BK||!bookOn||typeof view!=='number'||view>3)return null;var h=ray.intersectObjects(bookPicks[view],false)[0];return h?h.object.userData.a:null}
+function bookHit(ray){selA=null;return null;if(!BK||!bookOn||typeof view!=='number'||view>3)return null;var h=ray.intersectObjects(bookPicks[view],false)[0];return h?h.object.userData.a:null}
 function pickAnchor(i){selA=i;pick(ROOMBY[BK.anchors[i].room]);selA=i;card()}
 function anchorName(a){if(a.t==='p')return a.label;if(a.t==='n'){var s=a.s.length?BK.scripts[a.s[0]]:null;return'Personaj: '+(s&&s.npc?s.npc:'colegul din cameră')}return'Stația camerei: '+ROOMBY[a.room].label}
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
@@ -51,19 +51,18 @@ function anchorBlock(i,open){var a=BK.anchors[i],box=el('div','an'),t=el('b',nul
   if(a.t==='p')t.appendChild(el('small',null,' · '+a.k.replace('_',' ')+(a.onm?' (mobilier existent)':'')));box.appendChild(t);
   a.s.forEach(function(si){box.appendChild(scriptRow(si))});return box}
 function progressBar(d,n){var w=el('div','bar'),i=el('i');i.style.width=(n?Math.round(100*d/n):0)+'%';w.appendChild(i);return w}
-function bookCard(){if(!BK||selA===null)return false;if(!sel){selA=null;return false}var a=BK.anchors[selA],r=ROOMBY[a.room],c=$('card');c.textContent='';
+function bookCard(){return false}
+function bookCardOld(){if(!BK||selA===null)return false;if(!sel){selA=null;return false}var a=BK.anchors[selA],r=ROOMBY[a.room],c=$('card');c.textContent='';
   c.appendChild(el('div','eb',FLOORS[r.f]+' · '+r.sign));c.appendChild(el('h2',null,anchorName(a)));
   var fs=[];a.s.forEach(function(si){fs=fs.concat(BK.scripts[si].covers)});var d=doneOf(fs);
   c.appendChild(el('p',null,a.s.length+' scenarii · '+d+' / '+fs.length+' fapte învățate'));c.appendChild(progressBar(d,fs.length));
   var bk=el('div','bk');a.s.forEach(function(si){bk.appendChild(scriptRow(si))});c.appendChild(bk);
-  var back=el('button',null,'← Toată camera');back.style.cssText='margin-top:10px;padding:7px 12px;border-radius:10px;background:var(--chip)';back.addEventListener('click',function(){selA=null;card()});c.appendChild(back);return true}
-function bookRoomExtra(){if(!BK||!sel)return;var list=anchorsOfRoom[sel.id];if(!list)return;var c=$('card'),fs=roomFacts(sel),d=doneOf(fs),bk=el('div','bk');
-  bk.appendChild(el('h3',null,'Cartea în această cameră'));bk.appendChild(el('p',null,d+' / '+fs.length+' fapte învățate · camera e completă când toate sunt răspunse corect'));bk.appendChild(progressBar(d,fs.length));
-  list.slice().sort(function(x,y){return(BK.anchors[x].t==='s'?0:1)-(BK.anchors[y].t==='s'?0:1)}).forEach(function(i){bk.appendChild(anchorBlock(i))});c.appendChild(bk)}
+  var back=el('button','ghost','← Toată camera');back.addEventListener('click',function(){selA=null;card()});c.appendChild(back);return true}
+function bookRoomExtra(){var c=$('card');if(!c)return;[].slice.call(c.querySelectorAll('.tp')).forEach(function(t){if(/^Quest /.test(t.textContent))t.remove()})}
 $('card').addEventListener('click',function(e){var b=e.target.closest('[data-play]');if(b)openPlayer(+b.getAttribute('data-play'))});
-function updateChip(){if(!BK)return;var c=$('bookChip'),n=BK.facts.length,d=Object.keys(PR.done).length;c.hidden=false;c.textContent='';c.appendChild(document.createTextNode('Kumar cap. 32 · '+d+' / '+n+' fapte'));c.appendChild(el('small',null,BK.scripts.length+' scenarii în '+Object.keys(anchorsOfRoom).length+' camere'))}
+function updateChip(){if(!BK)return;var c=$('bookChip'),n=BK.facts.length,d=Object.keys(PR.done).length,M=BK.mis?BK.mis.missions:[];c.hidden=false;c.textContent='';c.appendChild(document.createTextNode('Kumar cap. 32 · '+d+' / '+n+' fapte'));c.appendChild(el('small',null,M.length+' misiuni · '+BK.scripts.length+' pași'))}
 updateChip();
-function bookFrame(time){bookGroups.forEach(function(g){g.visible=bookOn});bookMarks.forEach(function(g,f){g.visible=bookOn&&showMarks&&view===f;if(!g.visible)return;
+var bfT=-1;function bookFrame(time){var dt=bfT<0?0:Math.min(.05,time-bfT);bfT=time;if(window.__playFrame)window.__playFrame(dt);bookGroups.forEach(function(g){g.visible=bookOn});bookMarks.forEach(function(g,f){g.visible=false;if(!g.visible)return;
   g.children.forEach(function(m){m.rotation.y=time*1.8;m.position.y=f*FH+2.45+Math.sin(time*2.2+m.userData.ph)*.08})})}
 function refreshMarks(){Object.keys(AMK).forEach(function(i){AMK[i].material=anchorDone(+i)?mkDone:(mkMat[BK.anchors[i].ch]||mkMat[0])})}
 if(BK)refreshMarks();
@@ -73,17 +72,17 @@ var PL=null,rnd=function(seed){var s=seed*9301+49297;return function(){s=(s*1680
 function shuffled(arr,seed){var a=arr.slice(),r=rnd(seed+7);for(var i=a.length-1;i>0;i--){var j=Math.floor(r()*(i+1)),t=a[i];a[i]=a[j];a[j]=t}return a}
 function norm(s){return String(s).normalize('NFC').toLowerCase().replace(/ş/g,'ș').replace(/ţ/g,'ț').replace(/\s+/g,' ').replace(/^[\s„"“(]+|[\s”".,;:)]+$/g,'')}
 function openPlayer(si){PL={s:si,k:0,checked:false,ok:false,learned:0,answered:0,correct:0};$('play').hidden=false;renderStep()}
-function closePlayer(){$('play').hidden=true;PL=null;refreshMarks();updateChip();card()}
+function closePlayer(){var fin=!!(PL&&PL.k>=BK.scripts[PL.s].steps.length);$('play').hidden=true;PL=null;refreshMarks();updateChip();card();if(window.__playHook)window.__playHook('close',fin)}
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&PL)closePlayer()});
 function renderStep(){var S=BK.scripts[PL.s],box=document.querySelector('#play .pbox'),r=ROOMBY[S.room];box.textContent='';
-  var hd=el('div','ph'),meta=el('div','meta');hd.appendChild(el('div','eb',r.sign+' · '+(KIND_RO[S.kind]||S.kind)+(S.parts>1?' · partea '+S.part+' din '+S.parts:'')));
+  var hd=el('div','ph'),meta=el('div','meta');hd.appendChild(el('div','eb',(PLAYM&&PLAYM.who?PLAYM.who+' · ':'')+r.sign+(S.parts>1?' · partea '+S.part+' din '+S.parts:'')));
   var h2=el('h2',null,S.title);h2.id='pTitle';hd.appendChild(h2);var end=PL.k>=S.steps.length;
   meta.appendChild(el('span',null,end?'Gata':'Pasul '+(PL.k+1)+' din '+S.steps.length));meta.appendChild(el('span',null,PL.correct+' corecte din '+PL.answered));hd.appendChild(meta);
   hd.appendChild(progressBar(Math.min(PL.k,S.steps.length),S.steps.length));box.appendChild(hd);
   var body=el('div','pb'),foot=el('div','pf'),close=el('button','ghost','Închide');close.addEventListener('click',closePlayer);foot.appendChild(close);
-  if(end){PR.fin[S.id]=1;saveP();body.appendChild(el('div','res ok','Scenariu terminat: '+PL.correct+' din '+PL.answered+' itemi corecți.'));
+  if(end){PR.fin[S.id]=1;saveP();if(window.__playHook)window.__playHook('score',{correct:PL.correct,answered:PL.answered});body.appendChild(el('div','res ok','Scenariu terminat: '+PL.correct+' din '+PL.answered+' itemi corecți.'));
     var fs=S.covers,d=doneOf(fs);body.appendChild(el('p',null,d+' / '+fs.length+' fapte ale scenariului sunt acum învățate.'));
-    var nx=BK.anchors[S.a].s.filter(function(x){return!scriptDone(x)})[0];if(nx!==undefined){var nb=el('button',null,'Următorul: '+BK.scripts[nx].title);nb.addEventListener('click',function(){openPlayer(nx)});foot.appendChild(nb)}
+    if(PLAYM){var nb=el('button',null,'Înapoi la '+(PLAYM.who||'caz'));nb.addEventListener('click',closePlayer);foot.appendChild(nb);setTimeout(function(){nb.focus()},0)}
     box.appendChild(body);box.appendChild(foot);return}
   var st=S.steps[PL.k];
   if(st[0]===0){body.appendChild(el('div','stage','Lecție'));if(st[st.length-1]===-1)body.appendChild(el('p',null,'Recapitulare: aceeași lecție ca la începutul părții anterioare.'));
@@ -94,7 +93,7 @@ function renderStep(){var S=BK.scripts[PL.s],box=document.querySelector('#play .
     var W=widget(it,st[1],body),chk=el('button',null,it.type==='card'?'Arată răspunsul':'Verifică');
     chk.addEventListener('click',function(){if(PL.checked)return;var ok=W.check();if(ok===undefined)return;PL.checked=true;finish(it,ok,body,foot,chk)});foot.appendChild(chk)}
   box.appendChild(body);box.appendChild(foot);box.scrollTop=0}
-function finish(it,ok,body,foot,chk){if(it.type==='card'){chk.remove();var y=el('button',null,'Am știut'),n=el('button','ghost','Nu am știut');
+function finish(it,ok,body,foot,chk){if(it.type==='card'){chk.remove();var y=el('button','okb','Am știut'),n=el('button','ghost','Nu am știut');
     [y,n].forEach(function(b,i){b.addEventListener('click',function(){done(it,i===0,body,foot,[y,n])});foot.appendChild(b)});return}
   done(it,ok,body,foot,[chk])}
 function done(it,ok,body,foot,rm){rm.forEach(function(b){b.remove()});PL.answered++;if(ok){PL.correct++;it.f.forEach(function(f){PR.done[f]=1});saveP()}
@@ -131,3 +130,13 @@ function widget(it,ix,body){var t=it.type,W={};
       if(!ok)body.appendChild(el('div','ex','Ordinea corectă: '+it.sequence.map(function(s,i){return(i+1)+'. '+s}).join('  ·  ')));return ok}}
   return W}
 window.__book={openPlayer:openPlayer,pickAnchor:pickAnchor,BK:BK,PR:PR,openAt:function(si,k){openPlayer(si);PL.k=k;renderStep()}};
+
+/* ---------------- Jelly Pop motion (UI-1): press 90 ms, release 480 ms, rows stagger, the tab indicator springs ---------------- */
+(function(){function tg(e){var b=e.target&&e.target.closest&&e.target.closest('button,.opt');return b&&!b.disabled?b:null}
+  document.addEventListener('pointerdown',function(e){var b=tg(e);if(!b)return;b.classList.remove('jp-rel');b.classList.add('jp-down')},true);
+  function up(){[].slice.call(document.querySelectorAll('.jp-down')).forEach(function(b){b.classList.remove('jp-down');void b.offsetWidth;b.classList.add('jp-rel')})}
+  document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true);
+  document.addEventListener('animationend',function(e){var n=e.animationName,t=e.target;if(n==='jp-rel')t.classList.remove('jp-rel');else if(n==='jp-in'||n==='jp-fade')t.classList.add('jp-shown')},true);
+  var v=$('views');function place(){var b=v.querySelector('[aria-pressed="true"]');if(!b)return;v.style.setProperty('--ix',b.offsetLeft+'px');v.style.setProperty('--iw',b.offsetWidth+'px');
+    if(!v.classList.contains('jp-ready'))requestAnimationFrame(function(){v.classList.add('jp-ready')})}
+  new MutationObserver(place).observe(v,{subtree:true,attributes:true,attributeFilter:['aria-pressed']});addEventListener('resize',place);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(place);setTimeout(place,0)})();

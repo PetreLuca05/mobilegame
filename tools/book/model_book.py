@@ -73,8 +73,19 @@ def main(pack, model_html, out):
         im.resize((round(w * s), round(h * s)), Image.LANCZOS).save(os.path.join(out, 'fig', fg['id'] + '.jpg'), quality=86)
         figs[fg['id']] = {'w': w, 'h': h, 'labels': [[l['t']] + (l['bbox'] or [0, 0, 0, 0]) for l in fg.get('labels', [])]}
     topics = sorted({f['topic'] for f in facts})
+    # missions (per mission presentation) and the furniture people sit, lie and work at
+    mis = None
+    mp_ = os.path.join(pack, 'missions.json')
+    if os.path.exists(mp_):
+        mis = json.load(open(mp_, encoding='utf-8'))
+    keepk = {'bed', 'exam_couch', 'gurney', 'or_table', 'chair', 'infusion_chair', 'recliner', 'dental', 'alcove_seat', 'sofa', 'corridor_chair',
+             'auditorium_seat', 'bench_seat', 'corridor_bench', 'desk', 'exam_desk', 'reading_desk', 'lab_bench', 'lab_island', 'dispensing_counter',
+             'station_counter', 'nurse_counter', 'reception_desk', 'trolley_tower', 'ultrasound', 'centrifuge'}
+    furn = [[p['f'], p['room'], p['kind'], p['x'], p['z'], p['yaw'], p['w'], p['d']]
+            for p in json.load(open(os.path.join(pack, 'model_furniture.json'), encoding='utf-8'))['pieces'] if p['kind'] in keepk]
     book = {'anchors': anchors, 'scripts': S, 'items': IT, 'atoms': [[a['text'], a['page'], a['kind']] for a in atoms],
-            'facts': [topics.index(f['topic']) for f in facts], 'topics': topics, 'figs': figs}
+            'facts': [topics.index(f['topic']) for f in facts], 'topics': topics, 'figs': figs,
+            'mis': mis, 'furn': furn}
     with open(os.path.join(out, 'book.js'), 'w', encoding='utf-8') as fo:
         fo.write('window.BOOK=' + json.dumps(book, ensure_ascii=False, separators=(',', ':')) + ';\n')
     # the page: the model as it is, plus the book layer
@@ -94,7 +105,12 @@ def main(pack, model_html, out):
     put(' <div id="toast" role="status"></div>', ' <div id="play" hidden><div class="pbox glass" role="dialog" aria-modal="true" aria-labelledby="pTitle"></div></div>\n')
     put('  <button id="tMesh">Copy building mesh</button>', '  <button id="tBook" aria-pressed="true">Book props</button>\n')
     put('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>', '\n<script src="book.js"></script>', after=True)
-    put("setView('all');requestAnimationFrame(frame);", layer + '\n')
+    npck = open(os.environ.get('MG_NPCK') or os.path.join(HERE, 'model_npc.js'), encoding='utf-8').read()
+    play = open(os.path.join(HERE, 'model_play.js'), encoding='utf-8').read()
+    put("setView('all');requestAnimationFrame(frame);", layer + '\n' + npck + '\n' + play + '\n')
+    sub('<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">')
     # hooks into the model's own code: book picks before room picks, the card, marker motion
     put("var hit=ray.intersectObjects(FL[view].picks,false)[0];if(hit)pick(hit.object.userData.r);",
         "var hb=bookHit(ray);if(hb!==null){pickAnchor(hb);return}")

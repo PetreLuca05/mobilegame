@@ -985,6 +985,28 @@ def main():
     else:
         E['answer words'].append('wordrule.py missing next to check.py')
 
+    # ---------------------------------------------------------------- missions: the book through NPCs, per mission
+    if os.path.exists(os.path.join(pack, 'missions_src.json')):
+        td = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(pack))), 'tools', 'book')
+        if not os.path.exists(os.path.join(td, 'missions.py')):
+            td = os.path.join(os.path.dirname(os.path.abspath(pack)), 'tools', 'book')
+        mpy = os.path.join(td, 'missions.py')
+        if os.path.exists(mpy):
+            import importlib.util as _iu
+            _sp = _iu.spec_from_file_location('missions', mpy)
+            MM = _iu.module_from_spec(_sp)
+            _sp.loader.exec_module(MM)
+            _res, _scs, _order, _SP = MM.build(pack)
+            _errs, _notes = MM.check(_res, _scs, _order, _SP)
+            for e in _errs:
+                E['missions'].append(e)
+            _n = sum(len(q['steps']) for m in _res['missions'] for q in m['quests'])
+            stats['missions'] = (f"{len(_res['missions'])} cases, {sum(len(m['quests']) for m in _res['missions'])} quests, {_n} steps = "
+                                 f"{_n} required scripts ({'100 %' if not _errs else 'FAIL'}); cast {len(_res['cast'])}; "
+                                 f"{sum(1 for m in _res['missions'] for q in m['quests'] for s in q['steps'] if s['moved'])} steps moved to a room that fits them")
+        else:
+            E['missions'].append('missions_src.json present but tools/book/missions.py not found')
+
     # ---------------------------------------------------------------- leak
     if '--leak' in sys.argv:
         repo = sys.argv[sys.argv.index('--leak') + 1]

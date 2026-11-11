@@ -38,7 +38,8 @@ python3 -I "$T/plans.py" "$PACK"
 cp "$T/wordrule.py" "$PACK/wordrule.py"
 python3 -I "$T/report.py" "$PACK"
 python3 -I "$T/leakguard.py" build "$PACK"
-python3 -I "$PACK/check.py" "$PACK" || true      # whole book: ledgers, map placement, script length, binary pack
+if [[ -f "$PACK/missions_src.json" ]]; then python3 -I "$T/missions.py" "$PACK"; fi   # the book through NPCs: missions.json
+python3 -I "$PACK/check.py" "$PACK" || true      # whole book: ledgers, map placement, script length, binary pack, missions
 python3 -I "$T/review_sheets.py" "$PACK"    # §5: review_errata.csv, review_hidden.csv (decisions already filled are kept)
 python3 -I "$T/engine_prompt.py" "$PACK" "$PACK/gastro.mgpack"
 if [[ -f src/institute_model_page.html ]]; then python3 -I "$T/model_book.py" "$PACK" src/institute_model_page.html build/model_artifact; fi

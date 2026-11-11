@@ -77,11 +77,25 @@ with the whole-book `check.py`, the review sheets and `ENGINE_PROMPT.md`).
 - Visible kinds per storey (book + furniture): G 69, 1: 64, 2: 61, 3: 60; meshes with shared families (`mesh_groups`): 43,
   40, 40, 34. Pack v3 adds the furniture table (36-byte rows); prop / slot rows point to their furniture row.
 
+## Missions: the book through NPCs (author's message 6)
+
+- Per mission, never per room: `missions_src.json` (authored: cast 50 = 35 staff + 15 patients, 5 arcs, 17 cases, 50 quest
+  lines, NPC mapping for the 57 scripts that name a person, 4 room moves) → `tools/book/missions.py` → `missions.json`
+  (382 steps: presenter, stand point, the patient's bed / seat and pose, opening line). `check.py` runs it: every required
+  script in exactly one step, book order, logic rules (nothing outdoors; patients only in clinical rooms; treatment only in
+  pharmacy / ward / bay / consult room / OR), lines ≤ 160 characters, comma-below ș ț, no 8-word run of a fact.
+- 30 case steps put the patient in a bed or seat of the step's room; 4 steps moved by the rules (`step_place`).
+- The 3D page plays it: a walking player (game camera), walk grid baked from the model (35 ms), lifts, 112 background
+  people placed by room type (none outdoors), the cast at their posts, the game's marker and interact systems, dialogue,
+  journal, reward; Jelly Pop UI; interiors lit (toon) with no cast shadows. Load-time talking-range snap: 13 steps and 2
+  posts move inside their room (behind counters, `e_respirator` whose recliner blocks the door); all 432 targets reachable.
+- Characters: `tools/book/model_npc.js` (12 kinds, ≤ 600 triangles, 6 meshes + outlines; 1 merged mesh for crowds).
+
 ## Topics done (all 50; per-topic counts in report.md)
 
 ## Next
 
 1. Author: fill `review_errata.csv` / `review_hidden.csv` → `check.py content/gastro --apply-review` → fix the listed
    topic modules → `make.sh`.
-2. MAP-2 builds the institute scene with the BOOK-1 props and slots; then BOOK-ENGINE (`ENGINE_PROMPT.md`).
+2. MAP-2 builds the institute scene with the BOOK-1 props and slots; then BOOK-ENGINE (`ENGINE_PROMPT.md`, S4 = missions).
 3. Exam question counts and scoring: the author's.

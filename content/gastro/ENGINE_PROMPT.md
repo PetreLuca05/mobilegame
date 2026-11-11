@@ -179,14 +179,49 @@ kinds of one family share a mesh (`mesh_groups` in `prop_kinds.json`):
 MAP-2 draws them (instanced per kind: one draw per kind per visible storey, at most 13 iprop kinds on one
 storey). BOOK-ENGINE only needs the prop / slot index → world position and storey, from the pack's `props` / `slots` tables.
 
-### S4. Interactions: reuse the registry and its 10 Hz scan
+### S4. Missions: the book is reached only through NPCs (`content/gastro/missions.json`)
 
-- Each **anchor** (a prop, an NPC point or a map slot that scripts use) becomes one interactable (`ia_add`, a new kind
-  `IA_SCRIPT` with the anchor's script list), label = the next unfinished script's title (parts in order), `on_interact`
-  opens the script player. Register only the anchors of the **current storey** (most on one storey: 88),
-  re-registered on storey change; this keeps the registry under `IA_MAX` (320) with NPCs and markers. The scan, ranges
-  (2.0 / 2.5 m) and the panel are unchanged.
-- A room's station shows a marker until the room is complete (existing `markers.c`).
+The author's rule: **per mission, never per room**. No room card or prop lists the scripts; every script is a step of a
+mission (a hospital case) and is played by talking to an NPC. `missions.json` is built by `tools/book/missions.py` from the
+authored `missions_src.json` and is checked by `check.py` (every required script in exactly one step, book order, the
+logic rules below). Compile it into the pack next to the scripts (a v4 table) or load it at build time; it is content
+(zip only, never in git).
+
+- **Shape:** arcs (the 5 chapters; the clinic chief opens and closes each) > 17 missions (a case: giver, patient, ward,
+  intro / outro lines, a one-line case summary) > 50 quests (one topic, its host NPC, intro and done lines) > 382 steps
+  (script id, presenter, room, storey, `stand` x z yaw, `at` = the object the step is about, `patient` = cast id, bed or
+  seat, pose `lie` / `sit` / `stand` and height, `line` = what the presenter says first, `after` = good / mixed reply).
+  `cast` (50: 35 staff, 15 patients; look = kind, sex, age, skin, hair, colours → `AvatarLook`), `posts` (where each
+  cast member waits: patients in their ward's bed), `greetings` per kind.
+- **Flow:** the tracked mission's giver has the objective marker → talk → intro + case → Accept → the marker moves to
+  the first step's presenter → talk → (quest intro on its first step) + the step line → Start → the script player (S5)
+  with the presenter's name in its header → on its end the presenter's reply (+ the quest's done line) → next step.
+  When every step is played: back to the giver → outro (+ the arc outro after its last case) → reward (T3) → the next
+  case is tracked. Nothing is locked: the journal (pause → Misiuni) lists the arcs and cases with their stages and lets
+  the player track any case; "Du-mă acolo" autonavs to its objective.
+- **Staging:** when a step becomes the objective its presenter walks (same storey, in view) or is placed at `stand`, and
+  the patient lies or sits at the step's bed / seat. A case step happens only with the patient present.
+- **Logic rules (checked):** nothing happens outdoors; a patient is seen only in a clinical room (exam, ward, treatment
+  / ICU / recovery bay, triage, OR, imaging; pharmacy only for counselling at the counter); treatment is chosen in a
+  pharmacy, ward, treatment / ICU / recovery bay, consult room or OR (4 steps were moved by the author's rules: two
+  pharmacy steps out of a histology lab and an imaging room, two patient steps out of labs into the patient's ward /
+  recovery); stand points inside their room, clear of furniture and door approaches.
+- **Talking range (at load, like `rooms_validate`):** the nav bake decides who the player can reach. A presenter whose
+  stand point has no reachable cell within 1.7 m steps to the nearest spot in the same room that has one, staying on
+  their own side (a pharmacist comes to the counter). On the prototype page this moves 13 steps and 2 posts (0.5–6 m,
+  all inside their room); every one of the 432 targets is then within talking range from the entrance. Model findings
+  for MAP-2: `e_respirator`'s recliner stands in front of its door (the room cannot be entered; its presenters come to the
+  door), and potted plants stand in some doorways (the page's nav ignores plants, pots and bins; give them no collider or
+  move them).
+- **Interact (unchanged scan, 2.0 / 2.5 m):** cast NPCs are interactables; the objective's presenter has `IA_PRIORITY`
+  and is usable from any facing; others greet (2.5 s card, nod). Patients in bed: +0.6 m range.
+- **Markers (`markers.c`):** one marker, on the objective NPC (spinning diamond in the chapter colour, ground ring, edge
+  icon with chevron and distance, floor badge on another storey). Tapping it autonavs there (cross-storey through the lift).
+- **Population (draw-only, outside the deterministic NPC sim):** patients in ward / recovery / ICU beds, people seated in
+  waiting rooms, triage and infusion chairs, staff at desks, benches and counters by room type, a few walkers in each
+  storey's corridors; nobody outdoors. The M7 sim and its seed are untouched; cast members are not simulated.
+- **Persistence:** per account two bits per mission (accepted, closed) next to the fact bitset; the tracked case and the
+  player's position per device.
 
 ### S5. Script player and item widgets (UI-1 Jelly Pop)
 
@@ -231,8 +266,8 @@ storey). BOOK-ENGINE only needs the prop / slot index → world position and sto
 
 ### S8. Tests
 
-- `--autotest book`: offline, walk to every room of chapter 1, open each required script, answer every item with the key
-  from the pack, check the room completes and the chapter-1 exam opens; then one wrong answer leaves its facts unset.
+- `--autotest book`: offline, accept the first case of chapter 1, autonav to each step's presenter, play it answering with
+  the key from the pack, close the case with its giver; check the next case is tracked and one wrong answer leaves its facts unset.
 - `--autotest book_ui`: one item of every type on iPhone, iphone-flip and iPad windows (screenshots).
 - Pack loader ctest (S2); `link_test.sql` for the merge rule (S6).
 
@@ -260,6 +295,7 @@ blocks sign-off.
 - [ ] every piece of furniture comes from `institute.map`; the map loader's build-time check against the pack's furniture
       table passes (same ids, kinds, positions within 1 cm)
 - [ ] S0–S8 done, or stopped at S2 with MAP-2 named as the blocker
+- [ ] the book is reached only through missions (no per-room lists); `missions.json`'s 382 steps all playable, every presenter within talking range after the load-time snap
 - [ ] the pack loader accepts what `content/gastro/mgpack_read.c` accepts (same checks) and the final simulation's question
       counts and scoring are left unset (constants marked TODO) for the author
 - [ ] `content/gastro/check.py` passes in the build; the public build uses the stub pack and stays green
