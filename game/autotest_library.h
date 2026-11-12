@@ -6,9 +6,16 @@
  *      theta < release_theta (after the reach), both hands at
  *      rest at u = 1; screenshot library_turn at u = 0.5 (--lib-closeup)
  *   3  20 turns: every read in between inside study.read_s
- *   4  a friend joins (--lib-demo-join, at 1 s): appears outside the door, the door opens past 1.5 rad as it
- *      passes, seated within 6 s with its book open; screenshot library_joined
- *   5  it leaves (at 10 s): stands, walks out, despawns, the door is shut (< 0.05 rad) within 2 s after
+ *   4  a friend joins (the demo lobby, AutotestOut.lib_demo): it starts at seat 0's stand point of its own table (§8), never
+ *      by a door to the outside, faster than walking only while off screen (15.8), seated within 12 s with its book open;
+ *      screenshot library_joined. Reduse: seated directly
+ *   5  it leaves: packs, stands, walks back towards its own table, removed only out of view (or at its table); Reduse: at once
+ *  15.7 (stages 20, 21) I join hostA's lobby (mateB in it): its table dressed from its seed and its members seated at once, the
+ *      camera still until my hero is off screen, then the pan with no jump (the trip's own clock), no blank frame, seated
+ *      within 12 s (pictures library_travel_out / _pan / _arrive); Ieși: the same back, my own table unchanged, the readers
+ *      left behind removed only out of view. Reduse: seated at once under the cross-dissolve
+ *  15.9 (stage 22) a plane out leaves on the side of the friend's table; a plane in lands in front of my seat (2 cm), the hero
+ *      glances, it shrinks away when its panel closes (library_plane_out / _in / _landed)
  *   6  the menu opening with three friends already in the lobby: all seated on that frame (a scratch copy)
  *   7  Maps (a tap on the row), twice: the first takes the pictures, the second (none: a capture stalls a frame) is
  *      timed; the move ends on the map camera at duration_s +- 1 frame, the camera never
@@ -35,6 +42,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "lib_dressing.h"
 #include "platform/app.h"
 
 struct AutotestProbe;
@@ -82,6 +90,22 @@ typedef struct LibraryTest {
     int l_frames, hearts_frames;
     bool hearts_bad, fish_out, shot_rug, shot_visit, shot_pet, pet_seen;
     double clock_err;       /* the worst |shown - device| local time, s */
+    /* §8 (15.7 - 15.9) */
+    int demo;               /* the demo lobby's scenario (AutotestOut.lib_demo - 1) */
+    int tk;                 /* a runner's step */
+    float start_err, door_near; /* the friend: where it started vs its table's seat 0 stand point; closest to an outside door */
+    int fast_frames, fast_on_screen, off_frames; /* walker frames faster than walk_speed (on screen: a failure); off screen */
+    int bay_before, my_bay;
+    LibDressing my_dress;   /* my own table before I left it */
+    double trip_t0, gone_seen[2], prev_clk;
+    HMM_Vec3 eye0;
+    float cam_wait;         /* the camera's largest move while the hero was not yet off screen */
+    int blank, ghost_bad;
+    uint32_t trip_draws, thrown0, landed0;
+    bool plane_shot, plane_shot2;
+    bool sw_on[2];          /* speed_watch: the friend, the hero: walking last frame, where, at which people time */
+    HMM_Vec2 sw_p[2];
+    double sw_t[2];
     char npc_why[160];
     char why[200];
 } LibraryTest;

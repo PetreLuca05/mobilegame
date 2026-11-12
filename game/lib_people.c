@@ -264,6 +264,21 @@ const LibAgent *lib_people_walker(const LibPeople *P, int slot)
     return slot >= 0 && slot < LIB_PEOPLE_WALKERS && P->w[slot].on ? &P->ag.a[P->walker_agent[slot]] : NULL;
 }
 
+void lib_people_walker_speed(LibPeople *P, int slot, float speed)
+{
+    if (slot < 0 || slot >= LIB_PEOPLE_WALKERS || P->walker_agent[slot] < 0) return;
+    P->ag.a[P->walker_agent[slot]].speed = speed;
+}
+
+void lib_people_walker_swap(LibPeople *P, int a, int b)
+{
+    if (a < 0 || b < 0 || a >= LIB_PEOPLE_WALKERS || b >= LIB_PEOPLE_WALKERS || a == b) return;
+    const LibWalker w = P->w[a];
+    P->w[a] = P->w[b], P->w[b] = w;
+    const int id = P->walker_agent[a];
+    P->walker_agent[a] = P->walker_agent[b], P->walker_agent[b] = id;
+}
+
 /* ------------------------------------------------------------------ the cat (§10) */
 
 void lib_people_cat_add(LibPeople *P, float radius, float speed)

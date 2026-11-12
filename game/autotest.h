@@ -152,6 +152,7 @@ typedef struct AutotestProbe {
     const struct BookPack *book;
     struct BookProgress *progress; /* NULL: no progress file open */
     uint32_t ui_draws, passes;     /* last frame's */
+    bool npc_world; /* set after the initialiser: this scene simulates NPCs (the institute without a pack has none) */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
@@ -175,6 +176,8 @@ typedef struct AutotestOut {
     int lib_fidget;        /* library: 1 + a LibAction the hero plays now (§6), 0 none */
     int lib_phone;         /* library: the phones between uses: 1 pocket, 2 table, 0 as they are */
     int lib_cat_hold;      /* library: 1 the cat visits nobody (the scripted steps before §10), 2 it visits again, 0 unchanged */
+    int lib_demo;          /* library: 1 + the demo lobby's scenario (0 me alone, 1 + "friend", 2 a guest of "hostA" with "mateB"), 0 unchanged */
+    int lib_plane;         /* library: 1 an invite sent to "friend" (a plane out), 2 an invite from "hostA" (a plane in), 3 its panel closed */
     bool teleport;         /* bookpeople: put the player at teleport_pos facing teleport_yaw */
     HMM_Vec3 teleport_pos;
     float teleport_yaw;

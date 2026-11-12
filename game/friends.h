@@ -38,6 +38,8 @@ typedef struct Friends {
     char error[64];    /* the last refused call's code, "" = none */
     char cache_path[512];
     NetFriendRow scratch[FRIEND_MAX];
+    uint32_t requests_sent;      /* LIB-1 §8: friend requests sent (each one is a paper plane in the library) */
+    char last_request[NET_CODE_LEN + 8]; /* the code it went to */
 } Friends;
 
 void friends_init(Friends *f, NetTransport *net, const char *profile);

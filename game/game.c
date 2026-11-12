@@ -159,6 +159,11 @@ typedef struct Game {
     bool lib_hero_walked;  /* the first onboarding screen's walk-in happened */
     bool lib_demo_join;    /* --lib-demo-join: a friend joins at 1 s and leaves at 10 s (no network) */
     double lib_demo_t0;
+    int lib_demo_ctl;      /* --autotest library: the demo lobby by scenario (-1: the timeline above; 0 me alone, 1 + a friend, 2 a guest
+                            * of hostA with mateB) */
+    uint32_t plane_inv_seen, plane_req_seen; /* LIB-1 §8: invites / friend requests already turned into paper planes */
+    char plane_to[NET_ID_LEN + 8];           /* a throw waiting for the menu (sent from the Friends page) */
+    double plane_at;                         /* when it was asked for (0 none) */
     AvatarAnim local_anim;
     AvatarLook local_look;
     NetTransport *net;
@@ -961,6 +966,7 @@ bool game_init(MgApp *app)
             g->force_reduced = true; /* tests: Animații interfață = Reduse for this run, never written to prefs */
         }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
+        g->lib_demo_ctl = -1;
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
         if (arg_value(app->argc, app->argv, "--lib-bay")) { /* desktop: my table in another bay of the hall (pictures) */
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
@@ -2053,6 +2059,9 @@ static void lobby_follow(Game *g, MgApp *app)
         if (!r->shown) {
             r->shown = true;
             notice_push(&g->notice, NOTICE_INVITE, r->id, r->name, &r->skin, str("notice_invite"), LOBBY_INVITE_PANEL_S);
+            if (g->menu_world_on) { /* §8: the panel at once, as before; a paper plane flies in as its picture */
+                menu_library_receive_plane(&g->lib, r->id);
+            }
         }
     }
     if (l->grant_ready) {
@@ -2141,6 +2150,7 @@ static void draw_notices(Game *g, MgApp *app)
         lobby_respond(&g->lobby, id, res == NOTICE_ACCEPT);
     } else if (res != NOTICE_NONE && kind == NOTICE_INVITE) {
         lobby_invite_answer(&g->lobby, id, res == NOTICE_ACCEPT);
+        menu_library_plane_close(&g->lib); /* §8: the landed plane shrinks away with its panel */
     } else if (res != NOTICE_NONE && kind == NOTICE_FRIEND) {
         friends_respond(&g->friends, id, res == NOTICE_ACCEPT);
     }
@@ -2293,6 +2303,31 @@ static void lighting_mix(GfxSceneParams *out, const GfxSceneParams *a, const Gfx
     out->stars = mg_lerpf(a->stars, b->stars, k);
 }
 
+static bool motion_reduced(const Game *g);
+
+/* LIB-1 §8: an invite or a friend request sent (the RPC went out at once) is a paper plane thrown from my seat; one sent from the
+ * Friends page flies once I am back on the menu (within 30 s). Nothing waits for it. */
+static void library_planes(Game *g, MgApp *app, bool on_menu)
+{
+    if (g->lobby.invites_sent != g->plane_inv_seen) {
+        g->plane_inv_seen = g->lobby.invites_sent;
+        SDL_snprintf(g->plane_to, sizeof(g->plane_to), "%s", g->lobby.last_invite);
+        g->plane_at = app->time;
+    }
+    if (g->friends.requests_sent != g->plane_req_seen) {
+        g->plane_req_seen = g->friends.requests_sent;
+        SDL_snprintf(g->plane_to, sizeof(g->plane_to), "%s", g->friends.last_request);
+        g->plane_at = app->time;
+    }
+    if (g->plane_at > 0.0) {
+        if (app->time - g->plane_at > 30.0) {
+            g->plane_at = 0.0;
+        } else if (on_menu && menu_library_throw_plane(&g->lib, g->plane_to)) {
+            g->plane_at = 0.0;
+        }
+    }
+}
+
 /* The main menu's backdrop (LIB-1): the library reading room, the hero studying in seat 0. Also behind
  * onboarding, Settings and Friends. The hospital is no longer loaded for the menu: a game builds it while
  * loading. */
@@ -2301,6 +2336,9 @@ static bool menu_world(Game *g, MgApp *app)
     const int st = g->fe.state;
     const bool onboarding = (st == FE_WELCOME || st == FE_USERNAME || st == FE_CREATOR) && !g->play_paused;
     if ((st != FE_MAIN_MENU && st != FE_SETTINGS && st != FE_FRIENDS && !onboarding) || !g->lib.ok) {
+        if (g->lib.ok) {
+            menu_library_travel_finish(&g->lib); /* §8: the game loading, the map: every move ends now */
+        }
         g->menu_world_on = false;
         return false;
     }
@@ -2311,7 +2349,18 @@ static bool menu_world(Game *g, MgApp *app)
                          : g->profile.display_name[0] ? g->profile.display_name : g->prefs.cache_name;
         menu_library_set_lobby_seed(&g->lib, lib_seed_of(id));
     }
-    menu_library_roster(&g->lib, g->menu_rows, g->lobby_visible ? g->menu_row_count : 0, opened);
+    { /* §8: the lobby's table (the host's), trips, arrivals and leavers; a full-screen page or Reduse: at once */
+        const bool page = st == FE_SETTINGS || st == FE_FRIENDS || st == FE_CREATOR; /* the Locker too */
+        if (page) {
+            menu_library_travel_finish(&g->lib);
+        }
+        menu_library_lobby(&g->lib, g->menu_rows, g->lobby_visible ? g->menu_row_count : 0, opened, page || motion_reduced(g));
+        if (g->lib.dissolve_armed && !page) { /* Reduse: this frame is kept and dissolved over the trip done at once (next frame) */
+            gfx_dissolve_capture(app->gfx);
+            g->dissolve_t0 = app->time;
+        }
+    }
+    library_planes(g, app, st == FE_MAIN_MENU);
     if (st == FE_WELCOME && !g->lib_hero_walked) { /* a fresh install: the hero comes in once */
         g->lib_hero_walked = true;
         menu_library_hero_walk_in(&g->lib);
@@ -2439,6 +2488,7 @@ static bool begin_map_move(Game *g, MgApp *app, WmState state)
     if (motion_reduced(g)) { /* Animații interfață = Reduse: a 300 ms cross-dissolve instead of the move */
         gfx_dissolve_capture(app->gfx);
         g->dissolve_t0 = app->time;
+        menu_library_travel_finish(&g->lib);
         g->lib.shell_k = 1.0f;
         return open_map(g, app, state);
     }
@@ -2451,6 +2501,7 @@ static bool begin_map_move(Game *g, MgApp *app, WmState state)
     const LibScene *sc = &g->lib.sc;
     lib_move_begin(&g->move, menu_library_cam_pose(&g->lib), map, sc->transition.duration_s, sc->transition.hump, sc->transition.shell_fade[0],
                    sc->transition.shell_fade[1], true);
+    menu_library_travel_finish(&g->lib); /* §8: Maps finishes a trip (from the camera where it is: no jump) */
     g->move_state = 1;
     g->move_t0 = app->time;
     g->move_entered = false;
@@ -2735,7 +2786,25 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = i == 0;
         }
     }
-    if (g->lib_demo_join && f->state == FE_MAIN_MENU) { /* LIB-1 tests: a friend walks in, studies, walks out */
+    if (g->lib_demo_ctl >= 0 && f->state != FE_MAP) { /* --autotest library: the scenario the script asks for */
+        static const char *const ids[3] = {"me", "friend", "hostA"};
+        static const char *const names[3] = {"Petre", "Ana", "Mihai"};
+        const int sc = g->lib_demo_ctl;
+        g->lobby_visible = true;
+        g->menu_row_count = sc == 0 ? 1 : sc == 1 ? 2 : 3;
+        for (int i = 0; i < g->menu_row_count; i++) {
+            LobbyRow *r = &g->menu_rows[i];
+            SDL_zerop(r);
+            /* scenario 2: hostA (host), mateB, me */
+            const char *id = sc == 2 ? (i == 0 ? "hostA" : i == 1 ? "mateB" : "me") : ids[i];
+            SDL_snprintf(r->id, sizeof(r->id), "%s", id);
+            SDL_snprintf(r->name, sizeof(r->name), "%s", sc == 2 ? (i == 0 ? names[2] : i == 1 ? "Ioana" : names[0]) : names[i]);
+            r->skin = AVATAR_DEFAULT_SKIN;
+            r->skin.suit = (uint8_t)(i * 5 + sc), r->skin.hair = (uint8_t)(2 + i), r->skin.accessory = 0;
+            r->me = SDL_strcmp(id, "me") == 0;
+            r->host = sc == 2 ? i == 0 : r->me;
+        }
+    } else if (g->lib_demo_join && f->state == FE_MAIN_MENU) { /* LIB-1 tests: a friend walks in, studies, walks out */
         if (g->lib_demo_t0 <= 0.0) {
             g->lib_demo_t0 = app->time;
         }
@@ -2745,7 +2814,8 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         for (int i = 0; i < 2; i++) {
             LobbyRow *r = &g->menu_rows[i];
             SDL_zerop(r);
-            SDL_snprintf(r->id, sizeof(r->id), i == 0 ? "me" : "friend");
+            const char *fid = arg_value(app->argc, app->argv, "--lib-demo-id"); /* desktop: the friend's id (its own table: its seed's bay) */
+            SDL_snprintf(r->id, sizeof(r->id), "%s", i == 0 ? "me" : fid ? fid : "friend");
             SDL_snprintf(r->name, sizeof(r->name), i == 0 ? "Petre" : "Ana");
             r->skin = AVATAR_DEFAULT_SKIN;
             r->skin.suit = (uint8_t)(i * 5), r->skin.hair = (uint8_t)(2 + i), r->skin.accessory = 0;
@@ -2774,7 +2844,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     ctx.maps_tag = g->maps_tag;
     ctx.maps_ready = g->wm.loaded || g->wm_tried; /* LIB-1: preloaded (or failed: Maps says so) */
     ctx.lobby_visible = g->lobby_visible;
-    ctx.lobby_host = g->demo_lobby || g->lib_demo_join || lobby_is_host(&g->lobby); /* the demo lobbies: I host */
+    ctx.lobby_host = (g->demo_lobby || g->lib_demo_join || lobby_is_host(&g->lobby)) && g->lib_demo_ctl != 2; /* the demo lobbies: I host */
     ctx.lobby_open = g->lobby.open;
     ctx.rows = g->menu_rows;
     ctx.row_count = g->menu_row_count;
@@ -4040,6 +4110,7 @@ static void game_frame_inner(MgApp *app, float alpha)
                            g->ia_ok && g->ia.active != IA_NONE ? (int)g->ia.hot[g->ia.active].kind : -1,
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
+    probe.npc_world = g->npcs_ok;
     probe.show_stats = s->show_stats;
     probe.scene_kind = g->scene ? (int)scene_kind(g->scene) : -1;
     probe.lift_count = lift_count(g);
@@ -4204,6 +4275,17 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     if (ato.lib_cat_hold) { /* --autotest library: no cat visits (no pet cutting into a forced action) until step 13 */
         g->lib.cat_hold = ato.lib_cat_hold == 1;
+    }
+    if (ato.lib_demo > 0) { /* --autotest library: the demo lobby's scenario */
+        g->lib_demo_ctl = ato.lib_demo - 1;
+    }
+    if (ato.lib_plane == 1) { /* --autotest library: an invite sent to "friend" (its plane) */
+        g->plane_at = app->time;
+        SDL_snprintf(g->plane_to, sizeof(g->plane_to), "friend");
+    } else if (ato.lib_plane == 2) {
+        menu_library_receive_plane(&g->lib, "hostA");
+    } else if (ato.lib_plane == 3) {
+        menu_library_plane_close(&g->lib);
     }
     if (ato.lib_fidget > 0) { /* --autotest library: the hero plays this action now (PET through the cat's hook) */
         menu_library_fidget(&g->lib, 0, (LibAction)(ato.lib_fidget - 1));

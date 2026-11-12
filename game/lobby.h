@@ -107,6 +107,9 @@ typedef struct Lobby {
     int debug_players;      /* --autotest friends: announced instead of the real count */
     /* GUEST */
     char host_id[NET_ID_LEN];
+    /* LIB-1 §8: invites sent (each one is a paper plane in the library; the RPC itself goes out at once) */
+    uint32_t invites_sent;
+    char last_invite[NET_ID_LEN];
     double host_seen;
 } Lobby;
 

@@ -15,7 +15,7 @@ struct cJSON;
 
 #define LIB_PEOPLE_MAX 32
 #define LIB_PEOPLE_STOPS_MAX 12
-#define LIB_PEOPLE_WALKERS 4 /* lobby members walking to / from a seat (presentation slots 0..3) */
+#define LIB_PEOPLE_WALKERS 8 /* lobby members walking to / from a seat (presentation slots 0..7: 4..7 the ones leaving, §8) */
 #define LIB_PEOPLE_BAYS 8
 #define LIB_PEOPLE_SLOW 6    /* a bay that is not on screen: one tick in six */
 
@@ -143,6 +143,8 @@ void lib_people_walker_goal(LibPeople *P, int slot, HMM_Vec2 goal);
 void lib_people_walker_stop(LibPeople *P, int slot);   /* out of the hall (seated or gone) */
 bool lib_people_walker_arrived(const LibPeople *P, int slot);
 const LibAgent *lib_people_walker(const LibPeople *P, int slot); /* NULL when not on */
+void lib_people_walker_speed(LibPeople *P, int slot, float speed); /* §8: the off-screen speed rule */
+void lib_people_walker_swap(LibPeople *P, int a, int b);           /* two slots trade their walks (a member moving slot) */
 
 /* §10 the cat: its agent (call once after lib_people_init). Before each tick, lib_people_cat_sync says where the cat is and
  * whether it walks: off the floor (a table, the window seat, a hop) it is no agent; on the floor it is placed (once its spot
