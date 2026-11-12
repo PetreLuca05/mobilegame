@@ -135,6 +135,7 @@ typedef struct LibMember {
 typedef struct MenuLibrary {
     bool ok;
     LibScene sc;
+    uint32_t room_near[LIB_BAYS]; /* a back room's first indices: its triangles through the middle wall (upload_split) */
     GfxMeshId room[LIB_BAYS], shell, chair, door, cart, book_open, book_closed, leaf_a, leaf_b, mug, pencil;
     float bay_x[LIB_BAYS], bay_z[LIB_BAYS]; /* hall.bx / bz: each bay's origin (the bay meshes are placed already) */
     int home_bay;
@@ -176,7 +177,10 @@ typedef struct MenuLibrary {
     LibPeopleCfg *pcfg;
     LibPeople *people;  /* NULL when the grid or the scene's npcs failed: nobody walks, members take the old straight legs */
     double tick_acc;
-    uint32_t visible;   /* bit b: bay b is in the camera's frustum this frame (people elsewhere tick at 1/6, are not drawn) */
+    uint32_t visible;   /* bit b: bay b is in the camera's frustum and not behind the middle wall this frame (people elsewhere
+                         * tick at 1/6, are not drawn, emit nothing) */
+    bool snap_camera;   /* --lib-still: the fit distance and shift without easing (identical frames for comparisons) */
+    bool no_wall_vis;   /* --lib-no-wall-vis: the frustum alone (A/B pictures and perf) */
     HMM_Mat4 view_proj; /* world: set by the caller with view_eye (has_vp) */
     bool has_vp;
     GfxMeshId puff, zee;

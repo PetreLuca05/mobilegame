@@ -280,6 +280,10 @@ typedef struct Game {
     HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
     bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
+    uint32_t lib_ab_frame; /* --lib-wall-ab */
+    uint32_t fs_n;          /* --log-frame-stats */
+    uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
+    uint32_t fs_vis[4];
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -962,7 +966,9 @@ bool game_init(MgApp *app)
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
         }
         g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
+        g->lib.no_wall_vis = has_flag(app->argc, app->argv, "--lib-no-wall-vis"); /* A/B: bay visibility by the frustum alone */
         g->lib_still = has_flag(app->argc, app->argv, "--lib-still");
+        g->lib.snap_camera = g->lib_still;
         g->lib.log_acts = has_flag(app->argc, app->argv, "--lib-log-acts"); /* every background person's act as it starts (pictures) */
         if (arg_value(app->argc, app->argv, "--lib-look")) { /* desktop pictures: the menu camera on hall point x,z from d m */
             float x = 0.0f, z = 0.0f, d = 0.0f;
@@ -4123,6 +4129,33 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
     if (g->start_time == 0.0) {
         g->start_time = app->time;
+    }
+    if (has_flag(app->argc, app->argv, "--log-frame-stats")) { /* counts (not times): valid on battery too */
+        GfxStats st;
+        gfx_get_stats(app->gfx, &st);
+        g->fs_n++, g->fs_draws += st.draws, g->fs_tris += st.tris;
+        for (int b = 0; b < 4; b++) {
+            g->fs_vis[b] += (g->lib.visible >> b) & 1u;
+        }
+        for (int c = 0; c < GFX_CATS; c++) {
+            g->fs_cat[c] += st.tris_cat[c];
+        }
+        if (g->fs_n == 120) {
+            const double n = 120.0;
+            mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
+                        g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
+                        g->fs_cat[GFX_CAT_AVATAR] / n / 1000.0, g->fs_cat[GFX_CAT_OTHER] / n / 1000.0);
+            mg_log_info("frame stats: bays visible %u %u %u %u of 120 frames (wall rule %s)", g->fs_vis[0], g->fs_vis[1], g->fs_vis[2], g->fs_vis[3],
+                        g->lib.no_wall_vis ? "off" : "on");
+            SDL_memset(g->fs_vis, 0, sizeof(g->fs_vis));
+            g->fs_n = 0, g->fs_draws = g->fs_tris = 0;
+            SDL_memset(g->fs_cat, 0, sizeof(g->fs_cat));
+        }
+    }
+    if (has_flag(app->argc, app->argv, "--lib-wall-ab")) { /* test: the wall rule on for two frames, off for two (pixel compare of
+                                                              * frames of the same parity: some dither alternates every frame) */
+        g->lib_ab_frame++;
+        g->lib.no_wall_vis = (g->lib_ab_frame >> 1) & 1u;
     }
     const char *shots = arg_value(app->argc, app->argv, "--screenshot-at");
     int entry = 0;
