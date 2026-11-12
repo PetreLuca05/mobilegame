@@ -56,6 +56,8 @@ static inline void save_mark_visited(SaveGame *s, int storey, int chunk)
 bool save_write(const SaveGame *s, const char *profile);
 bool save_read(SaveGame *s, const char *profile);
 bool save_exists(const char *profile);
+/* The slot's version, 0 when there is none (or it does not read). */
+int save_version(const char *profile);
 void save_delete(const char *profile);
 
 #endif

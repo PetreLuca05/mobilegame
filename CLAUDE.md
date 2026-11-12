@@ -667,7 +667,9 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   `--content build/<dir>/fixture`.
 - Leak guard: `tools/precommit.sh` refuses a commit holding a run of 12 or more consecutive words of the book
   (`tools/book/leakguard.py` + the hashed shingles in `tools/book/leakguard.txt`, hashes only); `leakguard.py repo GUARD .`
-  scans every tracked file. The rest of `tools/book/` is the content pipeline's code (no book text).
+  scans every tracked file. `tools/book/` keeps only what the engine and tests need: the leak guard and its hashes,
+  `packbin.py` (the pack writer, used by the fixture generator) and `figpack.py` + `astc_encode.swift` (figure packs); the rest of the
+  content pipeline is not in the repository.
 
 ## Book engine (BOOK-ENGINE)
 
@@ -681,8 +683,7 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - `--autotest institute` (sets the scene itself): auto-nav to a room on every storey, the roof deck and back to the
   forecourt, a picture per stop (`inst_at_*`), worst frame <= 150 draws, 0 frame-loop allocations, >= 4 rides. Perf scenario
   `institute` (G lobby, both wings, a ride to floor 2). `save` / `continue` play Gastro = the institute (auto-nav to floor 2).
-- Pack: `game/book_pack.c` (the reader's checks, zero copy; `book_pack_test`), `MG_CONTENT_DIR` (none = no content), the
-  „conținut demo” chip while a `--content` fixture is loaded, `MG_REQUIRE_REAL_CONTENT=ON` in the release scripts. Text: `text_wrap` (`engine/ui/text_layout.c`),
+- Pack: `game/book_pack.c` (the reader's checks, zero copy; `book_pack_test`), `MG_CONTENT_DIR` (none = no content), `MG_REQUIRE_REAL_CONTENT=ON` in the release scripts. Text: `text_wrap` (`engine/ui/text_layout.c`),
   `ui_text_area` (re-wraps on change, draws only visible lines). Glyphs „ ” – ’ › → − † α β γ (Greek from Comfortaa).
 - Progress (decision 4): `game/book_progress.c`, one file per account `book_gastro_<uid>.bin` (MGBP: facts bitset + 2 bits
   per case, atomic write from a fixed buffer); on account load the bits go to `book_progress_merge` and the merged row comes

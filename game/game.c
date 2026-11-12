@@ -50,6 +50,7 @@
 #include "elevator_panel.h"
 #include "frontend.h"
 #include "prefs.h"
+#include "content_cleanup.h"
 #include "save.h"
 #include "strings.h"
 #include "gfx/camera.h"
@@ -839,6 +840,10 @@ bool game_init(MgApp *app)
     g->settings = g->prefs.settings; /* per device */
     ui_haptic_set_level((HapticLevel)g->settings.haptics);
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
+    if (!g->prefs.content_cleaned) { /* once: book files from builds that carried the pack (save older than v8) */
+        content_cleanup_run(&g->prefs, g->profile_name);
+        prefs_save(&g->prefs, g->profile_name);
+    }
     g->has_save = save_exists(g->profile_name);
     book_pack_load(&g->book, arg_value(app->argc, app->argv, "--content")); /* none in the repository: no book content; tests: --content DIR */
     script_player_init(&g->sp, app->gfx); /* BOOK-ENGINE: the figures embedded, the GPU texture for the largest reserved */
@@ -4768,9 +4773,6 @@ static void game_frame_inner(MgApp *app, float alpha)
         const float chip_l = ui_safe_left(&cf) + UI_MARGIN + cf.corner; /* head_chip_draw takes the right edge */
         gfx_ui_depth(app->gfx, k_ui.tilt_depth[2], 0); /* TILT-1: the account pill */
         head_chip_draw(&g->heads, app->gfx, &app->font, &g->profile.skin, g->profile.display_name, chip_l + head_chip_width(&app->font, g->profile.display_name), cpy);
-        if (book_pack_is_demo()) { /* BOOK-1: the dummy pack; left of the pause button, clear of the stick half and the notices */
-            ui_tag_chip(&g->ui, str("content_demo"), cpx - UI_MARGIN, cpy + (cps - k_ui.tag_h) * 0.5f);
-        }
         gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
     }
     g->touch.hide_hint = g->lift_panel_ok && g->lift_panel.slide > 0.0f;
@@ -5174,8 +5176,7 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
     const ui_frame_t uf = hud_frame(app);
     float px, py, ps;
     ui_pause_rect(&uf, &px, &py, &ps);
-    const float demo_w = book_pack_is_demo() ? ui_tag_chip_w(&g->ui, str("content_demo")) + UI_MARGIN : 0.0f; /* BOOK-1: its chip */
-    const float pause_btn[4] = {px - 6.0f - demo_w, py - 6.0f, ps + 12.0f + demo_w, ps + 12.0f};
+    const float pause_btn[4] = {px - 6.0f, py - 6.0f, ps + 12.0f, ps + 12.0f};
     memcpy(res + rc * 4, pause_btn, sizeof(pause_btn));
     rc++;
     if (g->lift_panel_ok && elevator_panel_visible(&g->lift_panel)) {

@@ -396,6 +396,7 @@ set(MG_GAME_SOURCES
   game/creator.c
   game/prefs.c
   game/save.c
+  game/content_cleanup.c
   game/strings.c
   game/world_data.c
   game/world_progress.c

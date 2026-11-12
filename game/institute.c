@@ -1686,7 +1686,7 @@ static void free_slots(const Institute *in, RoomGraph *g)
             continue;
         }
         bool found = false;
-        for (float r = 0.25f; r <= 1.5f && !found; r += 0.25f) {
+        for (float r = 0.25f; r <= 3.0f && !found; r += 0.25f) { /* 3 m: the amphitheatre's tiers fill 1.5 m round a seat */
             for (int k = 0; k < 16 && !found; k++) {
                 const float a = (float)k * HMM_PI32 / 8.0f, x = s->x + r * cosf(a), z = s->z + r * sinf(a);
                 if (spot_free(in->world, x, z, fy) && room_at(g, x, z, s->storey) == room_at(g, s->x, s->z, s->storey)) {
@@ -1699,7 +1699,7 @@ static void free_slots(const Institute *in, RoomGraph *g)
         moved += found;
         stuck += !found;
     }
-    mg_log_info("institute: %d slots moved out of furniture, %d without a free spot within 1.5 m", moved, stuck);
+    mg_log_info("institute: %d slots moved out of furniture, %d without a free spot within 3 m", moved, stuck);
 }
 
 void institute_rooms_build(const Institute *in, RoomGraph *g)

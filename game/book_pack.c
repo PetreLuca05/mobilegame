@@ -516,11 +516,9 @@ bool book_pack_open(BookPack *p, const void *blob, size_t size, const char *labe
     return p->ok;
 }
 
-static bool g_fixture;            /* the pack came from --content (the tests' fixture) */
 static const void *g_figs;        /* its figures (file) */
 static size_t g_figs_size;
 
-bool book_pack_is_demo(void) { return g_fixture; }
 
 /* a whole file, once at start (malloc'd and kept for the run: 16-byte aligned, the pack is read in place); NULL if missing */
 static void *load_file(const char *path, size_t *size)
@@ -565,7 +563,6 @@ bool book_pack_load(BookPack *p, const char *content_dir)
         data = load_file(path, &size);
         snprintf(path, sizeof(path), "%s/figures.mgfig", content_dir);
         g_figs = load_file(path, &g_figs_size);
-        g_fixture = data != NULL;
     } else {
         const MgAsset *a = mg_asset_find("content/gastro.mgpack");
         data = a ? a->data : NULL;
