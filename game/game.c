@@ -2814,7 +2814,8 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         for (int i = 0; i < 2; i++) {
             LobbyRow *r = &g->menu_rows[i];
             SDL_zerop(r);
-            SDL_snprintf(r->id, sizeof(r->id), i == 0 ? "me" : "friend");
+            const char *fid = arg_value(app->argc, app->argv, "--lib-demo-id"); /* desktop: the friend's id (its own table: its seed's bay) */
+            SDL_snprintf(r->id, sizeof(r->id), "%s", i == 0 ? "me" : fid ? fid : "friend");
             SDL_snprintf(r->name, sizeof(r->name), i == 0 ? "Petre" : "Ana");
             r->skin = AVATAR_DEFAULT_SKIN;
             r->skin.suit = (uint8_t)(i * 5), r->skin.hair = (uint8_t)(2 + i), r->skin.accessory = 0;

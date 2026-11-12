@@ -1296,6 +1296,10 @@ static void member_remove(MenuLibrary *L, int i)
 {
     LibMember *mb = &L->seat[i];
     mb->removed_off = !spot_on_screen(L, mb->pos);
+    if (mb->leaving || mb->ghost) {
+        mg_log_info("library: %s gone (%s, %s), %.1f m from its table's stand point, %.1f s after it got up", mb->name, mb->ghost ? "left behind" : "walking home",
+                    mb->removed_off ? "out of view" : "in view", (double)HMM_LenV2(HMM_SubV2(mb->pos, mb->home)), mb->t_left > 0.0 ? L->clock - mb->t_left : 0.0);
+    }
     mb->state = LM_EMPTY;
     mb->t_gone = L->clock;
     if (L->people) {
