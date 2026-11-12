@@ -1,6 +1,7 @@
 #include "menu_library.h"
 
 #include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_time.h>
 #include <cJSON.h>
 #include <math.h>
 
@@ -124,7 +125,10 @@ static bool load_scene(LibScene *s)
     const cJSON *life = cJSON_GetObjectItemCaseSensitive(root, "life");
     const cJSON *mug = cJSON_GetObjectItemCaseSensitive(life, "mug");
     s->mug_rest = jv3(mug, "rest"), s->mug_grip = jv3(mug, "grip");
-    s->lamp_light_alpha = jnum(cJSON_GetObjectItemCaseSensitive(life, "alpha"), "lamp_cone", 0.13f) + 0.05f;
+    const cJSON *al = cJSON_GetObjectItemCaseSensitive(life, "alpha");
+    s->lamp_light_alpha = jnum(al, "lamp_cone", 0.13f) + 0.05f;
+    s->alpha_beam = jnum(al, "beam", 0.13f), s->alpha_tank = jnum(al, "tank_glass", 0.3f);
+    s->alpha_glow = jnum(al, "lamp_glow", 0.28f), s->alpha_cone = jnum(al, "lamp_cone", 0.13f);
     s->globe_spin = jnum(cJSON_GetObjectItemCaseSensitive(life, "globe"), "spin_rad_s", 0.45f);
     s->pencil_rest = jv3(cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(life, "fidget"), "notes"), "pencil_rest");
     const cJSON *cam = cJSON_GetObjectItemCaseSensitive(root, "camera");
@@ -275,15 +279,15 @@ static void dressing_init(MenuLibrary *L, GfxContext *g, Arena *arena)
         return;
     }
     Mgmb mb;
-    uint32_t n_lamp = 0, n_light = 0, n_item[LIB_DRESS_MAX_POOL] = {0}, item_max = 0;
+    uint32_t n_lamp = 0, n_item[LIB_DRESS_MAX_POOL] = {0}, item_max = 0;
     size_t mark = arena_mark(arena);
     if (!mgmb_load(&mb, "assets/menu/library.mgmb", arena)) {
         arena_reset_to(arena, mark);
         L->dress_ok = false;
         return;
     }
-    const MgmbGroup *gl = mgmb_group(&mb, "table_lamp"), *gp = mgmb_group(&mb, "table_lamp_light");
-    n_lamp = gl ? gl->vert_count : 0, n_light = gp ? gp->vert_count : 0;
+    const MgmbGroup *gl = mgmb_group(&mb, "table_lamp");
+    n_lamp = gl ? gl->vert_count : 0;
     for (int k = 0; k < L->dress_cfg.pool_count; k++) {
         const MgmbGroup *gi = SDL_strcmp(L->dress_cfg.pool[k], "globe") == 0 ? NULL : mgmb_group(&mb, L->dress_cfg.pool[k]);
         n_item[k] = gi ? gi->vert_count : 0;
@@ -291,10 +295,8 @@ static void dressing_init(MenuLibrary *L, GfxContext *g, Arena *arena)
     }
     arena_reset_to(arena, mark);
     L->dress_cap = 2u * (n_lamp + (uint32_t)L->dress_cfg.count_max * item_max);
-    L->light_cap = 2u * n_light;
-    const uint32_t build_cap = L->dress_cap > L->light_cap ? L->dress_cap : L->light_cap;
+    const uint32_t build_cap = L->dress_cap;
     L->src_lamp.v = ARENA_PUSH(arena, GfxVertex, n_lamp), L->src_lamp.n = n_lamp;
-    L->src_light.v = ARENA_PUSH(arena, GfxVertex, n_light), L->src_light.n = n_light;
     for (int k = 0; k < L->dress_cfg.pool_count; k++) {
         L->src_item[k].v = n_item[k] ? ARENA_PUSH(arena, GfxVertex, n_item[k]) : NULL, L->src_item[k].n = n_item[k];
     }
@@ -310,7 +312,6 @@ static void dressing_init(MenuLibrary *L, GfxContext *g, Arena *arena)
     mark = arena_mark(arena);
     if (mgmb_load(&mb, "assets/menu/library.mgmb", arena)) {
         if ((gl = mgmb_group(&mb, "table_lamp")) != NULL) SDL_memcpy(L->src_lamp.v, gl->verts, sizeof(GfxVertex) * n_lamp);
-        if ((gp = mgmb_group(&mb, "table_lamp_light")) != NULL) SDL_memcpy(L->src_light.v, gp->verts, sizeof(GfxVertex) * n_light);
         for (int k = 0; k < L->dress_cfg.pool_count; k++) {
             const MgmbGroup *gi = n_item[k] ? mgmb_group(&mb, L->dress_cfg.pool[k]) : NULL;
             if (gi) {
@@ -321,7 +322,6 @@ static void dressing_init(MenuLibrary *L, GfxContext *g, Arena *arena)
     arena_reset_to(arena, mark);
     for (int r = 0; r < 2; r++) {
         L->dress_mesh[r] = gfx_mesh_reserve(g, L->dress_cap, L->dress_cap);
-        L->light_mesh[r] = gfx_mesh_reserve(g, L->light_cap, L->light_cap);
     }
 }
 
@@ -340,7 +340,18 @@ static uint32_t put_soup(GfxVertex *out, uint32_t at, uint32_t cap, const GfxVer
 
 static int bay_row(const MenuLibrary *L, int b) { return L->bay_z[b] < L->sc.mid_wall_z ? 1 : 0; }
 
-/* After a seed change: each row's tables (lamps and clutter but the globes; the light pools) into its meshes */
+/* §10: every table's lamp drops dust in its cone (lamp_motes[0] around the lamp) */
+static void life_lamps(MenuLibrary *L)
+{
+    if (!L->life || !L->dress_ok) {
+        return;
+    }
+    for (int b = 0; b < LIB_BAYS; b++) {
+        lib_life_table_lamp(L->life, b, HMM_V2(L->bay_x[b] + L->dress[b].lamp_x, L->bay_z[b] + L->dress[b].lamp_z), true);
+    }
+}
+
+/* After a seed change: each row's tables (lamps and clutter but the globes) into its mesh */
 static void dressing_rebuild(MenuLibrary *L)
 {
     if (!L->dress_ok || !L->gfx) {
@@ -348,7 +359,7 @@ static void dressing_rebuild(MenuLibrary *L)
     }
     const float top = L->sc.table.top_y;
     for (int r = 0; r < 2; r++) {
-        uint32_t n = 0, nl = 0;
+        uint32_t n = 0;
         for (int b = 0; b < LIB_BAYS; b++) {
             if (bay_row(L, b) != r) {
                 continue;
@@ -365,15 +376,100 @@ static void dressing_rebuild(MenuLibrary *L)
             }
         }
         gfx_mesh_update(L->gfx, L->dress_mesh[r], L->build, n, L->build_idx, n);
-        for (int b = 0; b < LIB_BAYS; b++) {
-            if (bay_row(L, b) == r) {
-                const LibDressing *d = &L->dress[b];
-                nl = put_soup(L->build, nl, L->light_cap, L->src_light.v, L->src_light.n, L->bay_x[b] + d->lamp_x, top, L->bay_z[b] + d->lamp_z, d->lamp_yaw);
+    }
+    life_lamps(L);
+}
+
+/* §10: several small moving parts as zones of one mesh (part i = zone i + 1: vertex alpha 255 - zone), so each frame's
+ * instances of them are one instanced toon draw; a draw shows one part through its zone mask (life_mat), the vertex shader
+ * collapses the rest (common.hlsli zone_apply, as the suits do). The parts keep their own colours (zone colour white). */
+static GfxMeshId upload_zoned(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb *mb, const char *const *names, int n)
+{
+    uint32_t total = 0;
+    for (int i = 0; i < n; i++) {
+        const MgmbGroup *gr = mgmb_group(mb, names[i]);
+        if (!gr || gr->vert_count == 0) {
+            mg_log_error("library: group %s missing from library.mgmesh", names[i]);
+            return GFX_MESH_NONE;
+        }
+        total += gr->vert_count;
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, total);
+    if (!v) {
+        arena_reset_to(arena, mark);
+        return GFX_MESH_NONE;
+    }
+    uint32_t at = 0;
+    for (int i = 0; i < n; i++) {
+        const MgmbGroup *gr = mgmb_group(mb, names[i]);
+        for (uint32_t k = 0; k < gr->vert_count; k++, at++) {
+            v[at] = gr->verts[k];
+            v[at].a = (uint8_t)(255 - (i + 1));
+        }
+    }
+    uint32_t kept = 0;
+    const GfxMeshId id = mesh_upload_welded(g, arena, v, total, &kept);
+    L->weld_in += total, L->weld_out += kept;
+    arena_reset_to(arena, mark);
+    return id;
+}
+
+/* §10: the static alpha groups (beam, tank_glass, lamp_glow, lamp_cone; placed in the hall already) merged into one mesh per
+ * row of bays (each triangle by its centre's bay), each group's opacity (life.alpha) in the vertex alpha. Per row, not per
+ * bay: the frustum test sees all four bays from the menu camera (it knows no walls), so per-bay meshes cost four draws and cull
+ * nothing; a row is the unit the front row fades by (bay_hide). */
+static void upload_alpha_bays(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb *mb)
+{
+    static const char *const names[4] = {"beam", "tank_glass", "lamp_glow", "lamp_cone"};
+    const float alpha[4] = {L->sc.alpha_beam, L->sc.alpha_tank, L->sc.alpha_glow, L->sc.alpha_cone};
+    uint32_t total = 0;
+    for (int i = 0; i < 4; i++) {
+        const MgmbGroup *gr = mgmb_group(mb, names[i]);
+        total += gr ? gr->vert_count : 0;
+        if (!gr) {
+            mg_log_error("library: group %s missing from library.mgmesh", names[i]);
+        }
+    }
+    for (int r = 0; r < 2; r++) {
+        L->alpha_row[r] = GFX_MESH_NONE;
+    }
+    if (!L->lcfg || total == 0) {
+        return;
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, total);
+    if (!v) {
+        arena_reset_to(arena, mark);
+        return;
+    }
+    for (int r = 0; r < 2; r++) {
+        uint32_t n = 0;
+        for (int i = 0; i < 4; i++) {
+            const MgmbGroup *gr = mgmb_group(mb, names[i]);
+            for (uint32_t t = 0; gr && t + 2 < gr->vert_count; t += 3) {
+                const GfxVertex *q = &gr->verts[t];
+                const float cx = (q[0].px + q[1].px + q[2].px) / 3.0f, cz = (q[0].pz + q[1].pz + q[2].pz) / 3.0f;
+                if (bay_row(L, lib_life_bay_of(L->lcfg, cx, cz)) != r) {
+                    continue;
+                }
+                for (int k = 0; k < 3; k++, n++) {
+                    v[n] = q[k];
+                    v[n].a = (uint8_t)(mg_saturate(alpha[i]) * 255.0f + 0.5f);
+                }
             }
         }
-        gfx_mesh_update(L->gfx, L->light_mesh[r], L->build, nl, L->build_idx, nl);
+        if (n > 0) {
+            uint32_t kept = 0;
+            L->alpha_row[r] = mesh_upload_welded(g, arena, v, n, &kept);
+            L->weld_in += n, L->weld_out += kept;
+        }
     }
+    arena_reset_to(arena, mark);
 }
+
+/* the cat on the floor: an agent of this radius (LIB-1 §7: people walk round it) */
+#define LIB_CAT_RADIUS 0.2f
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
 {
@@ -403,6 +499,18 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
                 mg_log_error("library: the background people are off (%d in lib_people, %d in the scene)", L->pcfg ? L->pcfg->n : -1, L->sc.npc_n);
                 L->people = NULL;
             }
+        }
+        L->lcfg = ARENA_PUSH(scratch, LibLifeCfg, 1); /* §10 */
+        L->life = ARENA_PUSH(scratch, LibLife, 1);
+        if (L->lcfg && L->life && lib_life_config(L->lcfg, root)) {
+            lib_life_init(L->life, L->lcfg, 0xCA7u);
+            if (L->people) { /* the cat's ground legs through the grid, round everyone (§7) */
+                lib_people_cat_add(L->people, LIB_CAT_RADIUS, L->lcfg->cat_speed);
+                lib_cat_use_legs(L->life, L->people->cat_agent >= 0);
+            }
+        } else {
+            mg_log_error("library: life.* did not parse: the room's life (§10) is off");
+            L->life = NULL;
         }
         cJSON_Delete(root);
     }
@@ -438,6 +546,14 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->phone_glow = upload(L, g, scratch, &mb, "phone_glow");
     L->anger = upload(L, g, scratch, &mb, "anger");
     L->plane = upload(L, g, scratch, &mb, "paper_plane");
+    { /* §10 */
+        static const char *const parts[5] = {"clock_hand_m", "clock_hand_h", "clock_pendulum", "skeleton", "fish"};
+        static const char *const cat[3] = {"cat_body", "cat_head", "cat_tail"};
+        L->life_parts = upload_zoned(L, g, scratch, &mb, parts, 5);
+        L->cat_parts = upload_zoned(L, g, scratch, &mb, cat, 3);
+        L->table_lamp_light = upload(L, g, scratch, &mb, "table_lamp_light");
+        upload_alpha_bays(L, g, scratch, &mb);
+    }
     arena_reset_to(scratch, mark);
     L->ok = rooms && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
@@ -460,6 +576,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     lib_fidget_init(&L->seat[0].fid, &L->fcfg, 2u);
     L->gfx = g;
     dressing_init(L, g, scratch);
+    life_lamps(L);
     mg_log_info("library: %s (%d seats, %d extra chairs), %u vertices welded to %u", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n, L->weld_in,
                 L->weld_out);
     return L->ok;
@@ -1267,8 +1384,64 @@ static uint32_t bays_visible(const MenuLibrary *L)
     return vis;
 }
 
+/* §10 before a people tick: the cat learns which table the players are at and who is seated (studying, things on the table;
+ * the hero not while the Locker is open), and its agent learns where the cat is and where it walks. */
+static void life_pre_tick(MenuLibrary *L)
+{
+    LibLife *lf = L->life;
+    if (!lf) {
+        return;
+    }
+    HMM_Vec3 seats[LIB_SEATS];
+    uint32_t occ = 0;
+    for (int i = 0; i < LIB_SEATS; i++) {
+        seats[i] = HMM_V3(L->tseats[i].pos.X, L->tseats[i].pos.Y, HMM_AngleDeg(L->tseats[i].yaw_deg));
+        const LibMember *mb = &L->seat[i];
+        if (mb->state == LM_STUDY && mb->place >= 1.0f && !(i == 0 && L->creator_t > LOCKER_PAUSE)) {
+            occ |= 1u << i;
+        }
+    }
+    lib_cat_table(lf, L->tcentre, seats, occ);
+    if (L->people) {
+        const LibCat *k = &lf->cat;
+        lib_people_cat_sync(L->people, L->nav, HMM_V2(k->pos[0], k->pos[2]), k->yaw, lib_cat_on_floor(lf), k->leg, k->leg_goal);
+    }
+}
+
+/* §10 after a people tick: the cat's agent position goes back to the cat, the visited player's pet weight (its fidget's own
+ * state: seed + tick) drives the squash and the hearts, the cat ticks, and a pet it asks for starts (menu_library_pet). */
+static void life_post_tick(MenuLibrary *L, float dt)
+{
+    LibLife *lf = L->life;
+    if (!lf) {
+        return;
+    }
+    if (L->people) {
+        const LibAgent *a = lib_people_cat(L->people);
+        if (a) {
+            lib_cat_leg_feed(lf, a->pos, a->yaw, HMM_LenV2(a->vel), lib_people_cat_arrived(L->people));
+        }
+    }
+    const int who = lf->cat.who;
+    float w = 0.0f;
+    if (L->fid_ok && who >= 0 && who < LIB_SEATS && L->seat[who].state == LM_STUDY && L->seat[who].fid.act == LA_PET) {
+        LibFidgetOut fo;
+        lib_fidget_eval(&L->seat[who].fid, &L->fcfg, &fo);
+        w = fo.pet;
+    }
+    lib_cat_pet_weight(lf, w);
+    lib_life_tick(lf, L->lcfg, dt);
+    if (lf->cat.pet_serial != L->cat_serial) {
+        L->cat_serial = lf->cat.pet_serial;
+        const int s = lib_cat_petting(lf);
+        if (s >= 0 && menu_library_pet(L, s)) {
+            L->cat_pets[s]++;
+        }
+    }
+}
+
 /* Fixed 60 Hz ticks for everyone in the hall: the background people, the seated readers' study loops and the members'
- * walks (agents), the doors. A person in a bay off screen steps one tick in six with six ticks' time. */
+ * walks (agents), the doors, the cat (§10). A person in a bay off screen steps one tick in six with six ticks' time. */
 static void people_ticks(MenuLibrary *L, float dt)
 {
     L->visible = bays_visible(L);
@@ -1279,6 +1452,8 @@ static void people_ticks(MenuLibrary *L, float dt)
                 seat_life(L, &L->npc[i].study, &L->npc[i].fid, s->npcs[i].seat_pos, s->npcs[i].seat_yaw_deg, dt);
             }
         }
+        life_pre_tick(L); /* the cat's straight legs */
+        life_post_tick(L, dt);
         return;
     }
     LibPeople *P = L->people;
@@ -1296,7 +1471,9 @@ static void people_ticks(MenuLibrary *L, float dt)
             P->door_want_extra[b] = want;
         }
         const uint32_t tick = P->tick;
+        life_pre_tick(L);
         lib_people_tick(P, L->nav, (float)LIB_TICK, L->visible);
+        life_post_tick(L, (float)LIB_TICK);
         for (int i = 0; i < s->npc_n; i++) { /* the seated readers' study loops, at the same rates */
             const LibNpcDef *d = &s->npcs[i];
             if (!d->seated || d->sleeper) {
@@ -1432,6 +1609,25 @@ static HMM_Vec3 sleeper_head(const MenuLibrary *L, const LibNpcDef *d)
     return HMM_V3(d->seat_pos.X + hz * HMM_SinF(yw), hy, d->seat_pos.Y + hz * HMM_CosF(yw));
 }
 
+/* §10: one particle (hall frame, its radius in hall metres) into the frame's pool: the cap, the bay filter and the one
+ * instanced unlit draw of `puff` at the end of the frame (draw_life). Without life.*: drawn at once. */
+static void puff_at(MenuLibrary *L, GfxContext *g, LibPuffKind kind, HMM_Vec3 hall, float scale, uint32_t rgba)
+{
+    if (L->life) {
+        lib_life_puff(L->life, kind, hall, scale, rgba);
+        return;
+    }
+    if (L->puff == GFX_MESH_NONE || !((L->visible >> bay_at(L, HMM_V2(hall.X, hall.Z))) & 1u)) {
+        return;
+    }
+    const GfxMaterial m = mat_unlit(HMM_V4((float)(rgba >> 24) / 255.0f, (float)((rgba >> 16) & 255u) / 255.0f, (float)((rgba >> 8) & 255u) / 255.0f, 1.0f));
+    const HMM_Mat4 pm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(hall), HMM_Scale(HMM_V3(scale, scale, scale))));
+    gfx_draw(g, L->puff, &pm, &m, 0);
+}
+
+#define PUFF_WHITE 0xFFFFFFFFu
+#define PUFF_PAPER 0xF4EFE0FFu /* the crumpled page (the prototype's 0xf4efe0) */
+
 /* a seat-frame offset (metres) as a world vector */
 static HMM_Vec3 seat_vec(const MenuLibrary *L, float yaw_deg, HMM_Vec3 v)
 {
@@ -1462,24 +1658,18 @@ static void draw_seat_things(MenuLibrary *L, GfxContext *g, const AvatarMeshes *
             gfx_draw(g, L->phone_glow, &gm, &glow, 0);
         }
     }
-    if (L->puff != GFX_MESH_NONE) {
-        const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
-        if (fo->steam) { /* 3 puffs rising from the mug standing on the table */
-            for (int k = 0; k < c->mug.steam_puffs; k++) {
-                HMM_Vec3 sp;
-                const float size = lib_mug_steam(c, L->clock, k, &sp);
-                if (size > 1e-4f) {
-                    const HMM_Mat4 pm = HMM_MulM4(HMM_MulM4(seat, HMM_Translate(sp)), HMM_Scale(HMM_V3(size, size, size)));
-                    gfx_draw(g, L->puff, &pm, &white, 0);
-                }
+    const float yr = HMM_AngleDeg(yaw_deg);
+    if (fo->steam) { /* 3 puffs rising from the mug standing on the table */
+        for (int k = 0; k < c->mug.steam_puffs; k++) {
+            HMM_Vec3 sp;
+            const float size = lib_mug_steam(c, L->clock, k, &sp);
+            if (size > 1e-4f) {
+                puff_at(L, g, LIB_PUFF_STEAM, lib_seat_to_hall(pos, yr, sp), size, PUFF_WHITE);
             }
         }
-        if (fo->ball_in_hand) { /* the crumpled page (the prototype's 0xf4efe0) */
-            const float r = c->rage.radius;
-            const HMM_Mat4 bm = HMM_MulM4(HMM_MulM4(seat, HMM_Translate(fo->ball_pos)), HMM_Scale(HMM_V3(r, r, r)));
-            const GfxMaterial paper = mat_unlit(HMM_V4(0xF4 / 255.0f, 0xEF / 255.0f, 0xE0 / 255.0f, 1.0f));
-            gfx_draw(g, L->puff, &bm, &paper, 0);
-        }
+    }
+    if (fo->ball_in_hand) { /* the crumpled page */
+        puff_at(L, g, LIB_PUFF_BALL, lib_seat_to_hall(pos, yr, fo->ball_pos), c->rage.radius, PUFF_PAPER);
     }
     if (fo->plane_in_hand && L->plane != GFX_MESH_NONE) { /* the prototype: at the hand + 5 cm, turned (-0.3, 0.2, 0) in the hall */
         const HMM_Vec3 at = lib_seat_to_hall(pos, HMM_AngleDeg(yaw_deg), fo->plane_pos);
@@ -1497,14 +1687,12 @@ static void draw_seat_things(MenuLibrary *L, GfxContext *g, const AvatarMeshes *
             const HMM_Mat4 am = HMM_MulM4(HMM_MulM4(HMM_Translate(HMM_AddV3(sv.head_centre, seat_vec(L, yaw_deg, off))), turn), HMM_Scale(HMM_V3(sc, sc, sc)));
             gfx_draw(g, L->anger, &am, &toon, 0);
         }
-        if (fo->dots && L->puff != GFX_MESH_NONE) {
-            const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
-            const float sc = 0.03f * L->scale;
+        if (fo->dots) { /* the call's three dots: over the drawn head (world), back into the hall frame for the pool */
             for (int k = 0; k < 3; k++) {
                 const HMM_Vec3 d = lib_fidget_dot(fo, k);
                 const HMM_Vec3 off = HMM_V3(d.X, d.Y - fo->head_y, d.Z - fo->head_z);
-                const HMM_Mat4 dm = HMM_MulM4(HMM_Translate(HMM_AddV3(sv.head_centre, seat_vec(L, yaw_deg, off))), HMM_Scale(HMM_V3(sc, sc, sc)));
-                gfx_draw(g, L->puff, &dm, &white, 0);
+                const HMM_Vec3 w = HMM_AddV3(sv.head_centre, seat_vec(L, yaw_deg, off));
+                puff_at(L, g, LIB_PUFF_DOTS, HMM_MulM4V4(L->xf_inv, HMM_V4V(w, 1.0f)).XYZ, 0.03f, PUFF_WHITE);
             }
         }
     }
@@ -1595,12 +1783,10 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
             gfx_draw(g, L->book_closed, &bk, &bc, 0);
         }
     }
-    if (pp && pp->talk * pp->spk >= 0.5f && L->puff != GFX_MESH_NONE) { /* the speaker's three white dots */
-        const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
+    if (pp && pp->talk * pp->spk >= 0.5f) { /* the speaker's three white dots */
         for (int k = 0; k < 3; k++) {
             const float y = 1.78f + 0.03f * fmaxf(0.0f, HMM_SinF(t * 7.0f - (float)k * 0.9f));
-            const HMM_Mat4 dm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(HMM_V3(n->pos.X + (float)(k - 1) * 0.09f, y, n->pos.Y)), HMM_Scale(HMM_V3(0.03f, 0.03f, 0.03f))));
-            gfx_draw(g, L->puff, &dm, &white, 0);
+            puff_at(L, g, LIB_PUFF_DOTS, HMM_V3(n->pos.X + (float)(k - 1) * 0.09f, y, n->pos.Y), 0.03f, PUFF_WHITE);
         }
     }
     if (d->sleeper && L->pcfg && L->zee != GFX_MESH_NONE) { /* three zees rising, growing 0.6x -> 1.8x, gone over the last 20 % */
@@ -1680,8 +1866,7 @@ static void draw_table_extras(MenuLibrary *L, GfxContext *g, int b, float hide)
     }
 }
 
-/* The merged dressing: per row of bays one toon draw (lamps, clutter) and one light-pool draw (translucent: it goes with
- * its row rather than dithering). hide: per bay; a row's bays share their fade. */
+/* The merged dressing: per row of bays one toon draw (lamps, clutter). hide: per bay; a row's bays share their fade. */
 static void draw_dressing_rows(MenuLibrary *L, GfxContext *g, const float *hide)
 {
     if (!L->dress_ok) {
@@ -1695,9 +1880,110 @@ static void draw_dressing_rows(MenuLibrary *L, GfxContext *g, const float *hide)
         GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
         toon.hide = h;
         gfx_draw(g, L->dress_mesh[r], &L->xf, &toon, 0);
-        if (h <= 0.0f) {
-            const GfxMaterial light = mat_alpha(HMM_V4(1, 1, 1, L->sc.lamp_light_alpha));
-            gfx_draw(g, L->light_mesh[r], &L->xf, &light, 0);
+    }
+}
+
+/* §10 a part of a zoned mesh (upload_zoned: part i is zone i + 1) in its own colours, `tint` over it */
+static GfxMaterial life_mat(int part, uint32_t tint, float hide)
+{
+    GfxMaterial m = mat_toon(HMM_V4((float)(tint >> 24) / 255.0f, (float)((tint >> 16) & 255u) / 255.0f, (float)((tint >> 8) & 255u) / 255.0f, 1.0f), 0.0f);
+    m.extra = HMM_V4((float)0xFFFFFF, (float)0xFFFFFF, (float)0xFFFFFF, (float)(1u << (part + 1)));
+    m.hide = hide;
+    return m;
+}
+
+/* the device's local time of day (s), re-read once a second and run on with the frame time in between */
+static void local_clock(MenuLibrary *L, float dt)
+{
+    L->local_time_s += dt;
+    L->local_sync -= dt;
+    if (L->local_sync > 0.0f) {
+        return;
+    }
+    L->local_sync = 1.0f;
+    SDL_Time now;
+    SDL_DateTime d;
+    if (SDL_GetCurrentTime(&now) && SDL_TimeToDateTime(now, &d, true)) {
+        L->local_time_s = d.hour * 3600.0 + d.minute * 60.0 + d.second + d.nanosecond * 1e-9;
+    }
+}
+
+/* §10 the static alpha, after everything opaque (GFX_MAT_ALPHA: bucket 3, no depth write): each row's merged mesh (sunbeams,
+ * tank glass, the floor lamp's pool and cone) and every table lamp's pool and cone (one mesh, instanced). A row fading out
+ * takes its alpha with it (the opacity, not a screen-door). */
+static void draw_alpha(MenuLibrary *L, GfxContext *g, const float *hide)
+{
+    for (int r = 0; r < 2; r++) {
+        float h = 0.0f;
+        bool on = false;
+        for (int b = 0; b < LIB_BAYS; b++) {
+            if (bay_row(L, b) == r) {
+                h = mg_maxf(h, hide[b]);
+                on = on || ((L->visible >> b) & 1u);
+            }
+        }
+        if (on && h < 0.98f && L->alpha_row[r] != GFX_MESH_NONE) {
+            const GfxMaterial m = mat_alpha(HMM_V4(1, 1, 1, 1.0f - h));
+            gfx_draw(g, L->alpha_row[r], &L->xf, &m, 0);
+        }
+    }
+    for (int b = 0; b < LIB_BAYS; b++) {
+        if (!((L->visible >> b) & 1u) || hide[b] >= 0.98f) {
+            continue;
+        }
+        const float k = 1.0f - hide[b];
+        if (L->dress_ok && L->table_lamp_light != GFX_MESH_NONE) {
+            const LibDressing *d = &L->dress[b];
+            const HMM_Mat4 lm = HMM_MulM4(placed(L, L->bay_x[b] + d->lamp_x, L->bay_z[b] + d->lamp_z, d->lamp_yaw * 57.29578f),
+                                          HMM_Translate(HMM_V3(0, L->sc.table.top_y, 0)));
+            const GfxMaterial m = mat_alpha(HMM_V4(1, 1, 1, L->sc.lamp_light_alpha * k));
+            gfx_draw(g, L->table_lamp_light, &lm, &m, 0);
+        }
+    }
+}
+
+/* §10 the room's life, drawn last: the clock's hands and pendulum, the skeleton and the fish (one instanced draw of the zoned
+ * parts), the cat (another), every particle of the frame (one instanced unlit draw of `puff`), the static alpha. */
+static void draw_life(MenuLibrary *L, GfxContext *g, const float *hide)
+{
+    draw_alpha(L, g, hide);
+    LibLife *lf = L->life;
+    if (!lf) {
+        return;
+    }
+    PROF_SCOPE("lib.life");
+    LibInst inst[LIB_INST_MAX];
+    const int n = lib_life_instances(lf, inst, LIB_INST_MAX);
+    for (int i = 0; i < n; i++) {
+        const LibInst *in = &inst[i];
+        GfxMeshId mesh = GFX_MESH_NONE;
+        int part = 0;
+        switch (in->kind) {
+        case LIB_MESH_CLOCK_M: mesh = L->life_parts, part = 0; break;
+        case LIB_MESH_CLOCK_H: mesh = L->life_parts, part = 1; break;
+        case LIB_MESH_PENDULUM: mesh = L->life_parts, part = 2; break;
+        case LIB_MESH_SKELETON: mesh = L->life_parts, part = 3; break;
+        case LIB_MESH_FISH: mesh = L->life_parts, part = 4; break;
+        case LIB_MESH_CAT_BODY: mesh = L->cat_parts, part = 0; break;
+        case LIB_MESH_CAT_HEAD: mesh = L->cat_parts, part = 1; break;
+        case LIB_MESH_CAT_TAIL: mesh = L->cat_parts, part = 2; break;
+        default: break; /* zees and globes: the people's and the tables' own draws */
+        }
+        if (mesh == GFX_MESH_NONE) {
+            continue;
+        }
+        const int b = lib_life_bay_of(L->lcfg, in->xf.Columns[3].X, in->xf.Columns[3].Z);
+        const GfxMaterial m = life_mat(part, in->rgba, hide[b] > 0.02f ? hide[b] : 0.0f);
+        const HMM_Mat4 model = HMM_MulM4(L->xf, in->xf);
+        gfx_draw(g, mesh, &model, &m, 0);
+    }
+    if (L->puff != GFX_MESH_NONE) {
+        for (int i = 0; i < lf->puffs_n; i++) {
+            const LibPuff *p = &lf->puffs[i];
+            const uint32_t c = p->rgba;
+            const GfxMaterial m = mat_unlit(HMM_V4((float)(c >> 24) / 255.0f, (float)((c >> 16) & 255u) / 255.0f, (float)((c >> 8) & 255u) / 255.0f, 1.0f));
+            const HMM_Mat4 pm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(p->pos), HMM_Scale(HMM_V3(p->scale, p->scale, p->scale))));
+            gfx_draw(g, L->puff, &pm, &m, 0);
         }
     }
 }
@@ -1780,6 +2066,15 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
         gfx_set_category(g, GFX_CAT_PROP);
     }
+    L->xf_inv = HMM_InvGeneralM4(L->xf);
+    L->life_vis = 0;
+    for (int b = 0; b < LIB_BAYS; b++) { /* §10: life only in bays on screen that are not (mostly) faded out */
+        L->life_vis |= ((L->visible >> b) & 1u) && hide[b] < 0.5f ? 1u << b : 0u;
+    }
+    local_clock(L, dt);
+    if (L->life) { /* the frame's particles start here: motes, bubbles, hearts; steam, dots and balls are added below */
+        lib_life_emit(L->life, L->lcfg, L->life_vis, L->local_time_s);
+    }
     for (int b = 0; b < LIB_BAYS; b++) { /* one door per bay */
         GfxMaterial dm = room;
         dm.hide = hide[b];
@@ -1857,16 +2152,11 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     for (int i = 0; i < s->npc_n; i++) {
         npc_draw(L, g, m, i, dt);
     }
-    if (L->fid_ok && L->puff != GFX_MESH_NONE) { /* §6: the paper balls flying or resting, in bays on screen */
-        const GfxMaterial paper = mat_unlit(HMM_V4(0xF4 / 255.0f, 0xEF / 255.0f, 0xE0 / 255.0f, 1.0f));
+    if (L->fid_ok) { /* §6: the paper balls flying or resting, in bays on screen */
         for (int k = 0; k < L->balls.n; k++) {
             const LibBall *b = &L->balls.b[k];
-            if (!((L->visible >> bay_at(L, HMM_V2(b->p.X, b->p.Z))) & 1u)) {
-                continue;
-            }
-            const float r = lib_ball_size(&L->fcfg, b);
-            const HMM_Mat4 bm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(b->p), HMM_Scale(HMM_V3(r, r, r))));
-            gfx_draw(g, L->puff, &bm, &paper, 0);
+            puff_at(L, g, LIB_PUFF_BALL, b->p, lib_ball_size(&L->fcfg, b), PUFF_PAPER);
         }
     }
+    draw_life(L, g, hide);
 }

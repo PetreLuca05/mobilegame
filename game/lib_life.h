@@ -18,9 +18,14 @@
  *   globe                        origin = the base on the table, spins about y
  *   puff                         unit sphere: scale = radius
  *
- * Frame order: lib_life_step (clears the per-frame registrations and rebuilds the module's own particles),
- * then the per-frame calls (lib_life_steam, lib_life_zees, lib_life_dots, lib_life_globe, lib_life_puff),
- * then lib_life_instances / lib_life_puffs. Only bays whose bit is set in `visible` emit anything. */
+ * Frame order: lib_life_tick on fixed ticks (time, the cat), then once per frame lib_life_emit (clears the
+ * per-frame registrations and rebuilds the module's own particles: motes, bubbles, hearts), then the per-frame
+ * calls (lib_life_steam, lib_life_zees, lib_life_dots, lib_life_globe, lib_life_puff), then lib_life_instances /
+ * lib_life_puffs. lib_life_step = one tick + emit. Only bays whose bit is set in `visible` emit anything.
+ *
+ * The cat's ground legs: straight lines here, or (lib_cat_use_legs) walked by the integrator's nav agent: each tick
+ * the cat says where it wants to go (LibCat.leg / leg_goal) and the integrator feeds back where the agent got to
+ * (lib_cat_leg_feed) before the next lib_life_tick. */
 #ifndef MG_LIB_LIFE_H
 #define MG_LIB_LIFE_H
 
@@ -105,7 +110,19 @@ typedef struct LibLifeCfg {
 bool lib_life_config(LibLifeCfg *c, const cJSON *scene_root);
 int lib_life_bay_of(const LibLifeCfg *c, float x, float z); /* bayOf */
 
-typedef struct LibPuff { HMM_Vec3 pos; float scale; uint32_t rgba; } LibPuff; /* rgba 0xRRGGBBAA */
+/* what a particle is (tests: every kind seen) */
+typedef enum {
+    LIB_PUFF_DUST,   /* the sunbeam's motes */
+    LIB_PUFF_LAMP,   /* dust falling in a lamp's cone */
+    LIB_PUFF_BUBBLE, /* the aquarium */
+    LIB_PUFF_STEAM,  /* over a mug on the table */
+    LIB_PUFF_DOTS,   /* talk dots (NPCs talking, a call) */
+    LIB_PUFF_HEART,  /* the petted cat */
+    LIB_PUFF_BALL,   /* paper balls (in the hand, flying, resting) */
+    LIB_PUFF_KINDS
+} LibPuffKind;
+
+typedef struct LibPuff { HMM_Vec3 pos; float scale; uint32_t rgba; uint8_t kind; } LibPuff; /* rgba 0xRRGGBBAA */
 
 typedef enum {
     LIB_MESH_CLOCK_M, LIB_MESH_CLOCK_H, LIB_MESH_PENDULUM, LIB_MESH_SKELETON, LIB_MESH_FISH,
@@ -117,6 +134,20 @@ typedef struct LibInst { LibMeshKind kind; HMM_Mat4 xf; uint32_t rgba; float alp
 
 typedef struct LibMote { float oz, x, fz, wy, u, w, ph; } LibMote; /* oz: its bay's z */
 typedef struct LibFish { float ax, w, ph, y, z; } LibFish;
+
+/* what the cat is doing (tests: the loop reaches every one) */
+typedef enum {
+    LIB_CAT_RUG,      /* asleep on the rug (a sleep wait on the floor) */
+    LIB_CAT_WALK,     /* a ground leg of its own route */
+    LIB_CAT_APPROACH, /* trotting to the table edge nearest the visited player */
+    LIB_CAT_HOP_UP,
+    LIB_CAT_VISIT,    /* sitting on the table in front of the seat */
+    LIB_CAT_PET,      /* ... being petted (pet weight > 0.3) */
+    LIB_CAT_HOP_DOWN,
+    LIB_CAT_WATCH,    /* sitting, the head following the pendulum */
+    LIB_CAT_NAP,      /* asleep on the window seat (a sleep wait off the floor) */
+    LIB_CAT_STATES
+} LibCatState;
 
 typedef struct LibCat {
     int ri;           /* route step */
@@ -136,6 +167,14 @@ typedef struct LibCat {
     bool done;        /* pet triggered for this visit */
     uint32_t pet_serial; /* +1 per pet trigger */
     int loops;        /* times the route wrapped to step 0 */
+    /* ground legs walked by the integrator (lib_cat_use_legs) */
+    bool ext;         /* on: the integrator's agent walks the legs */
+    bool leg;         /* this tick: on a ground leg towards leg_goal */
+    HMM_Vec2 leg_goal;
+    bool leg_arrived; /* fed: the agent got there */
+    float leg_speed;  /* fed: the agent's speed (m/s) */
+    LibCatState state;
+    uint32_t states_seen; /* bit LibCatState */
     /* the table the players are at */
     HMM_Vec2 table;
     float seats[4][3]; /* x, z, yaw (rad), hall frame */
@@ -157,8 +196,10 @@ typedef struct LibLife {
     /* per frame */
     LibPuff puffs[LIB_PUFFS_MAX];
     int puffs_n;
-    LibPuff hearts[16];
-    int hearts_n;
+    int hearts_n;        /* hearts emitted this frame (in puffs) */
+    uint32_t kinds_seen; /* bit LibPuffKind: emitted since init (tests) */
+    int puffs_peak;      /* the most live at once since init */
+    uint32_t puffs_refused; /* asked for over the cap since init */
     HMM_Vec3 zee_head[LIB_ZEES_MAX];
     int zee_id[LIB_ZEES_MAX];
     int zees_n;
@@ -169,7 +210,12 @@ typedef struct LibLife {
 
 /* seed: the cat's choices (the prototype's Math.random); the motes and fish always use rng(404) as the prototype. */
 void lib_life_init(LibLife *l, const LibLifeCfg *c, uint32_t seed);
-/* visible: bit b = bay b is on screen; local_time_s: the device clock (seconds since local midnight). */
+/* One fixed tick: the time and the cat (its own steps do not depend on what is on screen). */
+void lib_life_tick(LibLife *l, const LibLifeCfg *c, float dt);
+/* Once per frame: visible: bit b = bay b is on screen; local_time_s: the device clock (seconds since local midnight).
+ * Clears the frame's particles and emits the motes, bubbles and hearts of the visible bays. */
+void lib_life_emit(LibLife *l, const LibLifeCfg *c, uint32_t visible, double local_time_s);
+/* lib_life_tick + lib_life_emit */
 void lib_life_step(LibLife *l, const LibLifeCfg *c, float dt, uint32_t visible, double local_time_s);
 
 /* Per frame, after lib_life_step. */
@@ -182,8 +228,8 @@ void lib_life_zees(LibLife *l, int sleeper_id, HMM_Vec3 head);
 void lib_life_dots(LibLife *l, HMM_Vec3 centre, float yaw);
 /* A spinning lobby globe standing at `base` (on the table top). */
 void lib_life_globe(LibLife *l, HMM_Vec3 base);
-/* Any other particle (paper balls): goes through the same pool, cap and bay filter. */
-void lib_life_puff(LibLife *l, HMM_Vec3 pos, float scale, uint32_t rgba);
+/* Any other particle (steam computed elsewhere, call dots, paper balls): the same pool, cap and bay filter. */
+void lib_life_puff(LibLife *l, LibPuffKind kind, HMM_Vec3 pos, float scale, uint32_t rgba);
 
 /* Persistent: the study-table lamp of `bay` (hall-frame x, z of the lamp; lamp_motes[0] around it). */
 void lib_life_table_lamp(LibLife *l, int bay, HMM_Vec2 centre, bool on);
@@ -195,6 +241,13 @@ void lib_cat_table(LibLife *l, HMM_Vec2 table_centre, const HMM_Vec3 *seats, uin
 int lib_cat_petting(const LibLife *l);
 /* The visited player's pet blend 0..1 (fidget weight), per frame: drives the squash, head lift and hearts. */
 void lib_cat_pet_weight(LibLife *l, float k);
+/* The integrator walks the cat's ground legs (its nav agent). */
+void lib_cat_use_legs(LibLife *l, bool on);
+/* Before each lib_life_tick while the cat is on a leg: where its agent is, its heading (rad, 0 faces +z), speed, arrived. */
+void lib_cat_leg_feed(LibLife *l, HMM_Vec2 pos, float yaw, float speed, bool arrived);
+/* On the floor and not hopping: an obstacle the people walk round (the integrator's agent stands there). */
+bool lib_cat_on_floor(const LibLife *l);
+const char *lib_cat_state_name(LibCatState s);
 
 int lib_life_instances(const LibLife *l, LibInst *out, int max);
 int lib_life_puffs(const LibLife *l, LibPuff *out, int max); /* <= LIB_PUFFS_MAX */

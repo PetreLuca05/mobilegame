@@ -24,8 +24,8 @@ struct PSMain_in
 fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _22 [[buffer(0)]])
 {
     PSMain_out out = {};
-    float _99 = fast::clamp(_22.u_tint.w, 0.0, 1.0);
-    out._entryPointOutput = float4((in.i_col.xyz * _22.u_tint.xyz) * _99, (_22.u_params.x > 0.5) ? 0.0 : _99);
+    float _105 = fast::clamp(_22.u_tint.w * in.i_col.w, 0.0, 1.0);
+    out._entryPointOutput = float4((in.i_col.xyz * _22.u_tint.xyz) * _105, (_22.u_params.x > 0.5) ? 0.0 : _105);
     return out;
 }
 

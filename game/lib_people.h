@@ -126,6 +126,11 @@ typedef struct LibPeople {
     int stuck_who;
     int ghosts;                        /* ignore-others spells started */
     float ghost_prev[LIB_AGENTS_MAX];
+    /* §10: the cat on the floor is an agent too (radius 0.2): the people walk round it, it walks round them */
+    int cat_agent;      /* -1: none (lib_people_cat_add not called) */
+    bool cat_on;        /* placed in the hall (on the floor) */
+    bool cat_walking;
+    HMM_Vec2 cat_goal;
 } LibPeople;
 
 void lib_people_init(LibPeople *P, const LibPeopleCfg *c, const LibNav *n);
@@ -138,6 +143,14 @@ void lib_people_walker_goal(LibPeople *P, int slot, HMM_Vec2 goal);
 void lib_people_walker_stop(LibPeople *P, int slot);   /* out of the hall (seated or gone) */
 bool lib_people_walker_arrived(const LibPeople *P, int slot);
 const LibAgent *lib_people_walker(const LibPeople *P, int slot); /* NULL when not on */
+
+/* §10 the cat: its agent (call once after lib_people_init). Before each tick, lib_people_cat_sync says where the cat is and
+ * whether it walks: off the floor (a table, the window seat, a hop) it is no agent; on the floor it is placed (once its spot
+ * is clear) and stands, or walks to `goal` through the grid. After the tick lib_people_cat reads where it got to. */
+void lib_people_cat_add(LibPeople *P, float radius, float speed);
+void lib_people_cat_sync(LibPeople *P, const LibNav *n, HMM_Vec2 pos, float yaw, bool on_floor, bool walk, HMM_Vec2 goal);
+const LibAgent *lib_people_cat(const LibPeople *P); /* NULL while it is no agent */
+bool lib_people_cat_arrived(const LibPeople *P);    /* walking to cat_goal and there */
 
 /* bay b's door is held open by a background person walking through it */
 bool lib_people_at_door(const LibPeople *P, int b);

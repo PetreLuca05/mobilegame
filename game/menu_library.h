@@ -14,6 +14,7 @@
 #include "lib_people.h"
 #include "lib_dressing.h"
 #include "lib_fidget.h"
+#include "lib_life.h"
 #include "platform/app.h"
 
 #define LIB_SEATS 4
@@ -86,6 +87,7 @@ typedef struct LibScene {
     HMM_Vec3 mug_rest, mug_grip; /* life.mug: on the table (seat frame) and the handle from the hand */
     HMM_Vec3 pencil_rest;        /* life.fidget.notes.pencil_rest (seat frame) */
     float lamp_light_alpha;      /* the table lamp's light pool: life.alpha.lamp_cone + 0.05 (the prototype) */
+    float alpha_beam, alpha_tank, alpha_glow, alpha_cone; /* life.alpha: the static alpha groups' opacities */
     float globe_spin;            /* life.globe.spin_rad_s */
     float fov_deg;
     LibCam cam_menu, cam_creator;
@@ -162,11 +164,11 @@ typedef struct MenuLibrary {
     int seat_phys[LIB_SEATS];    /* each member slot's seat at my table: seat_order[its place in the member list] */
     int member_n[LIB_SEATS];     /* that place (host first) */
     GfxMeshId table_lamp, table_lamp_light, clutter[LIB_DRESS_MAX_POOL]; /* clutter by dress_cfg.pool index (the globe: it spins) */
-    /* The tables' static dressing merged per row of bays (one toon draw and one light-pool draw per row), rebuilt into
-     * reserved meshes when a seed changes: the source soups, kept from the load */
-    struct { GfxVertex *v; uint32_t n; } src_lamp, src_light, src_item[LIB_DRESS_MAX_POOL];
-    GfxMeshId dress_mesh[2], light_mesh[2];
-    uint32_t dress_cap, light_cap;
+    /* The tables' static dressing merged per row of bays (one toon draw per row), rebuilt into reserved meshes when a seed
+     * changes: the source soups, kept from the load. The lamps' light pools are instanced (table_lamp_light, §10). */
+    struct { GfxVertex *v; uint32_t n; } src_lamp, src_item[LIB_DRESS_MAX_POOL];
+    GfxMeshId dress_mesh[2];
+    uint32_t dress_cap;
     GfxVertex *build;    /* the rebuild's buffer (max of the caps) */
     uint32_t *build_idx; /* 0 1 2 ... */
     GfxContext *gfx;
@@ -209,6 +211,18 @@ typedef struct MenuLibrary {
     uint32_t fidget_seen[LA_COUNT]; /* actions started anywhere in the hall since load (tests) */
     LibAction debug_fidget;         /* --debug fidget <name>: every seated reader plays it each time it is free (0 off) */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
+    /* §10 the room is alive (lib_life): clock, skeleton, aquarium, sunbeam and lamp dust, every particle, the cat */
+    LibLifeCfg *lcfg;
+    LibLife *life;           /* NULL: life.* did not parse (nothing of §10 moves; the static alpha is still drawn) */
+    GfxMeshId life_parts;    /* clock hands, pendulum, skeleton, fish: zones 1..5 of one mesh, one instanced draw */
+    GfxMeshId cat_parts;     /* the cat's body, head and tail: zones 1..3 of one mesh, one instanced draw */
+    GfxMeshId alpha_row[2];  /* beam, tank glass, floor-lamp glow and cone merged per row of bays (vertex alpha = life.alpha) */
+    uint32_t life_vis;       /* this frame: the bays life is drawn in (on screen and not faded out) */
+    double local_time_s;     /* the device clock (s since local midnight), re-read once a second */
+    float local_sync;
+    uint32_t cat_serial;     /* the last pet the cat asked for */
+    uint32_t cat_pets[LIB_SEATS]; /* pets started per seat by the cat (tests) */
+    HMM_Mat4 xf_inv;         /* world -> library, this frame */
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);

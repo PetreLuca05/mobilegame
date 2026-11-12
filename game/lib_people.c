@@ -218,6 +218,7 @@ void lib_people_init(LibPeople *P, const LibPeopleCfg *c, const LibNav *n)
             p->push = s0->leave_cart ? 0.0f : 0.6f;
         }
     }
+    P->cat_agent = -1;
     for (int k = 0; k < LIB_PEOPLE_WALKERS; k++) { /* the members' agents, kept out of the hall until a walk */
         P->walker_agent[k] = lib_agent_add(&P->ag, HMM_V2(0, 0), n->radius, c->walk_speed);
         if (P->walker_agent[k] >= 0) P->ag.a[P->walker_agent[k]].active = false;
@@ -261,6 +262,61 @@ bool lib_people_walker_arrived(const LibPeople *P, int slot)
 const LibAgent *lib_people_walker(const LibPeople *P, int slot)
 {
     return slot >= 0 && slot < LIB_PEOPLE_WALKERS && P->w[slot].on ? &P->ag.a[P->walker_agent[slot]] : NULL;
+}
+
+/* ------------------------------------------------------------------ the cat (§10) */
+
+void lib_people_cat_add(LibPeople *P, float radius, float speed)
+{
+    if (P->cat_agent >= 0) return;
+    P->cat_agent = lib_agent_add(&P->ag, HMM_V2(0, 0), radius, speed);
+    if (P->cat_agent >= 0) P->ag.a[P->cat_agent].active = false;
+    P->cat_on = P->cat_walking = false;
+}
+
+void lib_people_cat_sync(LibPeople *P, const LibNav *n, HMM_Vec2 pos, float yaw, bool on_floor, bool walk, HMM_Vec2 goal)
+{
+    const int id = P->cat_agent;
+    if (id < 0) return;
+    LibAgent *a = &P->ag.a[id];
+    if (!on_floor) {
+        if (P->cat_on) {
+            lib_agent_stop(&P->ag, id);
+            a->active = false;
+        }
+        P->cat_on = P->cat_walking = false;
+        return;
+    }
+    if (!P->cat_on) { /* landed (or starting): an agent once nobody stands there */
+        if (!spot_clear(P, id, pos, a->radius)) return;
+        lib_agent_stop(&P->ag, id);
+        a->pos = pos;
+        a->yaw = yaw;
+        a->vel = HMM_V2(0, 0);
+        a->blocked_s = a->ignore_others_s = 0.0f;
+        a->active = true;
+        P->cat_on = true;
+        P->cat_walking = false;
+    }
+    if (walk) {
+        if (!P->cat_walking || dist(goal, P->cat_goal) > 1e-4f) {
+            go(P, n, id, goal);
+            P->cat_walking = true;
+            P->cat_goal = goal;
+        }
+    } else if (P->cat_walking) {
+        lib_agent_stop(&P->ag, id);
+        P->cat_walking = false;
+    }
+}
+
+const LibAgent *lib_people_cat(const LibPeople *P) { return P->cat_agent >= 0 && P->cat_on ? &P->ag.a[P->cat_agent] : NULL; }
+
+bool lib_people_cat_arrived(const LibPeople *P)
+{
+    if (P->cat_agent < 0 || !P->cat_on || !P->cat_walking) return false;
+    const LibAgent *a = &P->ag.a[P->cat_agent];
+    return a->arrived && !a->ticket;
 }
 
 bool lib_people_at_door(const LibPeople *P, int b)
