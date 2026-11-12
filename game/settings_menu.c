@@ -530,7 +530,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     m->preview_visible = false;
     bool held;
     if (!m->open) { /* pause button, top right: part of the edge-to-edge HUD */
-        const ui_frame_t uf = {w_pt, h_pt, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+        const ui_frame_t uf = ui_hud_frame(w_pt, h_pt, safe_l, safe_r, safe_t, safe_b, 0.0f); /* phones: the safe area */
         float gs, gx, gy;
         ui_pause_rect(&uf, &gx, &gy, &gs);
         if (ui_icon_button(ui, "gear", UI_ICON_PAUSE, gx, gy, gs, UI_V_ACCENT)) {

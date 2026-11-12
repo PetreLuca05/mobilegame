@@ -1419,7 +1419,10 @@ static void draw_xray(Game *g, MgApp *app, const AvatarLook *look, const AvatarP
 /* Touch stick / jump button, plus WASD, Shift, Space on desktop
  * (third-person: also camera drag, arrows and right-mouse drag). */
 /* The in-game HUD runs edge to edge on every model: under the island and the home indicator. */
-static ui_frame_t hud_frame(const MgApp *app) { return (ui_frame_t){app->width_pt, app->height_pt, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; }
+static ui_frame_t hud_frame(const MgApp *app) /* phones: the safe area again; iPad: edge to edge (ui_hud_frame) */
+{
+    return ui_hud_frame(app->width_pt, app->height_pt, app->safe_left, app->safe_right, app->safe_top, app->safe_bottom, 0.0f); /* corner 0: the pause button matches settings_menu's */
+}
 
 static ui_frame_t frame_of(const MgApp *app)
 {
@@ -5225,7 +5228,8 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         rc++;
     }
     g->hud_res_count = rc;
-    MarkerHudView v = {g->view_proj, w, h, 0.0f, 0.0f, 0.0f, 0.0f, view_floor, res, rc};
+    const ui_frame_t mf = hud_frame(app);
+    MarkerHudView v = {g->view_proj, w, h, mf.inset_l, mf.inset_t, mf.inset_r, mf.inset_b, view_floor, res, rc};
     g->hud_count = marker_hud_layout(g->hud_in, n, &v, g->hud_out);
     gfx_ui_depth(app->gfx, k_ui.tilt_depth[3], 0); /* TILT-1: marker edge icons */
     marker_hud_draw(app->gfx, &app->font, g->hud_out, g->hud_count, view_floor);
