@@ -14,6 +14,7 @@
 typedef struct Prefs {
     GameSettings settings;
     bool onboarding_done;
+    bool content_cleaned;   /* the one-time book file cleanup (content_cleanup.c) has run */
     bool lobby_open;        /* FRIENDS-1: last state of my lobby, default on */
     char auth_provider[12]; /* "", "google", "apple", "guest" */
     /* account cache (offline launches) */

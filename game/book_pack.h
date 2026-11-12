@@ -64,7 +64,6 @@ bool book_pack_open(BookPack *p, const void *blob, size_t size, const char *labe
  * the file once at start), else an embedded content/gastro.mgpack (a build with a private pack supplied); neither = no book
  * content (logged, not an error: the repository ships none). Logs one summary line. */
 bool book_pack_load(BookPack *p, const char *content_dir);
-bool book_pack_is_demo(void); /* the tests' fixture is loaded (the „conținut demo” chip) */
 /* The figures that go with the loaded pack (`content_dir`/figures.mgfig for a fixture, else embedded); NULL if none. */
 const void *book_pack_figures(size_t *size);
 

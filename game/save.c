@@ -132,6 +132,12 @@ bool save_read(SaveGame *s, const char *profile)
     return ok;
 }
 
+int save_version(const char *profile)
+{
+    SaveGame s;
+    return save_read(&s, profile) ? (int)s.version : 0;
+}
+
 bool save_exists(const char *profile)
 {
     SaveGame s;

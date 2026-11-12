@@ -492,9 +492,6 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
     ui_depth(ui, 2, 0, 0); /* TILT-1: the account pill */
     head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, chip_name, chip_r, chip_y);
-    if (book_pack_is_demo()) { /* BOOK-1: the dummy pack, left of the account pill */
-        ui_tag_chip(ui, str("content_demo"), chip_r - chip_w - 8.0f, chip_y + (44.0f - k_ui.tag_h) * 0.5f);
-    }
     ui_depth_end(ui);
     if (chip_held) {
         ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(k_ui.glass));
