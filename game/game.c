@@ -4156,6 +4156,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     if (ato.lib_phone > 0) { /* --autotest library: where the phones lie (1 pocket, 2 table) */
         menu_library_phone_place(&g->lib, ato.lib_phone == 2);
     }
+    if (ato.lib_cat_hold) { /* --autotest library: no cat visits (no pet cutting into a forced action) until step 13 */
+        g->lib.cat_hold = ato.lib_cat_hold == 1;
+    }
     if (ato.lib_fidget > 0) { /* --autotest library: the hero plays this action now (PET through the cat's hook) */
         menu_library_fidget(&g->lib, 0, (LibAction)(ato.lib_fidget - 1));
     }

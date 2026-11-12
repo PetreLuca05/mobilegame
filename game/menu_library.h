@@ -222,6 +222,7 @@ typedef struct MenuLibrary {
     float local_sync;
     uint32_t cat_serial;     /* the last pet the cat asked for */
     uint32_t cat_pets[LIB_SEATS]; /* pets started per seat by the cat (tests) */
+    bool cat_hold;           /* tests: the cat sees nobody seated (it looks at the table, no pet) */
     HMM_Mat4 xf_inv;         /* world -> library, this frame */
 } MenuLibrary;
 

@@ -506,6 +506,142 @@ static int fidget_run(LibraryTest *t, const MenuLibrary *L, const AutotestProbe 
     return 0;
 }
 
+/* §10: the device's local time of day (s) */
+static double device_local_s(void)
+{
+    SDL_Time now;
+    SDL_DateTime d;
+    if (!SDL_GetCurrentTime(&now) || !SDL_TimeToDateTime(now, &d, true)) {
+        return -1.0;
+    }
+    return d.hour * 3600.0 + d.minute * 60.0 + d.second + d.nanosecond * 1e-9;
+}
+
+/* 13: the room is alive (see the header). 0 running, 1 passed, -1 failed. */
+static int life_run(LibraryTest *t, const MenuLibrary *L, const AutotestProbe *p, AutotestOut *out, double now)
+{
+    const LibLife *lf = L->life;
+    if (!lf) {
+        return failf(t, "life: life.* did not load");
+    }
+    const LibLifeCfg *c = L->lcfg;
+    const LibCat *k = &lf->cat;
+    if (t->l_frames++ == 0) {
+        t->l_at = now;
+        t->pets0 = L->cat_pets[0];
+        t->cat_prev = -1;
+        t->cat_sat = -1.0;
+    }
+    t->l_draws_max = p->draws > t->l_draws_max ? p->draws : t->l_draws_max;
+    /* hearts only while petted */
+    if (lf->hearts_n > 0) {
+        t->hearts_frames++;
+        if (lib_cat_petting(lf) < 0 || L->seat[0].fo.pet <= 0.0f) {
+            t->hearts_bad = true;
+        }
+    }
+    /* the fish inside the tank (their origins within centre +- half) */
+    LibInst inst[LIB_INST_MAX];
+    const int ni = lib_life_instances(lf, inst, LIB_INST_MAX);
+    for (int i = 0; i < ni; i++) {
+        if (inst[i].kind != LIB_MESH_FISH) {
+            continue;
+        }
+        const HMM_Vec4 o = inst[i].xf.Columns[3];
+        const int b = lib_life_bay_of(c, o.X, o.Z);
+        if (fabsf(o.X - c->bx[b] - c->tank_centre.X) > c->tank_half.X || fabsf(o.Y - c->tank_centre.Y) > c->tank_half.Y ||
+            fabsf(o.Z - c->bz[b] - c->tank_centre.Z) > c->tank_half.Z) {
+            t->fish_out = true;
+        }
+    }
+    /* the clock: the time it shows against the device's, every second or so */
+    if (t->l_frames % 50 == 1) {
+        const double dev = device_local_s();
+        if (dev >= 0.0) {
+            double e = fabs(fmod(lf->local_time_s, 86400.0) - dev);
+            e = e > 43200.0 ? 86400.0 - e : e;
+            t->clock_err = fmax(t->clock_err, e);
+        }
+    }
+    /* the visit: sat -> pet within pet_delay_s + 0.5 s; pictures of each moment */
+    const int st = (int)k->state;
+    const bool cat_seen = (L->life_vis >> lib_life_bay_of(c, k->pos[0], k->pos[2])) & 1u;
+    if (st == LIB_CAT_VISIT && t->cat_prev != LIB_CAT_VISIT && t->cat_prev != LIB_CAT_PET) {
+        t->cat_sat = now;
+    }
+    if (L->cat_pets[0] != t->pets0 && !t->pet_seen) {
+        t->pet_seen = true;
+        if (k->who != 0) {
+            return failf(t, "life: the cat petted by seat %d (only the hero is seated)", k->who);
+        }
+        t->pet_delay = t->cat_sat < 0.0 ? 1e9f : (float)(now - t->cat_sat);
+        if (t->pet_delay > c->pet_delay_s + 0.5f) {
+            return failf(t, "life: the pet started %.2f s after the cat sat (pet_delay_s %.1f + 0.5)", (double)t->pet_delay, (double)c->pet_delay_s);
+        }
+    }
+    if (t->pet_seen && L->seat[0].fid.act != LA_PET && L->seat[0].fo.pet <= 0.0f && !t->shot_pet && now - t->cat_sat > c->pet_delay_s + 1.0) {
+        return failf(t, "life: the cat asked for a pet but the hero does not play it");
+    }
+    if (cat_seen && !out->screenshot[0]) {
+        if (st == LIB_CAT_RUG && !t->shot_rug) {
+            t->shot_rug = true;
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_cat_rug");
+        } else if (st == LIB_CAT_VISIT && !t->shot_visit && now - t->cat_sat > 0.5) {
+            t->shot_visit = true;
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_cat_visit");
+        } else if (st == LIB_CAT_PET && !t->shot_pet && lf->hearts_n >= 2 && L->seat[0].fo.pet > 0.8f) {
+            t->shot_pet = true;
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_cat_pet");
+        }
+    }
+    t->cat_prev = st;
+    if (t->l_draws_max > 46) {
+        return failf(t, "life: %u draws at rest (§14: <= 46)", t->l_draws_max);
+    }
+    if (lf->puffs_peak > LIB_PUFFS_MAX) {
+        return failf(t, "life: %d particles live (cap %d)", lf->puffs_peak, LIB_PUFFS_MAX);
+    }
+    if (t->hearts_bad) {
+        return failf(t, "life: hearts while the cat was not petted");
+    }
+    if (t->fish_out) {
+        return failf(t, "life: a fish left the tank");
+    }
+    if (t->clock_err > 60.0) {
+        return failf(t, "life: the clock is %.0f s off the device's time", t->clock_err);
+    }
+    const uint32_t all = (1u << LIB_PUFF_KINDS) - 1u;
+    const bool done = t->pet_seen && t->shot_pet && t->hearts_frames > 0 && (lf->kinds_seen & all) == all;
+    if (!done) {
+        if (now - t->l_at > 200.0) {
+            static const char *kn[LIB_PUFF_KINDS] = {"dust", "lamp dust", "bubbles", "steam", "talk dots", "hearts", "paper balls"};
+            char miss[160] = "";
+            for (int i = 0; i < LIB_PUFF_KINDS; i++) {
+                if (!((lf->kinds_seen >> i) & 1u)) {
+                    SDL_strlcat(miss, " ", sizeof(miss));
+                    SDL_strlcat(miss, kn[i], sizeof(miss));
+                }
+            }
+            return failf(t, "life: after 200 s: pet %s, pet picture %s, hearts %d frames, particle kinds never seen:%s", t->pet_seen ? "yes" : "no",
+                         t->shot_pet ? "yes" : "no", t->hearts_frames, miss[0] ? miss : " none");
+        }
+        return 0;
+    }
+    char states[160] = "";
+    for (int i = 0; i < LIB_CAT_STATES; i++) {
+        if ((k->states_seen >> i) & 1u) {
+            SDL_strlcat(states, " ", sizeof(states));
+            SDL_strlcat(states, lib_cat_state_name((LibCatState)i), sizeof(states));
+        }
+    }
+    mg_log_info("autotest library: 13 the cat visited and the hero petted it %.2f s after it sat (<= %.1f), hearts on %d frames and only then, "
+                "every particle kind seen, peak %d live (<= %d), fish in the tank, the clock %.1f s off the device, worst %u draws at rest "
+                "(<= 46), cat states seen:%s, %.0f s (ok)",
+                (double)t->pet_delay, (double)(c->pet_delay_s + 0.5f), t->hearts_frames, lf->puffs_peak, LIB_PUFFS_MAX, t->clock_err, t->l_draws_max,
+                states, now - t->l_at);
+    return 1;
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     const MenuLibrary *L = p->library;
@@ -516,6 +652,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         watch(t, L, now);
         npc_watch(t, L);
     }
+    out->lib_cat_hold = t->stage < 14 ? 1 : 2; /* the scripted steps run without the cat's pets; 13 is the cat's */
     switch (t->stage) {
     case 0:
         if (p->fe_state == FE_WELCOME && !t->fresh) { /* 10: a fresh install */
@@ -783,6 +920,14 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         return 0;
     case 13: { /* 12: §6 life at the table */
         const int r = fidget_run(t, L, p, out, now);
+        if (r > 0) {
+            t->stage = 14;
+            return 0;
+        }
+        return r;
+    }
+    case 14: { /* 13: §10 the room is alive */
+        const int r = life_run(t, L, p, out, now);
         return r > 0 ? npc_done(t, L) : r;
     }
     default:

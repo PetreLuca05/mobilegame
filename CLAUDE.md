@@ -632,6 +632,18 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - Guards: `gfx_allow_fade` (the blended toon fade only on the move; perf JSON `fade_violations`, the gate fails on any);
   `gfx_settle_uploads` after each batch of mesh uploads (else Metal holds the staging buffers as reclaimable driver memory);
   `--lib-lod-fade N` (perf: NPC N held mid-crossfade, the draw count's worst case).
+- Room life (step 6, §10, `game/lib_life.c`, pure C): the clock (device local time, re-read once a second), pendulum, skeleton, 5 fish
+  (closed-form swim and turn) and 8 bubbles, 30 sunbeam motes per bay, lamp dust, and the cat. It ticks on the people's fixed ticks
+  (`life_pre_tick` / `life_post_tick` around `lib_people_tick`); `lib_life_emit` once a frame. The cat's ground legs are walked by its
+  `lib_people` agent (radius 0.2, `lib_people_cat_*`: placed when it lands on the floor, none on a table or the window seat); a visit
+  calls `menu_library_pet` and the seat's fidget pet weight drives the squash, head lift and hearts. Every particle (dust, bubbles,
+  steam, talk dots, hearts, paper balls) goes through one pool (`puff_at`, cap 320, visible bays only) and is one instanced unlit
+  `puff` draw. Moving parts are zones of two meshes (`upload_zoned`: clock hands, pendulum, skeleton, fish; cat body, head, tail),
+  one instanced toon draw each through the zone mask. Static alpha (beam, tank glass, floor lamp glow and cone) is merged per row of
+  bays with each group's opacity in the vertex alpha (the frustum sees all four bays from the menu camera, so per-bay meshes would
+  cull nothing); table-lamp light and `phone_glow` are instanced. `GFX_MAT_ALPHA` is drawn in bucket 3 (after the avatars), mesh first.
+  ctest `lib_life` (+ the cat on the real grid among the people); `--autotest library` step 13 (the scripted steps before it hold the
+  cat's visits, `AutotestOut.lib_cat_hold`); `--lib-log-acts` logs the cat's states too. Pictures: docs/autotest/library/step6/.
 - The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
   camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
   of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one

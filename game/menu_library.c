@@ -1397,7 +1397,7 @@ static void life_pre_tick(MenuLibrary *L)
     for (int i = 0; i < LIB_SEATS; i++) {
         seats[i] = HMM_V3(L->tseats[i].pos.X, L->tseats[i].pos.Y, HMM_AngleDeg(L->tseats[i].yaw_deg));
         const LibMember *mb = &L->seat[i];
-        if (mb->state == LM_STUDY && mb->place >= 1.0f && !(i == 0 && L->creator_t > LOCKER_PAUSE)) {
+        if (mb->state == LM_STUDY && mb->place >= 1.0f && !(i == 0 && L->creator_t > LOCKER_PAUSE) && !L->cat_hold) {
             occ |= 1u << i;
         }
     }
@@ -1430,7 +1430,12 @@ static void life_post_tick(MenuLibrary *L, float dt)
         w = fo.pet;
     }
     lib_cat_pet_weight(lf, w);
+    const LibCatState was = lf->cat.state;
     lib_life_tick(lf, L->lcfg, dt);
+    if (L->log_acts && lf->cat.state != was) { /* --lib-log-acts: the cat's too */
+        mg_log_info("library: t %.2f the cat: %s at (%.2f, %.2f, %.2f)", lf->time, lib_cat_state_name(lf->cat.state), (double)lf->cat.pos[0],
+                    (double)lf->cat.pos[1], (double)lf->cat.pos[2]);
+    }
     if (lf->cat.pet_serial != L->cat_serial) {
         L->cat_serial = lf->cat.pet_serial;
         const int s = lib_cat_petting(lf);

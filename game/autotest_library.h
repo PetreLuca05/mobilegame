@@ -24,6 +24,11 @@
  *      hands end on the pages, buzz rattles, decline stops the rattle on the press, call puts the phone back where it was,
  *      the rage's ball comes to rest in the hall outside every obstacle; every action of the bag seen in the hall
  *      (fidget_seen) and the main pass <= 46 draws throughout (§14 at rest)
+ *  13  §10 the room is alive: the cat visits the hero (the only one seated), sits in front of the seat, and the hero pets it
+ *      within pet_delay_s + 0.5 s of it sitting (menu_library_pet); hearts only while it is petted; every particle kind seen
+ *      (sunbeam dust, lamp dust, bubbles, steam, talk dots, hearts, paper balls); live particles <= 320; the fish inside the
+ *      tank; the clock's time within a minute of the device's; <= 46 draws at rest throughout; screenshots library_cat_rug,
+ *      library_cat_visit, library_cat_pet
  * The two-instance version of 4 and 5 (a real friend, a real kick) runs in tools/friends2_test.sh. */
 #ifndef MG_AUTOTEST_LIBRARY_H
 #define MG_AUTOTEST_LIBRARY_H
@@ -68,6 +73,15 @@ typedef struct LibraryTest {
     uint32_t draws_max;    /* worst main-pass draws while the hero fidgets at rest (§14: <= 46) */
     float f_hand_end;      /* the worst distance of a hand from the page at an action's end */
     float f_hand_last;     /* this action's, on its last frame */
+    /* §10 (life_run) */
+    double l_at, cat_sat;   /* the stage's start; the cat sat on the table (VISIT began) */
+    int cat_prev;           /* the cat's state last frame */
+    uint32_t pets0;         /* the hero's pets by the cat when the stage began */
+    float pet_delay;        /* the worst sit -> pet */
+    uint32_t l_draws_max;
+    int l_frames, hearts_frames;
+    bool hearts_bad, fish_out, shot_rug, shot_visit, shot_pet, pet_seen;
+    double clock_err;       /* the worst |shown - device| local time, s */
     char npc_why[160];
     char why[200];
 } LibraryTest;
