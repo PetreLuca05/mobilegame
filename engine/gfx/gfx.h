@@ -67,9 +67,10 @@ typedef enum GfxMaterialKind {
     GFX_MAT_DEPTH,    /* depth only, no colour: the first half of a whole-object fade (drawn after everything opaque) */
     GFX_MAT_TOON_FADE, /* toon, alpha-blended at 1 - hide over the depth GFX_MAT_DEPTH left: each pixel blends the object's
                         * nearest surface once (a true fade, no screen-door pattern) */
-    GFX_MAT_ALPHA,    /* unlit vertex colour x tint, alpha tint.a, blended (premultiplied), no depth write, back to front:
-                       * light pools and cones, glass (LIB-1 alpha meshes); not lit, so no band to flip. params.x 1: additive
-                       * (mat_alpha_add). Instanced on the main pass when hide is 0 */
+    GFX_MAT_ALPHA,    /* unlit vertex colour x tint, alpha tint.a x vertex alpha, blended (premultiplied), no depth write, both
+                       * faces, after the avatars (bucket 3), grouped by mesh then back to front: light pools and cones, glass
+                       * (LIB-1 alpha meshes); not lit, so no band to flip. params.x 1: additive (mat_alpha_add). Instanced on
+                       * the main pass when hide is 0 */
     GFX_MAT_GLASS,    /* the institute's see-through toon glass (the reference page's glass shader): stepped sky reflection,
                        * sliding glints, hard rim, alpha 0.3..1; blended (premultiplied), no depth write, both faces, drawn
                        * with the dithered geometry (after the avatars), back to front; hide scales its alpha */

@@ -1738,7 +1738,8 @@ static int draw_bucket(const DrawItem *d)
     if (d->kind == GFX_MAT_DEPTH || d->kind == GFX_MAT_TOON_FADE) { /* whole-object fades last: depth, then colour */
         return d->kind == GFX_MAT_DEPTH ? 4 : 5;
     }
-    if (d->kind == GFX_MAT_GLASS) { /* see-through, no depth write: over the avatars behind it, with the dithered geometry */
+    if (d->kind == GFX_MAT_GLASS || d->kind == GFX_MAT_ALPHA) { /* see-through, no depth write: over the avatars behind it,
+                                                                   * with the dithered geometry (LIB-1 §10: after everything opaque) */
         return 3;
     }
     if (d->flags & GFX_DRAW_DYNAMIC) {
@@ -1763,14 +1764,17 @@ static bool instanceable(const GfxContext *g, const DrawItem *d)
 
 /* bucket | kind | x-ray-always | two 16-bit fields | position:
  *   opaque: mesh then depth (front to back), so one mesh's instances are neighbours
- *   blended: depth (back to front) then mesh; ground sprites all sort as "farthest" */
+ *   blended: depth (back to front) then mesh; ground sprites all sort as "farthest"; GFX_MAT_ALPHA: mesh, then back to front */
 static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
 {
     const float dist = sqrtf(d->sort);
     const uint64_t near_first = (uint64_t)mg_clampf(dist * 256.0f, 0.0f, 65535.0f);
     uint64_t a, b;
-    if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_ALPHA ||
-        d->kind == GFX_MAT_GLASS) {
+    if (d->kind == GFX_MAT_ALPHA) { /* LIB-1 §10: mesh first, far to near within it: one mesh's instances (the table lamps' light
+                                     * pools, the phone glows) stay one instanced draw; faint pools and cones barely overlap */
+        a = d->mesh;
+        b = 32767u - (near_first >> 1);
+    } else if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_GLASS) {
         a = (d->flags & GFX_DRAW_GROUND) ? 0u : 65535u - near_first;
         b = d->mesh;
     } else {

@@ -493,7 +493,9 @@ target_compile_options(level_mem_test PRIVATE ${MG_WARNINGS})
 add_test(NAME level_mem COMMAND level_mem_test)
 
 foreach(lib dressing nav fidget life)
-    add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c $<$<STREQUAL:${lib},nav>:game/lib_people.c>)
+    # lib_people with nav (its agents) and with life (the cat walking among the people on the grid)
+    add_executable(lib_${lib}_test tests/lib_${lib}_test.c game/lib_${lib}.c $<$<STREQUAL:${lib},nav>:game/lib_people.c>
+                   $<$<STREQUAL:${lib},life>:game/lib_people.c> $<$<STREQUAL:${lib},life>:game/lib_nav.c>)
     target_include_directories(lib_${lib}_test PRIVATE game engine)
     target_link_libraries(lib_${lib}_test PRIVATE mg_thirdparty m)
     target_compile_options(lib_${lib}_test PRIVATE ${MG_WARNINGS})

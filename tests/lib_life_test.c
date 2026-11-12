@@ -1,14 +1,57 @@
 /* LIB-1 §10 unit test for game/lib_life.c (own main; PASS/FAIL lines, exit 1 on any FAIL).
+ * Linked with lib_nav.c and lib_people.c: the cat also walks the real grid among the 25 people, as in the menu.
  * Usage: lib_life_test [path/to/library.scene.json] */
+#define _POSIX_C_SOURCE 200809L
 #include "lib_life.h"
+#include "lib_nav.h"
+#include "lib_people.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include <cJSON.h>
+
+#include "core/log.h"
+#include "core/time.h"
+
+/* lib_nav / lib_people log and time themselves: no SDL here */
+double mg_time_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+static void vlog(const char *tag, const char *fmt, va_list ap)
+{
+    printf("[%s] ", tag);
+    vprintf(fmt, ap);
+    printf("\n");
+}
+void mg_log_info(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vlog("info", fmt, ap);
+    va_end(ap);
+}
+void mg_log_warn(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vlog("warn", fmt, ap);
+    va_end(ap);
+}
+void mg_log_error(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vlog("error", fmt, ap);
+    va_end(ap);
+}
 
 static int g_fail;
 static void check(bool ok, const char *what, const char *detail)
@@ -73,6 +116,239 @@ static bool test_clock(LibLife *l, const LibLifeCfg *c, double lt, char *det)
     sprintf(det, "local %02d:%02d:%02d -> shown %.3f min of 12 h (want %.3f), hour hand %.2f min", (int)(lt / 3600),
             (int)fmod(lt / 60, 60), (int)fmod(lt, 60), shown, want, hm);
     return d <= 1.0 && dh <= 1.0;
+}
+
+#define PI_D 3.141592653589793
+#define TICK (1.0f / 60.0f)
+
+/* the fish: x = centre + a sin(w t + phi) (a 45-95 % of the half-width, w 0.35-0.85), +-1.5 cm bob, yaw = pi/2 (1 - tanh(5 cos(w t
+ * + phi))) (+ the prototype's 0.25 sin(6 t + k) wiggle), recomputed here from each fish's parameters against the drawn instances */
+static void test_fish(const LibLifeCfg *c)
+{
+    static LibLife l;
+    lib_life_init(&l, c, 3);
+    bool params = l.fish_n == c->fish, pos = true, yaw = true;
+    char det[200] = "";
+    for (int k = 0; k < l.fish_n; k++) {
+        const LibFish *f = &l.fish[k];
+        params &= f->ax >= 0.45f * c->tank_half.X - 1e-5f && f->ax <= 0.95f * c->tank_half.X + 1e-5f && f->w >= 0.35f && f->w <= 0.85f;
+    }
+    const int home = c->home;
+    double worst_p = 0, worst_y = 0;
+    bool turned = false, ahead = false;
+    for (int step = 0; step < 60 * 120; step++) {
+        lib_life_step(&l, c, TICK, 1u << home, 0);
+        if (step % 7) continue;
+        int n = lib_life_instances(&l, g_inst, LIB_INST_MAX), k = 0;
+        for (int i = 0; i < n; i++) {
+            if (g_inst[i].kind != LIB_MESH_FISH) continue;
+            const LibFish *f = &l.fish[k];
+            const double t = l.time, ph = t * f->w + f->ph;
+            const double x = c->bx[home] + c->tank_centre.X + f->ax * sin(ph);
+            const double y = c->tank_centre.Y + f->y + 0.015 * sin(t * 0.7 + f->ph);
+            const double z = c->bz[home] + c->tank_centre.Z + f->z;
+            const double turn = PI_D / 2 * (1 - tanh(5 * cos(ph)));
+            const double want = turn + 0.25 * sin(t * 6 + k);
+            const HMM_Mat4 *m = &g_inst[i].xf;
+            const double dp = fabs(m->Elements[3][0] - x) + fabs(m->Elements[3][1] - y) + fabs(m->Elements[3][2] - z);
+            /* a turn about y takes the mesh's +x (its nose) to (cos yaw, 0, -sin yaw) */
+            const double got = atan2(-m->Elements[0][2], m->Elements[0][0]);
+            double dy = fmod(fabs(got - want), 2 * PI_D);
+            if (dy > PI_D) dy = 2 * PI_D - dy;
+            worst_p = fmax(worst_p, dp), worst_y = fmax(worst_y, dy);
+            if (cos(ph) > 0.5) ahead |= turn < 0.01;          /* swimming towards +x: nose +x */
+            if (cos(ph) < -0.5) turned |= turn > PI_D - 0.01; /* swimming back: turned round */
+            k++;
+        }
+    }
+    pos = worst_p < 1e-4;
+    yaw = worst_y < 1e-4;
+    snprintf(det, sizeof det, "%d fish, worst position error %.2g m, worst yaw error %.2g rad over 2 min", l.fish_n, worst_p, worst_y);
+    check(params && pos && yaw && turned && ahead, "fish: the closed-form swim and turn (a, w in range; x, bob, yaw)", det);
+}
+
+/* every state of the cat's loop over a seeded run (straight legs; the visited player pets) */
+static void test_cat_states(const LibLifeCfg *c, const HMM_Vec3 *hs)
+{
+    static LibLife l;
+    lib_life_init(&l, c, 777);
+    lib_cat_table(&l, HMM_V2(c->bx[c->home] + 0.6f, c->bz[c->home] + 1.6f), hs, 0x5);
+    long steps = 0;
+    while (l.cat.loops < 2 && steps < 60L * 600) {
+        lib_cat_pet_weight(&l, lib_cat_petting(&l) >= 0 ? 1.0f : 0.0f);
+        lib_life_step(&l, c, TICK, 0xF, 0);
+        steps++;
+    }
+    char det[300], miss[160] = "";
+    for (int s = 0; s < LIB_CAT_STATES; s++)
+        if (!((l.cat.states_seen >> s) & 1u)) {
+            strncat(miss, " ", sizeof miss - strlen(miss) - 1);
+            strncat(miss, lib_cat_state_name((LibCatState)s), sizeof miss - strlen(miss) - 1);
+        }
+    snprintf(det, sizeof det, "%d loops in %.0f s: %s%s", l.cat.loops, l.time,
+             miss[0] ? "missing" : "rug, walk, approach, hop up, visit, pet, hop down, watch, nap all seen", miss);
+    check(l.cat.states_seen == (1u << LIB_CAT_STATES) - 1u && l.cat.loops >= 2, "cat: the loop reaches every state", det);
+}
+
+/* the pool never holds more than LIB_PUFFS_MAX: every bay on screen, 16 steaming mugs, and 1,000 extra puffs a frame */
+static void test_cap(const LibLifeCfg *c, const HMM_Vec3 *seats)
+{
+    static LibLife l;
+    lib_life_init(&l, c, 5);
+    for (int b = 0; b < c->bays; b++) lib_life_table_lamp(&l, b, HMM_V2(c->bx[b] + 0.6f, c->bz[b] + 1.74f), true);
+    bool ok = true;
+    for (int f = 0; f < 600; f++) {
+        lib_life_step(&l, c, TICK, 0xF, 0);
+        for (int b = 0; b < c->bays; b++)
+            for (int s2 = 0; s2 < 4; s2++)
+                lib_life_steam(&l, HMM_V3(c->bx[b] + seats[s2].X, c->mug_rest.Y, c->bz[b] + seats[s2].Y), seats[s2].Z);
+        for (int k = 0; k < 1000; k++)
+            lib_life_puff(&l, LIB_PUFF_BALL, HMM_V3(c->bx[k % c->bays] + 0.01f * (float)(k % 50), 0.5f, c->bz[k % c->bays] + 1.0f), 0.02f,
+                          0xffffffffu);
+        ok &= l.puffs_n <= LIB_PUFFS_MAX && lib_life_puffs(&l, g_puffs, LIB_PUFFS_MAX) <= LIB_PUFFS_MAX;
+    }
+    char det[160];
+    snprintf(det, sizeof det, "peak %d live, %u refused over 600 frames of 1,000 extra each", l.puffs_peak, l.puffs_refused);
+    check(ok && l.puffs_peak == LIB_PUFFS_MAX && l.puffs_refused > 0, "particles: the cap of 320 is never exceeded under flood", det);
+}
+
+/* the same seed and ticks give the same room: two runs compared (the cat, every instance, every puff) */
+static void test_determinism(const LibLifeCfg *c, const HMM_Vec3 *hs)
+{
+    static LibLife a, b, d;
+    static LibInst ia[LIB_INST_MAX], ib[LIB_INST_MAX];
+    static LibPuff pa[LIB_PUFFS_MAX], pb[LIB_PUFFS_MAX];
+    lib_life_init(&a, c, 4242);
+    lib_life_init(&b, c, 4242);
+    const HMM_Vec2 t = HMM_V2(c->bx[c->home] + 0.6f, c->bz[c->home] + 1.6f);
+    lib_cat_table(&a, t, hs, 0xF);
+    lib_cat_table(&b, t, hs, 0xF);
+    bool same = true;
+    long diff_at = -1;
+    for (long f = 0; f < 60L * 300 && same; f++) {
+        const uint32_t vis = (uint32_t)(f / 600) % 16u; /* the visible-bay mask changes every 10 s */
+        LibLife *two[2] = {&a, &b};
+        for (int k = 0; k < 2; k++) {
+            lib_cat_pet_weight(two[k], lib_cat_petting(two[k]) >= 0 ? 1.0f : 0.0f);
+            lib_life_step(two[k], c, TICK, vis, 3600.0 + f * TICK);
+        }
+        const int na = lib_life_instances(&a, ia, LIB_INST_MAX), nb = lib_life_instances(&b, ib, LIB_INST_MAX);
+        const int qa = lib_life_puffs(&a, pa, LIB_PUFFS_MAX), qb = lib_life_puffs(&b, pb, LIB_PUFFS_MAX);
+        same = na == nb && qa == qb && !memcmp(ia, ib, sizeof(LibInst) * (size_t)na) && !memcmp(pa, pb, sizeof(LibPuff) * (size_t)qa) &&
+               !memcmp(&a.cat, &b.cat, sizeof a.cat);
+        if (!same) diff_at = f;
+    }
+    /* a different seed visits in another order */
+    lib_life_init(&a, c, 4242);
+    lib_life_init(&d, c, 99);
+    lib_cat_table(&a, t, hs, 0xF);
+    lib_cat_table(&d, t, hs, 0xF);
+    int order_a[8], order_d[8], na = 0, nd = 0;
+    uint32_t sa = 0, sd = 0;
+    for (long f = 0; f < 60L * 1200 && (na < 8 || nd < 8); f++) {
+        lib_life_step(&a, c, TICK, 0xF, 0);
+        lib_life_step(&d, c, TICK, 0xF, 0);
+        if (a.cat.pet_serial != sa && na < 8) sa = a.cat.pet_serial, order_a[na++] = a.cat.who;
+        if (d.cat.pet_serial != sd && nd < 8) sd = d.cat.pet_serial, order_d[nd++] = d.cat.who;
+    }
+    const bool differs = na == nd && memcmp(order_a, order_d, sizeof(int) * (size_t)na) != 0;
+    char det[200];
+    if (same)
+        snprintf(det, sizeof det, "5 min, the visible mask changing every 10 s: identical; seeds 4242 / 99 visit in different orders: %s",
+                 differs ? "yes" : "no");
+    else
+        snprintf(det, sizeof det, "the runs part at frame %ld", diff_at);
+    check(same && differs, "determinism: seed + ticks (+ visible mask) -> the same room", det);
+}
+
+/* The menu's way: the cat's ground legs walked by its agent on the real grid among the 25 people (lib_people), the table in
+ * a back-row bay (through the doors). Every state, loops completed, never closer than 96 % of the radii sum to anyone, never
+ * on a blocked cell while walking but the last stretch, and two identical runs. */
+typedef struct GridRun {
+    LibLife life;
+    LibPeople people;
+    double walked, worst_stuck, stuck;
+    int blocked;
+    int pets;
+    uint32_t serial;
+    HMM_Vec2 leg_goal;
+    bool been_free; /* this leg has been on a free cell */
+} GridRun;
+
+static float dist2(HMM_Vec2 a, HMM_Vec2 b) { return (a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y); }
+
+static LibNav g_nav;
+static LibPeopleCfg g_pcfg;
+
+static void grid_tick(GridRun *r, const LibLifeCfg *c, HMM_Vec2 table, const HMM_Vec3 *seats, uint32_t occ, uint32_t vis)
+{
+    LibLife *l = &r->life;
+    LibPeople *P = &r->people;
+    lib_cat_table(l, table, seats, occ);
+    const LibCat *k = &l->cat;
+    lib_people_cat_sync(P, &g_nav, HMM_V2(k->pos[0], k->pos[2]), k->yaw, lib_cat_on_floor(l), k->leg, k->leg_goal);
+    lib_people_tick(P, &g_nav, TICK, vis);
+    const LibAgent *a = lib_people_cat(P);
+    const HMM_Vec2 before = HMM_V2(k->pos[0], k->pos[2]);
+    const bool walking = k->leg;
+    if (a) lib_cat_leg_feed(l, a->pos, a->yaw, HMM_LenV2(a->vel), lib_people_cat_arrived(P));
+    lib_cat_pet_weight(l, lib_cat_petting(l) >= 0 ? 1.0f : 0.0f);
+    lib_life_tick(l, c, TICK);
+    if (l->cat.pet_serial != r->serial) {
+        r->serial = l->cat.pet_serial;
+        r->pets += lib_cat_petting(l) >= 0;
+    }
+    if (a && walking) {
+        const float d = hypotf(k->pos[0] - before.X, k->pos[2] - before.Y);
+        r->walked += d;
+        r->stuck = d < 1e-5f ? r->stuck + TICK : 0.0;
+        r->worst_stuck = fmax(r->worst_stuck, r->stuck);
+        /* a stop the cat fits but the people's grid blocks (the clock's, at its radius): the first stretch out of it and the last
+         * stretch into it leave the grid (the step-4 rule's exception, both ways) */
+        const bool free_now = lib_nav_free(&g_nav, HMM_V2(k->pos[0], k->pos[2]));
+        if (dist2(k->leg_goal, r->leg_goal) > 1e-8f) r->leg_goal = k->leg_goal, r->been_free = false;
+        r->been_free |= free_now;
+        if (!free_now && r->been_free && !a->on_last) r->blocked++;
+    }
+}
+
+static void test_cat_on_grid(const LibLifeCfg *c, const cJSON *root, const HMM_Vec3 *seats)
+{
+    if (!lib_nav_bake(&g_nav, root) || !lib_people_config(&g_pcfg, root)) {
+        check(false, "cat on the grid: nav / people config", NULL);
+        return;
+    }
+    static GridRun r[2];
+    const int tb = c->bays - 1; /* the back row's last bay: from the rug in the home bay through the doors */
+    HMM_Vec3 s3[4];
+    for (int i = 0; i < 4; i++) s3[i] = HMM_V3(seats[i].X + c->bx[tb], seats[i].Y + c->bz[tb], seats[i].Z);
+    const HMM_Vec2 table = HMM_V2(c->bx[tb] + 0.6f, c->bz[tb] + 1.6f);
+    for (int k = 0; k < 2; k++) {
+        memset(&r[k], 0, sizeof r[k]);
+        lib_people_init(&r[k].people, &g_pcfg, &g_nav);
+        lib_people_cat_add(&r[k].people, 0.2f, c->cat_speed);
+        lib_life_init(&r[k].life, c, 2024);
+        lib_cat_use_legs(&r[k].life, true);
+    }
+    bool same = true;
+    long ticks = 0;
+    const long max_ticks = 60L * 60 * 15;
+    while (r[0].life.cat.loops < 3 && ticks < max_ticks) {
+        const uint32_t vis = ((uint32_t)(ticks / 900) % 16u) | 2u;
+        for (int k = 0; k < 2; k++) grid_tick(&r[k], c, table, s3, 0x6, vis);
+        same &= !memcmp(&r[0].life.cat, &r[1].life.cat, sizeof r[0].life.cat);
+        ticks++;
+    }
+    const LibLife *l = &r[0].life;
+    char det[300];
+    snprintf(det, sizeof det, "%d loops in %.0f s, %.0f m walked, %d pets at bay %d's table, states %03x, worst stall %.1f s", l->cat.loops,
+             l->time, r[0].walked, r[0].pets, tb, l->cat.states_seen, r[0].worst_stuck);
+    check(l->cat.loops >= 3 && r[0].pets >= 4 && l->cat.states_seen == (1u << LIB_CAT_STATES) - 1u && r[0].worst_stuck < 6.0,
+          "cat on the grid: loops to a back-row table and back, every state", det);
+    snprintf(det, sizeof det, "closest pair %.3f of the radii sum (>= 0.96), %d walking ticks on a blocked cell off the first / last stretch",
+             r[0].people.min_ratio, r[0].blocked);
+    check(r[0].people.min_ratio >= LIB_HARD_RULE - 1e-4f && r[0].blocked == 0, "cat on the grid: nobody through anybody, no walls", det);
+    check(same, "cat on the grid: two runs identical (seed + ticks + visible masks)", same ? "every tick" : "they part");
 }
 
 int main(int argc, char **argv)
@@ -292,6 +568,12 @@ int main(int argc, char **argv)
         sprintf(det, "bay %d (row %d) seat 2: error %.3f m, approach in the bay %s", b, b / cfg.cols, best, app_ok ? "yes" : "no");
         check(got && best < 0.01f && app_ok, "cat walks to whichever table the players are at", det);
     }
+
+    test_fish(&cfg);
+    test_cat_states(&cfg, hs);
+    test_cap(&cfg, seats);
+    test_determinism(&cfg, hs);
+    test_cat_on_grid(&cfg, root, seats);
 
     cJSON_Delete(root);
     free(txt);

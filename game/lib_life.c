@@ -287,14 +287,22 @@ void lib_life_init(LibLife *l, const LibLifeCfg *c, uint32_t seed)
     k->table = HMM_V2(c->bx[c->home], c->bz[c->home]);
 }
 
-static void add_puff(LibLife *l, double x, double y, double z, double sc, uint32_t rgba)
+/* one particle into the frame's pool: only in a visible bay, never more than LIB_PUFFS_MAX live */
+static void add_puff(LibLife *l, LibPuffKind kind, double x, double y, double z, double sc, uint32_t rgba)
 {
-    if (l->puffs_n >= LIB_PUFFS_MAX || sc <= 0) return;
+    if (sc <= 0) return;
     if (!((l->visible >> lib_life_bay_of(l->cfg, (float)x, (float)z)) & 1u)) return;
+    if (l->puffs_n >= LIB_PUFFS_MAX) {
+        l->puffs_refused++;
+        return;
+    }
     LibPuff *p = &l->puffs[l->puffs_n++];
     p->pos = HMM_V3((float)x, (float)y, (float)z);
     p->scale = (float)sc;
     p->rgba = rgba;
+    p->kind = (uint8_t)kind;
+    l->kinds_seen |= 1u << kind;
+    if (l->puffs_n > l->puffs_peak) l->puffs_peak = l->puffs_n;
 }
 
 static void emit_lamp(LibLife *l, const LibLampMotes *L, HMM_Vec2 centre, int li)
@@ -305,7 +313,7 @@ static void emit_lamp(LibLife *l, const LibLampMotes *L, HMM_Vec2 centre, int li
         double u = ll_frac(ll_frac(k * 0.37 + li * 0.19) + time * 0.02 * w);
         double rr = ll_lerp(L->top_r, L->bottom_r, u) * (0.25 + 0.7 * ((k * 53) % 10) / 10.0);
         double an = k * 2.4 + time * 0.25 * w;
-        add_puff(l, centre.X + rr * cos(an), ll_lerp(L->top_y, L->bottom_y, u) + 0.01 * sin(time * w + k),
+        add_puff(l, LIB_PUFF_LAMP, centre.X + rr * cos(an), ll_lerp(L->top_y, L->bottom_y, u) + 0.01 * sin(time * w + k),
                  centre.Y + rr * sin(an),
                  L->size * (0.7 + 0.5 * sin(time * 1.3 + k)) * ll_smooth(u / 0.1) * (1 - ll_smooth((u - 0.85) / 0.15)),
                  COL_MOTE);
@@ -373,6 +381,20 @@ static void cat_step(LibLife *l, float dt)
     k->pet_k = 0;
     k->watch = 0;
     k->moving = false;
+    k->leg = false;
+    /* what it is doing this tick (before the step: a step that ends here counts as what it was) */
+    if (k->wait > 0) {
+        const int wp = st->pose >= 0 ? st->pose : LIB_POSE_SIT;
+        k->state = st->visit ? (k->pet_in > 0.3f && k->done ? LIB_CAT_PET : LIB_CAT_VISIT)
+                   : st->watch_pendulum ? LIB_CAT_WATCH
+                   : wp == LIB_POSE_SLEEP ? (k->pos[1] > 0.01f ? LIB_CAT_NAP : LIB_CAT_RUG)
+                                          : LIB_CAT_WALK;
+    } else if (st->hop) {
+        k->state = st->y > k->from[1] ? LIB_CAT_HOP_UP : LIB_CAT_HOP_DOWN;
+    } else {
+        k->state = st->approach ? LIB_CAT_APPROACH : LIB_CAT_WALK;
+    }
+    k->states_seen |= 1u << k->state;
     if (k->wait > 0) {
         k->wait -= dt;
         pose = st->pose >= 0 ? st->pose : LIB_POSE_SIT;
@@ -397,7 +419,16 @@ static void cat_step(LibLife *l, float dt)
         k->yaw = ll_alerp(k->yaw, atan2f(hp.X - k->from[0], hp.Y - k->from[2]), ll_ease(dt, 14));
         k->moving = true;
         if (kk >= 1) cat_arrive(l, st);
-    } else { /* a ground leg, straight here (the integrator swaps in the nav grid) */
+    } else if (k->ext) { /* a ground leg walked by the integrator's agent: it fed the position before this tick */
+        k->leg = true;
+        k->leg_goal = cat_target(l, st);
+        k->moving = k->leg_speed > 0.05f;
+        if (k->leg_arrived) {
+            k->leg_arrived = false;
+            k->leg = false;
+            cat_arrive(l, st);
+        }
+    } else { /* a ground leg, straight */
         HMM_Vec2 tp = cat_target(l, st);
         float dx = tp.X - k->pos[0], dz = tp.Y - k->pos[2], d = sqrtf(dx * dx + dz * dz), step = c->cat_speed * dt;
         k->moving = true;
@@ -414,36 +445,46 @@ static void cat_step(LibLife *l, float dt)
     k->pose_now = pose;
     float e = ll_ease(dt, 6);
     for (int f = 0; f < LIB_POSE_FIELDS; f++) k->P[f] = mg_lerpf(k->P[f], c->pose[pose][f], e);
+}
 
-    l->hearts_n = 0;
-    if (k->pet_k > 0.3f && ((l->visible >> lib_life_bay_of(c, k->pos[0], k->pos[2])) & 1u)) {
-        for (int h = 0; h < c->hearts; h++) {
-            double hf = ll_frac(time * 0.7 + (double)h / c->hearts);
-            double sc = 0.03 * ll_smooth(hf / 0.2) * (1 - ll_smooth((hf - 0.7) / 0.3));
-            if (sc <= 0) continue;
-            LibPuff *p = &l->hearts[l->hearts_n++];
-            p->pos = HMM_V3((float)(k->pos[0] + 0.12 * sin(h * 2.1 + time)), (float)(k->pos[1] + 0.45 + 0.4 * hf), k->pos[2]);
-            p->scale = (float)sc;
-            p->rgba = COL_HEART;
-        }
-    }
+void lib_life_tick(LibLife *l, const LibLifeCfg *c, float dt)
+{
+    l->cfg = c;
+    l->time += dt;
+    cat_step(l, dt);
 }
 
 void lib_life_step(LibLife *l, const LibLifeCfg *c, float dt, uint32_t visible, double local_time_s)
 {
+    lib_life_tick(l, c, dt);
+    lib_life_emit(l, c, visible, local_time_s);
+}
+
+void lib_life_emit(LibLife *l, const LibLifeCfg *c, uint32_t visible, double local_time_s)
+{
     l->cfg = c;
-    l->time += dt;
     l->local_time_s = local_time_s;
     l->visible = visible;
     l->puffs_n = 0;
     l->zees_n = 0;
     l->globes_n = 0;
     double time = l->time;
+    const LibCat *k = &l->cat;
+    l->hearts_n = 0; /* first: the cap never takes the petted cat's hearts */
+    if (k->pet_k > 0.3f) {
+        for (int h = 0; h < c->hearts; h++) {
+            double hf = ll_frac(time * 0.7 + (double)h / c->hearts);
+            double sc = 0.03 * ll_smooth(hf / 0.2) * (1 - ll_smooth((hf - 0.7) / 0.3));
+            const int before = l->puffs_n;
+            add_puff(l, LIB_PUFF_HEART, k->pos[0] + 0.12 * sin(h * 2.1 + time), k->pos[1] + 0.45 + 0.4 * hf, k->pos[2], sc, COL_HEART);
+            l->hearts_n += l->puffs_n - before;
+        }
+    }
 
     for (int i = 0; i < l->motes_n; i++) { /* sunbeam dust */
         const LibMote *p = &l->motes[i];
         double f = ll_frac(p->u + time * 0.012 * p->w);
-        add_puff(l, p->x + 0.06 * sin(time * p->w + p->ph),
+        add_puff(l, LIB_PUFF_DUST, p->x + 0.06 * sin(time * p->w + p->ph),
                  ll_lerp(p->wy, 0.15, f) + 0.05 * sin(time * p->w * 0.6 + p->ph * 2),
                  p->oz + ll_lerp(c->beam_window_z, p->fz, f) + 0.05 * cos(time * p->w * 0.8 + p->ph),
                  0.011 + 0.006 * sin(time * 1.7 + p->ph), COL_MOTE);
@@ -456,13 +497,12 @@ void lib_life_step(LibLife *l, const LibLifeCfg *c, float dt, uint32_t visible, 
         if (!c->has_tank[b]) continue;
         HMM_Vec3 tc = c->tank_centre, th = c->tank_half;
         double cx = c->bx[b] + tc.X, cz = c->bz[b] + tc.Z;
-        for (int k = 0; k < c->bubbles; k++) {
-            double f = ll_frac(time * 0.16 + (double)k / c->bubbles);
-            add_puff(l, cx + th.X * (k % 2 ? 0.7 : -0.55) + 0.012 * sin(time * 5 + k), tc.Y - th.Y + f * th.Y * 2.2,
-                     cz + 0.03 * (k % 3 - 1), 0.006 + 0.004 * f, COL_BUBBLE);
+        for (int q = 0; q < c->bubbles; q++) {
+            double f = ll_frac(time * 0.16 + (double)q / c->bubbles);
+            add_puff(l, LIB_PUFF_BUBBLE, cx + th.X * (q % 2 ? 0.7 : -0.55) + 0.012 * sin(time * 5 + q), tc.Y - th.Y + f * th.Y * 2.2,
+                     cz + 0.03 * (q % 3 - 1), 0.006 + 0.004 * f, COL_BUBBLE);
         }
     }
-    cat_step(l, dt);
 }
 
 void lib_life_steam(LibLife *l, HMM_Vec3 mug, float seat_yaw)
@@ -472,7 +512,7 @@ void lib_life_steam(LibLife *l, HMM_Vec3 mug, float seat_yaw)
     for (int k = 0; k < c->steam_puffs; k++) {
         double f = ll_frac(time / c->steam_period_s + (double)k / c->steam_puffs);
         double wx = 0.015 * sin(time * 3 + k * 2);
-        add_puff(l, mug.X + wx * cs, mug.Y + c->steam_from_y + c->steam_rise_m * f, mug.Z - wx * sn,
+        add_puff(l, LIB_PUFF_STEAM, mug.X + wx * cs, mug.Y + c->steam_from_y + c->steam_rise_m * f, mug.Z - wx * sn,
                  c->steam_size * (1 - f) * ll_smooth(f / 0.15), COL_WHITE);
     }
 }
@@ -491,7 +531,7 @@ void lib_life_dots(LibLife *l, HMM_Vec3 centre, float yaw)
     double time = l->time, cs = cos(yaw), sn = sin(yaw);
     for (int k = 0; k < 3; k++) {
         double x = (k - 1) * 0.09;
-        add_puff(l, centre.X + x * cs, centre.Y + 0.03 * fmax(0.0, sin(time * 7 - k * 0.9)), centre.Z - x * sn, 0.03,
+        add_puff(l, LIB_PUFF_DOTS, centre.X + x * cs, centre.Y + 0.03 * fmax(0.0, sin(time * 7 - k * 0.9)), centre.Z - x * sn, 0.03,
                  COL_WHITE);
     }
 }
@@ -503,7 +543,10 @@ void lib_life_globe(LibLife *l, HMM_Vec3 base)
     l->globe[l->globes_n++] = base;
 }
 
-void lib_life_puff(LibLife *l, HMM_Vec3 pos, float scale, uint32_t rgba) { add_puff(l, pos.X, pos.Y, pos.Z, scale, rgba); }
+void lib_life_puff(LibLife *l, LibPuffKind kind, HMM_Vec3 pos, float scale, uint32_t rgba)
+{
+    add_puff(l, kind, pos.X, pos.Y, pos.Z, scale, rgba);
+}
 
 void lib_life_table_lamp(LibLife *l, int bay, HMM_Vec2 centre, bool on)
 {
@@ -532,6 +575,34 @@ int lib_cat_petting(const LibLife *l)
 }
 
 void lib_cat_pet_weight(LibLife *l, float k) { l->cat.pet_in = mg_saturate(k); }
+
+void lib_cat_use_legs(LibLife *l, bool on) { l->cat.ext = on; }
+
+void lib_cat_leg_feed(LibLife *l, HMM_Vec2 pos, float yaw, float speed, bool arrived)
+{
+    LibCat *k = &l->cat;
+    if (!k->ext || !k->leg) return;
+    const float dt = 1.0f / 60.0f; /* fed once per fixed tick */
+    k->pos[0] = pos.X;
+    k->pos[2] = pos.Y;
+    k->pos[1] = 0.0f;
+    if (speed > 0.05f) k->yaw = ll_alerp(k->yaw, yaw, ll_ease(dt, 10));
+    k->leg_speed = speed;
+    k->leg_arrived = arrived;
+}
+
+bool lib_cat_on_floor(const LibLife *l)
+{
+    const LibCat *k = &l->cat;
+    const LibCatStep *st = &l->cfg->route[k->ri];
+    return k->pos[1] < 0.01f && !(st->hop && k->wait <= 0);
+}
+
+const char *lib_cat_state_name(LibCatState s)
+{
+    static const char *n[LIB_CAT_STATES] = {"rug", "walk", "approach", "hop_up", "visit", "pet", "hop_down", "watch", "nap"};
+    return s >= 0 && s < LIB_CAT_STATES ? n[s] : "?";
+}
 
 /* ---- output ---- */
 
@@ -630,6 +701,5 @@ int lib_life_puffs(const LibLife *l, LibPuff *out, int max)
     if (max > LIB_PUFFS_MAX) max = LIB_PUFFS_MAX;
     int n = 0;
     for (int i = 0; i < l->puffs_n && n < max; i++) out[n++] = l->puffs[i];
-    for (int i = 0; i < l->hearts_n && n < max; i++) out[n++] = l->hearts[i];
     return n;
 }
