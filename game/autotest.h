@@ -153,6 +153,9 @@ typedef struct AutotestProbe {
     struct BookProgress *progress; /* NULL: no progress file open */
     uint32_t ui_draws, passes;     /* last frame's */
     bool npc_world; /* set after the initialiser: this scene simulates NPCs (the institute without a pack has none) */
+    int npc_declared, npc_alive; /* the play scene's declared NPC count (hospital roster, institute pack people: 0 without a
+                                  * pack; -1 unknown) and how many the sim holds now */
+    int lib_declared, lib_live;  /* the library: the scene file's people (25) and the people running */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */
