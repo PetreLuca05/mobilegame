@@ -19,6 +19,11 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
   resets the slot, every island's ambulance and the last island; Maps opens the island overview when no hospital was played.
 - **Memory baseline**: step 5 = 180 MB, step 6 (map preload) = 191 MB; the menu's allowance is +16 MB over step 5.
 - **Rooms estimate**: 33.3 k triangles (the back rooms show through the open doors), in place of ~18 k.
+- **Triangles at rest** (user decision, 2026-11-12): **≈ 58 k** for the square hall in place of ≈ 26 k, stop line **75 k**
+  (`tools/perf_gate.py`, `menu`). Measured with the wall-aware bay rule (93d2a65): 57.9 k average (61.1 k without it). No doorway
+  culling of people and particles. Why: 57.9 k is below the old hospital's `stress200` scene, which passed every iPad budget at 87 k
+  and more; draws, allocations and memory are within budget; the 26 k figure was an estimate for the first small room, written before
+  the hall became four rooms. The iPad GPU trace at the combined gate decides whether the menu needs more work.
 
 # LIB-1 (complete) — library hall: new avatar, living library, unique lobbies, walking between lobbies, zoom to the map
 
@@ -188,7 +193,7 @@ Clock tick 1.8 kHz 12 ms gain 0.012 once a second (visible clocks only); page tu
 
 ## 14. Performance (PERF-1 rules apply)
 
-- At rest (one bay and slivers of its neighbours): **≤ 46 draws, ≈ 26 k triangles**; today's `menu` scenario is 76 draws. During travel (two to three bays): **≤ 60 draws, ≈ 45 k triangles**. During the Maps move add one island (≤ 16). One pass throughout.
+- At rest (one bay and slivers of its neighbours): **≤ 46 draws, ≈ 26 k triangles** [changed: ≈ 58 k for the square hall, stop line 75 k]; today's `menu` scenario is 76 draws. During travel (two to three bays): **≤ 60 draws, ≈ 45 k triangles**. During the Maps move add one island (≤ 16). One pass throughout.
 - Estimated on the iPad Air 4: GPU ≤ 1.7 ms at rest, ≤ 2.6 ms travelling or zooming; tick ≤ 0.15 ms (25 people with at most ~10 at full rate, one cat, fidget timers, closed-form props); nav bake < 4 ms at load; memory ≈ + 16 MB (hall + preloaded map). Avatar: 570 / 154 triangles, `stress200` must stay within budget (shorten the LOD0 distance first; do not change the model).
 - Zero heap allocations per frame: fixed pools for particles (320), balls (6), paths. Dressing a table happens once per lobby change, off screen.
 - If a Mac measurement is more than 2× an estimate, stop and report.

@@ -13,6 +13,8 @@ Standing rules for every milestone. Numbers and history are in [PERF.md](PERF.md
 - The Gastro institute (INST-LIGHT) is fully lit and textured: every institute pixel samples the pattern texture (one R8 2D array
   sample) and runs the reference light set, and its glass is blended. Measured on the Mac only so far (CPU `render` scope, draws);
   the combined iPad gate must include a GPU trace (Instruments, Metal System Trace) of the institute scenario.
+- The library menu (LIB-1): the combined iPad gate must include GPU traces of the menu at rest (`menu`, ≈ 58 k triangles, stop
+  line 75 k in `tools/perf_gate.py`) and of the Maps move (`menu_to_map`).
 
 ## Budgets (iPad Air 4, 60 fps, 200 NPCs)
 
