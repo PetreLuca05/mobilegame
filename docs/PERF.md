@@ -470,3 +470,14 @@ on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled 
 - The dual-light path and the blended shell need a GPU trace of the Maps move on the iPad (Metal System Trace): the Mac cannot show
   tile-GPU cost. Also check the menu at rest for any cost of the larger shader body (the second set is behind a uniform branch).
 
+### Library menu triangles (wall-aware bays, 93d2a65; user decision 2026-11-12)
+
+- Mac, `--log-frame-stats`, menu at rest, 60 s: triangles 61.1 k -> 57.9 k average (rooms 33.3 -> 31.1 k, props 19.1 -> 18.3 k,
+  avatars 8.5 -> 8.3 k), draws 33.2 -> 33.0 (max 35.9). The back bays are hidden 19 % / 9 % of the time (the front doors are open
+  the rest). Pixel-identical (`--lib-still --lib-wall-ab`: 0 changed pixels on every bay and window).
+- Accepted: estimate **58 k** at rest (was 26 k, written for the first small room before the hall became four rooms), stop line
+  **75 k** (`tools/perf_gate.py`). No doorway culling of people and particles: 57.9 k is below `stress200` (87 k+, every iPad budget
+  passed); draws, allocations and memory are within budget.
+- The combined iPad gate's GPU traces include the **menu at rest** and the **Maps move** (`menu_to_map`); they decide whether the
+  menu needs more work.
+
