@@ -4307,8 +4307,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
         if (g->fs_n == 120) {
             const double n = 120.0;
-            mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
-                        (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible");
+            mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s, %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
+                        (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible",
+                        (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) ? "focused" : "not focused");
             g->fs_t0 = app->time;
             mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0, (int)g->lib.trav.phase);
             g->fs_draws_max = g->fs_tris_max = 0;
