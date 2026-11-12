@@ -1,4 +1,4 @@
-/* SCENE_INSTITUTE ("institute", MAP-2): the Gastro Institute, built at load time from content/gastro/institute.map
+/* SCENE_INSTITUTE ("institute", MAP-2): the Gastro Institute, built at load time from assets/world/institute/institute.map
  * (compiled to assets/world/institute.mapb). Floors G 1 2 3 + the roof deck R (floor 4), lifts A B C. */
 #include "rooms.h"
 #include "scene_impl.h"
@@ -98,7 +98,7 @@ struct NavWorld *scene_institute_nav_bake(Scene *s, Arena *arena, ColWorld *worl
 {
     struct NavWorld *n = institute_nav_bake(&IS(s)->in, arena, world);
     const char *out = getenv("MG_NAV_CHECK");
-    if (n && out && *out) { /* MG_NAV_CHECK=<report path>: compare with content/gastro/model_nav.json */
+    if (n && out && *out) { /* MG_NAV_CHECK=<report path>: compare with assets/world/institute/model_nav.json */
         nav_check_write(&IS(s)->in, n, world, out);
     }
     return n;

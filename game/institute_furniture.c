@@ -1,5 +1,5 @@
 /* MAP-2 furniture: one institute.map record = one piece. The geometry of each kind is the JS page's builder
- * (content/gastro/institute_geometry.js: PROP, furnish, furnishBase, corridorItem, bed / chair / desk / monitor /
+ * (the institute page's geometry code (institute_geometry.js, removed from the repository with the book content): PROP, furnish, furnishBase, corridorItem, bed / chair / desk / monitor /
  * shelf / cabinet / plant / trolleyTower), written in the room-local frame of loc(): u across the room, v towards the
  * wall opposite the door, positions along v scaled by the room's k (sizes are not). The piece is then fitted to the
  * record's footprint (the records are the bounding boxes of exactly these pieces, so the fit is ~1) and emitted into

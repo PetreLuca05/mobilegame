@@ -1,6 +1,7 @@
-/* BOOK-1 ctest: game/book_pack.c on the embedded pack (the generated copy the build embeds), on the committed dummy pack
- * (the exact numbers content/gastro/mgpack_read.c prints for it) and on corrupted copies in memory, which must be refused.
- *   book_pack_test GENERATED.mgpack content/gastro_demo/gastro.mgpack
+/* ctest: game/book_pack.c on the synthetic fixture pack (tests/fixtures/make_fixture_pack.py, generated into the build
+ * folder: no pack lives in the repository) with the counts the generator defines, and on corrupted copies in memory,
+ * which must be refused.
+ *   book_pack_test BUILD/fixture/fixture.mgpack
  * Brings its own mg_log_* / mg_asset_find so it links without SDL. */
 #include <stdarg.h>
 #include <stdio.h>
@@ -87,43 +88,32 @@ static uint8_t *load(const char *path, size_t *size)
     return buf;
 }
 
-/* mgpack_read content/gastro_demo/gastro.mgpack (key=value lines) */
-static void expect_dummy_counts(const BookPack *p)
+/* the fixture's counts (tests/fixtures/make_fixture_pack.py) */
+static void expect_fixture_counts(const BookPack *p)
 {
-    EQ(p->stats.bytes, 126656);
     EQ(p->hdr->version, 4);
-    EQ(p->stats.fnv1a, 0xbba8de49u);
-    EQ(p->room_count, 85);
+    EQ(p->room_count, 85); /* the building's rooms */
     EQ(p->topic_count, 6);
     EQ(p->atom_count, 25);
     EQ(p->fact_count, 24);
-    EQ(p->item_count, 20);
-    EQ(p->opt_count, 113);
-    EQ(p->ref_count, 72);
+    EQ(p->item_count, 20); /* 12 + one per type at the worst-case size */
     EQ(p->script_count, 20);
     EQ(p->stats.required, 12);
     EQ(p->stats.split_parts, 0);
     EQ(p->step_count, 40);
-    EQ(p->prop_count, 201);
-    EQ(p->slot_count, 33);
+    EQ(p->prop_count, 6); /* the fixture's own interaction props */
+    EQ(p->slot_count, 0);
     EQ(p->figlabel_count, 37);
-    EQ(p->str_size, 68067);
-    EQ(p->stats.strings, 2267);
-    EQ(p->stats.longest_string_bytes, 1776);
     EQ(p->cast_count, 6);
     EQ(p->mission_count, 3);
     EQ(p->quest_count, 6);
     EQ(p->mstep_count, 12);
     EQ(p->line_count, 68);
-    EQ(p->stats.dialogue_bytes, 2131);
-    EQ(p->stats.longest_dialogue_line_bytes, 50);
     EQ(p->person_count, 12);
     EQ(p->stats.people_walking, 3);
-    EQ(p->furniture_count - p->stats.door_leaves, 1019); /* the reader's furniture= excludes the door leaves */
+    EQ(p->furniture_count - p->stats.door_leaves, 1019); /* the building's furniture records */
     EQ(p->stats.door_leaves, 105);
-    EQ(p->stats.largest_script_steps, 2);
-    EQ(p->stats.largest_script_string_bytes, 4675);
-    CHECK(strcmp(book_pack_str(p, p->scripts[p->stats.largest_script].id), "s-worst-order") == 0); /* the worst-case items (make_dummy_pack.py WORST) */
+    CHECK(strcmp(book_pack_str(p, p->scripts[p->stats.largest_script].id), "s-worst-order") == 0); /* the worst-case items */
 }
 
 static void expect_sound(const BookPack *p)
@@ -202,26 +192,19 @@ static void corrupted(const uint8_t *good, size_t size, const char *name, Corrup
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        fprintf(stderr, "usage: book_pack_test GENERATED.mgpack DUMMY.mgpack\n");
+    if (argc < 2) {
+        fprintf(stderr, "usage: book_pack_test FIXTURE.mgpack\n");
         return 2;
     }
-    size_t gen_size, demo_size;
-    uint8_t *gen = load(argv[1], &gen_size), *demo = load(argv[2], &demo_size);
+    size_t demo_size;
+    uint8_t *demo = load(argv[1], &demo_size);
 
     BookPack p;
-    CHECK(book_pack_open(&p, gen, gen_size, "generated"));
+    CHECK(book_pack_open(&p, demo, demo_size, "fixture"));
     expect_sound(&p);
-#ifdef MG_CONTENT_DEMO
-    expect_dummy_counts(&p); /* this build embeds the dummy pack */
-#endif
-    printf("generated: %s pack, bytes=%u fnv1a=%08x rooms=%u topics=%u items=%u scripts=%u required=%u msteps=%u problems=%u\n",
-           book_pack_is_demo() ? "demo" : "real", p.stats.bytes, p.stats.fnv1a, p.room_count, p.topic_count, p.item_count, p.script_count,
-           p.stats.required, p.mstep_count, p.problems);
-
-    CHECK(book_pack_open(&p, demo, demo_size, "dummy"));
-    expect_sound(&p);
-    expect_dummy_counts(&p);
+    expect_fixture_counts(&p);
+    printf("fixture: bytes=%u fnv1a=%08x rooms=%u topics=%u items=%u scripts=%u required=%u msteps=%u problems=%u\n", p.stats.bytes, p.stats.fnv1a,
+           p.room_count, p.topic_count, p.item_count, p.script_count, p.stats.required, p.mstep_count, p.problems);
 
     /* refused: the blob not 8-byte aligned in memory */
     uint8_t *odd = malloc(demo_size + 8);
@@ -259,7 +242,6 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
         corrupted(demo, demo_size, bad[i].name, bad[i].fn);
     }
-    free(gen);
     free(demo);
     if (g_failed) {
         fprintf(stderr, "book_pack_test: %d checks FAILED\n", g_failed);

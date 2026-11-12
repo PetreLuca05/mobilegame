@@ -1,4 +1,4 @@
-/* MAP-2 institute scene: a port of content/gastro/institute_geometry.js (buildCore, buildRoomShell + wall,
+/* MAP-2 institute scene: a port of the institute page's geometry code (institute_geometry.js, removed from the repository with the book content) (buildCore, buildRoomShell + wall,
  * buildLifts, buildCab, buildRoof, buildSite) driven by the compiled map. One build pass per storey: its groups and
  * wall pieces are uploaded and the builders' memory released before the next storey (peak = one storey). */
 #include "institute.h"
@@ -1462,7 +1462,7 @@ void institute_draw(const Institute *in, GfxContext *g, const InstView *v)
 /* ------------------------------------------------------------------ nav */
 
 /* grid 0: the site round the building (x -46..46, z -30..46: the front gate, the car park's free bays) (yard + storey G, one area); 1..3 the storeys; 4 the roof deck. Same 0.25 m
- * lattice as content/gastro/model_nav.json (x0 -34, z0 -27), so the grids compare cell for cell. */
+ * lattice as assets/world/institute/model_nav.json (x0 -34, z0 -27), so the grids compare cell for cell. */
 NavWorld *institute_nav_bake(Institute *in, Arena *perm, ColWorld *world)
 {
     NavBakeDesc d;

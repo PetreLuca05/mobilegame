@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""A small synthetic content pack in the real format (v4), for the public repository and CI: 2 arcs, 3 cases, 6 rooms of
-placeholder facts, items of every type, scripts, dialogue, a cast and people. The map tables (rooms, furniture, book props,
-slots) are the public content/gastro/institute.map itself; the 6 rooms are real rooms of it on 2 storeys, the scripts sit on
-real book props there, and every stand point, patient place and person post is a cell content/gastro/model_nav.json marks
-reachable (well within the 2.0 m rule). Every text is invented filler made from
-nonsense syllables: no word of the book. It is written by the same packbin.py as the real pack, so the format cannot drift,
-and checked with mgpack_read.c when a C compiler is present.
-  make_dummy_pack.py OUT_DIR        -> OUT_DIR/gastro.mgpack, OUT_DIR/gastro.mgpack.h
-The game shows "conținut demo" when it runs on this pack (ENGINE_PROMPT.md, S1)."""
+"""The test fixture: a small synthetic content pack in the pack format (v4), generated at build time into the build folder
+(never stored in the repository). 2 arcs, 3 cases, 6 rooms of placeholder facts, items of every type (and one per type at a
+large worst-case size), scripts, dialogue, a cast and people. Every text is invented filler made from nonsense syllables.
+The map tables come from the building map (assets/world/institute/institute.map); the fixture adds its own invented
+interaction props and topic records to a temporary copy of it (the repository's map has none). Stand points, patient places
+and person posts are cells the building's reference walk grid (model_nav.json) marks reachable.
+  make_fixture_pack.py OUT_DIR      -> OUT_DIR/fixture.mgpack (+ .h), OUT_DIR/fig/ (the figure crops: figpack.py packs them)
+The engine tests load it with --content OUT_DIR (book_ui, missions, book, bookpeople) or read it directly (ctest book_pack)."""
 import base64, importlib.util, json, math, os, random, re, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PUBLIC = os.path.join(HERE, '..', '..', 'content', 'gastro')
+ROOT = os.path.join(HERE, '..', '..')
+PUBLIC = os.path.join(ROOT, 'assets', 'world', 'institute')
 
 
 class Reach:
@@ -174,23 +174,30 @@ def add_worst_case(items, atoms, scripts, topic, room, prop, tmp):
 def main(out):
     rng = random.Random(7)
     T = lambda n: filler(rng, n).capitalize() + '.'
-    tmp = tempfile.mkdtemp(prefix='dummy_pack_')
+    tmp = tempfile.mkdtemp(prefix='fixture_pack_')
     os.makedirs(os.path.join(tmp, 'fig'))
     mp_text = open(os.path.join(PUBLIC, 'institute.map'), encoding='utf-8').read()
     reach = Reach(os.path.join(PUBLIC, 'model_nav.json'))
     all_rooms = [(m.group(2), int(m.group(1)), *[float(m.group(i)) for i in (3, 4, 5, 6)])
                  for m in re.finditer(r'^room\s+(-?\d+)\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+"', mp_text, re.M)]
-    iprops = [(m.group(1), m.group(2), float(m.group(3)), float(m.group(4)))
-              for m in re.finditer(r'^iprop\s+-?\d+\s+(\S+)\s+(\S+)\s+\S+\s+(\S+)\s+(\S+)', mp_text, re.M)]
-    iprops = [(p[0], p[1], p[2], p[3]) for p in iprops]      # (room, prop id, x, z)
-    with_props = {p[0] for p in iprops}
+    ROOM_TYPES = ('exam', 'lab', 'office', 'meeting')         # rooms a fixture prop can stand in
+    all_typed = [(m.group(2), int(m.group(1)), m.group(3)) for m in re.finditer(r'^room\s+(-?\d+)\s+(\S+)\s+(\S+)\s', mp_text, re.M)]
+    usable = {rid for rid, f, ty in all_typed if ty in ROOM_TYPES}
     pick = []
-    for f in (0, 1):                                          # 6 real rooms: 3 on the ground floor, 3 on storey 1, with book props
-        cand = sorted(r for r in all_rooms if r[1] == f and r[0] in with_props and r[0] not in reach.exempt)
+    for f in (0, 1):                                          # 6 rooms of the building: 3 on the ground floor, 3 on storey 1
+        cand = sorted(r for r in all_rooms if r[1] == f and r[0] in usable and r[0] not in reach.exempt)
         pick += [cand[k * len(cand) // 3] for k in range(3)]
     rooms = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in pick]  # (id, storey, x0, z0, x1, z1)
-    rprops = {r[0]: [p for p in iprops if p[0] == r[0]] for r in rooms}
     topics = [f'demo_t{i + 1}' for i in range(6)]
+    # the fixture's own interaction props and topic records (invented), one board per room near its centre
+    rprops, extra_map = {}, []
+    for t, r in zip(topics, rooms):
+        cx, cz = (r[2] + r[4]) / 2, (r[3] + r[5]) / 2
+        px, pz = reach.near(r[1], cx, cz, (r[2], r[3], r[4], r[5]))
+        pid = f'fx_{r[0]}'
+        rprops[r[0]] = [(r[0], pid, px, pz)]
+        extra_map.append(f'iprop {r[1]} {r[0]} {pid} board {px} {pz} 0 "{filler(rng, 2)}"')
+        extra_map.append(f'learn {r[1]} {r[0]} fixture topic {t}')
     atoms, facts, items, scripts = [], [], [], []
     ITYPES = ['simplu', 'multiplu', 'card', 'cloze', 'sort', 'match', 'order', 'label']
     k = 0
@@ -242,7 +249,7 @@ def main(out):
     chapters = [{'id': 0, 'name': 'Demo A', 'sub': T(2), 'steps': [{'topic': t, 'room': r[0], 'title': T(3)} for t, r in zip(topics[:2], rooms[:2])]},
                 {'id': 1, 'name': 'Demo B', 'sub': T(2), 'steps': [{'topic': t, 'room': r[0], 'title': T(3)} for t, r in zip(topics[2:], rooms[2:])]}]
     json.dump({'chapters': chapters}, open(os.path.join(tmp, 'gastro-quests.json'), 'w', encoding='utf-8'))
-    open(os.path.join(tmp, 'institute.map'), 'w', encoding='utf-8').write(mp_text)  # rooms, furniture, book props, slots: the real ones
+    open(os.path.join(tmp, 'institute.map'), 'w', encoding='utf-8').write(mp_text + '\n'.join(extra_map) + '\n')  # the building + the fixture's props
 
     write_png(os.path.join(tmp, 'fig', 'fig_demo.png'), 64, 48, (230, 236, 240))
     json.dump([{'id': 'fig_demo', 'file': 'fig/fig_demo.png', 'labels': [{'t': filler(rng, 1), 'bbox': [4, 4, 20, 14]}, {'t': filler(rng, 1), 'bbox': [30, 20, 50, 30]}]},
@@ -287,30 +294,17 @@ def main(out):
         people.append({'cast': None, 'kind': ['patient', 'visitor', 'nurse'][i % 3], 'look': {**look(['patient', 'visitor', 'nurse'][i % 3], i), 'seed': 1000 + i},
                        'f': r[1], 'room': r[0], 'x': at[0], 'z': at[1], 'yaw': 180,
                        'pose': 'sit' if i % 2 == 0 else 'stand', 'y': 0, 'mode': 'static' if i % 2 == 0 else 'walk', 'talk': i % 2 == 0})
-    print('make_dummy_pack: rooms', ', '.join(f'{r[0]} (storey {r[1]})' for r in rooms))
-    json.dump({'version': 1, 'note': 'synthetic demo content', 'cast': cast, 'arcs': arcs, 'missions': missions, 'people': people,
+    print('make_fixture_pack: rooms', ', '.join(f'{r[0]} (storey {r[1]})' for r in rooms))
+    json.dump({'version': 1, 'note': 'synthetic test fixture', 'cast': cast, 'arcs': arcs, 'missions': missions, 'people': people,
                'greetings': {'doctor': [T(4)], 'nurse': [T(4)], 'patient': [T(4)], 'visitor': [T(4)]}},
               open(os.path.join(tmp, 'missions.json'), 'w', encoding='utf-8'), ensure_ascii=False)
-    spec = importlib.util.spec_from_file_location('packbin', os.path.join(HERE, 'packbin.py'))
+    spec = importlib.util.spec_from_file_location('packbin', os.path.join(ROOT, 'tools', 'book', 'packbin.py'))
     pb = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pb)
     os.makedirs(out, exist_ok=True)
-    pb.main(tmp, os.path.join(out, 'gastro.mgpack'))
+    pb.main(tmp, os.path.join(out, 'fixture.mgpack'))
     shutil.copytree(os.path.join(tmp, 'fig'), os.path.join(out, 'fig'), dirs_exist_ok=True)  # the figure crops travel next to the pack
-    cc = shutil.which('cc') or shutil.which('gcc') or shutil.which('clang')
-    reader = os.path.join(os.path.dirname(HERE), '..', 'content', 'gastro', 'mgpack_read.c')
-    if len(sys.argv) > 2:
-        reader = sys.argv[2]
-    if cc and os.path.exists(reader):
-        exe = os.path.join(tmp, 'mgpack_read')
-        r = subprocess.run([cc, '-O1', '-include', os.path.join(out, 'gastro.mgpack.h'), reader, '-o', exe], capture_output=True, text=True)
-        if r.returncode:
-            sys.exit('mgpack_read.c does not build: ' + r.stderr[:400])
-        r = subprocess.run([exe, os.path.join(out, 'gastro.mgpack')], capture_output=True, text=True)
-        probs = [l for l in r.stdout.splitlines() if l.startswith('problems=')]
-        print('mgpack_read:', probs[0] if probs else r.stdout[-200:], r.stderr[:300])
-        if r.returncode or not probs or probs[0] != 'problems=0':
-            sys.exit(1)
+    print('make_fixture_pack: wrote', os.path.join(out, 'fixture.mgpack'))
     shutil.rmtree(tmp)
 
 

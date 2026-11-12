@@ -1,7 +1,6 @@
-# institute.map — MAP-2 "Institutul de Gastroenterologie" v3 (atrium plan, pack: gastro)
+# institute.map — MAP-2 "Institutul de Gastroenterologie" building (atrium plan): rooms, doors, windows, corridors, lifts, furniture, slots, site. No book content.
 # metres; x grows east; z grows SOUTH (bottom of the screen). Building 52 x 36 m around a full-height glazed atrium (18 x 16 m), 4 storeys + roof, plot 110 x 86 m.
 # Each storey: a ring corridor (3 m) around the atrium, rooms on all four sides, two service cores with the lift towers facing south.
-# Every character of the source file is taught somewhere: 50 topics on 45 rooms, same room ids, topics, roles and slots as v2.
 # If the engine uses the opposite z sign, negate z on import (main entrance must face the bottom of the screen).
 
 plot -55 -40 55 46
@@ -39,33 +38,27 @@ window 0 -21.5 -18 3 N
 window 0 -26 -14.5 3 W
 slot 0 desk -21.5 -16.1 0
 slot 0 chair -20 -14.5 90
-learn 0 g_reflux1 gastro topic brge_epi
 room 0 g_reflux2 exam -17 -18 -11 -13 "Cabinet reflux 2"
 door 0 -14 -13 1.2 S
 window 0 -14 -18 3 N
 slot 0 desk -14 -17.1 0
 slot 0 chair -12.5 -15.5 90
-learn 0 g_reflux2 gastro topic brge_clinic
 room 0 g_dispepsie exam -11 -18 -5 -11 "Cabinet dispepsie"
 door 0 -8 -11 1.2 S
 window 0 -8 -18 3 N
 slot 0 desk -8 -16.1 0
 slot 0 chair -6.5 -14.5 90
-learn 0 g_dispepsie gastro topic ulcer_clinic
 room 0 g_gastrite exam -5 -18 1 -13 "Cabinet gastrite"
 door 0 -2 -13 1.2 S
 window 0 -2 -18 3 N
 slot 0 desk -2 -17.1 0
 slot 0 chair -0.5 -15.5 90
-learn 0 g_gastrite gastro topic gastrita
 room 0 g_fiziologie lab 1 -18 15 -11 "Laborator fiziologie digestivă · pH-metrie & manometrie"
 door 0 8 -11 1.2 S
 window 0 8 -18 3 N
 slot 0 screen 8 -16.1 0
 slot 0 chair 9.5 -14.5 90
 slot 0 bench 6 -14.5 0
-learn 0 g_fiziologie gastro topic brge_dx
-learn 0 g_fiziologie gastro topic acalazia
 room 0 g_triaj triage 15 -18 26 -11 "Triaj"
 door 0 17 -11 1.2 S
 window 0 20.5 -18 3 N
@@ -76,13 +69,11 @@ window 0 -19.5 18 3 S
 window 0 -26 14.5 3 W
 slot 0 board -19.5 16.1 180
 slot 0 chair -21 14.5 270
-learn 0 g_amfiteatru gastro topic intro
 room 0 g_farmacie pharmacy -13 11 -5 18 "Farmacie ambulatoriu"
 door 0 -9 11 1.2 N
 window 0 -9 18 3 S
 slot 0 counter -9 16.1 180
 slot 0 chair -10.5 14.5 270
-learn 0 g_farmacie gastro topic brge_tx
 room 0 g_intrare waiting -5 11 5 18 "Hol de intrare"
 door 0 0 11 10 N   # open to the ring corridor
 door 0 0 18 4.4 S   # main entrance
@@ -91,25 +82,21 @@ door 0 8.5 13 1.2 N
 window 0 8.5 18 3 S
 slot 0 desk 8.5 17.1 180
 slot 0 chair 7 15.5 270
-learn 0 g_tranzit gastro topic constipatia
 room 0 g_garda nurse_station 12 11 26 18 "Stație Gardă"
 door 0 15.5 11 1.2 N
 door 0 26 14.5 2.4 E   # ambulance entrance
 window 0 19 18 3 S
 slot 0 desk 19 16.1 180
-learn 0 g_garda * garda
 room 0 g_stoma exam -26 -11 -19 -5 "Cabinet stomatologie"
 door 0 -19 -8 1.2 E
 window 0 -26 -8 3 W
 slot 0 desk -24.1 -8 90
 slot 0 chair -22.5 -9.5 180
-learn 0 g_stoma gastro topic oral_gingii
 room 0 g_salivare exam -26 -5 -19 1 "Cabinet glande salivare"
 door 0 -19 -2 1.2 E
 window 0 -26 -2 3 W
 slot 0 desk -24.1 -2 90
 slot 0 chair -22.5 -3.5 180
-learn 0 g_salivare gastro topic oral_salivare
 room 0 g_asteptare waiting -26 1 -19 11 "Sală de așteptare"
 door 0 -19 6 1.2 E
 window 0 -26 6 3 W
@@ -117,36 +104,28 @@ room 0 g_bay1 treatment_bay 19 -11 26 -7.33 "Box gardă 1"
 door 0 19 -9.16 1.6 W
 window 0 26 -9.165 3 E
 slot 0 bed 24.1 -9.165 270
-learn 0 g_bay1 * garda_case
 room 0 g_bay2 treatment_bay 19 -7.33 26 -3.67 "Box gardă 2"
 door 0 19 -5.5 1.6 W
 window 0 26 -5.5 3 E
 slot 0 bed 24.1 -5.5 270
-learn 0 g_bay2 * garda_case
 room 0 g_bay3 treatment_bay 19 -3.67 26 -0 "Box gardă 3"
 door 0 19 -1.83 1.6 W
 window 0 26 -1.835 3 E
 slot 0 bed 24.1 -1.835 270
-learn 0 g_bay3 * garda_case
 room 0 g_bay4 treatment_bay 19 -0 26 3.67 "Box gardă 4"
 door 0 19 1.83 1.6 W
 window 0 26 1.835 3 E
 slot 0 bed 24.1 1.835 270
-learn 0 g_bay4 * garda_case
 room 0 g_bay5 treatment_bay 19 3.67 26 7.33 "Box gardă 5"
 door 0 19 5.5 1.6 W
 window 0 26 5.5 3 E
 slot 0 bed 24.1 5.5 270
-learn 0 g_bay5 * garda_case
 room 0 g_bay6 treatment_bay 19 7.33 26 11 "Box gardă 6"
 door 0 19 9.16 1.6 W
 window 0 26 9.165 3 E
 slot 0 bed 24.1 9.165 270
-learn 0 g_bay6 * garda_case
 room 0 g_lobby reception -9 -8 9 8 "Atrium · Recepție & Panou de orientare"  open
 slot 0 board 0 -1.6 0
-learn 0 g_lobby gastro topic cuprins
-learn 0 g_lobby * board
 room 0 c0_wc toilet -16 -8 -9 -3 "Toalete"
 door 0 -12.5 -8 1 N
 room 0 c0_scari store -16 -3 -9 3 "Scări"
@@ -172,33 +151,27 @@ window 1 -21 -18 3 N
 window 1 -26 -14.5 3 W
 slot 1 bench -21 -16.1 0
 slot 1 chair -19.5 -14.5 90
-learn 1 e_microbio gastro topic hp_bact
 room 1 e_anapat lab -16 -18 -9 -11 "Anatomie patologică gastrică"
 door 1 -12.5 -11 1.2 S
 window 1 -12.5 -18 3 N
 slot 1 bench -12.5 -16.1 0
 slot 1 chair -11 -14.5 90
-learn 1 e_anapat gastro topic hp_consec
 room 1 e_respirator lab -9 -18 -2 -13 "Laborator teste respiratorii & serologie"
 door 1 -5.5 -13 1.2 S
 window 1 -5.5 -18 3 N
 slot 1 bench -5.5 -17.1 0
 slot 1 chair -4 -15.5 90
-learn 1 e_respirator gastro topic hp_dx_noninv
 room 1 e_histo lab -2 -18 10 -11 "Laborator histopatologie"
 door 1 4 -11 1.2 S
 window 1 4 -18 3 N
 slot 1 bench 4 -16.1 0
 slot 1 chair 5.5 -14.5 90
 slot 1 bench 2 -14.5 0
-learn 1 e_histo gastro topic bii_histo
-learn 1 e_histo gastro topic colita_micro
 room 1 e_analize lab 10 -18 17 -11 "Laborator analize medicale"
 door 1 13.5 -11 1.2 S
 window 1 13.5 -18 3 N
 slot 1 bench 13.5 -16.1 0
 slot 1 chair 15 -14.5 90
-learn 1 e_analize gastro topic bii_lab
 room 1 e_vestiar store 17 -18 26 -11 "Vestiare personal"
 door 1 18 -11 1.2 S
 room 1 e_primire waiting -26 11 -14 18 "Primire & pregătire pacienți"
@@ -210,13 +183,11 @@ door 1 -10.75 11 1.2 N
 window 1 -10.75 18 3 S
 slot 1 scope -10.75 16.1 180
 slot 1 chair -12.25 14.5 270
-learn 1 e_endo1 gastro topic esofagita
 room 1 e_endo2 exam -7.5 11 -1 18 "Sală endoscopie 2 · înaltă definiție"
 door 1 -4.25 11 1.2 N
 window 1 -4.25 18 3 S
 slot 1 scope -4.25 16.1 180
 slot 1 chair -5.75 14.5 270
-learn 1 e_endo2 gastro topic barrett_dx
 room 1 e_decontam sterile -1 11 3 18 "Decontaminare endoscoape"
 door 1 1 11 1.2 N
 window 1 1 18 3 S
@@ -225,13 +196,11 @@ door 1 7 11 1.2 N
 window 1 7 18 3 S
 slot 1 scope 7 16.1 180
 slot 1 chair 5.5 14.5 270
-learn 1 e_endoter gastro topic barrett_tx
 room 1 e_endo3 exam 11 11 17 18 "Sală gastroscopie"
 door 1 14 11 1.2 N
 window 1 14 18 3 S
 slot 1 scope 14 16.1 180
 slot 1 chair 12.5 14.5 270
-learn 1 e_endo3 gastro topic hp_dx_inv
 room 1 e_recuperare recovery 17 11 26 18 "Recuperare post-procedură"
 door 1 18 11 1.6 N
 window 1 21.5 18 3 S
@@ -241,27 +210,22 @@ door 1 -19 -4.5 1.2 E
 window 1 -26 -4.5 3 W
 slot 1 counter -24.1 -4.5 90
 slot 1 chair -22.5 -6 180
-learn 1 e_farmclin gastro topic hp_tx
 room 1 e_functional exam -26 2 -21 11 "Cabinet tulburări funcționale"
 door 1 -21 6.5 1.2 E
 window 1 -26 6.5 3 W
 slot 1 desk -25.1 6.5 90
 slot 1 chair -23.5 5 180
-learn 1 e_functional gastro topic esofag_functional
 room 1 e_colono exam 19 -11 26 -2 "Sală colonoscopie & capsulă"
 door 1 19 -6.5 1.2 W
 window 1 26 -6.5 3 E
 slot 1 scope 24.1 -6.5 270
 slot 1 chair 22.5 -5 0
-learn 1 e_colono gastro topic bii_endo
 room 1 e_radiologie imaging 19 -2 26 11 "Radiologie, imagistică & medicină nucleară"
 door 1 19 4.5 1.2 W
 window 1 26 4.5 3 E
 slot 1 screen 24.1 4.5 270
 slot 1 chair 22.5 6 0
 slot 1 bench 22.5 2.5 270
-learn 1 e_radiologie gastro topic bii_imag
-learn 1 e_radiologie gastro topic gastropareza
 room 1 c1_wc toilet -16 -8 -9 -3 "Toalete"
 door 1 -12.5 -8 1 N
 room 1 c1_scari store -16 -3 -9 3 "Scări"
@@ -284,98 +248,82 @@ window 2 -21.5 -18 3 N
 window 2 -26 -14.5 3 W
 slot 2 desk -21.5 -16.1 0
 slot 2 chair -20 -14.5 90
-learn 2 w_epi gastro topic bii_epi
 room 2 w_genetica lab -17 -18 -5 -11 "Laborator cercetare genetică"
 door 2 -11 -11 1.2 S
 window 2 -11 -18 3 N
 slot 2 bench -11 -16.1 0
 slot 2 chair -9.5 -14.5 90
-learn 2 w_genetica gastro topic bii_genetica
 room 2 w_imuno lab -5 -18 5 -11 "Laborator microbiotă & imunologie"
 door 2 0 -11 1.2 S
 window 2 0 -18 3 N
 slot 2 bench 0 -16.1 0
 slot 2 chair 1.5 -14.5 90
-learn 2 w_imuno gastro topic bii_microbiota
 room 2 w_interdis exam 5 -18 13 -13 "Cabinet consult interdisciplinar"
 door 2 9 -13 1.2 S
 window 2 9 -18 3 N
 slot 2 desk 9 -17.1 0
 slot 2 chair 10.5 -15.5 90
-learn 2 w_interdis gastro topic bii_extra
 room 2 w_monitor exam 13 -18 26 -11 "Cabinet monitorizare & screening"
 door 2 16 -11 1.2 S
 window 2 19.5 -18 3 N
 window 2 26 -14.5 3 E
 slot 2 desk 19.5 -16.1 0
 slot 2 chair 21 -14.5 90
-learn 2 w_monitor gastro topic bii_prognostic
 room 2 w_g1 ward_room -26 11 -15 18 "Salon G1"
 door 2 -17 11 1.6 N
 window 2 -20.5 18 3 S
 window 2 -26 14.5 3 W
 slot 2 bed -20.5 16.1 180
 slot 2 chair -22 14.5 270
-learn 2 w_g1 gastro topic ulcer_compl
 room 2 w_g2 ward_room -15 11 -9.5 18 "Salon G2"
 door 2 -12.25 11 1.6 N
 window 2 -12.25 18 3 S
 slot 2 bed -12.25 16.1 180
 slot 2 chair -13.75 14.5 270
-learn 2 w_g2 gastro topic ains
 room 2 w_g3 ward_room -9.5 11 -4 18 "Salon G3"
 door 2 -6.75 11 1.6 N
 window 2 -6.75 18 3 S
 slot 2 bed -6.75 16.1 180
 slot 2 chair -8.25 14.5 270
-learn 2 w_g3 gastro topic hp_alte
 room 2 w_statie nurse_station -4 11 4 18 "Stație Gastroenterologie"
 door 2 0 11 1.2 N
 window 2 0 18 3 S
 slot 2 post 0 16.1 180
-learn 2 w_statie * round
 room 2 w_b1 ward_room 4 11 9.5 18 "Salon B1"
 door 2 6.75 11 1.6 N
 window 2 6.75 18 3 S
 slot 2 bed 6.75 16.1 180
 slot 2 chair 5.25 14.5 270
-learn 2 w_b1 gastro topic bc_clinic
 room 2 w_b2 ward_room 9.5 11 15 18 "Salon B2"
 door 2 12.25 11 1.6 N
 window 2 12.25 18 3 S
 slot 2 bed 12.25 16.1 180
 slot 2 chair 10.75 14.5 270
-learn 2 w_b2 gastro topic bc_inductie
 room 2 w_b3 ward_room 15 11 26 18 "Salon B3"
 door 2 17 11 1.6 N
 window 2 20.5 18 3 S
 window 2 26 14.5 3 E
 slot 2 bed 20.5 16.1 180
 slot 2 chair 19 14.5 270
-learn 2 w_b3 gastro topic cu_clinic
 room 2 w_complicatii ward_room -26 -11 -19 -3 "Sala de complicații"
 door 2 -19 -7 1.6 E
 window 2 -26 -7 3 W
 slot 2 bed -24.1 -7 90
-learn 2 w_complicatii * complication
 room 2 w_perfuzii treatment_bay -26 -3 -19 11 "Centru de perfuzii · terapii biologice"
 door 2 -19 4 1.6 E
 window 2 -26 4 3 W
 slot 2 bed -24.1 4 90
 slot 2 chair -22.5 2.5 180
-learn 2 w_perfuzii gastro topic bc_mentinere
 room 2 w_b4 ward_room 19 -11 26 -4 "Salon B4"
 door 2 19 -7.5 1.6 W
 window 2 26 -7.5 3 E
 slot 2 bed 24.1 -7.5 270
 slot 2 chair 22.5 -6 0
-learn 2 w_b4 gastro topic cu_tx
 room 2 w_intermediar icu_bay 19 -4 26 11 "Terapie intermediară"
 door 2 19 3.5 1.6 W
 window 2 26 3.5 3 E
 slot 2 bed 24.1 3.5 270
 slot 2 chair 22.5 5 0
-learn 2 w_intermediar gastro topic cu_sever
 room 2 c2_wc toilet -16 -8 -9 -3 "Toalete"
 door 2 -12.5 -8 1 N
 room 2 c2_scari store -16 -3 -9 3 "Scări"
@@ -398,59 +346,49 @@ window 3 -21.5 -18 3 N
 window 3 -26 -14.5 3 W
 slot 3 desk -21.5 -16.1 0
 slot 3 chair -20 -14.5 90
-learn 3 o_genetica gastro topic intestin_tumori
 room 3 o_onco exam -17 -18 -11 -13 "Cabinet oncologie digestivă"
 door 3 -14 -13 1.2 S
 window 3 -14 -18 3 N
 slot 3 desk -14 -17.1 0
 slot 3 chair -12.5 -15.5 90
-learn 3 o_onco gastro topic esofag_tumori
 room 3 o_sef office -11 -18 -4 -11 "Birou medic șef"
 door 3 -7.5 -11 1.2 S
 window 3 -7.5 -18 3 N
 slot 3 desk -7.5 -16.1 0
-learn 3 o_sef * chief
 room 3 o_comisie meeting -4 -18 8 -11 "Sala Comisiei multidisciplinare"
 door 3 2 -11 1.2 S
 window 3 2 -18 3 N
 slot 3 table 2 -16.1 0
-learn 3 o_comisie * boss
 room 3 o_liga meeting 8 -18 17 -11 "Sala Ligii"
 door 3 12.5 -11 1.2 S
 window 3 12.5 -18 3 N
 slot 3 board 12.5 -16.1 0
-learn 3 o_liga * league
 room 3 o_birou office 17 -18 26 -11 "Birou personal"
 door 3 18 -11 1.2 S
 window 3 21.5 -18 3 N
 window 3 26 -14.5 3 E
 slot 3 desk 21.5 -16.1 0
-learn 3 o_birou * office
 room 3 o_so1 or -26 11 -14 18 "Sală operație 1 · laparoscopie"
 door 3 -16.5 11 1.6 N
 window 3 -20 18 3 S
 window 3 -26 14.5 3 W
 slot 3 or_table -20 16.1 180
 slot 3 chair -21.5 14.5 270
-learn 3 o_so1 gastro topic brge_chir
 room 3 o_so2 or -14 11 -6 18 "Sală operație 2 · chirurgie gastrică"
 door 3 -10 11 1.6 N
 window 3 -10 18 3 S
 slot 3 or_table -10 16.1 180
 slot 3 chair -11.5 14.5 270
-learn 3 o_so2 gastro topic ulcer_chir
 room 3 o_so3 or -6 11 2 18 "Sală operație 3 · chirurgie colorectală"
 door 3 -2 11 1.6 N
 window 3 -2 18 3 S
 slot 3 or_table -2 16.1 180
 slot 3 chair -3.5 14.5 270
-learn 3 o_so3 gastro topic bc_chir
 room 3 o_so4 or 2 11 10 18 "Sală operație 4 · colectomie & rezervor"
 door 3 6 11 1.6 N
 window 3 6 18 3 S
 slot 3 or_table 6 16.1 180
 slot 3 chair 4.5 14.5 270
-learn 3 o_so4 gastro topic cu_chir
 room 3 o_biblioteca meeting 10 11 17 18 "Bibliotecă"
 door 3 13.5 11 1.2 N
 window 3 13.5 18 3 S
@@ -458,10 +396,6 @@ slot 3 reading_desk 13.5 16.1 180
 slot 3 chair 12 14.5 270
 slot 3 bench 15.5 14.5 180
 slot 3 reading_desk 11.5 14.5 180
-learn 3 o_biblioteca gastro topic lecturi_esofag
-learn 3 o_biblioteca gastro topic lecturi_intestin
-learn 3 o_biblioteca gastro topic lecturi_bii
-learn 3 o_biblioteca * library
 room 3 o_terasa terrace 17 11 26 18 "Terasă"
 door 3 18 11 1.2 N
 window 3 21.5 18 3 S
@@ -476,7 +410,6 @@ room 3 o_examen meeting 19 -11 26 11 "Sala de examen"
 door 3 19 0 1.2 W
 window 3 26 0 3 E
 slot 3 desk 24.1 0 270
-learn 3 o_examen * exam
 room 3 c3_wc toilet -16 -8 -9 -3 "Toalete"
 door 3 -12.5 -8 1 N
 room 3 c3_scari store -16 -3 -9 3 "Scări"
@@ -1630,302 +1563,3 @@ prop 3 c3_scari c3_scari.door_leaf.1 door_leaf -15.95 -0.55 0 1.1 0.05 2.15 door
 prop 3 c3_wc2 c3_wc2.door_leaf.1 door_leaf 11.95 -7.95 90 1.1 0.05 2.15 door opens 0 1
 prop 3 c3_depozit c3_depozit.door_leaf.1 door_leaf 15.95 -0.55 0 1.1 0.05 2.15 door opens -1 0
 
-# ---- BOOK-1 interaction props (generated by tools/book/compile.py; scripts.json refers to them by id) ----
-# iprop <floor> <room> <id> <kind> <x> <z> <yaw> "<label>"    an interactable prop (instanced per kind); yaw 0 faces +z / south
-# islot <floor> <room> <id> <kind> <x> <z> <yaw>             a named interaction point (NPC stand / seat) used by scripts
-# a trailing on_model = the institute model already has this piece of furniture there (its podium, shelf, poster, chair): no new mesh
-# prop kinds (prop_kinds.json; w x d metres across x along the facing direction; wall = flush against a wall):
-#   poster       0.70 x 0.05  wall  existing  framed wall poster (corridor posters of MAP-2)
-#   plaque       0.40 x 0.04  wall  existing  small wall plaque, like the coloured door signs
-#   board        1.60 x 0.10  wall  existing  whiteboard (MAP-2 PROP board)
-#   lightbox     0.90 x 0.10  wall  existing  X-ray / figure viewer on the wall (MAP-2 PROP lightbox)
-#   shelf        1.20 x 0.40  wall  existing  shelf unit against a wall: books, drugs, specimens (MAP-2 shelf)
-#   cabinet      0.80 x 0.50  wall  existing  filing / storage cabinet (MAP-2 cabinet)
-#   counter      1.60 x 0.60  wall  existing  dispensing counter (map slot kind counter)
-#   bench        1.80 x 0.70  wall  existing  lab bench (map slot kind bench)
-#   cart         0.70 x 0.50  free  existing  trolley; used as the bedside chart trolley (MAP-2 PROP cart)
-#   monitor      0.50 x 0.50  free  existing  monitor on a stand; also OR screen and breath analyser (MAP-2 monitor)
-#   scope_tower  0.70 x 0.60  free  existing  endoscopy tower (MAP-2 trolleyTower)
-#   model        0.50 x 0.50  free  existing  anatomical model on a stand (MAP-2 PROP model)
-#   podium       0.60 x 0.50  free  existing  lectern (MAP-2 PROP podium)
-#   microscope   0.80 x 0.60  free  new       small lab table with a microscope; footprint 0.8 x 0.6 m, height 1.2 m
-#   iv_stand     0.50 x 0.50  free  new       IV pole on a 5-wheel base with a drip bag; footprint 0.5 x 0.5 m, height 1.9 m
-# room g_fiziologie (acalazia, brge_dx): 7 props, 1 slots
-iprop 0 g_fiziologie acalazia_afis poster 14.875 -16 270 "Afiș: Tulburările de motilitate — acalazia"
-iprop 0 g_fiziologie acalazia_tabla board 12 -17.85 0 "Tabla: incidența acalaziei"
-iprop 0 g_fiziologie acalazia_fisa cart 13.0 -12.2 180 "Fișa pacientului cu disfagie de lungă durată"
-iprop 0 g_fiziologie brge_dx_dosar cabinet 2.1 -11.35 180 "Dosarele: când se investighează refluxul"
-iprop 0 g_fiziologie brge_dx_scope scope_tower 3.55 -12 180 "Turnul de endoscopie: esofagită, hernie hiatală, esofag Barrett"
-iprop 0 g_fiziologie brge_dx_lightbox lightbox 1.15 -15 90 "Negatoscop: Fig. 32.12 — pH-metria pe 24 de ore"
-iprop 0 g_fiziologie brge_dx_recorder monitor 3.6 -17.35 0 "Înregistratorul de pH și capsula Bravo"
-islot 0 g_fiziologie acalazia_manometrie npc_stand 12.5 -14.5 270
-# room w_g2 (ains): 3 props, 0 slots
-iprop 2 w_g2 ains_board board -14.85 14.3 90 "Tabla: COX-1, COX-2 și AINS"
-iprop 2 w_g2 ains_poster poster -9.625 12.55 270 "Afiș: AINS, H. pylori și ulcerul (cifre)"
-iprop 2 w_g2 ains_pharmacy shelf -9.8 16.3 270 "Raftul de farmacie: IPP și misoprostol"
-# room e_endo2 (barrett_dx): 6 props, 0 slots
-iprop 1 e_endo2 barrett_dx_plaque plaque -2.4 11.12 0 "Placă: Complicațiile bolii de reflux gastroesofagian"
-iprop 1 e_endo2 barrett_dx_lightbox lightbox -7.35 13.95 90 "Negatoscop: Fig. 32.14 Esofagul Barrett"
-iprop 1 e_endo2 barrett_dx_praga_board board -1.15 12.1 270 "Tablă: Fig. 32.15 Criteriile Praga"
-iprop 1 e_endo2 barrett_dx_risk_poster poster -6.4 11.125 0 "Afiș: factori de risc și adenocarcinom"
-iprop 1 e_endo2 barrett_dx_hd_monitor monitor -6.85 16.8 90 "Monitor HD: supravegherea endoscopică"
-iprop 1 e_endo2 barrett_dx_microscope microscope -1.7 16.6 270 "Microscop: biopsii din EMC"
-# room e_endoter (barrett_tx): 6 props, 0 slots
-iprop 1 e_endoter barrett_tx_plaque plaque 4.95 11.12 0 "Placă: gastroplicatura endoluminală și strictura peptică"
-iprop 1 e_endoter barrett_tx_dilation_tower scope_tower 3.7 13.05 90 "Turn endoscopic: dilatarea stricturii peptice"
-iprop 1 e_endoter barrett_tx_rct_monitor monitor 10.35 12.8 270 "Monitor: studiile gastroplicaturii endoluminale"
-iprop 1 e_endoter barrett_tx_ipp_shelf shelf 9.5 11.3 0 "Raft IPP: doze în displazie"
-iprop 1 e_endoter barrett_tx_rfa_screen monitor 10.35 15.6 270 "Ecran: rezecție endoscopică și ablație prin radiofrecvență"
-iprop 1 e_endoter barrett_tx_hgd_chart cart 3.65 16.85 90 "Fișa pacientului: displazie de grad înalt"
-# room o_so3 (bc_chir): 4 props, 1 slots
-iprop 3 o_so3 bc_chir_board board 1.85 12.1 270 "Tabla chirurgului: stricturi, recădere, urmărire"
-iprop 3 o_so3 bc_chir_lightbox lightbox -5.85 13.95 90 "Negatoscop: intervențiile pe colon și rect"
-iprop 3 o_so3 bc_chir_poster poster -5.85 16.4 90 "Afiș de stomaterapie: complicațiile ileostomei"
-iprop 3 o_so3 bc_chir_screen monitor 0.8 15.6 270 "Monitorul sălii: cifrele chirurgiei și ale prognosticului"
-islot 3 o_so3 bc_chir_surgeon npc_stand -0.6 13.2 180
-# room w_b1 (bc_clinic): 3 props, 1 slots
-iprop 2 w_b1 bc_clinic_chart cart 5.3 15.0 180 "Foaia de observație de la patul pacientului"
-iprop 2 w_b1 bc_clinic_box poster 9.375 12.55 270 "Afiș: Cadranul 32.37, complicații anale și perianale"
-iprop 2 w_b1 bc_clinic_board board 4.15 14.3 90 "Tabla salonului: titluri și procente"
-islot 2 w_b1 bc_clinic_resident npc_stand 8.2 15.25 270
-# room w_b2 (bc_inductie): 4 props, 1 slots
-iprop 2 w_b2 bc_inductie_shelf shelf 14.7 12.3 270 "Dulapul de medicamente al salonului"
-iprop 2 w_b2 bc_inductie_chart cart 10.8 15.0 180 "Foaia de observație și de tratament"
-iprop 2 w_b2 bc_inductie_iv iv_stand 13.6 15.25 180 "Stativ de perfuzie: terapia anti-TNF"
-iprop 2 w_b2 bc_inductie_board board 9.65 14.3 90 "Tabla salonului: planul tratamentului medical"
-islot 2 w_b2 bc_inductie_dietitian npc_stand 11.4 12.6 180
-# room w_perfuzii (bc_mentinere): 6 props, 1 slots
-iprop 2 w_perfuzii bc_mentinere_farmacie shelf -25.3 -2.7 0 "Dulapul farmaciei: tiopurine și metotrexat"
-iprop 2 w_perfuzii bc_mentinere_laborator bench -22.5 -2.55 0 "Buletinul de laborator: TPMT și hemoleucograma"
-iprop 2 w_perfuzii bc_mentinere_perfuzor iv_stand -21.55 3.2 270 "Stativul de perfuzie: vedolizumab și ustekinumab"
-iprop 2 w_perfuzii bc_mentinere_fisa cart -23.5 6.3 0 "Fișa pacientului: terapia anti-TNF"
-iprop 2 w_perfuzii bc_mentinere_monitor monitor -19.65 8.5 270 "Monitorul: studii în curs pentru boala Crohn"
-iprop 2 w_perfuzii bc_mentinere_cadran board -22.9 10.85 180 "Tabla: Cadranul 32.40"
-islot 2 w_perfuzii bc_mentinere_asistenta npc_stand -20.5 0.0 270
-# room e_colono (bii_endo): 5 props, 1 slots
-iprop 1 e_colono bii_endo_lightbox_38 lightbox 19.15 -10.45 90 "Negatoscop: Fig. 32.38 Localizările bolii Crohn"
-iprop 1 e_colono bii_endo_lightbox_39 lightbox 22.8 -10.85 0 "Negatoscop: Fig. 32.39 clasificarea Montreal"
-iprop 1 e_colono bii_endo_or_screen monitor 24.95 -9.9 270 "Ecranul colonoscopului: Fig. 32.40"
-iprop 1 e_colono bii_endo_poster_macro poster 20.55 -2.125 180 "Afiș: modificări macroscopice în BC și CU"
-iprop 1 e_colono bii_endo_capsule scope_tower 24.9 -3.2 270 "Turnul de endoscopie superioară și capsula endoscopică"
-islot 1 e_colono bii_endo_fellow npc_stand 20 -8.55 90
-# room w_epi (bii_epi): 4 props, 1 slots
-iprop 2 w_epi bii_epi_plaque plaque -20 -11.12 180 "Placa biroului: Bolile inflamatorii intestinale"
-iprop 2 w_epi bii_epi_tabla board -25.85 -12.2 90 "Tabla: colita nedeterminată și colita microscopică"
-iprop 2 w_epi bii_epi_registru cabinet -25.65 -16.9 90 "Registrul BII: incidență și prevalență"
-iprop 2 w_epi bii_epi_harta poster -17.125 -15.5 270 "Harta: regiuni, rasă, etnie și migrație"
-islot 2 w_epi bii_epi_epidemiolog npc_seat -18.6 -17.18 0 on_model w_epi.chair.1
-# room w_interdis (bii_extra): 4 props, 1 slots
-iprop 2 w_interdis bii_extra_box_poster poster 5.125 -15.5 90 "Afiș: Cadranul 32.39, manifestările extraintestinale"
-iprop 2 w_interdis bii_extra_hla_board board 12.85 -16.8 270 "Tabla reumatologului: artropatii și HLA"
-iprop 2 w_interdis bii_extra_lab_bench cart 6.85 -17.05 0 "Căruciorul de laborator: coprocultura și parazitologia"
-iprop 2 w_interdis bii_extra_tb_cabinet cabinet 11.4 -13.35 180 "Dosarele: tuberculoza ileocolonică și limfoamele"
-islot 2 w_interdis bii_extra_rheumatologist npc_stand 7.0 -14.2 180
-# room w_genetica (bii_genetica): 5 props, 1 slots
-iprop 2 w_genetica bii_genetica_plaque plaque -13.2 -11.12 180 "Placa laboratorului: Etiologie și patogeneză"
-iprop 2 w_genetica bii_genetica_cofactori poster -16.875 -13.85 90 "Afiș: cofactorii etiologiei BII"
-iprop 2 w_genetica bii_genetica_microscop microscope -14.5 -16.8 0 "Microscopul: NOD2 și genele de risc"
-iprop 2 w_genetica bii_genetica_hla lightbox -5.15 -16.5 270 "Negatoscop: alelele HLA"
-iprop 2 w_genetica bii_genetica_mediu poster -5.125 -12.55 270 "Afiș: factori de mediu și alți factori de risc"
-islot 2 w_genetica bii_genetica_cercetator npc_stand -8.0 -12.6 180
-# room e_histo (bii_histo, colita_micro): 7 props, 2 slots
-iprop 1 e_histo bii_histo_microscope microscope -1 -13 90 "Microscopul: granuloamele din boala Crohn"
-iprop 1 e_histo bii_histo_box plaque -1.88 -16 90 "Cadranul 32.38: diferențe histologice BC / CU"
-iprop 1 e_histo bii_histo_specimens shelf -1.7 -15.2 90 "Raftul cu specimene de colectomie"
-iprop 1 e_histo colita_micro_microscope microscope 9.3 -12.8 270 "Microscopul: formele de colită microscopică"
-iprop 1 e_histo colita_micro_poster poster 9.875 -16 270 "Afiș: colita colagenosă și bolile asociate"
-iprop 1 e_histo colita_micro_pharmacy shelf 9.7 -15.05 270 "Raftul cu medicamente: tratamentul colitei microscopice"
-iprop 1 e_histo colita_micro_chart cart 8 -11.65 180 "Foaia de observație: diaree apoasă cronică"
-islot 1 e_histo bii_histo_pathologist npc_stand 0.3 -14.0 270
-islot 1 e_histo colita_micro_pathologist npc_stand 7.3 -14.6 90
-# room e_radiologie (bii_imag, gastropareza): 6 props, 2 slots
-iprop 1 e_radiologie bii_imag_lightbox lightbox 22.55 10.85 180 "Negatoscopul: Fig. 32.41"
-iprop 1 e_radiologie bii_imag_monitor monitor 25.35 8.5 270 "Stația de lucru: imagistica axială"
-iprop 1 e_radiologie bii_imag_poster poster 19.125 8.8 90 "Afiș: ecografie, RMN perianală, radionuclizi"
-iprop 1 e_radiologie gastropareza_poster poster 20.75 -1.875 0 "Afiș: cauzele gastroparezei"
-iprop 1 e_radiologie gastropareza_scint monitor 25.35 -0.5 270 "Monitorul de scintigrafie: evacuarea gastrică"
-iprop 1 e_radiologie gastropareza_shelf shelf 19.3 -0.3 90 "Raftul: prokinetice și dieta în gastropareză"
-islot 1 e_radiologie bii_imag_radiolog npc_stand 22.0 8.2 0
-islot 1 e_radiologie gastropareza_medic npc_stand 22.8 0.2 180
-# room e_analize (bii_lab): 3 props, 1 slots
-iprop 1 e_analize bii_lab_bench bench 10.45 -15.5 90 "Banc de lucru: probe de scaun"
-iprop 1 e_analize bii_lab_monitor monitor 16.35 -12.6 270 "Monitor: hemoculturi și serologie"
-iprop 1 e_analize bii_lab_board board 10.9 -11.15 180 "Tabla laboratorului: activitatea bolii"
-islot 1 e_analize bii_lab_tech npc_stand 12.2 -13.2 90
-# room w_imuno (bii_microbiota): 6 props, 1 slots
-iprop 2 w_imuno bii_microbiota_negatoscop lightbox -4.85 -16.3 90 "Negatoscop: Fig. 32.36, balanța etiopatogenezei BII"
-iprop 2 w_imuno bii_microbiota_microscop microscope -2.8 -16.8 0 "Microscop: disbioza și organismele patogene specifice"
-iprop 2 w_imuno bii_microbiota_raft shelf 4.7 -14.85 270 "Raft cu probe: antigene bacteriene, defensine, bariera mucoasei"
-iprop 2 w_imuno bii_microbiota_plansa poster 4.85 -15.8 270 "Planșa Fig. 32.37: procesele celulare intestinale în BII"
-iprop 2 w_imuno bii_microbiota_tabla board -4.85 -14.3 90 "Tabla: sistemul imun intestinal"
-iprop 2 w_imuno bii_microbiota_monitor monitor 4.35 -12.6 270 "Monitor: citokinele și cercul vicios al inflamației"
-islot 2 w_imuno bii_microbiota_imunolog npc_stand -2.4 -13.4 90
-# room w_monitor (bii_prognostic): 5 props, 0 slots
-iprop 2 w_monitor bii_prognostic_plaque plaque 13.12 -12.9 90 "Placa cabinetului: Evoluție și prognostic"
-iprop 2 w_monitor bii_prognostic_poster poster 13.125 -14.6 90 "Afiș: evoluția colitei ulcerative"
-iprop 2 w_monitor bii_prognostic_scope scope_tower 15 -17 0 "Colonoscopul: displazie și cancer în BII"
-iprop 2 w_monitor bii_prognostic_monitor monitor 23.85 -17.35 0 "Monitorul: screening și studiul St Mark's"
-iprop 2 w_monitor bii_prognostic_cabinet cabinet 23.9 -11.35 180 "Fișierul: mortalitatea în BII"
-# room o_so1 (brge_chir): 5 props, 1 slots
-iprop 3 o_so1 brge_chir_plaque plaque -17.9 11.12 0 "Placa sălii: tratamentul chirurgical al BRGE"
-iprop 3 o_so1 brge_chir_or_screen monitor -17.6 15.6 270 "Ecranul laparoscopic: fundoplicatura Nissen"
-iprop 3 o_so1 brge_chir_linx_monitor monitor -24.8 11.65 0 "Monitor: sistemul Linx"
-iprop 3 o_so1 brge_chir_whiteboard board -14.15 14.9 270 "Tabla: indicațiile intervenției chirurgicale"
-iprop 3 o_so1 brge_chir_bed_chart cart -15 16.95 180 "Fișa pacientului: eșecul fundoplicaturii"
-islot 3 o_so1 brge_chir_surgeon npc_stand -23.6 16.95 90
-# room g_reflux2 (brge_clinic): 3 props, 1 slots
-iprop 0 g_reflux2 brge_clinic_cadran poster -16.875 -15.5 90 "Afiș: Cadranul 32.13 — durerea din reflux și durerea din ischemia cardiacă"
-iprop 0 g_reflux2 brge_clinic_fisa cart -15.6 -14.0 180 "Fișa pacientului cu pirozis"
-iprop 0 g_reflux2 brge_clinic_tabla board -11.15 -17 270 "Tabla: regurgitare, tuse și astm"
-islot 0 g_reflux2 brge_clinic_orl npc_stand -12.45 -14.15 270
-# room g_reflux1 (brge_epi): 5 props, 1 slots
-iprop 0 g_reflux1 brge_epi_board board -22.9 -17.85 0 "Tabla: epidemiologia și fiziopatologia BRGE"
-iprop 0 g_reflux1 brge_epi_lightbox lightbox -17.15 -15.5 270 "Negatoscopul: Fig. 32.10 Principalele mecanisme anti-reflux"
-iprop 0 g_reflux1 brge_epi_box11 poster -17.125 -16.55 270 "Afiș: Cadranul 32.11 Factorii asociați refluxului gastro-esofagian"
-iprop 0 g_reflux1 brge_epi_box12 poster -23.5 -11.125 180 "Afiș: Cadranul 32.12 Hernia hiatală"
-iprop 0 g_reflux1 brge_epi_model model -24.5 -12.7 90 "Mulaj de stomac: buzunarul acid"
-islot 0 g_reflux1 brge_epi_resident npc_stand -18.6 -13.0 270
-# room g_farmacie (brge_tx): 4 props, 0 slots
-iprop 0 g_farmacie brge_tx_afis poster -5.125 12.55 270 "Afiș: măsurile generale în boala de reflux"
-iprop 0 g_farmacie brge_tx_raft_alginat shelf -12.7 12.5 90 "Raftul OTC: alginat și antiacide"
-iprop 0 g_farmacie brge_tx_raft_ipp shelf -12.7 16.6 90 "Raftul inhibitorilor pompei de protoni"
-iprop 0 g_farmacie brge_tx_raft_h2 shelf -5.3 16 270 "Raftul antagoniștilor H2 și al prokineticelor"
-# room g_tranzit (constipatia): 4 props, 0 slots
-iprop 0 g_tranzit constipatia_poster poster 5.45 13.125 0 "Afiș: criteriile Roma IV"
-iprop 0 g_tranzit constipatia_board board 11.85 16.2 270 "Tabla: cele trei categorii de constipație"
-iprop 0 g_tranzit constipatia_scope scope_tower 11.2 16.15 270 "Colonoscopul: când e indicată investigația"
-iprop 0 g_tranzit constipatia_bookshelf shelf 5.3 16.5 90 "Raftul: capitolul COLONUL ȘI RECTUL"
-# room o_so4 (cu_chir): 5 props, 1 slots
-iprop 3 o_so4 cu_chir_or_screen monitor 3.25 11.65 0 "Ecranul sălii: opțiunile chirurgicale ulterioare"
-iprop 3 o_so4 cu_chir_board board 2.15 14.3 90 "Tabla: Cadranul 32.42, indicații chirurgicale"
-iprop 3 o_so4 cu_chir_pharmacy shelf 2.3 16.8 90 "Dulapul de medicamente: tratamentul pouchitei"
-iprop 3 o_so4 cu_chir_lightbox lightbox 9.85 12.45 270 "Negatoscop: Fig. 32.43, rezervorul ileoanal"
-iprop 3 o_so4 cu_chir_scope scope_tower 8.6 16.85 270 "Turnul de endoscopie: Fig. 32.44, pouchita"
-islot 3 o_so4 cu_chir_surgeon npc_stand 8.0 12.2 270
-# room w_b3 (cu_clinic): 4 props, 1 slots
-iprop 2 w_b3 cu_clinic_lightbox lightbox 15.15 14 90 "Negatoscop: Fig. 32.42 — dilatare toxică"
-iprop 2 w_b3 cu_clinic_board board 21 11.15 0 "Tabla salonului: investigațiile în colita ulcerativă"
-iprop 2 w_b3 cu_clinic_lab bench 23.9 11.45 0 "Masa de probe: teste sangvine și fecale"
-iprop 2 w_b3 cu_clinic_scope scope_tower 17.3 16.55 90 "Turnul de endoscopie: colonoscopia"
-islot 2 w_b3 cu_clinic_attending npc_stand 18.2 12.9 180
-# room w_intermediar (cu_sever): 4 props, 1 slots
-iprop 2 w_intermediar cu_sever_box poster 22.5 -3.875 0 "Afiș: Cadranul 32.41 — episodul sever de colită ulcerativă"
-iprop 2 w_intermediar cu_sever_monitor monitor 25.05 0.7 270 "Monitorul pacientului: monitorizarea zilnică"
-iprop 2 w_intermediar cu_sever_pharmacy counter 25.6 8.5 270 "Farmacia secției: terapia de salvare"
-iprop 2 w_intermediar cu_sever_board board 22.9 10.85 180 "Tabla: terapii noi"
-islot 2 w_intermediar cu_sever_consultant npc_stand 21.0 7.0 270
-# room w_b4 (cu_tx): 4 props, 0 slots
-iprop 2 w_b4 cu_tx_farmacie shelf 22.1 -10.7 0 "Dulapul farmaciei: preparatele de 5-ASA"
-iprop 2 w_b4 cu_tx_tabla board 24 -10.85 0 "Tabla: cum acționează 5-ASA"
-iprop 2 w_b4 cu_tx_fisa cart 22.8 -8.65 90 "Fișa pacientei: tratamentul după extindere"
-iprop 2 w_b4 cu_tx_afis poster 20.55 -4.125 180 "Afiș: proctită, colită stângă, pancolită"
-# room g_lobby (cuprins): 4 props, 1 slots
-iprop 0 g_lobby cuprins_plaque plaque 0 -7.88 0 "Placa capitolului 32: titlu și autori"
-iprop 0 g_lobby cuprins_sections board 8.85 -3 270 "Panoul secțiunilor și subsecțiunilor"
-iprop 0 g_lobby cuprins_errata board -8.85 -3 90 "Cuprins față de pagina tipărită"
-iprop 0 g_lobby cuprins_headers shelf 8.7 6.15 270 "Raftul cu paginile capitolului: antetele"
-islot 0 g_lobby cuprins_guide npc_stand -6.0 4.6 90
-# room e_functional (esofag_functional): 4 props, 1 slots
-iprop 1 e_functional esofag_functional_plaque plaque -21.12 3.4 270 "Placa cabinetului: tulburări esofagiene funcționale"
-iprop 1 e_functional esofag_functional_poster poster -23.5 2.125 0 "Afiș: globusul"
-iprop 1 e_functional esofag_functional_monitor monitor -24.2 9.95 90 "Monitor: durerea toracică funcțională"
-iprop 1 e_functional esofag_functional_pharmacy shelf -21.3 9.4 270 "Dulapul cu medicamente: antisecretoare, nitrați, antidepresive"
-islot 1 e_functional esofag_functional_patient npc_seat -23.0 8.6 270
-# room o_onco (esofag_tumori): 3 props, 1 slots
-iprop 3 o_onco esofag_tumori_lightbox lightbox -16.85 -16.25 90 "Negatoscop: dilatare, laser, proteză"
-iprop 3 o_onco esofag_tumori_poster poster -16.875 -15.25 90 "Afiș: alte tumori esofagiene"
-iprop 3 o_onco esofag_tumori_shelf shelf -11.3 -17 270 "Raft cu piese: tumori submucoase"
-islot 3 o_onco esofag_tumori_nurse npc_stand -15.4 -13.8 180
-# room e_endo1 (esofagita): 5 props, 0 slots
-iprop 1 e_endo1 esofagita_lightbox lightbox -13.85 13.95 90 "Negatoscop: Fig. 32.11 Esofagita"
-iprop 1 e_endo1 esofagita_flux_poster poster -7.625 12.55 270 "Afiș: Fig. 32.13 Evoluția pacienților cu simptome de reflux"
-iprop 1 e_endo1 esofagita_legend_plaque plaque -8.7 11.12 0 "Placă: legenda Fig. 32.13"
-iprop 1 e_endo1 esofagita_nerd_chart cart -13.35 16.85 90 "Fișa pacientei: reflux fără leziuni la endoscopie"
-iprop 1 e_endo1 esofagita_ipp_shelf shelf -7.8 15.6 270 "Raft IPP: izomerii IPP originali"
-# room g_gastrite (gastrita): 4 props, 1 slots
-iprop 0 g_gastrite gastrita_plaque plaque -3.4 -13.15 180 "Placa cabinetului: Stomacul și duodenul"
-iprop 0 g_gastrite gastrita_poster poster -4.85 -15.3 90 "Afiș: gastropatia acută erozivă/hemoragică"
-iprop 0 g_gastrite gastrita_model model -3.25 -17.05 90 "Mulaj de stomac: gastrita autoimună"
-iprop 0 g_gastrite gastrita_shelf shelf 0.7 -16 270 "Raft: cauzele gastropatiei"
-islot 0 g_gastrite gastrita_endoscopist npc_stand -3.0 -15.2 90
-# room w_g3 (hp_alte): 3 props, 0 slots
-iprop 2 w_g3 hp_alte_poster poster -9.375 13.85 90 "Afiș: H. pylori și cancerul gastric distal"
-iprop 2 w_g3 hp_alte_microscope microscope -4.7 13.2 270 "Microscopul: celula B clonală"
-iprop 2 w_g3 hp_alte_chart cart -5 15.15 270 "Foaia de observație: afecțiuni asociate H. pylori"
-# room e_microbio (hp_bact): 5 props, 1 slots
-iprop 1 e_microbio hp_bact_plaque plaque -19.0 -11.15 180 "Placa laboratorului: Infecția cu Helicobacter pylori"
-iprop 1 e_microbio hp_bact_microscope microscope -24.5 -16.8 0 "Microscop: unde trăiește H. pylori"
-iprop 1 e_microbio hp_bact_poster poster -16.15 -15.0 270 "Afiș: epidemiologia infecției cu H. pylori"
-iprop 1 e_microbio hp_bact_lightbox lightbox -25.85 -13.95 90 "Negatoscop: Fig. 32.23"
-iprop 1 e_microbio hp_bact_whiteboard board -22.5 -11.15 180 "Tabla: patogeneza infecției cu H. pylori"
-islot 1 e_microbio hp_bact_microbiolog npc_stand -23.5 -12.6 90
-# room e_anapat (hp_consec): 4 props, 1 slots
-iprop 1 e_anapat hp_consec_plaque plaque -14.2 -11.15 180 "Placa laboratorului: Consecințele infecției cu H. pylori"
-iprop 1 e_anapat hp_consec_specimens shelf -15.7 -15 90 "Raft cu piese: gastrita antrală"
-iprop 1 e_anapat hp_consec_poster poster -9.125 -12.55 270 "Afiș: ulcerul duodenal și H. pylori"
-iprop 1 e_anapat hp_consec_model model -9.65 -16.85 0 "Mulaj de stomac: ulcerul gastric"
-islot 1 e_anapat hp_consec_patolog npc_stand -14.3 -13.3 90
-# room e_endo3 (hp_dx_inv): 5 props, 0 slots
-iprop 1 e_endo3 hp_dx_inv_scope scope_tower 16.3 16.5 270 "Turnul de endoscopie: testul rapid ureazic"
-iprop 1 e_endo3 hp_dx_inv_fig lightbox 16.85 12.45 270 "Negatoscop: Fig. 32.24, aspecte endoscopice"
-iprop 1 e_endo3 hp_dx_inv_microscope microscope 11.7 16.8 90 "Microscop: frotiuri colorate Giemsa"
-iprop 1 e_endo3 hp_dx_inv_culture bench 11.45 14.4 90 "Banc de culturi: antibiograma in vitro"
-iprop 1 e_endo3 hp_dx_inv_chart cart 16.35 14.5 270 "Foaia pacientului: cine are nevoie de endoscopie"
-# room e_respirator (hp_dx_noninv): 5 props, 0 slots
-iprop 1 e_respirator hp_dx_noninv_serology bench -7.4 -13.45 180 "Banc de serologie: anticorpi IgG"
-iprop 1 e_respirator hp_dx_noninv_breath monitor -8.35 -15.8 90 "Analizor pentru testul respirator cu 13C"
-iprop 1 e_respirator hp_dx_noninv_stool shelf -4.3 -13.3 180 "Raft cu probe: antigenul fecal H. pylori"
-iprop 1 e_respirator hp_dx_noninv_fig lightbox -2.15 -16.8 270 "Negatoscop: Fig. 32.25, metabolizarea ureei"
-iprop 1 e_respirator hp_dx_noninv_poster poster -2.125 -15.75 270 "Afiș: cui îi facem testul pentru H. pylori?"
-# room e_farmclin (hp_tx): 6 props, 0 slots
-iprop 1 e_farmclin hp_tx_counter counter -19.4 -7.3 270 "Ghișeul de eliberare: regimurile de eradicare"
-iprop 1 e_farmclin hp_tx_shelf shelf -25.3 -10.7 0 "Raftul de antibiotice: rezistența"
-iprop 1 e_farmclin hp_tx_poster poster -19.125 -8.5 270 "Afiș: cui îi eradicăm H. pylori?"
-iprop 1 e_farmclin hp_tx_board board -25.1 1.85 180 "Tabla: eșec, terapia cvadruplă și secvențială"
-iprop 1 e_farmclin hp_tx_chart cart -19.65 0 270 "Foaia pacientului: controlul eradicării"
-iprop 1 e_farmclin hp_tx_plaque plaque -22.5 1.88 180 "Placă: măsuri generale"
-# room o_genetica (intestin_tumori): 2 props, 1 slots
-iprop 3 o_genetica intestin_tumori_cabinet cabinet -25.65 -16.9 90 "Dosarele de consiliere: fragmentul de la p. 1198"
-iprop 3 o_genetica intestin_tumori_lightbox lightbox -25.85 -13.95 90 "Negatoscop: adenoame duodenale în PAF"
-islot 3 o_genetica intestin_tumori_counsellor npc_stand -22.8 -12.3 180
-# room g_amfiteatru (intro): 4 props, 0 slots
-iprop 0 g_amfiteatru intro_plaque plaque -17.4 11.15 0 "Placa de la intrarea în amfiteatru"
-iprop 0 g_amfiteatru intro_poster_oms poster -25.55 11.125 0 "Afiș: povara bolilor digestive"
-iprop 0 g_amfiteatru intro_lectern podium -16.9 16.9 180 "Pupitrul lectorului" on_model g_amfiteatru.lectern.1
-iprop 0 g_amfiteatru intro_mdt_board board -24.6 17.7 180 "Tabla întâlnirii multidisciplinare" on_model g_amfiteatru.whiteboard_stand.1
-# room o_biblioteca (lecturi_bii, lecturi_esofag, lecturi_intestin): 6 props, 3 slots
-iprop 3 o_biblioteca lecturi_bii_bookshelf shelf 16.1 17.62 180 "Raftul „Bolile inflamatorii intestinale” (p. 1208)" on_model o_biblioteca.shelf.3
-iprop 3 o_biblioteca lecturi_bii_cabinet shelf 10.35 14.5 180 "Fișierul: ghiduri și trialuri în BII" on_model o_biblioteca.shelf.4
-iprop 3 o_biblioteca lecturi_esofag_bookshelf shelf 10.9 17.62 180 "Raftul „Faringele și esofagul” (p. 1172)" on_model o_biblioteca.shelf.1
-iprop 3 o_biblioteca lecturi_esofag_plaque plaque 12.2 11.12 0 "Placa: Lecturi suplimentare — esofag"
-iprop 3 o_biblioteca lecturi_intestin_bookshelf shelf 13.5 17.62 180 "Raftul „Intestinul subțire” (p. 1198)" on_model o_biblioteca.shelf.2
-iprop 3 o_biblioteca lecturi_intestin_plaque plaque 14.8 11.12 0 "Placa: Lecturi suplimentare — intestin subțire"
-islot 3 o_biblioteca lecturi_bii_reader npc_seat 15.3 13.78 180 on_model o_biblioteca.chair.2
-islot 3 o_biblioteca lecturi_esofag_reader npc_stand 11.7 15.6 0
-islot 3 o_biblioteca lecturi_intestin_reader npc_stand 15.05 12.65 90
-# room g_stoma (oral_gingii): 4 props, 0 slots
-iprop 0 g_stoma oral_gingii_box poster -25.875 -8.35 90 "Afiș: Cadranul 32.9 Boli ale gingiilor"
-iprop 0 g_stoma oral_gingii_teeth shelf -22.1 -10.7 0 "Raft cu mulaje dentare: cariile și eroziunile"
-iprop 0 g_stoma oral_gingii_meds shelf -22.7 -5.3 180 "Dulăpiorul de medicamente al cabinetului"
-iprop 0 g_stoma oral_gingii_note plaque -19.12 -6 270 "Fișa de la ușă: leziunile benigne și gingia"
-# room g_salivare (oral_salivare): 3 props, 0 slots
-iprop 0 g_salivare oral_salivare_box poster -21.54 0.85 90 "Afiș: Cadranul 32.10 Boli ale glandelor salivare" on_model g_salivare.wall_poster.1
-iprop 0 g_salivare oral_salivare_meds shelf -22.7 0.7 180 "Raftul cu medicamente din Cadranul 32.10"
-iprop 0 g_salivare oral_salivare_scope microscope -20.5 -4 0 "Microscopul: neoplasmele glandelor salivare"
-# room o_so2 (ulcer_chir): 4 props, 0 slots
-iprop 3 o_so2 ulcer_chir_model model -12.8 12.2 90 "Mulaj de stomac: gastrectomie și vagotomie"
-iprop 3 o_so2 ulcer_chir_or_screen monitor -6.65 14 270 "Ecranul sălii: ulcerul recurent"
-iprop 3 o_so2 ulcer_chir_poster poster -13.875 16.6 90 "Afiș: sindromul dumping"
-iprop 3 o_so2 ulcer_chir_shelf shelf -6.3 16.9 270 "Raftul de farmacie: diareea și carențele postoperatorii"
-# room g_dispepsie (ulcer_clinic): 4 props, 1 slots
-iprop 0 g_dispepsie ulcer_clinic_plaque plaque -9.6 -11.15 180 "Placa cabinetului: Boala ulceroasă peptică"
-iprop 0 g_dispepsie ulcer_clinic_poster poster -10.85 -14.5 90 "Afiș: ulcer sau eroziune? Unde apar UD și UG"
-iprop 0 g_dispepsie ulcer_clinic_bedchart cart -9.15 -17.05 0 "Foaia de observație: durerea ulceroasă"
-iprop 0 g_dispepsie ulcer_clinic_whiteboard board -5.15 -14.9 270 "Tabla: epidemiologia bolii ulceroase peptice"
-islot 0 g_dispepsie ulcer_clinic_pacient npc_seat -9.0 -13.2 90
-# room w_g1 (ulcer_compl): 4 props, 1 slots
-iprop 2 w_g1 ulcer_compl_board board -23 11.15 0 "Tabla salonului: complicațiile bolii ulceroase"
-iprop 2 w_g1 ulcer_compl_poster poster -15.125 15.5 270 "Afiș: perforația ulceroasă"
-iprop 2 w_g1 ulcer_compl_iv iv_stand -18.2 16.8 270 "Stativul de perfuzie: reechilibrarea pacientului"
-iprop 2 w_g1 ulcer_compl_scope scope_tower -23.65 16.6 0 "Turnul de endoscopie: dilatarea pilorică"
-islot 2 w_g1 ulcer_compl_medic npc_stand -17.6 14.2 270

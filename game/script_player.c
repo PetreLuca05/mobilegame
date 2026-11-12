@@ -115,10 +115,14 @@ void script_player_init(ScriptPlayer *sp, GfxContext *g)
     sp->gfx = g;
     sp->fig_resident = sp->fig_shown = -1;
     sp->skip_fact = -1;
-    const MgAsset *a = mg_asset_find("content/figures.mgfig");
+    size_t fsize = 0;
+    const void *fdata = book_pack_figures(&fsize);
     char why[96] = "";
-    if (!a || !book_figs_open(&sp->figs, a->data, a->size, why, sizeof(why))) {
-        mg_log_error("book: figures: %s", a ? why : "content/figures.mgfig is not embedded");
+    if (!fdata) { /* no pack, no figures: nothing to reserve */
+        return;
+    }
+    if (!book_figs_open(&sp->figs, fdata, fsize, why, sizeof(why))) {
+        mg_log_error("book: figures: %s", why);
         return;
     }
     sp->figs_ok = true;

@@ -840,7 +840,7 @@ bool game_init(MgApp *app)
     ui_haptic_set_level((HapticLevel)g->settings.haptics);
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     g->has_save = save_exists(g->profile_name);
-    book_pack_load(&g->book); /* BOOK-1: logs its summary or its problems; the game runs either way */
+    book_pack_load(&g->book, arg_value(app->argc, app->argv, "--content")); /* none in the repository: no book content; tests: --content DIR */
     script_player_init(&g->sp, app->gfx); /* BOOK-ENGINE: the figures embedded, the GPU texture for the largest reserved */
     script_player_survey(&g->sp, &g->book, &app->font, &app->font_bold); /* the worst case per item type, logged as numbers */
     {
@@ -4826,20 +4826,26 @@ static void game_frame_inner(MgApp *app, float alpha)
         ui_round_rect(app->gfx, &app->font, tx, ty, tw, 140.0f, 14.0f, ui_rgba(0x101218F0));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 44.0f, 30.0f, ui_rgba(0xFFFFFFFF), str("autotest_text"));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, ty + 100.0f, 20.0f, ui_rgba(0xFFD166FF), str("autotest_text_line"));
-        /* BOOK-1: the pack's glyphs, and ~25 KB of the pack's text in a scrolling area that emits only its visible lines */
-        if (!g->book_text && g->book.ok) {
+        /* the book glyphs, and ~25 KB of placeholder text (invented syllables with every Romanian letter; no content
+         * pack is needed) in a scrolling area that emits only its visible lines */
+        if (!g->book_text) {
+            static const char *const syl[] = {"ță", "râ", "șe", "lo", "mi", "ăn", "tî", "Ște", "Ța", "Ă", "Î", "bu", "ne", "„ce”", "–", "va", "zo"};
             const size_t cap = 26 * 1024;
             g->book_text = ARENA_PUSH(&app->perm, char, cap);
             g->book_lines = ARENA_PUSH(&app->perm, TextLine, 4096);
             ui_text_area_init(&g->book_area, g->book_lines, 4096);
             size_t n = 0;
-            for (uint32_t r = 0; n + 600 < cap && r < 64; r++) {
-                for (uint32_t i = 0; i < g->book.line_count && n + 600 < cap; i++) {
-                    const char *line = book_pack_str(&g->book, g->book.lines[i].text);
-                    n += (size_t)SDL_snprintf(g->book_text + n, cap - n, i % 7 == 6 ? "%s\n\n" : "%s ", line);
+            uint32_t r = 7;
+            for (int w = 0; n + 64 < cap; w++) {
+                r = r * 1103515245u + 12345u;
+                const int k = 2 + (int)((r >> 16) % 3u);
+                for (int j = 0; j < k && n + 64 < cap; j++) {
+                    r = r * 1103515245u + 12345u;
+                    n += (size_t)SDL_snprintf(g->book_text + n, cap - n, "%s", syl[(r >> 16) % MG_ARRAY_COUNT(syl)]);
                 }
+                n += (size_t)SDL_snprintf(g->book_text + n, cap - n, w % 97 == 96 ? ".\n\n" : " ");
             }
-            mg_log_info("autotest text: a %u-byte text from the pack for the text area", (unsigned)n);
+            mg_log_info("autotest text: a %u-byte placeholder text for the text area", (unsigned)n);
         }
         const float bt = 12.0f, bh = ty - 12.0f - bt;
         ui_round_rect(app->gfx, &app->font, tx, bt, tw, bh, 14.0f, ui_rgba(0x101218F0));
