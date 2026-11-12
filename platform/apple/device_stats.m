@@ -52,3 +52,22 @@ float device_screen_max_hz(void *native_window)
     return s ? (float)s.maximumFramesPerSecond : 0.0f;
 #endif
 }
+
+int device_display_asleep(void)
+{
+#if TARGET_OS_OSX
+    if (CGDisplayIsAsleep(CGMainDisplayID())) {
+        return 1;
+    }
+    CFDictionaryRef d = CGSessionCopyCurrentDictionary();
+    int locked = 0;
+    if (d) {
+        CFBooleanRef v = (CFBooleanRef)CFDictionaryGetValue(d, CFSTR("CGSSessionScreenIsLocked"));
+        locked = v && CFBooleanGetValue(v);
+        CFRelease(d);
+    }
+    return locked;
+#else
+    return 0;
+#endif
+}

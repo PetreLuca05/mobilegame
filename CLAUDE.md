@@ -539,7 +539,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
 - Mac perf validity: a desktop `--autotest perf` refuses to start on battery power (`MG_PERF_ASSUME_BATTERY=1` tests the
   path) and writes `"valid": false` over the old result; every run records `display_hz_start` / `_end` (the screen's real
   maximum: `NSScreen.maximumFramesPerSecond`, SDL's mode otherwise), `fps` and `paced_below_refresh`; a changed refresh makes
-  the run invalid. `tools/perf_gate.py` fails invalid runs and warns on paced ones. This Mac's screen is 60 Hz while the loop
+  the run invalid. Runs also record `paced_above_refresh`, `display_asleep_s` (macOS: display asleep or session locked, checked once a second) and `window_occluded_frames`; any of them makes the run invalid (nothing paced the loop: such runs once read 120 fps on this 60 Hz screen). `tools/perf_gate.py` fails invalid runs, warns on paced ones and prints each run's refresh and fps. `--log-frame-stats` also logs fps and whether the window is visible. This Mac's screen is 60 Hz while the loop
   presents ~120 times a second (SDL's Metal display sync does not hold it to the screen here), so `fps` above `display_hz` is normal.
 - Late frames (tracked bug, rare Mac stalls): `engine/core/frame_notes.c`. Expensive one-off work calls `frame_note("...")`
   (GPU idle waits, mesh uploads, figure upload, screenshot, MSAA change, level build, map preload step); a frame over 50 ms

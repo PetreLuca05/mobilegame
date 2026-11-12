@@ -106,6 +106,9 @@ def main():
             if "ui_draws" in d["counters"] and d["counters"]["ui_draws"]["max"] > UI_MAX_DRAWS:
                 problems.append(f"{dev} {sc}: {d['counters']['ui_draws']['max']:.0f} UI draws, UI-1 allows {UI_MAX_DRAWS}")
             print(f"INFO {dev:6} {sc:12} passes max {d['counters']['passes']['max']:.0f}")
+            if "fps" in d: # compare like with like: every run states the screen it was paced by
+                print(f"INFO {dev:6} {sc:12} refresh {d.get('display_hz_start', 0):.0f} Hz, {d['fps']:.1f} fps"
+                      + (" (not paced by the screen)" if d.get("paced_above_refresh") or d.get("display_asleep_s") or d.get("window_occluded_frames") else ""))
             if m["thermal"] > 1:
                 problems.append(f"{dev} {sc}: thermal state {m['thermal']} above fair")
             if compare:
