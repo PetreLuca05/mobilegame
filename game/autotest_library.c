@@ -24,6 +24,142 @@ static int failf(LibraryTest *t, const char *fmt, ...)
 
 /* A turn sampled at 240 Hz on a private study: the hero's numbers, not its frame rate. The hand is the drawn
  * avatar's (avatar_solve, seat 0's pose), the tip the drawn leaf's, both in the world. */
+/* §15.2: the text lines (palette b9b0a0) of the open book and the two leaf halves, read in place from the embedded mgmb (no
+ * allocation): each line is a rect in its mesh's x z, with the face it is printed on (y > 0 top, y < 0 under the leaf) */
+typedef struct LeafLine {
+    float x0, x1, z0, z1, y;
+} LeafLine;
+
+static uint32_t rd_u32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static float rd_f32(const uint8_t *p)
+{
+    const uint32_t u = rd_u32(p);
+    float f;
+    SDL_memcpy(&f, &u, 4);
+    return f;
+}
+
+/* the line rects of one group (two triangles each, merged by their shared box), max n */
+static int leaf_lines_of(const char *group, LeafLine *out, int n)
+{
+    const MgAsset *a = mg_asset_find("assets/menu/library.mgmb");
+    if (!a || a->size < 12 || SDL_memcmp(a->data, "MGMB", 4) != 0) {
+        return -1;
+    }
+    const uint8_t *p = a->data + 12, *end = a->data + a->size;
+    const uint32_t groups = rd_u32(a->data + 8);
+    for (uint32_t gi = 0; gi < groups && end - p >= 32; gi++) {
+        char name[25];
+        SDL_memcpy(name, p, 24);
+        name[24] = 0;
+        const uint32_t vc = rd_u32(p + 24), ic = rd_u32(p + 28);
+        p += 32;
+        if ((size_t)(end - p) < (size_t)vc * 28u + (size_t)ic * 44u) {
+            return -1;
+        }
+        if (SDL_strcmp(name, group) != 0) {
+            p += (size_t)vc * 28u + (size_t)ic * 44u;
+            continue;
+        }
+        int k = 0;
+        for (uint32_t t = 0; t + 2 < vc; t += 3) {
+            const uint8_t *v = p + (size_t)t * 28u;
+            if (v[24] != 0xb9 || v[25] != 0xb0 || v[26] != 0xa0) {
+                continue;
+            }
+            LeafLine r = {1e9f, -1e9f, 1e9f, -1e9f, 0.0f};
+            for (int j = 0; j < 3; j++) {
+                const float x = rd_f32(v + j * 28), y = rd_f32(v + j * 28 + 4), z = rd_f32(v + j * 28 + 8);
+                r.x0 = fminf(r.x0, x), r.x1 = fmaxf(r.x1, x), r.z0 = fminf(r.z0, z), r.z1 = fmaxf(r.z1, z), r.y = y;
+            }
+            bool merged = false; /* the quad's other triangle */
+            for (int q = 0; q < k && !merged; q++) {
+                LeafLine *o = &out[q];
+                if (fabsf(o->y - r.y) < 1e-4f && fabsf(o->z0 - r.z0) < 1e-4f && fabsf(o->z1 - r.z1) < 1e-4f && r.x0 <= o->x1 + 1e-4f && r.x1 >= o->x0 - 1e-4f) {
+                    o->x0 = fminf(o->x0, r.x0), o->x1 = fmaxf(o->x1, r.x1);
+                    merged = true;
+                }
+            }
+            if (!merged && k < n) {
+                out[k++] = r;
+            }
+        }
+        return k;
+    }
+    return -1;
+}
+
+/* a leaf half's line, placed by its matrix (book frame): its rect in x z and the height of its face; false if it tilted out of
+ * the x z plane (only judged at theta 0 and pi) */
+static LeafLine leaf_place(const HMM_Mat4 *m, const LeafLine *l)
+{
+    const HMM_Vec4 a = HMM_MulM4V4(*m, HMM_V4(l->x0, l->y, l->z0, 1.0f)), b = HMM_MulM4V4(*m, HMM_V4(l->x1, l->y, l->z1, 1.0f));
+    return (LeafLine){fminf(a.X, b.X), fmaxf(a.X, b.X), fminf(a.Z, b.Z), fmaxf(a.Z, b.Z), 0.5f * (a.Y + b.Y)};
+}
+
+/* 2: the leaf's text lines through a turn: at every angle each line stays on its half (rides it: same count, inside the
+ * half, in its plane); at theta 0 the top lines of both halves join into the right page's lines, at pi the lines under the
+ * leaf into the left page's, row by row (1 mm) */
+static int leaf_text(LibraryTest *t, const LibScene *sc)
+{
+    LeafLine page[64], la[32], lb[32];
+    const int np = leaf_lines_of("book_open", page, 64), na = leaf_lines_of("book_leaf_a", la, 32), nb = leaf_lines_of("book_leaf_b", lb, 32);
+    if (np <= 0 || na <= 0 || nb <= 0) {
+        return failf(t, "turn: no text lines found on the book (%d) or the leaf (%d, %d)", np, na, nb);
+    }
+    const float pi = 3.14159265f, half = 0.5f * sc->book.leaf_len;
+    int count_min = 1 << 30, count_max = 0, rows_checked = 0;
+    for (int s = 0; s <= 40; s++) {
+        const float th = pi * (float)s / 40.0f, thb = th - sc->study.leaf_lag * sinf(th);
+        const HMM_Mat4 inner = HMM_MulM4(HMM_Translate(HMM_V3(0.0f, sc->book.leaf_y, 0.0f)), HMM_Rotate_RH(-th, HMM_V3(0, 0, 1)));
+        const HMM_Mat4 outer = HMM_MulM4(HMM_MulM4(inner, HMM_Translate(HMM_V3(-half, 0.0f, 0.0f))), HMM_Rotate_RH(-(thb - th), HMM_V3(0, 0, 1)));
+        int on = 0;
+        for (int h = 0; h < 2; h++) { /* a line on its half: within the half's x span (0 .. -half from its hinge) and its plane */
+            const LeafLine *ls = h ? lb : la;
+            for (int i = 0; i < (h ? nb : na); i++) {
+                on += ls[i].x0 >= -half - 1e-3f && ls[i].x1 <= 1e-3f && fabsf(ls[i].y) < 2e-3f;
+            }
+        }
+        count_min = SDL_min(count_min, on), count_max = SDL_max(count_max, on);
+        if (s != 0 && s != 40) {
+            continue;
+        }
+        const bool top = s == 0; /* theta 0: the top face on the right page (-x); pi: the under face on the left page (+x) */
+        for (int i = 0; i < np; i++) {
+            const LeafLine *pg = &page[i];
+            if (fabsf(pg->x0) > 0.25f || fabsf(pg->x1) > 0.25f || (top ? pg->x1 > 0.0f : pg->x0 < 0.0f)) {
+                continue; /* the other page, or not the book's pages */
+            }
+            float x0 = 1e9f, x1 = -1e9f;
+            for (int h = 0; h < 2; h++) {
+                const LeafLine *ls = h ? lb : la;
+                for (int k = 0; k < (h ? nb : na); k++) {
+                    if ((ls[k].y > 0.0f) != top) {
+                        continue;
+                    }
+                    const LeafLine w = leaf_place(h ? &outer : &inner, &ls[k]);
+                    if (fabsf(w.z0 - pg->z0) < 1e-3f && fabsf(w.z1 - pg->z1) < 1e-3f) {
+                        x0 = fminf(x0, w.x0), x1 = fmaxf(x1, w.x1);
+                    }
+                }
+            }
+            if (fabsf(x0 - pg->x0) > 1e-3f || fabsf(x1 - pg->x1) > 1e-3f) {
+                return failf(t, "turn: at theta %s the leaf's line at z %.3f spans x %.3f .. %.3f, the page's %.3f .. %.3f", top ? "0" : "pi",
+                             (double)pg->z0, (double)x0, (double)x1, (double)pg->x0, (double)pg->x1);
+            }
+            rows_checked++;
+        }
+    }
+    if (count_min != na + nb || count_max != na + nb || rows_checked < 2) {
+        return failf(t, "turn: %d .. %d of the leaf's %d text lines on it through the turn, %d page rows matched", count_min, count_max, na + nb,
+                     rows_checked);
+    }
+    mg_log_info("autotest library: 2 the leaf's %d text lines stay on it from theta 0 to pi (41 angles); at 0 and pi they join the page's lines, "
+                "%d rows within 1 mm (ok)",
+                na + nb, rows_checked);
+    return 0;
+}
+
 static int turn(LibraryTest *t, const MenuLibrary *L, const AvatarMeshes *m, int seat)
 {
     const LibScene *sc = &L->sc;
@@ -186,6 +322,49 @@ static void npc_watch(LibraryTest *t, const MenuLibrary *L)
 
 /* the end of a run: the watch's verdict, and over the whole run: no two agents (people, carts, members walking) ever
  * closer than 96 % of their radii, nobody stuck over 4 s (+ one step), every act of the §9 table seen */
+/* §4 items, every menu frame (see LibraryTest.it_*): the first failure is kept in it_why */
+static void items_watch(LibraryTest *t, const MenuLibrary *L, const AutotestProbe *p)
+{
+    const LibScene *s = &L->sc;
+    if (L->items_frames == t->it_drawn) {
+        return; /* not drawn since: the members' things are last frame's */
+    }
+    t->it_drawn = L->items_frames;
+    t->it_frames++;
+    for (int i = 0; i < LIB_MEMBERS && i < 16; i++) {
+        const LibMember *mb = &L->seat[i];
+        const LibMemberState st = (LibMemberState)mb->items_state; /* as drawn (a trip finished after the draw changes the state) */
+        const char *bad = NULL;
+        const uint8_t carry = LIB_ITEM_BOOK_CARRIED | LIB_ITEM_MUG_CARRIED, table = LIB_ITEM_BOOK_OPEN | LIB_ITEM_MUG_TABLE | LIB_ITEM_PENCIL;
+        if (st == LM_EMPTY && mb->items != 0) {
+            bad = "an empty slot has things drawn";
+        } else if ((st == LM_WALK_IN || st == LM_WALK_OUT || st == LM_SIT || st == LM_STAND) && mb->items != carry) {
+            bad = "a walker does not carry both its book and its mug";
+        } else if (st == LM_STUDY && mb->items != table) {
+            bad = "a reader's book, mug or pencil is not on the table";
+        }
+        if (mb->items & LIB_ITEM_MUG_CARRIED) {
+            t->it_carry_frames++;
+            t->it_mug_worst = fmaxf(t->it_mug_worst, mb->mug_err);
+            if (mb->mug_err > 0.01f) {
+                bad = "the carried mug is more than 1 cm from the hand at its handle";
+            }
+        }
+        if (mb->t_seated > 0.0 && mb->t_on_table >= mb->t_seated && mb->t_on_table != t->it_judged[i]) {
+            t->it_judged[i] = mb->t_on_table;
+            t->it_sits++;
+            const float late = (float)(mb->t_on_table - mb->t_seated) - s->study.items.place_s;
+            t->it_place_worst = t->it_sits == 1 ? late : fmaxf(t->it_place_worst, late);
+            if (late > fmaxf(p->frame_dt, 1.0f / 60.0f) + 1e-3f) {
+                bad = "its things were not on the table within place_s + 1 frame of the sit";
+            }
+        }
+        if (bad && !t->it_bad++) {
+            SDL_snprintf(t->it_why, sizeof(t->it_why), "slot %d (%s, state %d, items %02x): %s", i, mb->id, (int)st, mb->items, bad);
+        }
+    }
+}
+
 static int npc_done(LibraryTest *t, const MenuLibrary *L)
 {
     if (t->npc_bad) {
@@ -213,6 +392,12 @@ static int npc_done(LibraryTest *t, const MenuLibrary *L)
             return failf(t, "NPCs: acts never seen over %.0f s:%s", P->time, missing);
         }
     }
+    if (!t->it_relaxed && !t->acts_skip && (t->it_carry_frames == 0 || t->it_sits == 0)) { /* Reduse seats everyone at once: nothing walks or settles */
+        return failf(t, "items: never judged (%d frames carrying, %d sits)", t->it_carry_frames, t->it_sits);
+    }
+    mg_log_info("autotest library: 4 items over %d menu frames: empty slots bare, walkers carrying book and mug (%d frames, the mug's handle "
+                "<= %.4f m from the hand), readers' book, mug and pencil on the table; %d sits, things on the table at most %.3f s past place_s (ok)",
+                t->it_frames, t->it_carry_frames, (double)t->it_mug_worst, t->it_sits, (double)t->it_place_worst);
     mg_log_info("autotest library: NPCs: all %d present; over %u ticks (%.0f s): on walkable cells and at their stops over %d menu frames, closest "
                 "pair %.3f of the radii sum, longest stuck %.2f s, %d ignore-others spells, %s; %d path searches, slowest %.3f ms (ok)",
                 L->pcfg->n, P->tick, P->time, t->npc_frames, (double)P->min_ratio, (double)P->stuck_max, P->ghosts,
@@ -599,6 +784,174 @@ static double device_local_s(void)
     return d.hour * 3600.0 + d.minute * 60.0 + d.second + d.nanosecond * 1e-9;
 }
 
+/* §13: is any clock on screen? The test's own projection of each clock's face (hall frame -> world -> clip), in a bay life is
+ * drawn in (the wall-aware mask) */
+static bool snd_clock_visible(const MenuLibrary *L)
+{
+    const LibLifeCfg *c = L->lcfg;
+    for (int b = 0; c && b < c->bays && b < LIB_BAYS; b++) {
+        if (!c->has_clock[b] || !((L->life_vis >> b) & 1u)) {
+            continue;
+        }
+        const HMM_Vec3 hp = HMM_V3(c->bx[b] + c->clock_pos.X, c->hands_y, c->bz[b] + c->clock_pos.Y + c->hands_z);
+        const HMM_Vec4 w = HMM_MulM4V4(L->xf, HMM_V4V(hp, 1.0f));
+        const HMM_Vec4 k = HMM_MulM4V4(L->view_proj, HMM_V4(w.X, w.Y, w.Z, 1.0f));
+        if (k.W > 1e-3f && fabsf(k.X / k.W) <= 1.0f && fabsf(k.Y / k.W) <= 1.0f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* the readers' page lifts (the round tables' NPCs and my table's other members): they turn without a sound */
+static uint32_t snd_other_lifts(const MenuLibrary *L)
+{
+    uint32_t n = 0;
+    for (int i = 0; i < L->sc.npc_n; i++) {
+        n += L->npc[i].study.lifts;
+    }
+    for (int i = 1; i < LIB_MEMBERS; i++) {
+        n += L->seat[i].study.lifts;
+    }
+    return n;
+}
+
+static void snd_mark(LibraryTest *t, const MenuLibrary *L, double now)
+{
+    const LibSound *S = &L->snd;
+    for (int k = 0; k < 3; k++) {
+        t->s_asked[k] = S->asked[k], t->s_played[k] = S->played[k], t->s_dropped[k] = S->dropped[k];
+    }
+    t->s_secs = S->clock_secs;
+    t->s_lifts = L->seat[0].study.lifts;
+    t->s_dev_secs = 0, t->s_vis_bad = 0, t->s_vis_any = false;
+    t->s_at = now;
+}
+
+/* §13 menu only: nothing is asked while the map is up (called every frame) */
+static void snd_map_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary *L)
+{
+    const LibSound *S = &L->snd;
+    const uint32_t asked = S->asked[0] + S->asked[1] + S->asked[2];
+    const bool map = p->fe_state == FE_MAP && p->move_state == 0;
+    if (map && t->s_map_on && asked != t->s_map_asked) {
+        t->s_map_bad = true;
+    }
+    t->s_map_frames += map ? 1 : 0;
+    t->s_map_on = map;
+    t->s_map_asked = asked;
+}
+
+/* 14: §13 sound (see the header). 0 running, 1 passed, -1 failed. */
+static int sound_run(LibraryTest *t, const MenuLibrary *L, AutotestOut *out, double now)
+{
+    const LibSound *S = &L->snd;
+    const LibLifeCfg *c = L->lcfg;
+    int cb = -1;
+    for (int b = 0; c && b < c->bays && b < LIB_BAYS && cb < 0; b++) {
+        cb = c->has_clock[b] ? b : -1;
+    }
+    if (cb < 0) {
+        return failf(t, "sound: no bay has a clock");
+    }
+    const HMM_Vec2 clk = HMM_V2(c->bx[cb] + c->clock_pos.X, c->bz[cb] + c->clock_pos.Y);
+    /* phases: 0 settle on the clock, 1 the clock in view, 2 the camera away, 3 a modal, 4 ui_sounds off, 5 all back on */
+    static const int flags[6] = {8 | 4, 8 | 4, 8 | 4, 8 | 4 | 1, 8 | 4 | 2, 8 | 4};
+    static const double lengths[6] = {1.5, 6.5, 4.5, 5.5, 5.5, 3.5};
+    static const char *const names[6] = {"settle", "the clock in view", "the camera away", "a modal up", "ui_sounds off", "back on"};
+    out->lib_sound = 1 + flags[t->sk];
+    out->lib_look = t->sk == 2 ? HMM_V3(clk.X + 9.0f, clk.Y + 8.0f, 3.0f) : HMM_V3(clk.X, clk.Y + 2.5f, 7.0f);
+    if (t->s_at <= 0.0) {
+        snd_mark(t, L, now);
+        t->s_others0 = snd_other_lifts(L);
+        t->s_dev_sec = -1;
+    }
+    const double dev = device_local_s();
+    const long long ds = dev >= 0.0 ? (long long)floor(dev) : -1;
+    if (now - t->s_at > 0.3) { /* the camera has moved (the look is set from the next frame) */
+        t->s_dev_secs += t->s_dev_sec >= 0 && ds != t->s_dev_sec ? 1 : 0;
+        const bool vis = snd_clock_visible(L);
+        t->s_vis_any |= vis;
+        t->s_vis_bad += vis != S->clock_seen ? 1 : 0;
+    }
+    t->s_dev_sec = ds;
+    if (now - t->s_at < lengths[t->sk]) {
+        return 0;
+    }
+    uint32_t da[3], dp[3], dd[3];
+    for (int k = 0; k < 3; k++) {
+        da[k] = S->asked[k] - t->s_asked[k], dp[k] = S->played[k] - t->s_played[k], dd[k] = S->dropped[k] - t->s_dropped[k];
+    }
+    const uint32_t secs = S->clock_secs - t->s_secs, lifts = L->seat[0].study.lifts - t->s_lifts;
+    mg_log_info("autotest library: 14 sound, %s: ticks asked %u played %u dropped %u (%u clock seconds, %d device seconds, clock on screen: %s), "
+                "pages %u / %u / %u for %u hero lifts, stamps %u / %u / %u",
+                names[t->sk], da[0], dp[0], dd[0], secs, t->s_dev_secs, t->s_vis_any ? "yes" : "no", da[1], dp[1], dd[1], lifts, da[2], dp[2], dd[2]);
+    if (t->s_vis_bad > 0) {
+        return failf(t, "sound (%s): the library's clock-on-screen disagreed with the projection on %d frames", names[t->sk], t->s_vis_bad);
+    }
+    if (t->sk >= 1 && da[1] != lifts) {
+        return failf(t, "sound (%s): %u page sounds asked for %u lifts of my hero's leaf", names[t->sk], da[1], lifts);
+    }
+    if (t->sk >= 1 && lifts < 1) {
+        return failf(t, "sound (%s): my hero turned no page (a page every 2.5 s)", names[t->sk]);
+    }
+    switch (t->sk) {
+    case 1:
+    case 5: /* the clock in view, sounds on: one tick per device second, every sound asked is played */
+        if (!t->s_vis_any || secs + 1 < (uint32_t)t->s_dev_secs || secs > (uint32_t)t->s_dev_secs + 1 || da[0] != secs || secs < 3) {
+            return failf(t, "sound (%s): %u ticks for %u clock seconds and %d device seconds (clock on screen: %d)", names[t->sk], da[0], secs,
+                         t->s_dev_secs, t->s_vis_any);
+        }
+        if (dp[0] != da[0] || dp[1] != da[1] || dp[2] != da[2]) {
+            return failf(t, "sound (%s): asked %u %u %u, played %u %u %u", names[t->sk], da[0], da[1], da[2], dp[0], dp[1], dp[2]);
+        }
+        if (S->tick_gap_min < 0.85f || S->tick_gap_max > 1.15f) {
+            return failf(t, "sound: ticks %.3f .. %.3f s apart (want one a second)", (double)S->tick_gap_min, (double)S->tick_gap_max);
+        }
+        break;
+    case 2: /* no clock on screen: no tick */
+        if (t->s_vis_any || da[0] != 0 || secs < 3) {
+            return failf(t, "sound (the camera away): %u ticks in %u seconds (clock on screen: %d)", da[0], secs, t->s_vis_any);
+        }
+        break;
+    case 3:
+    case 4: /* a modal / ui_sounds off: asked as usual, nothing played */
+        if (da[0] < 3 || da[1] < 1 || dp[0] + dp[1] + dp[2] != 0 || dd[0] != da[0] || dd[1] != da[1] || dd[2] != da[2]) {
+            return failf(t, "sound (%s): asked %u %u %u, played %u %u %u, dropped %u %u %u", names[t->sk], da[0], da[1], da[2], dp[0], dp[1], dp[2],
+                         dd[0], dd[1], dd[2]);
+        }
+        break;
+    default:
+        break;
+    }
+    if (t->sk < 5) {
+        t->sk++;
+        snd_mark(t, L, now);
+        return 0;
+    }
+    out->lib_sound = 0;
+    const uint32_t others = snd_other_lifts(L) - t->s_others0;
+    mg_log_info("autotest library: 14 sound: ticks %.3f .. %.3f s apart, the other readers lifted %u leaves with no sound, %u stamps asked in all; "
+                "%d map frames, %s",
+                (double)S->tick_gap_min, (double)S->tick_gap_max, others, S->asked[2], t->s_map_frames,
+                t->s_map_bad ? "a sound asked on the map" : "nothing asked on them");
+    if (S->asked[2] == 0) {
+        return failf(t, "sound: the librarian's stamp never sounded (she stamps in view from the camera away)");
+    }
+    if (others == 0) {
+        return failf(t, "sound: no other reader turned a page during the sound step (the hero-only check saw nothing to ignore)");
+    }
+    if (t->s_map_bad) {
+        return failf(t, "sound: a library sound was asked while the map was up (menu only)");
+    }
+    if (t->s_map_frames == 0) {
+        return failf(t, "sound: the map was never up (the menu-only check did not run)");
+    }
+    mg_log_info("autotest library: 14 sound: one tick per device second only with a clock on screen, page sounds for my hero's turns only, "
+                "nothing played under a modal or with ui_sounds off, nothing on the map (ok)");
+    return 1;
+}
+
 /* 13: the room is alive (see the header). 0 running, 1 passed, -1 failed. */
 static int life_run(LibraryTest *t, const MenuLibrary *L, const AutotestProbe *p, AutotestOut *out, double now)
 {
@@ -838,9 +1191,10 @@ static int trip_run(LibraryTest *t, const AutotestProbe *p, const MenuLibrary *L
                     (double)t->worst_jump, t->blank, t->trip_draws);
         mg_log_info("autotest library: 15.8 the hero's trip: %d frames walking faster than walk_speed, %d of them on screen; %d frames off screen",
                     t->fast_frames, t->fast_on_screen, t->off_frames);
-        if (t->cam_wait > 1e-3f || t->worst_jump > 0.0f || t->blank > 0 || t->fast_on_screen > 0 || !L->trav.off_seen) {
-            return failf(t, "trip: camera moved %.4f m before the hero was off screen, jump %.3f, %d blank frames, %d fast frames on screen, off screen %d",
-                         (double)t->cam_wait, (double)t->worst_jump, t->blank, t->fast_on_screen, L->trav.off_seen);
+        if (t->cam_wait > 1e-3f || t->worst_jump > 0.0f || t->blank > 0 || t->fast_on_screen > 0 || !L->trav.off_seen || t->trip_draws > 60) {
+            return failf(t, "trip: camera moved %.4f m before the hero was off screen, jump %.3f, %d blank frames, %d fast frames on screen, off screen %d, "
+                         "%u draws travelling (<= 60)",
+                         (double)t->cam_wait, (double)t->worst_jump, t->blank, t->fast_on_screen, L->trav.off_seen, t->trip_draws);
         }
     }
     if (back) {
@@ -1282,6 +1636,7 @@ static int locker_reduced(LibraryTest *t, MgApp *app, const AutotestProbe *p, co
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     const MenuLibrary *L = p->library;
+    t->it_relaxed = argv_has(app, "reduced");
     if (!L || !L->ok) {
         return failf(t, "no library");
     }
@@ -1289,6 +1644,11 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         watch(t, L, now);
         npc_watch(t, L);
     }
+    items_watch(t, L, p); /* every screen the library is drawn on (the onboarding walk-in too) */
+    if (t->it_bad) {
+        return failf(t, "items: %s", t->it_why);
+    }
+    snd_map_watch(t, p, L);
     out->lib_cat_hold = t->stage < 14 ? 1 : 2; /* the scripted steps run without the cat's pets; 13 is the cat's */
     out->lib_demo = t->demo + 1; /* the demo lobby: the scenario this step plays (0 me alone) */
     switch (t->stage) {
@@ -1353,7 +1713,8 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         return 0;
     case 2: {
         int r;
-        if ((r = turn(t, L, p->avatar_meshes, 0)) || (r = turn(t, L, p->avatar_meshes, 2)) || (r = reads(t, &L->sc)) || (r = snap_three(t, L))) {
+        if ((r = turn(t, L, p->avatar_meshes, 0)) || (r = turn(t, L, p->avatar_meshes, 2)) || (r = leaf_text(t, &L->sc)) || (r = reads(t, &L->sc)) ||
+            (r = snap_three(t, L))) {
             return r;
         }
         t->stage = 3;
@@ -1657,6 +2018,14 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     }
     case 14: { /* 13: §10 the room is alive */
         const int r = life_run(t, L, p, out, now);
+        if (r > 0) {
+            t->stage = 15;
+            return 0;
+        }
+        return r;
+    }
+    case 15: { /* 14: §13 sound */
+        const int r = sound_run(t, L, out, now);
         return r > 0 ? npc_done(t, L) : r;
     }
     default:

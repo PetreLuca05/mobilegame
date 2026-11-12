@@ -300,6 +300,42 @@ static int skins(AvatarTest *t)
     return 0;
 }
 
+/* §15 avatar "age classes" (LIB1.md §1): a child is the whole avatar x 0.72 with the head x 1.18 on top; an elder leans
+ * 0.12 rad further forward than an adult in the same pose */
+static int ages(AvatarTest *t, const AvatarMeshes *m)
+{
+    AvatarSolved s[3];
+    for (int k = 0; k < 3; k++) {
+        AvatarLook look = avatar_look_from_skin(AVATAR_DEFAULT_SKIN);
+        look.age = (uint8_t)(k == 0 ? AVATAR_ADULT : k == 1 ? AVATAR_CHILD : AVATAR_ELDER);
+        AvatarPose p = standing();
+        AvatarAnim a;
+        SDL_zero(a);
+        avatar_animate(m, &a, &p, DT);
+        avatar_solve(m, &look, &p, &a, &s[k]);
+    }
+    const float head_a = HMM_LenV3(s[0].head.Columns[0].XYZ), head_c = HMM_LenV3(s[1].head.Columns[0].XYZ);
+    const float body_a = HMM_LenV3(s[0].body_s.Columns[1].XYZ), body_c = HMM_LenV3(s[1].body_s.Columns[1].XYZ);
+    const float head_k = head_c / fmaxf(head_a, 1e-6f), body_k = body_c / fmaxf(body_a, 1e-6f);
+    const float top_k = (s[1].head_centre.Y - s[1].feet.Y) / fmaxf(s[0].head_centre.Y - s[0].feet.Y, 1e-6f);
+    const HMM_Vec3 up_a = HMM_NormV3(s[0].body.Columns[1].XYZ), up_e = HMM_NormV3(s[2].body.Columns[1].XYZ);
+    const float lean = acosf(fminf(1.0f, HMM_DotV3(up_a, up_e)));
+    mg_log_info("autotest avatar: ages: child scale %.3f, body x %.3f, head x %.3f of the adult's (want 0.72, 0.72, 0.72 x 1.18 = %.3f), head "
+                "height x %.3f; elder leans %.3f rad more",
+                (double)s[1].scale, (double)body_k, (double)head_k, 0.72 * 1.18, (double)top_k, (double)lean);
+    if (fabsf(s[1].scale - 0.72f) > 1e-3f || fabsf(body_k - 0.72f) > 2e-3f || fabsf(head_k - 0.72f * 1.18f) > 2e-3f) {
+        return failf(t, "ages: the child is x %.3f (body %.3f, head %.3f; want 0.72, 0.72, %.3f)", (double)s[1].scale, (double)body_k, (double)head_k,
+                     0.72 * 1.18);
+    }
+    if (top_k > 0.80f || top_k < 0.60f) {
+        return failf(t, "ages: the child's head stands at %.3f of the adult's height (want about 0.72)", (double)top_k);
+    }
+    if (fabsf(lean - 0.12f) > 0.005f) {
+        return failf(t, "ages: the elder leans %.3f rad more than the adult (want 0.12)", (double)lean);
+    }
+    return 0;
+}
+
 int at_run(AvatarTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     (void)app, (void)out, (void)now;
@@ -308,7 +344,7 @@ int at_run(AvatarTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         return failf(t, "no avatar meshes");
     }
     int r;
-    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = cane(t, m)) || (r = remote(t, m)) || (r = options(t, m)) || (r = skins(t))) {
+    if ((r = assembly(t, m)) || (r = walk(t, m)) || (r = cane(t, m)) || (r = ages(t, m)) || (r = remote(t, m)) || (r = options(t, m)) || (r = skins(t))) {
         return r;
     }
     return 1;

@@ -112,6 +112,7 @@ typedef struct LibScene {
 /* Who is at a seat: seat 0 is always the local player, 1..3 the lobby's other members (presentation only). */
 /* LM_SETTLE (after the sit) puts the book, mug and pencil on the table; LM_PACK (before standing) takes them (§4) */
 typedef enum { LM_EMPTY, LM_WALK_IN, LM_SIT, LM_STUDY, LM_STAND, LM_WALK_OUT, LM_SETTLE, LM_PACK } LibMemberState;
+enum { LIB_ITEM_BOOK_OPEN = 1, LIB_ITEM_MUG_TABLE = 2, LIB_ITEM_PENCIL = 4, LIB_ITEM_BOOK_CARRIED = 8, LIB_ITEM_MUG_CARRIED = 16 };
 
 typedef struct LibMember {
     LibMemberState state;
@@ -155,6 +156,11 @@ typedef struct LibMember {
     bool off_now;        /* this frame: off screen (|x| > travel.offscreen_at, the real projection) */
     float speed_now;     /* this frame: its walk speed */
     bool removed_off;    /* (tests) when removed: it was off screen (or it arrived) */
+    /* (tests) §4, this frame: what was drawn with it (LIB_ITEM_*), the carried mug's handle from the hand (m), when its things
+     * first lay on the table after its last sit (the library clock) */
+    uint8_t items, items_state; /* items_state: its state when they were drawn */
+    float mug_err;
+    double t_on_table;
 } LibMember;
 
 /* §8: my hero's trip to another table (joining a lobby, leaving one): out (packs, stands, walks; the camera waits until it is off
@@ -186,6 +192,24 @@ typedef struct LibPlane {
     uint32_t thrown, landed, glances; /* counts (tests) */
     HMM_Vec3 out_start, out_end;      /* the last outgoing flight (tests) */
 } LibPlane;
+
+/* §13 sound (procedural, menu only, under the UI sound toggle): what this frame's library wants to sound. menu_library_draw
+ * asks (`want`); the game plays or drops each after its UI (silent with a modal up, ui_sounds off or out of the menu) and
+ * counts it (`played` / `dropped`). */
+enum { LIB_SND_TICK, LIB_SND_PAGE, LIB_SND_STAMP, LIB_SND_COUNT };
+typedef struct LibSound {
+    bool want[LIB_SND_COUNT];
+    bool primed;            /* sec / stamp_k / lifts hold last frame's values */
+    long long sec;          /* the device clock's second last frame (the clock's own time, lib_life) */
+    long long stamp_k;      /* the stamp's dip count (people time) */
+    uint32_t lifts;         /* my hero's page lifts seen */
+    bool clock_seen;        /* this frame: a clock on screen (its bay drawn, the face inside the view) */
+    /* tests */
+    uint32_t asked[LIB_SND_COUNT], played[LIB_SND_COUNT], dropped[LIB_SND_COUNT];
+    uint32_t clock_secs;    /* device seconds that went by while the library was drawn */
+    double tick_last;       /* the library clock (L->clock) at the last tick asked */
+    float tick_gap_min, tick_gap_max; /* between consecutive ticks asked one device second apart */
+} LibSound;
 
 typedef struct MenuLibrary {
     bool ok;
@@ -313,6 +337,8 @@ typedef struct MenuLibrary {
     uint32_t cat_pets[LIB_SEATS]; /* pets started per seat by the cat (tests) */
     bool cat_hold;           /* tests: the cat sees nobody seated (it looks at the table, no pet) */
     HMM_Mat4 xf_inv;         /* world -> library, this frame */
+    LibSound snd;            /* §13 */
+    uint32_t items_frames;   /* (tests) frames the members' things were drawn (LibMember.items is this frame's) */
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);

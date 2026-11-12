@@ -164,6 +164,9 @@ typedef struct Game {
     bool lib_wt_plane;
     double lib_wt_pan_t;
     double lib_demo_t0;
+    bool lib_snd_on;       /* --autotest library §13: the test holds lib_snd_flags (AutotestOut.lib_sound - 1) */
+    int lib_snd_flags;
+    bool lib_snd_saved;    /* the player's ui_sounds while the test switches it off */
     int lib_demo_ctl;      /* --autotest library: the demo lobby by scenario (-1: the timeline above; 0 me alone, 1 + a friend, 2 a guest
                             * of hostA with mateB) */
     uint32_t plane_inv_seen, plane_req_seen; /* LIB-1 §8: invites / friend requests already turned into paper planes */
@@ -4433,6 +4436,7 @@ static void update_thermal(Game *g, MgApp *app)
 }
 
 static void game_frame_inner(MgApp *app, float alpha);
+static void library_sounds(Game *g);
 
 /* Developer -> Tilt debug: the raw gravity, the mapped screen values, the tilt, and a test card with arrows for
  * where the layers shift and where its lip swings, so an inverted axis shows in a screenshot. Debug builds. */
@@ -4497,6 +4501,7 @@ void game_frame(MgApp *app, float alpha)
     }
     game_frame_inner(app, alpha);
     Game *g = (Game *)app->game;
+    library_sounds(g);
     tilt_debug_draw(g, app);
     gfx_ui_screen(app->gfx, 0.0f, 0.0f, 1.0f);
     {
@@ -4507,6 +4512,44 @@ void game_frame(MgApp *app, float alpha)
     }
     head_icons_update(&g->heads, app->gfx); /* what this frame's UI asked for */
     ui_haptics_flush(); /* this frame's strongest haptic, on the frame of its input */
+}
+
+/* LIB-1 §13: the library's sounds of this frame (menu_library_draw asked for them), after the frame's UI so a modal opened
+ * this frame silences them; menu only, under Sound and the UI sound toggle. Procedural notes on the audio voices (no
+ * allocation). */
+static void library_sounds(Game *g)
+{
+    LibSound *S = &g->lib.snd;
+    if (g->lib_snd_on && (g->lib_snd_flags & 1)) { /* --autotest library: a real modal over the menu */
+        float x = 0.0f, y = 0.0f;
+        ui_modal(&g->ui, "lib_snd_test", 200.0f, 80.0f, &x, &y);
+        ui_modal_end(&g->ui);
+    }
+    const bool menu = g->menu_world_on && !g->playing && g->fe.state != FE_MAP;
+    const bool modal = g->ui.modal || g->ui.modal_key != 0;
+    const bool on = g->settings.sound_on && g->settings.ui_sounds && g->audio;
+    for (int k = 0; k < LIB_SND_COUNT; k++) {
+        if (!S->want[k]) {
+            continue;
+        }
+        S->want[k] = false;
+        if (!menu || modal || !on) {
+            S->dropped[k]++;
+            continue;
+        }
+        S->played[k]++;
+        switch (k) {
+        case LIB_SND_TICK: /* 1.8 kHz, 12 ms, gain 0.012 */
+            audio_tone(g->audio, 1800.0f, 1800.0f, 0.012f, 0.0f, 0.012f, 0);
+            break;
+        case LIB_SND_PAGE: /* filtered noise, 70 ms, gain 0.03: a band sweeping down like a leaf's rustle */
+            audio_tone(g->audio, 3200.0f, 1400.0f, 0.070f, 0.0f, 0.03f, 2);
+            break;
+        default: /* stamp: 140 Hz, 40 ms, gain 0.015 */
+            audio_tone(g->audio, 140.0f, 140.0f, 0.040f, 0.0f, 0.015f, 0);
+            break;
+        }
+    }
 }
 
 static void game_frame_inner(MgApp *app, float alpha)
@@ -4790,6 +4833,18 @@ static void game_frame_inner(MgApp *app, float alpha)
         menu_library_receive_plane(&g->lib, "hostA");
     } else if (ato.lib_plane == 3) {
         menu_library_plane_close(&g->lib);
+    }
+    if (ato.lib_sound > 0 || g->lib_snd_on) { /* --autotest library §13: a modal, ui_sounds off, pages, the camera elsewhere */
+        const int f = ato.lib_sound > 0 ? ato.lib_sound - 1 : 0;
+        if (!g->lib_snd_on) {
+            g->lib_snd_saved = g->settings.ui_sounds;
+        }
+        g->lib_snd_on = ato.lib_sound > 0;
+        g->lib_snd_flags = f;
+        g->settings.ui_sounds = (f & 2) ? false : g->lib_snd_saved;
+        g->lib.debug_turns = (f & 4) != 0;
+        g->lib.look_at = HMM_V2(ato.lib_look.X, ato.lib_look.Y);
+        g->lib.look_dist = (f & 8) ? ato.lib_look.Z : 0.0f;
     }
     if (ato.lib_fidget > 0) { /* --autotest library: the hero plays this action now (PET through the cat's hook) */
         menu_library_fidget(&g->lib, 0, (LibAction)(ato.lib_fidget - 1));

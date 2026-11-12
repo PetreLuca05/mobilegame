@@ -4,7 +4,11 @@
  *   2  a forced page turn (lib_study.h) in seat 0 and seat 2 (yaw 90): the leaf angle rises monotonically
  *      0 -> pi, the drawn right hand (avatar_solve, world) within 2 cm of the drawn leaf tip while
  *      theta < release_theta (after the reach), both hands at
- *      rest at u = 1; screenshot library_turn at u = 0.5 (--lib-closeup)
+ *      rest at u = 1; screenshot library_turn at u = 0.5 (--lib-closeup); the leaf's text lines (read from the embedded mgmb)
+ *      ride it through 41 angles, and at theta 0 / pi join the right / left page's lines row by row (1 mm)
+ *  (15.4, every menu frame, items_watch) empty member slots draw nothing, walkers (in, sitting down, standing up, out) carry
+ *      book and mug, readers have book, mug and pencil on the table, the carried mug's handle within 1 cm of the hand, the
+ *      things on the table within place_s + 1 frame of each sit; 15.7 trips also fail above 60 draws
  *   3  20 turns: every read in between inside study.read_s
  *   4  a friend joins (the demo lobby, AutotestOut.lib_demo): it starts at seat 0's stand point of its own table (§8), never
  *      by a door to the outside, faster than walking only while off screen (15.8), seated within 12 s with its book open;
@@ -45,6 +49,10 @@
  *      (sunbeam dust, lamp dust, bubbles, steam, talk dots, hearts, paper balls); live particles <= 320; the fish inside the
  *      tank; the clock's time within a minute of the device's; <= 46 draws at rest throughout; screenshots library_cat_rug,
  *      library_cat_visit, library_cat_pet
+ *  14  §13 sound: the camera on the clock: one tick per device second (the clock's own, checked against SDL's time) and only
+ *      while the test's own projection has the clock on screen, ticks 1 s apart; the camera away: none; a real modal up: asked,
+ *      none played; ui_sounds off: none played; a page sound for each of my hero's leaf lifts and for nobody else's turns
+ *      (the readers turn without one); every stamp asked played; nothing asked while on the map (menu only)
  * The two-instance version of 4 and 5 (a real friend, a real kick) runs in tools/friends2_test.sh. */
 #ifndef MG_AUTOTEST_LIBRARY_H
 #define MG_AUTOTEST_LIBRARY_H
@@ -132,6 +140,27 @@ typedef struct LibraryTest {
     int mt;                 /* maps-mid-trip: 0 waiting for the pan, 1 tapping Maps, 2 the move */
     double mt_pan_at;       /* when the trip back's pan was first seen */
     float mt_trip_speed;    /* the pan's last judged speed (camera distances per second) */
+    /* §4 items (items_watch, every menu frame, every member): empty slots bare, walkers carry both, seated readers have book,
+     * mug and pencil on the table, the carried mug by its handle, on the table within place_s + 1 frame of the sit */
+    int it_frames, it_bad;
+    uint32_t it_drawn;  /* L->items_frames last judged */
+    char it_why[160];
+    float it_mug_worst, it_place_worst; /* m; s past place_s */
+    int it_sits, it_carry_frames;
+    bool it_relaxed;                    /* Reduse: nothing walks or settles (no carry / sit counts required) */
+    double it_judged[16];               /* each slot's t_on_table already judged */
+    /* §13 sound (sound_run) */
+    int sk;                 /* its phase */
+    double s_at;
+    uint32_t s_asked[3], s_played[3], s_dropped[3], s_secs, s_lifts, s_others, s_others0;
+    long long s_dev_sec;    /* the device's own second (SDL time), last frame */
+    int s_dev_secs;         /* device seconds crossed in this phase */
+    int s_vis_bad;          /* frames where the library's clock-on-screen differs from the test's own projection */
+    bool s_vis_any;         /* a clock on screen (the test's projection) in this phase */
+    bool s_map_on;          /* on the map: the library's asks are frozen (menu only) */
+    uint32_t s_map_asked;
+    int s_map_frames;
+    bool s_map_bad;
     char npc_why[160];
     char why[200];
 } LibraryTest;

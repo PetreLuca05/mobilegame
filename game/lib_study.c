@@ -91,7 +91,11 @@ void lib_study_step(LibStudy *s, const LibScene *sc, float dt)
         s->u = 0.0f;
         return;
     }
+    const float u_was = s->u;
     const float u = s->u = sat(s->t / sc->study.turn_s);
+    if (u_was < sc->study.leaf_start && u >= sc->study.leaf_start) {
+        s->lifts++; /* §13: the leaf leaves the page now (the page-turn sound) */
+    }
     const float th = pi * smooth((u - sc->study.leaf_start) / (sc->study.leaf_end - sc->study.leaf_start));
     s->theta = th;
     s->theta_b = th - sc->study.leaf_lag * sinf(th);

@@ -29,6 +29,7 @@ typedef struct LibStudy {
     float u;        /* turn progress 0..1 */
     float theta, theta_b; /* the leaf's inner and outer halves */
     int turns;
+    uint32_t lifts;  /* turns whose leaf has left the page (u passed leaf_start): §13's page-turn sound */
     float last_read; /* the last completed read's length (tests) */
     /* outputs, seat frame */
     HMM_Vec3 hand_l, hand_r;

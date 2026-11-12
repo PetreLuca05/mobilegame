@@ -57,6 +57,7 @@ run rebay $GAME --profile rebay --frontend menu --autotest rebay
 run rebay_cold $GAME --profile rebaycold --frontend menu --autotest rebay --rebay-cold
 for W in iphone iphone-flip ipad; do
   run lobbylayout_$W env MG_WINDOW=$W $GAME --autotest lobbylayout
+  run layout_$W env MG_WINDOW=$W $GAME --autotest layout # §15.12: --autotest layout on the iPhone presets and the iPad
 done
 for f in library_menu library_joined library_locker library_move_000 library_move_025 library_move_050 library_move_075 library_move_100; do
   [ -f "$PREF/$f.png" ] && cp "$PREF/$f.png" docs/autotest/library/
