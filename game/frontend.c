@@ -9,6 +9,7 @@
 #include "gfx/mesh.h"
 #include "strings.h"
 #include "ui/head_icons.h"
+#include "ui/layout.h"
 #include "ui/ui_widgets.h"
 #include "book_pack.h"
 
@@ -18,8 +19,15 @@
 #define LOBBY_ROW_H 48.0f
 #define LOBBY_SLOT_FADE_S 0.25f
 #define PAD 16.0f
-#define EDGE 12.0f     /* the in-game HUD's margins: no safe-area insets on these screens either */
-#define TOP_EDGE 8.0f
+/* the in-game HUD's margins; on a phone from the safe area (ui_hud_frame), on an iPad from the screen edge */
+#define EDGE_L (12.0f + fe_frame(app).inset_l)
+#define EDGE_R (12.0f + fe_frame(app).inset_r)
+#define EDGE_B (12.0f + fe_frame(app).inset_b)
+#define TOP_EDGE (8.0f + fe_frame(app).inset_t)
+static ui_frame_t fe_frame(const MgApp *app)
+{
+    return ui_hud_frame(app->width_pt, app->height_pt, app->safe_left, app->safe_right, app->safe_top, app->safe_bottom, 0.0f);
+}
 #define NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _"
 
 
@@ -278,10 +286,10 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
 /* The menu's left column, shared by the first-launch screens: the hero stands to its right. */
 static float column_w(const MgApp *app)
 {
-    return mg_minf(app->width_pt * 0.5f - EDGE - PAD, 270.0f);
+    return mg_minf(app->width_pt * 0.5f - EDGE_L - PAD, 270.0f);
 }
 
-static float creator_w(const MgApp *app) { return app->width_pt * 0.58f - EDGE - 12.0f; }
+static float creator_w(const MgApp *app) { return app->width_pt * 0.58f - EDGE_L - 12.0f; }
 
 /* Title and divider; returns where the content starts. */
 static float column_top(Ui *ui, const char *title, const MgApp *app, float x, float w)
@@ -295,7 +303,7 @@ static float column_top(Ui *ui, const char *title, const MgApp *app, float x, fl
 static FeAction welcome(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt;
-    float cx = EDGE, cw = column_w(app);
+    float cx = EDGE_L, cw = column_w(app);
     float y = column_top(ui, str("game_name"), app, cx, cw);
     const int buttons = (ctx->google_available || !ctx->apple_available ? 1 : 0) + (ctx->apple_available ? 1 : 0);
     const float desc_h = wrapped(ui, cx, y, cw, 15.0f, ui_rgba(0), str("description"), false); /* measured: drawn on the card below */
@@ -335,7 +343,7 @@ static bool name_valid(const char *s)
 static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 {
     float w = app->width_pt;
-    float x = EDGE, cw = column_w(app);
+    float x = EDGE_L, cw = column_w(app);
     float y = TOP_EDGE + 8.0f;
     title_block(ui, str("username_title"), x, y, cw, false);
     y += 70.0f;
@@ -361,9 +369,9 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
 static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
     float w = app->width_pt, h = app->height_pt;
-    float x = EDGE + 12.0f, cw = creator_w(app), r = x + cw; /* the frosted panel starts at the edge margin */
+    float x = EDGE_L + 12.0f, cw = creator_w(app), r = x + cw; /* the frosted panel starts at the edge margin */
     float y = TOP_EDGE + 8.0f;
-    float panel_h = h - y - EDGE - 8.0f;
+    float panel_h = h - y - EDGE_B - 8.0f;
     ui_card(ui, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 8.0f);
     ui_text(ui, TEXT_FACE_DISPLAY, x, y - 4.0f, 28.0f, ui_rgba(k_ui.ink), str("creator_title"));
     FeAction a = FE_NONE;
@@ -387,12 +395,12 @@ static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 
 float frontend_menu_right(const MgApp *app, FeState state)
 {
-    return state == FE_CREATOR ? EDGE + 12.0f + creator_w(app) + 12.0f : EDGE + column_w(app);
+    return state == FE_CREATOR ? EDGE_L + 12.0f + creator_w(app) + 12.0f : EDGE_L + column_w(app);
 }
 
 float frontend_menu_free_right(const MgApp *app, bool lobby_panel)
 {
-    return lobby_panel ? app->width_pt - EDGE - LOBBY_PANEL_W - 8.0f : app->width_pt;
+    return lobby_panel ? app->width_pt - EDGE_R - LOBBY_PANEL_W - 8.0f : app->width_pt;
 }
 
 void frontend_draw_crown(GfxContext *g, const TextFont *font, float x, float y, float size)
@@ -409,7 +417,7 @@ void frontend_draw_crown(GfxContext *g, const TextFont *font, float x, float y, 
 /* Right side, under the account chip: header, then one row per player. */
 static void lobby_panel(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx, float top, FeAction *a)
 {
-    const float pw = LOBBY_PANEL_W, x = app->width_pt - EDGE - pw;
+    const float pw = LOBBY_PANEL_W, x = app->width_pt - EDGE_R - pw;
     float y = top;
     ui_card(ui, x - 10.0f, y - 8.0f, pw + 20.0f, 44.0f + 16.0f + (float)ctx->row_count * (LOBBY_ROW_H + 8.0f));
     char title[32];
@@ -476,14 +484,14 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
 {
     f->stagger_n = 0;
     float w = app->width_pt, h = app->height_pt;
-    float x = EDGE, cw = column_w(app);
+    float x = EDGE_L, cw = column_w(app);
     float y = TOP_EDGE + 8.0f;
     title_block(ui, str("menu_title"), x, y - 8.0f, cw, false);
     y += 54.0f;
     y += 12.0f;
     FeAction a = FE_NONE;
     /* the account, top right: opens Friends */
-    const float chip_r = w - EDGE, chip_w = head_chip_width(ui->font, ctx->lobby_visible ? ctx->name : str("lobby_offline_chip")), chip_y = TOP_EDGE;
+    const float chip_r = w - EDGE_R, chip_w = head_chip_width(ui->font, ctx->lobby_visible ? ctx->name : str("lobby_offline_chip")), chip_y = TOP_EDGE;
     bool chip_held = false;
     ui->hclass = HC_PILL;
     if (ui_hit_area(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, &chip_held) && !f->confirm_new) {
@@ -506,8 +514,8 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         ui_text_c(ui, TEXT_FACE_DISPLAY, chip_r - 4.0f, chip_y + 4.0f, 12.0f, ui_rgba(k_ui.white), n);
     }
     /* the rows scroll between the divider and the account line when the screen is short */
-    const float fy = h - EDGE - 16.0f;
-    const float bottom = h - EDGE; /* Continue sits here when there is a save */
+    const float fy = h - EDGE_B - 16.0f;
+    const float bottom = h - EDGE_B; /* Continue sits here when there is a save */
     const bool guest = ctx->lobby_visible && !ctx->lobby_host; /* only the host starts the game */
     const bool show_continue = ctx->has_save && !guest;
     const float rows_top = y, rows_view = mg_maxf(bottom - y - (show_continue ? CONTINUE_H + 12.0f : 0.0f), ROW_H);
@@ -539,7 +547,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
         }
     }
     float vw = text_width(ui->font, ctx->version, 13.0f);
-    ui_text(ui, TEXT_FACE_BOLD, w - EDGE - vw, fy, 13.0f, ui_rgba(k_ui.white_soft), ctx->version);
+    ui_text(ui, TEXT_FACE_BOLD, w - EDGE_R - vw, fy, 13.0f, ui_rgba(k_ui.white_soft), ctx->version);
 
     return a;
 }
@@ -548,7 +556,7 @@ static void back_button(Frontend *f, Ui *ui, MgApp *app, float bx)
 {
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##feback", str("back"));
-    const float by = app->height_pt - EDGE - 54.0f;
+    const float by = app->height_pt - EDGE_B - 54.0f;
     if (ui_button_v(ui, label, bx, by, 120.0f, 54.0f, UI_V_SECONDARY, UI_F_SMALL)) {
         frontend_back(f);
     }
@@ -568,7 +576,7 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_USERNAME:
         a = username(f, ui, app);
-        back_button(f, ui, app, EDGE);
+        back_button(f, ui, app, EDGE_L);
         break;
     case FE_CREATOR:
         a = creator(f, ui, app, ctx);
