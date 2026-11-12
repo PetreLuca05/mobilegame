@@ -156,9 +156,9 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
 {
     const IMap *m = &in->map;
     const char *ref_path = SDL_getenv("MG_NAV_REF");
-    char *json = load_text(ref_path && *ref_path ? ref_path : "content/gastro/model_nav.json");
+    char *json = load_text(ref_path && *ref_path ? ref_path : "assets/world/institute/model_nav.json");
     if (!json) {
-        mg_log_error("nav_check: cannot read content/gastro/model_nav.json (run from the repository root or set MG_NAV_REF)");
+        mg_log_error("nav_check: cannot read assets/world/institute/model_nav.json (run from the repository root or set MG_NAV_REF)");
         return 1;
     }
     cJSON *root = cJSON_Parse(json);
@@ -191,7 +191,7 @@ int nav_check_write(const Institute *in, const NavWorld *n, const ColWorld *worl
         }
     }
     int fails = 0;
-    fprintf(fp, "MAP-2 nav check: baked grids (capsule r 0.35 m, h 1.8 m, step 0.35 m) vs content/gastro/model_nav.json\n");
+    fprintf(fp, "MAP-2 nav check: baked grids (capsule r 0.35 m, h 1.8 m, step 0.35 m) vs assets/world/institute/model_nav.json\n");
     fprintf(fp, "lattice 0.25 m, x0 -34, z0 -27, 272 x 256 cells per storey (the reference has storeys 0..3)\n\n");
 
     /* 1. cell counts per storey */

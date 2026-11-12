@@ -6,7 +6,10 @@
  *   (v5, WORLD-1) book_id char[16] | level_id char[16] (older saves: kumar / gastro) |
  *   (v6, WORLD-2) rides: rng u32 | bag u8[4] | bag_left u8 | last i8 | prev u8[2][4] | prev_count u8 | pad u8 |
  *   (v7) scene_id char[16] ("hospital_v1" / "institute": whose coordinates pos is in; older saves: hospital_v1) |
- *        visited_rooms_hi u64 (bits 64..127: storeys 4..7)
+ *        visited_rooms_hi u64 (bits 64..127: storeys 4..7) |
+ *   (v8) the same layout, written after the Gastro book content was removed (2026-11-12): the slot never held mission, quest
+ *        or book progress (that lived in the per-account book_<book>_<uid>.bin files, deleted with the content); a v1-v7
+ *        save loads as before
  * One slot; written atomically (temp file + rename). The day cycle keeps
  * following the device clock, so no game time is stored. */
 #ifndef MG_SAVE_H
@@ -15,7 +18,7 @@
 #include "core/mg_types.h"
 #include "world_progress.h"
 
-#define SAVE_VERSION 7
+#define SAVE_VERSION 8
 #define SAVE_VISITED_BITS 128
 
 typedef struct SaveGame {

@@ -1,7 +1,8 @@
-/* BOOK-1 pack loader: the checks of content/gastro/mgpack_read.c, once, then in-place reads (book_pack.h). */
+/* BOOK-1 pack loader: the checks of the reference reader (mgpack_read.c, removed with the book content), once, then in-place reads (book_pack.h). */
 #include "book_pack.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "core/assets.h"
@@ -515,25 +516,68 @@ bool book_pack_open(BookPack *p, const void *blob, size_t size, const char *labe
     return p->ok;
 }
 
-bool book_pack_is_demo(void)
+static bool g_fixture;            /* the pack came from --content (the tests' fixture) */
+static const void *g_figs;        /* its figures (file) */
+static size_t g_figs_size;
+
+bool book_pack_is_demo(void) { return g_fixture; }
+
+/* a whole file, once at start (malloc'd and kept for the run: 16-byte aligned, the pack is read in place); NULL if missing */
+static void *load_file(const char *path, size_t *size)
 {
-#ifdef MG_CONTENT_DEMO
-    return true;
-#else
-    return false;
-#endif
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return NULL;
+    }
+    void *d = NULL;
+    if (fseek(f, 0, SEEK_END) == 0) {
+        const long n = ftell(f);
+        if (n > 0 && fseek(f, 0, SEEK_SET) == 0 && (d = malloc((size_t)n)) != NULL && fread(d, 1, (size_t)n, f) != (size_t)n) {
+            free(d);
+            d = NULL;
+        }
+        *size = d ? (size_t)n : 0;
+    }
+    fclose(f);
+    return d;
 }
 
-bool book_pack_load(BookPack *p)
+const void *book_pack_figures(size_t *size)
 {
-    const MgAsset *a = mg_asset_find("content/gastro.mgpack");
-    const char *label = book_pack_is_demo() ? "content/gastro.mgpack (demo)" : "content/gastro.mgpack";
-    if (!a) {
+    if (g_figs) {
+        *size = g_figs_size;
+        return g_figs;
+    }
+    const MgAsset *a = mg_asset_find("content/figures.mgfig");
+    *size = a ? a->size : 0;
+    return a ? a->data : NULL;
+}
+
+bool book_pack_load(BookPack *p, const char *content_dir)
+{
+    const void *data = NULL;
+    size_t size = 0;
+    char label[512];
+    if (content_dir && content_dir[0]) { /* startup only: the file stays loaded for the run  */
+        char path[512];
+        snprintf(path, sizeof(path), "%s/fixture.mgpack", content_dir);
+        snprintf(label, sizeof(label), "%s", path);
+        data = load_file(path, &size);
+        snprintf(path, sizeof(path), "%s/figures.mgfig", content_dir);
+        g_figs = load_file(path, &g_figs_size);
+        g_fixture = data != NULL;
+    } else {
+        const MgAsset *a = mg_asset_find("content/gastro.mgpack");
+        data = a ? a->data : NULL;
+        size = a ? a->size : 0;
+        snprintf(label, sizeof(label), "content/gastro.mgpack");
+    }
+    if (!data) {
         memset(p, 0, sizeof(*p));
-        mg_log_error("book: %s is not embedded: no book content", label);
+        mg_log_info("book: no content pack (%s): no book content", content_dir && content_dir[0] ? label : "none embedded");
         return false;
     }
-    if (!book_pack_open(p, a->data, a->size, label)) {
+    if (!book_pack_open(p, data, size, label)) {
         mg_log_error("book: %s refused (%u problems): the game runs without book content", label, p->problems);
         return false;
     }

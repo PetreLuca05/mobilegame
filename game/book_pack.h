@@ -1,9 +1,9 @@
 /* BOOK-1: the book content pack (content/gastro.mgpack, format MGPK v4), read in place.
- * book_pack_open runs the checks of the reference reader content/gastro/mgpack_read.c once (header, every record
+ * book_pack_open runs the checks of the reference reader (mgpack_read.c) once (header, every record
  * size, every table bound, every index and string offset, each mission-step script used once, each required script
  * in a mission step) and then hands out const pointers into the blob: no copy, no allocation, no parsing later.
  * A pack with problems is refused (ok = false): the game runs on without book content.
- * The record layout is content/gastro/gastro.mgpack.h (the same header ships with the real and the dummy pack). */
+ * The record layout is mgpack_format.h (tools/book/packbin.py writes the same structs). */
 #ifndef MG_BOOK_PACK_H
 #define MG_BOOK_PACK_H
 
@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../content/gastro/gastro.mgpack.h"
+#include "mgpack_format.h" /* the pack format (tools/book/packbin.py writes the same structs) */
 
 /* The numbers the reference reader prints (key=value lines of mgpack_read), measured at load. */
 typedef struct BookPackStats {
@@ -60,10 +60,13 @@ typedef struct BookPack {
 /* Checks the blob and fills `p`. The blob must stay alive and be 8-byte aligned (the embedded pack is).
  * `label` names the pack in the log. Returns p->ok. */
 bool book_pack_open(BookPack *p, const void *blob, size_t size, const char *label);
-/* The embedded content/gastro.mgpack (the real pack, or the dummy one when MG_CONTENT_DEMO). Logs one summary line. */
-bool book_pack_load(BookPack *p);
-/* true when this build embeds the public dummy pack (MG_CONTENT_DEMO): the game shows its „conținut demo” chip */
-bool book_pack_is_demo(void);
+/* The content pack: `content_dir`/fixture.mgpack when given (desktop --content DIR: the tests' generated fixture, read from
+ * the file once at start), else an embedded content/gastro.mgpack (a build with a private pack supplied); neither = no book
+ * content (logged, not an error: the repository ships none). Logs one summary line. */
+bool book_pack_load(BookPack *p, const char *content_dir);
+bool book_pack_is_demo(void); /* the tests' fixture is loaded (the „conținut demo” chip) */
+/* The figures that go with the loaded pack (`content_dir`/figures.mgfig for a fixture, else embedded); NULL if none. */
+const void *book_pack_figures(size_t *size);
 
 /* A string by offset: "" for MGPK_NONE, an offset out of range or a pack that is not open. */
 const char *book_pack_str(const BookPack *p, uint32_t off);

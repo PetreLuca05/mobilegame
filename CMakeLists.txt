@@ -125,15 +125,14 @@ foreach(mesh world/kumar_island world/lawrance_island world/ambulance world/vehi
   )
   list(APPEND MG_EMBED_FILES ${out})
 endforeach()
-# MAP-2: institute.map -> fixed-size records read in place (tools/mapc.py); a malformed line fails the build
+# MAP-2: the building's map (assets/world/institute/, no book content) -> fixed-size records read in place (tools/mapc.py)
 set(MG_MAPB ${MG_GEN_DIR}/assets/world/institute.mapb)
+set(MG_INST_DIR ${CMAKE_SOURCE_DIR}/assets/world/institute)
 add_custom_command(
   OUTPUT ${MG_MAPB}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/assets/world
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mapc.py ${CMAKE_SOURCE_DIR}/content/gastro/institute.map
-          ${CMAKE_SOURCE_DIR}/content/gastro/prop_kinds.json ${CMAKE_SOURCE_DIR}/content/gastro/institute_geometry.js ${MG_MAPB}
-  DEPENDS ${CMAKE_SOURCE_DIR}/content/gastro/institute.map ${CMAKE_SOURCE_DIR}/content/gastro/prop_kinds.json
-          ${CMAKE_SOURCE_DIR}/content/gastro/institute_geometry.js ${CMAKE_SOURCE_DIR}/tools/mapc.py
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mapc.py ${MG_INST_DIR}/institute.map ${MG_INST_DIR}/prop_kinds.json ${MG_MAPB}
+  DEPENDS ${MG_INST_DIR}/institute.map ${MG_INST_DIR}/prop_kinds.json ${CMAKE_SOURCE_DIR}/tools/mapc.py
   COMMENT "mapc institute.map"
   VERBATIM
 )
@@ -152,58 +151,48 @@ list(APPEND MG_EMBED_FILES ${MG_PATTERNS})
 if(MG_DAYCYCLE STREQUAL "continuous")
   list(APPEND MG_EMBED_FILES ${CMAKE_SOURCE_DIR}/assets/daycycle.json)
 endif()
-# BOOK-1: the content pack, embedded as content/gastro.mgpack (8-byte aligned: read in place, game/book_pack.c). The real pack
-# lives in content_private/gastro/ (ignored, never committed); without it the public dummy pack is embedded and the game
-# shows its "continut demo" chip (MG_CONTENT_DEMO). Store builds pass -DMG_REQUIRE_REAL_CONTENT=ON.
-set(MG_CONTENT_DIR ${CMAKE_SOURCE_DIR}/content_private/gastro CACHE PATH "Folder holding the real BOOK-1 pack gastro.mgpack (never committed)")
-option(MG_REQUIRE_REAL_CONTENT "Fail configure when the real content pack is missing (store builds)" OFF)
-if(EXISTS ${MG_CONTENT_DIR}/gastro.mgpack)
-  set(MG_CONTENT_PACK ${MG_CONTENT_DIR}/gastro.mgpack)
-  set(MG_CONTENT_DEMO OFF)
-  message(STATUS "BOOK-1: embedding the real pack ${MG_CONTENT_PACK}")
+# Book content: the repository ships none. A build embeds a content pack only when one is supplied in MG_CONTENT_DIR
+# (gastro.mgpack + fig/, read in place by game/book_pack.c, figures packed by tools/book/figpack.py: ASTC 4x4 on Apple and on
+# Android built on a Mac, RGBA8 elsewhere); without one the game runs with no book content (no missions, no pack people).
+# The engine's tests use a synthetic fixture generated into the build folder (tests/fixtures/make_fixture_pack.py, below).
+set(MG_CONTENT_DIR "" CACHE PATH "Folder holding a content pack (gastro.mgpack + fig/) to embed; empty = no book content")
+option(MG_REQUIRE_REAL_CONTENT "Fail configure when no content pack is supplied (store builds)" OFF)
+add_custom_target(mg_content_pack) # kept for dependencies (Xcode: the pack copy and the embed step need one owner)
+if(MG_CONTENT_DIR AND EXISTS ${MG_CONTENT_DIR}/gastro.mgpack)
+  message(STATUS "book: embedding the content pack ${MG_CONTENT_DIR}/gastro.mgpack")
+  set(MG_CONTENT_OUT ${MG_GEN_DIR}/content/gastro.mgpack)
+  add_custom_command(
+    OUTPUT ${MG_CONTENT_OUT}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
+    COMMAND ${CMAKE_COMMAND} -E copy ${MG_CONTENT_DIR}/gastro.mgpack ${MG_CONTENT_OUT}
+    DEPENDS ${MG_CONTENT_DIR}/gastro.mgpack
+    COMMENT "content pack ${MG_CONTENT_DIR}/gastro.mgpack"
+    VERBATIM
+  )
+  add_custom_target(mg_content_pack_copy DEPENDS ${MG_CONTENT_OUT})
+  add_dependencies(mg_content_pack mg_content_pack_copy)
+  list(APPEND MG_EMBED_FILES ${MG_CONTENT_OUT})
+  if(APPLE OR (ANDROID AND CMAKE_HOST_APPLE))
+    set(MG_FIG_FORMAT astc)
+  else()
+    set(MG_FIG_FORMAT rgba8)
+  endif()
+  file(GLOB MG_FIG_PNGS CONFIGURE_DEPENDS ${MG_CONTENT_DIR}/fig/*.png)
+  set(MG_FIG_OUT ${MG_GEN_DIR}/content/figures.mgfig)
+  add_custom_command(
+    OUTPUT ${MG_FIG_OUT}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${MG_CONTENT_DIR}/fig ${MG_FIG_OUT} ${MG_FIG_FORMAT}
+    DEPENDS ${MG_FIG_PNGS} ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift
+    COMMENT "figpack ${MG_CONTENT_DIR}/fig (${MG_FIG_FORMAT})"
+    VERBATIM
+  )
+  list(APPEND MG_EMBED_FILES ${MG_FIG_OUT})
 elseif(MG_REQUIRE_REAL_CONTENT)
-  message(FATAL_ERROR "BOOK-1: the real pack ${MG_CONTENT_DIR}/gastro.mgpack is missing; a shipped build never carries the demo "
-                      "(unpack the BOOK-1 engine bundle into content_private/gastro/ or set MG_CONTENT_DIR)")
+  message(FATAL_ERROR "book: MG_REQUIRE_REAL_CONTENT is on but no content pack is supplied (set MG_CONTENT_DIR to a folder with gastro.mgpack)")
 else()
-  set(MG_CONTENT_PACK ${CMAKE_SOURCE_DIR}/content/gastro_demo/gastro.mgpack)
-  set(MG_CONTENT_DEMO ON)
-  message(STATUS "BOOK-1: no real pack in ${MG_CONTENT_DIR}: embedding the dummy pack (MG_CONTENT_DEMO)")
+  message(STATUS "book: no content pack supplied: the game runs with no book content")
 endif()
-set(MG_CONTENT_OUT ${MG_GEN_DIR}/content/gastro.mgpack)
-add_custom_command(
-  OUTPUT ${MG_CONTENT_OUT}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
-  COMMAND ${CMAKE_COMMAND} -E copy ${MG_CONTENT_PACK} ${MG_CONTENT_OUT}
-  DEPENDS ${MG_CONTENT_PACK}
-  COMMENT "content pack ${MG_CONTENT_PACK}"
-  VERBATIM
-)
-add_custom_target(mg_content_pack DEPENDS ${MG_CONTENT_OUT})
-list(APPEND MG_EMBED_FILES ${MG_CONTENT_OUT})
-# BOOK-ENGINE figures (decision 7): the pack's crops (fig/*.png next to it) -> content/figures.mgfig (tools/book/figpack.py),
-# read in place by game/book_figs.c and uploaded one at a time (gfx_set_figure). ASTC 4x4 where the GPU samples it (Apple;
-# Android when built on a Mac: the encoder is macOS ImageIO), RGBA8 elsewhere.
-if(MG_CONTENT_DEMO)
-  set(MG_FIG_DIR ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig)
-else()
-  set(MG_FIG_DIR ${MG_CONTENT_DIR}/fig)
-endif()
-if(APPLE OR (ANDROID AND CMAKE_HOST_APPLE))
-  set(MG_FIG_FORMAT astc)
-else()
-  set(MG_FIG_FORMAT rgba8)
-endif()
-file(GLOB MG_FIG_PNGS CONFIGURE_DEPENDS ${MG_FIG_DIR}/*.png)
-set(MG_FIG_OUT ${MG_GEN_DIR}/content/figures.mgfig)
-add_custom_command(
-  OUTPUT ${MG_FIG_OUT}
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${MG_GEN_DIR}/content
-  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${MG_FIG_DIR} ${MG_FIG_OUT} ${MG_FIG_FORMAT}
-  DEPENDS ${MG_FIG_PNGS} ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift
-  COMMENT "figpack ${MG_FIG_DIR} (${MG_FIG_FORMAT})"
-  VERBATIM
-)
-list(APPEND MG_EMBED_FILES ${MG_FIG_OUT})
 set(MG_EMBED_C ${CMAKE_BINARY_DIR}/generated/mg_assets_embedded.c)
 add_custom_command(
   OUTPUT ${MG_EMBED_C}
@@ -326,9 +315,6 @@ if(MG_PROF)
 endif()
 string(TOUPPER "${MG_PLATFORM}" MG_PLATFORM_UPPER)
 target_compile_definitions(mg_engine PUBLIC MG_PLATFORM_${MG_PLATFORM_UPPER}=1)
-if(MG_CONTENT_DEMO)
-  target_compile_definitions(mg_engine PUBLIC MG_CONTENT_DEMO=1)
-endif()
 if(MG_TEST_AUTH)
   if(CMAKE_BUILD_TYPE STREQUAL "Release")
     message(FATAL_ERROR "MG_TEST_AUTH is for test builds only")
@@ -444,33 +430,35 @@ if(MG_PLATFORM STREQUAL "desktop")
   target_link_libraries(book_progress_test PRIVATE SDL3::SDL3-static)
   target_compile_options(book_progress_test PRIVATE ${MG_WARNINGS})
   add_test(NAME book_progress COMMAND book_progress_test ${CMAKE_BINARY_DIR})
-  # BOOK-ENGINE figures: the demo pack's crops through tools/book/figpack.py (ASTC via ImageIO on Apple, RGBA8 elsewhere)
+  # the engine tests' content: a synthetic fixture pack + its figures, generated into the build folder (no pack lives in the
+  # repository). ctest reads it; the book autotests load it with --content ${CMAKE_BINARY_DIR}/fixture
   if(APPLE)
     set(MG_FIG_TEST_FORMAT astc)
   else()
     set(MG_FIG_TEST_FORMAT rgba8)
   endif()
-  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/generated/figtest.mgfig
-    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig
-            ${CMAKE_BINARY_DIR}/generated/figtest.mgfig ${MG_FIG_TEST_FORMAT}
-    DEPENDS ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_demo.png
-            ${CMAKE_SOURCE_DIR}/content/gastro_demo/fig/fig_worst.png)
-  add_custom_target(figtest_mgfig DEPENDS ${CMAKE_BINARY_DIR}/generated/figtest.mgfig)
+  set(MG_FIXTURE_DIR ${CMAKE_BINARY_DIR}/fixture)
+  add_custom_command(OUTPUT ${MG_FIXTURE_DIR}/fixture.mgpack ${MG_FIXTURE_DIR}/figures.mgfig
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/fixtures/make_fixture_pack.py ${MG_FIXTURE_DIR}
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/book/figpack.py ${MG_FIXTURE_DIR}/fig ${MG_FIXTURE_DIR}/figures.mgfig ${MG_FIG_TEST_FORMAT}
+    DEPENDS ${CMAKE_SOURCE_DIR}/tests/fixtures/make_fixture_pack.py ${CMAKE_SOURCE_DIR}/tools/book/packbin.py ${CMAKE_SOURCE_DIR}/tools/book/figpack.py
+            ${CMAKE_SOURCE_DIR}/tools/book/astc_encode.swift ${CMAKE_SOURCE_DIR}/assets/world/institute/institute.map
+            ${CMAKE_SOURCE_DIR}/assets/world/institute/model_nav.json
+    COMMENT "test fixture pack (invented placeholder text)"
+    VERBATIM)
+  add_custom_target(mg_fixture ALL DEPENDS ${MG_FIXTURE_DIR}/fixture.mgpack ${MG_FIXTURE_DIR}/figures.mgfig)
   add_executable(book_figs_test tests/book_figs_test.c game/book_figs.c)
   target_compile_options(book_figs_test PRIVATE -iquote ${CMAKE_SOURCE_DIR}/game) # quotes only: glibc's <string.h> pulls <strings.h>, which -I game would turn into game/strings.h
   target_compile_options(book_figs_test PRIVATE ${MG_WARNINGS})
-  add_dependencies(book_figs_test figtest_mgfig)
-  add_test(NAME book_figs COMMAND book_figs_test ${CMAKE_BINARY_DIR}/generated/figtest.mgfig fig_demo)
-  # BOOK-1: the pack loader on the embedded pack (the generated copy) and the committed dummy, plus corrupted copies
+  add_dependencies(book_figs_test mg_fixture)
+  add_test(NAME book_figs COMMAND book_figs_test ${MG_FIXTURE_DIR}/figures.mgfig fig_demo)
+  # the pack loader on the fixture (its generated counts) and on corrupted copies
   add_executable(book_pack_test tests/book_pack_test.c game/book_pack.c)
   target_include_directories(book_pack_test PRIVATE engine)
   target_compile_options(book_pack_test PRIVATE -iquote ${CMAKE_SOURCE_DIR}/game) # quotes only: glibc's <string.h> pulls <strings.h>, which -I game would turn into game/strings.h
   target_compile_options(book_pack_test PRIVATE ${MG_WARNINGS})
-  if(MG_CONTENT_DEMO)
-    target_compile_definitions(book_pack_test PRIVATE MG_CONTENT_DEMO=1)
-  endif()
-  add_dependencies(book_pack_test mg_content_pack)
-  add_test(NAME book_pack COMMAND book_pack_test ${MG_CONTENT_OUT} ${CMAKE_SOURCE_DIR}/content/gastro_demo/gastro.mgpack)
+  add_dependencies(book_pack_test mg_fixture)
+  add_test(NAME book_pack COMMAND book_pack_test ${MG_FIXTURE_DIR}/fixture.mgpack)
   # word wrap (engine/ui/text_layout.c) on a font with known advances
   add_executable(text_wrap_test tests/text_wrap_test.c engine/ui/text_layout.c)
   target_include_directories(text_wrap_test PRIVATE engine)

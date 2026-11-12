@@ -1,5 +1,5 @@
 /* The institute's detail textures: the reference page's ten procedural 256 x 256 near-white patterns (TEX in
- * content/gastro's institute viewer: tile, wood, paving, plaster, brick, asphalt, grass, gravel, water, hedge),
+ * the institute page's viewer: tile, wood, paving, plaster, brick, asphalt, grass, gravel, water, hedge),
  * multiplied over the vertex colour. Generated at BUILD time by tools/gen_patterns.py with the page's seeded generator
  * and drawing order (fillRect with area coverage, filled circles, the 3 x 3 wrap, globalAlpha 0.5 for the paving's
  * specks, the water's sine strokes) plus box-filtered mips, embedded, uploaded once as a 2D array (GFX_MAT_PATTERN):

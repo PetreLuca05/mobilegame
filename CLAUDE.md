@@ -319,7 +319,7 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
 - `save_slot0.bin` (offline New Game / Continue): "MGS1", version u32,
   pos 3 x f32, yaw f32, floor u32, play_seconds u32, elevator_rides u32,
   visited_rooms u64 (bit = storey * 16 + chunk), npc_seed, npc_tick, (v5) book_id, level_id char[16], (v6) rides, (v7) scene_id char[16]
-  + visited_rooms_hi u64 (storeys 4..7); a Continue whose save is in another scene than its level's now starts at the entrance; every 30 s, on background,
+  + visited_rooms_hi u64 (storeys 4..7); (v8) same layout, written after the book content was removed (the slot never held mission or book progress); a Continue whose save is in another scene than its level's now starts at the entrance; every 30 s, on background,
   exit and "Save & back to menu". Offline play joins no Realtime room.
 
 ## Friends and lobbies (FRIENDS-1)
@@ -654,30 +654,24 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 
 ## Book content (BOOK-1)
 
-- `content/gastro/` = the Gastro chapter (Gastro.pdf) as a content pack for the institute map: atoms → facts → items →
-  scripts, proved by `content/gastro/check.py` (ledgers words / characters / sentences / facts→items / facts→scripts must
-  be 100 %). Pipeline in `tools/book/` (`make.sh content/gastro`); state and next steps in `content/gastro/STATE.md`.
-- The real pack, its header, the reader, the map, `model_nav.json` and the figures for the build machine live in the git-ignored
-  `content_private/gastro/` (from the BOOK-1 engine bundle zip); without it the build embeds the dummy pack
-  (`content/gastro_demo/`). Nothing under `content_private/` is ever committed.
-- The repo is public: the book's text never goes into git, in any commit or in the branch history (`.gitignore`s in
-  `content/`, `content/gastro/`, `tools/book/`). The PDF lives in `content/src/`; text, fixes, facts, items, figures and
-  topic sources travel in the content-pack zip. `tools/precommit.sh` refuses a commit holding a run of 12 or more
-  consecutive words of the book (`tools/book/leakguard.py` + the hashed shingles in `content/gastro/leakguard.txt`);
-  `check.py --leak .` scans every tracked file.
-- Every printed character is exam material; teach the book as printed (OCR fixes only, the book's own errors go to errata).
-  Misprints are shown, never tested (no gap / keyed answer / pair / sort label holds one); cloze gaps and label answers are
-  exact substrings of the source sentence.
-- Map side (`content/gastro/institute.map`, `prop_kinds.json`): `iprop` names a kind (15: 13 existing in MAP-2, 2 new); the
-  whole-book `check.py` runs the placement check, ≤ 12 interactables per room and ≤ 15 steps per required script (longer
-  ones are parts on the same prop); `tools/book/placeprops.py` moves failing props. `content/gastro/mgpack_read.c` is the
-  reference reader of `gastro.mgpack` (v4; 32 table slots in the header), built and run by `check.py`.
-- Author review: `review_errata.csv` / `review_hidden.csv` (zip only) → `check.py content/gastro --apply-review` → lists
-  what must be rebuilt. Hand-over: `content/gastro/ENGINE_PROMPT.md` (MAP-2 first, then BOOK-ENGINE).
+- **No book content lives in this repository or in its builds** (user decision, 2026-11-12: the Gastro missions, quests,
+  scripts, items, facts, cast, dialogue, figures, people, the pack, its dummy and the pictures of them were removed; git
+  history was not rewritten). The engine stays: the pack format (`game/mgpack_format.h`), reader (`game/book_pack.c`), missions,
+  script player, journal, dialogue card, pill, figures, progress, the load-time data and reachability checks.
+- A build embeds a pack only when one is supplied: `-DMG_CONTENT_DIR=<folder with gastro.mgpack + fig/>` (never inside the
+  repository). Without one the game runs with no book content: the institute is an empty walkable building, no missions,
+  no pack people, island completion "—". `MG_REQUIRE_REAL_CONTENT=ON` (the store scripts) fails without a pack.
+- Tests use a synthetic fixture with invented placeholder text, generated into the build folder at build time
+  (`tests/fixtures/make_fixture_pack.py` -> `build/<dir>/fixture/fixture.mgpack` + `figures.mgfig`; target `mg_fixture`): ctest
+  `book_pack` / `book_figs` read it, the book autotests (`book_ui`, `missions`, `book`, `bookpeople`) load it with
+  `--content build/<dir>/fixture`.
+- Leak guard: `tools/precommit.sh` refuses a commit holding a run of 12 or more consecutive words of the book
+  (`tools/book/leakguard.py` + the hashed shingles in `tools/book/leakguard.txt`, hashes only); `leakguard.py repo GUARD .`
+  scans every tracked file. The rest of `tools/book/` is the content pipeline's code (no book text).
 
 ## Book engine (BOOK-ENGINE)
 
-- Institute (MAP-2): books.json Gastro `scene` = `institute`. `tools/mapc.py` compiles `content/gastro/institute.map` to
+- Institute (MAP-2): books.json Gastro `scene` = `institute`. `tools/mapc.py` compiles `assets/world/institute/institute.map` (the building only) to
   `assets/world/institute.mapb` (MGMP v1, read in place by `game/imap.c`); `game/institute.c` (+ `institute_furniture.c`)
   builds the shell, furniture merged per storey and material, 3 lifts x 5 landings (G 1 2 3 R), wall pieces, open doorways (frames only; only the lifts have doors). The map's `door_leaf` record name is historical: no leaf exists, the records only mark where doorways are (the pack's furniture table must keep matching the map; `nav_check` reports them as doorways),
   nav at the capsule's 0.35 m, room graph. Nav vs the reference grid: `MG_NAV_CHECK=<file>` (`game/nav_check.c`, last report
@@ -687,8 +681,8 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
 - `--autotest institute` (sets the scene itself): auto-nav to a room on every storey, the roof deck and back to the
   forecourt, a picture per stop (`inst_at_*`), worst frame <= 150 draws, 0 frame-loop allocations, >= 4 rides. Perf scenario
   `institute` (G lobby, both wings, a ride to floor 2). `save` / `continue` play Gastro = the institute (auto-nav to floor 2).
-- Pack: `game/book_pack.c` (the reader's checks, zero copy; `book_pack_test`), `MG_CONTENT_DIR`, `MG_CONTENT_DEMO` +
-  the „conținut demo” chip, `MG_REQUIRE_REAL_CONTENT=ON` in the release scripts. Text: `text_wrap` (`engine/ui/text_layout.c`),
+- Pack: `game/book_pack.c` (the reader's checks, zero copy; `book_pack_test`), `MG_CONTENT_DIR` (none = no content), the
+  „conținut demo” chip while a `--content` fixture is loaded, `MG_REQUIRE_REAL_CONTENT=ON` in the release scripts. Text: `text_wrap` (`engine/ui/text_layout.c`),
   `ui_text_area` (re-wraps on change, draws only visible lines). Glyphs „ ” – ’ › → − † α β γ (Greek from Comfortaa).
 - Progress (decision 4): `game/book_progress.c`, one file per account `book_gastro_<uid>.bin` (MGBP: facts bitset + 2 bits
   per case, atomic write from a fixed buffer); on account load the bits go to `book_progress_merge` and the merged row comes
@@ -696,7 +690,7 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   `--debug book-fact N` sets one. ctest `book_progress`.
 - Figures (decision 7): `tools/book/figpack.py FIGDIR OUT astc|rgba8` -> `.mgfig` (MGFG v1, sorted ids, 16-aligned, top row
   first); ASTC 4x4 through macOS ImageIO (`tools/book/astc_encode.swift`, flips the image: ImageIO writes the bottom row
-  first), RGBA8 decoded without Pillow. `game/book_figs.c` reads it in place; ctest `book_figs` on the dummy pack's figure.
+  first), RGBA8 decoded without Pillow. `game/book_figs.c` reads it in place; ctest `book_figs` on the fixture's figures.
 - People (S4b, `game/book_people.c`): in the institute `g->npcs` runs no roster; it holds exactly the pack's `people` rows,
   spawned in table order with `npc_spawn_at` (`NPC_FLAG_BOOK`: no package; NPC index = person row). Static ones stand / sit
   (record `y` = seat top) / lie (`y` = mattress top) at their post; walkers wander their storey's corridors on the NPC steering
@@ -717,10 +711,8 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   `game/missions_ui.c`: objective pill (under the account chip; tap = journal), dialogue card (head-icon portrait, name, role,
   lines, Continue / two choices), journal (pause card -> Misiuni: arc tabs, case cards with quest stages, Track / Take me there).
   One `MARKER_OBJECTIVE` marker in the chapter colour (`k_ui.chapter`) on whoever the objective is, no marker interactable (the
-  NPC's Talk is the interaction). `game/book_check.c`: the load-time data check (`book: data check: ...`). Until the people
-  layer and the script player land, `game/book_people_stub.c` / `script_player_stub.c` stand in (CMake picks them while
-  `game/book_people.c` / `script_player.c` are missing; `MG_*_STUB` code in game.c). `--autotest missions` (pictures `book_*`
-  in `docs/autotest/book/`). Progress saves with POSIX open / write / rename (SDL's file streams allocate in the frame loop).
+  NPC's Talk is the interaction). `game/book_check.c`: the load-time data check (`book: data check: ...`), including reach
+  from each storey's lift for every step location, person, NPC point and book prop. `--autotest missions` (on the fixture). Progress saves with POSIX open / write / rename (SDL's file streams allocate in the frame loop).
   Embedded as `content/figures.mgfig` (CMake runs figpack on the pack's `fig/`, the demo's without it; astc on Apple and on
   Android built on a Mac, else rgba8). GPU: one figure resident (`gfx_figure_reserve` at start at the largest size,
   `gfx_set_figure` into its corner through a fixed 2 MB staging buffer, RGBA8 in strips of rows; no allocation on a change),
@@ -737,12 +729,12 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   through numbered 44 pt buttons or a drop on the figure = the nearest box), up to 32 options per item (`SP_OPTS`).
 - Exams (S7, `game/book_exam.c`): the 7 pools as constants, `book_room_complete`, `book_chapter_complete`, `book_pool_open`
   (shut while a count is a `TODO(author)` 0).
-- `--autotest book_ui` (`tools/book_ui_test.sh`: default, iphone, iphone-flip, ipad; pictures `docs/autotest/book/`): every
+- `--autotest book_ui` (`tools/book_ui_test.sh`: default, iphone, iphone-flip, ipad, on the fixture; pictures stay in the build folder): every
   item type answered wrong (facts stay unset), then right (facts set), by taps and real drags; fails on a target < 44 pt or
   outside the safe rect, > 3 UI draws, a frame allocation with the card up. `MG_BOOK_UI_FROM=N` starts at run N. Per type the
-  wrong run plays the item with the most text, the right run the one with the most options / entries / labels. The dummy pack
-  carries one item per type at the real pack's worst size (`WORST` in `tools/book/make_dummy_pack.py`, invented filler, a
-  1386 x 1233 figure with 35 boxes), so CI plays the hardest layouts. Real-pack runs: `MG_BOOK_UI_TAG=real` keeps their
+  wrong run plays the item with the most text, the right run the one with the most options / entries / labels. The fixture
+  carries one item per type at a large worst-case size (`WORST` in `tests/fixtures/make_fixture_pack.py`, invented filler,
+  a 1386 x 1233 figure with 35 boxes), so the tests play the hardest layouts. Real-pack runs: `MG_BOOK_UI_TAG=real` keeps their
   pictures apart (they hold book text: never in docs/).
 
 ## Institute look (INST-LIGHT)

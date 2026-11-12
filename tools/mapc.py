@@ -4,8 +4,9 @@
 The game never parses the text: it reads fixed-size little-endian records in
 place (game/imap.h holds the matching structs and checks every size).
 
-Inputs: the map, prop_kinds.json (book prop kinds) and institute_geometry.js
-(only its TOPICS line: topic -> chapter, for the door plaques' colours).
+Inputs: the map (assets/world/institute/institute.map: the building only, no book content) and prop_kinds.json (the
+interaction prop kinds the engine knows). `learn` / `iprop` / `islot` records belong to a content pack's map; the
+repository's map has none, so the door plaques take their default colour.
 
 Output ("MGMP" version 1):
     magic u32 | version u32 | table_count u32 | pad u32
@@ -16,7 +17,7 @@ Output ("MGMP" version 1):
 Any malformed or unknown line, a record that refers to something missing, or
 a count that is out of range fails the build (exit 1, the line printed).
 
-usage: mapc.py institute.map prop_kinds.json institute_geometry.js OUT.mapb
+usage: mapc.py institute.map prop_kinds.json OUT.mapb
 """
 import json
 import re
@@ -166,16 +167,12 @@ def quoted(tok, what):
     return tok[1]
 
 
-def compile_map(map_path, kinds_path, js_path):
+def compile_map(map_path, kinds_path):
     kinds = json.load(open(kinds_path, encoding='utf-8'))['kinds']
     for k in kinds:
         if k not in IPROP_KINDS:
             raise MapError('prop_kinds.json: kind %r unknown to mapc / imap.h' % k)
-    js = open(js_path, encoding='utf-8').read()
-    m = re.search(r'^var TOPICS=(\{.*?\});', js, re.M)
-    if not m:
-        raise MapError('institute_geometry.js: no TOPICS line')
-    topics = {k: v['c'] for k, v in json.loads(m.group(1)).items()}
+    topics = {}  # topic -> chapter: only a content pack's map has learn records
 
     S = Strings()
     T = {t: [] for t in TABLES if t != 'strings'}
@@ -494,15 +491,15 @@ def write(out_path, S, T):
 
 
 def main():
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 4:
         print(__doc__.strip().split('\n')[-1], file=sys.stderr)
         return 2
     try:
-        S, T = compile_map(sys.argv[1], sys.argv[2], sys.argv[3])
+        S, T = compile_map(sys.argv[1], sys.argv[2])
     except (MapError, OSError, ValueError, KeyError) as e:
         print('mapc: %s' % e, file=sys.stderr)
         return 1
-    size = write(sys.argv[4], S, T)
+    size = write(sys.argv[3], S, T)
     print('mapc: %d rooms, %d doors, %d furniture, %d book props, %d slots + %d NPC points, %d site pieces; %d bytes'
           % (len(T['rooms']), len(T['doors']), len(T['props']), len(T['iprops']), len(T['slots']), len(T['islots']),
              len(T['site']), size))

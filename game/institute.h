@@ -1,5 +1,5 @@
 /* MAP-2: the Gastro Institute built at load time from the compiled map (game/imap.h), a port of the geometry code
- * in content/gastro/institute_geometry.js (same dimensions and colours). 52 x 36 m building around an 18 x 16 m
+ * in the institute page's geometry code (institute_geometry.js, removed from the repository with the book content) (same dimensions and colours). 52 x 36 m building around an 18 x 16 m
  * atrium, storeys G, 1, 2, 3 (4 m apart) + the roof deck at y 16 (storey 4, lift landing R), three lifts in two
  * towers, four stairwells (one box each, not walkable), the 110 x 86 m plot. Map z grows south = the engine's +Z, so
  * coordinates are used as they are (north = -Z, the entrance faces the camera at the bottom of the screen).

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The institute's detail textures, generated at build time (CMake) into one small embedded asset.
 
-They are the reference page's ten procedural 256 x 256 near-white patterns (content/gastro's institute viewer: TEX =
+They are the reference page's ten procedural 256 x 256 near-white patterns (the institute page's viewer: TEX =
 tile, wood, paving, plaster, brick, asphalt, grass, gravel, water, hedge), drawn the way its 2D canvas draws them: an
 8-bit grey canvas, fillRect with the rectangle's area coverage per pixel, filled circles and the water's strokes with a
 one-pixel anti-aliased edge, source-over blending with globalAlpha, the 3 x 3 wrap. The random stream is the page's

@@ -25,7 +25,7 @@ fi
 
 cmake -S . -B "$BUILD" -G Xcode -DMG_PLATFORM=ios -DCMAKE_SYSTEM_NAME=iOS -DMG_PROF=OFF \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_OSX_ARCHITECTURES=arm64 -DMG_IOS_TEAM_ID="$TEAM" \
-    -DMG_REQUIRE_REAL_CONTENT=ON # BOOK-1: a store build never carries the demo pack (fails at configure without it)
+    -DMG_REQUIRE_REAL_CONTENT=ON -DMG_CONTENT_DIR="${MG_CONTENT_DIR:-}" # a store build needs a supplied content pack (fails at configure without one)
 xcodebuild -project "$BUILD/mobilegame.xcodeproj" -scheme mobilegame -configuration Release \
     -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" -allowProvisioningUpdates "${AUTH[@]}" \
     archive
