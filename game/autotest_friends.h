@@ -31,6 +31,7 @@ typedef struct FriendsTest {
     uint32_t sends_at_start;
     double solo_from;
     char saved_uid[NET_ID_LEN];
+    double lib_gone_seen; /* LIB-1 §8: the library's last removal already judged */
     char why[120];
 } FriendsTest;
 

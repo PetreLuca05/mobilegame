@@ -140,6 +140,8 @@ void friends_request_code(Friends *f, const char *code)
     f->error[0] = 0;
     net_rpc(f->net, NET_RPC_FRIEND_REQUEST, body);
     ui_haptic(HAPTIC_REQUEST_SENT);
+    f->requests_sent++;
+    SDL_snprintf(f->last_request, sizeof(f->last_request), "%s", code);
 }
 
 void friends_search(Friends *f, const char *prefix)

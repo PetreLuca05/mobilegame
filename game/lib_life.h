@@ -159,6 +159,8 @@ typedef struct LibCat {
     int pose_now;     /* the target pose this tick */
     bool moving;
     float watch;      /* head yaw added by watching */
+    bool plane_on;    /* §8: a paper plane is flying (the awake cat watches it) */
+    HMM_Vec2 plane_p; /* its hall x z */
     float pet_k;      /* this tick's pet weight (only during a visit) */
     float pet_in;     /* the visited player's pet blend, from lib_cat_pet_weight */
     /* the visit */
@@ -243,6 +245,8 @@ int lib_cat_petting(const LibLife *l);
 void lib_cat_pet_weight(LibLife *l, float k);
 /* The integrator walks the cat's ground legs (its nav agent). */
 void lib_cat_use_legs(LibLife *l, bool on);
+/* §8: a paper plane flying at p (on), or none: the cat, awake and holding at a step, turns its head to it (+-1.3 rad) */
+void lib_cat_watch_plane(LibLife *l, bool on, HMM_Vec2 p);
 /* Before each lib_life_tick while the cat is on a leg: where its agent is, its heading (rad, 0 faces +z), speed, arrived. */
 void lib_cat_leg_feed(LibLife *l, HMM_Vec2 pos, float yaw, float speed, bool arrived);
 /* On the floor and not hopping: an obstacle the people walk round (the integrator's agent stands there). */

@@ -35,6 +35,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "lib_dressing.h"
 #include "platform/app.h"
 
 struct AutotestProbe;
@@ -82,6 +83,22 @@ typedef struct LibraryTest {
     int l_frames, hearts_frames;
     bool hearts_bad, fish_out, shot_rug, shot_visit, shot_pet, pet_seen;
     double clock_err;       /* the worst |shown - device| local time, s */
+    /* §8 (15.7 - 15.9) */
+    int demo;               /* the demo lobby's scenario (AutotestOut.lib_demo - 1) */
+    int tk;                 /* a runner's step */
+    float start_err, door_near; /* the friend: where it started vs its table's seat 0 stand point; closest to an outside door */
+    int fast_frames, fast_on_screen, off_frames; /* walker frames faster than walk_speed (on screen: a failure); off screen */
+    int bay_before, my_bay;
+    LibDressing my_dress;   /* my own table before I left it */
+    double trip_t0, gone_seen[2], prev_clk;
+    HMM_Vec3 eye0;
+    float cam_wait;         /* the camera's largest move while the hero was not yet off screen */
+    int blank, ghost_bad;
+    uint32_t trip_draws, thrown0, landed0;
+    bool plane_shot, plane_shot2;
+    bool sw_on[2];          /* speed_watch: the friend, the hero: walking last frame, where, at which people time */
+    HMM_Vec2 sw_p[2];
+    double sw_t[2];
     char npc_why[160];
     char why[200];
 } LibraryTest;

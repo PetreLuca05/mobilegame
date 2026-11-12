@@ -408,6 +408,11 @@ static void cat_step(LibLife *l, float dt)
             k->pet_k = k->pet_in;
         }
         if (st->watch_pendulum) k->watch = (float)(0.3 * sin(time * LL_TAU / c->pendulum_period_s));
+        if (k->plane_on && pose != LIB_POSE_SLEEP) { /* §8: the prototype: a flying plane wins over the pendulum */
+            float wy = atan2f(k->plane_p.X - k->pos[0], k->plane_p.Y - k->pos[2]) - k->yaw;
+            wy = fmodf(fmodf(wy + (float)LL_PI, (float)LL_TAU) + (float)LL_TAU, (float)LL_TAU) - (float)LL_PI;
+            k->watch = mg_clampf(wy, -1.3f, 1.3f);
+        }
         if (k->wait <= 0) cat_next(l);
     } else if (st->hop) {
         HMM_Vec2 hp = cat_target(l, st);
@@ -577,6 +582,8 @@ int lib_cat_petting(const LibLife *l)
 void lib_cat_pet_weight(LibLife *l, float k) { l->cat.pet_in = mg_saturate(k); }
 
 void lib_cat_use_legs(LibLife *l, bool on) { l->cat.ext = on; }
+
+void lib_cat_watch_plane(LibLife *l, bool on, HMM_Vec2 p) { l->cat.plane_on = on, l->cat.plane_p = p; }
 
 void lib_cat_leg_feed(LibLife *l, HMM_Vec2 pos, float yaw, float speed, bool arrived)
 {

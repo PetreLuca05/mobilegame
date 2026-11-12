@@ -22,6 +22,7 @@
 #define LIB_EXTRA_CHAIRS 4
 #define LIB_NPCS 32
 #define LIB_BAYS 4
+#define LIB_MEMBERS 8 /* member slots: 0 me, 1..3 the lobby's others, 4..7 people leaving (walking home, or seated at a table I left) */
 
 /* A background person as the drawing sees it; routes, stops and acts live in lib_people (library.scene.json npcs) */
 typedef struct LibNpcDef {
@@ -94,6 +95,13 @@ typedef struct LibScene {
     struct {
         float duration_s, hump, shell_fade[2];
     } transition;
+    struct { /* §8 travel: lobbies in motion */
+        float pan_s_per_bay, pan_s_max, zoom_out, offscreen_speed, offscreen_at, despawn_beyond_m;
+    } travel;
+    struct { /* §8 paper planes (life.plane; the throw itself is lib_fidget's) */
+        float out_s, in_s, land_yaw_deg, rest_s;
+    } plane;
+    float hall_pitch; /* hall.pitch: metres per bay (the pan's time) */
     LibNpcDef npcs[LIB_NPCS];
     int npc_n;
     int home_bay;
@@ -130,7 +138,54 @@ typedef struct LibMember {
     float blend_seated;  /* its sit blend when it started studying (> 0.9: the book is open) */
     bool outside_first;  /* it appeared at door.outside */
     HMM_Vec2 sit_from;   /* where its walk ended (within 0.85 m of the stand if someone stood there): the sit starts here */
+    /* §8: where it sits (hall frame; its own copy, so it can sit at a table that is not the lobby's) */
+    LibSeat at;
+    int bay;             /* the table of `at` */
+    int seat_k;          /* `at`'s seat index at that table (its chair) */
+    int cover;           /* its book's cover (that table's dressing) */
+    HMM_Vec2 home;       /* seat 0's stand point at its own table: where it comes from and goes back to */
+    bool has_dest;       /* the hero travelling: it packs and stands at `at`, then walks to `dest` */
+    LibSeat dest;
+    int dest_bay, dest_k, dest_cover;
+    bool leaving;        /* a slot 4..7 walker on its way home: removed off screen and far from the focus, or on arrival */
+    bool ghost;          /* a slot 4..7 reader seated at a table I left: removed once it is off screen */
+    float fade;          /* 0 drawn .. 1 gone (a dithered appear / disappear when it happens on screen) */
+    bool fading_out;
+    HMM_Vec2 start;      /* where its walk started (tests) */
+    bool off_now;        /* this frame: off screen (|x| > travel.offscreen_at, the real projection) */
+    float speed_now;     /* this frame: its walk speed */
+    bool removed_off;    /* (tests) when removed: it was off screen (or it arrived) */
 } LibMember;
+
+/* §8: my hero's trip to another table (joining a lobby, leaving one): out (packs, stands, walks; the camera waits until it is off
+ * screen), pan (the camera along the hall), arrive (it walks into frame and sits) */
+typedef enum { LT_NONE, LT_OUT, LT_PAN, LT_ARRIVE } LibTravelPhase;
+
+typedef struct LibTravel {
+    LibTravelPhase phase;
+    HMM_Vec2 from, to; /* the camera's table origins (hall frame) */
+    float t, dur;
+    double t_start, t_off, t_pan_end, t_seated; /* library clock (tests) */
+    bool off_seen;     /* the hero was off screen at least once */
+    int from_bay, to_bay;
+    uint32_t trips;    /* finished trips (tests) */
+    double clock, cam_clock; /* seconds of trips (dt summed while one runs); the value the camera last placed its eye by */
+} LibTravel;
+
+typedef enum { LP_NONE, LP_HAND, LP_OUT, LP_IN, LP_LANDED } LibPlaneMode;
+
+typedef struct LibPlane {
+    LibPlaneMode mode;
+    float t;          /* 0..1 along a flight; seconds once landed */
+    float dir;        /* +1 right, -1 left */
+    float shrink;     /* landed: 1 full size .. 0 gone */
+    bool closing;     /* the panel closed: it shrinks away now */
+    HMM_Vec3 P[4];    /* the flight's Bezier (hall frame) */
+    HMM_Vec3 pos, hand;
+    float yaw, pitch;
+    uint32_t thrown, landed, glances; /* counts (tests) */
+    HMM_Vec3 out_start, out_end;      /* the last outgoing flight (tests) */
+} LibPlane;
 
 typedef struct MenuLibrary {
     bool ok;
@@ -153,7 +208,7 @@ typedef struct MenuLibrary {
     HMM_Vec3 eye, target;
     float door_angle;
     AvatarAnim hero_anim;
-    LibMember seat[LIB_SEATS];
+    LibMember seat[LIB_MEMBERS]; /* 0 me, 1..3 the lobby's others (seated at tseats[i]), 4..7 leaving */
     LibNpc npc[LIB_NPCS];
     LibNav *nav; /* the hall's walk grid (§7), baked at load; NULL if the bake failed */
     uint32_t weld_in, weld_out; /* the meshes' vertices before / after welding at load (log) */
@@ -161,7 +216,18 @@ typedef struct MenuLibrary {
     LibDressConfig dress_cfg;
     bool dress_ok;
     LibDressing dress[LIB_BAYS];
-    uint32_t my_seed;            /* my lobby's seed (my user id; the name before the first sign-in) */
+    uint32_t my_seed;            /* my own seed (my user id; the name before the first sign-in): my table's dressing */
+    uint32_t lobby_seed;         /* the lobby I am in: its host's seed (mine when I host or am alone) */
+    int my_bay;                  /* my own table: my seed's bay (§5), or --lib-bay */
+    int force_bay;               /* --lib-bay N: my table there (-1 off) */
+    bool table_set;              /* the lobby's table has been placed once */
+    LibTravel trav;              /* §8 */
+    LibPlane plane;              /* §8 */
+    HMM_Vec2 cam_at;             /* the camera's table origin (hall frame): the lobby table's, or on its way there */
+    float cam_zoom;              /* the trip's widening of the camera distance (1 at rest) */
+    HMM_Vec3 focus;              /* the menu camera's framing target (hall frame, this frame) */
+    bool dissolve_armed;         /* Reduse: a trip waits one frame for the cross-dissolve's capture (the caller captures it) */
+    bool instant;                /* this frame: lobby changes happen at once (a full-screen page, Reduse) */
     int seat_phys[LIB_SEATS];    /* each member slot's seat at my table: seat_order[its place in the member list] */
     int member_n[LIB_SEATS];     /* that place (host first) */
     GfxMeshId table_lamp, table_lamp_light, clutter[LIB_DRESS_MAX_POOL]; /* clutter by dress_cfg.pool index (the globe: it spins) */
@@ -211,7 +277,7 @@ typedef struct MenuLibrary {
     bool fid_ok;
     LibBalls balls;
     double life_acc;     /* the members' study + fidget run on fixed 60 Hz ticks (seed + tick) */
-    GfxMeshId phone, phone_glow, anger, plane;
+    GfxMeshId phone, phone_glow, anger, plane_mesh;
     uint32_t fidget_seen[LA_COUNT]; /* actions started anywhere in the hall since load (tests) */
     LibAction debug_fidget;         /* --debug fidget <name>: every seated reader plays it each time it is free (0 off) */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
@@ -231,9 +297,9 @@ typedef struct MenuLibrary {
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
-/* My table is in this bay (LIB-1 §5: my seed's bay): seats, table, books and the menu camera move there. */
+/* --lib-bay: my own table is in this bay (instead of my seed's bay, §5): seats, table, books and the menu camera move there. */
 void menu_library_set_table(MenuLibrary *L, int bay);
-/* My lobby's seed (lib_seed_of the host's user id): dresses my table and orders its seats; the other tables keep theirs */
+/* My own seed (lib_seed_of my user id): my table's dressing; its bay (seed mod bays) is taken when the menu opens. */
 void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed);
 /* A background person is walking through bay b's door (it holds the door open): tests */
 bool menu_library_npc_at_door(const MenuLibrary *L, int b);
@@ -249,9 +315,27 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
  * the hero sits up (study blend 0.15), looks at the camera and rests both hands on the table; the page loop
  * pauses. Off: back the same way. */
 void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l);
-/* The lobby's members (rows without `me`, in list order) into seats 1..3: new ones walk in through the door,
- * missing ones stand and walk out. `snap`: everyone listed is seated at once (the menu just opened). */
+/* The lobby's members (rows without `me`, in list order) into seats 1..3 of the lobby's table (§8: the host's seed's bay, mine
+ * when I host or am alone). The table changing is a trip for my hero (packs, stands, walks; the camera follows once it is off
+ * screen), the new table's members already seated; the ones I leave stay seated until they are off screen. Within a lobby new
+ * members walk in from their own table's seat 0 stand point, leavers walk back there. `snap`: everyone where they belong at once
+ * (the menu just opened); `instant`: lobby changes happen at once (a full-screen page, Reduse: when a trip starts the call only
+ * sets dissolve_armed, the caller captures the frame for its cross-dissolve and the trip happens at once on the next call). */
+void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, bool instant);
+/* = menu_library_lobby(rows, n, snap, false) */
 void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap);
+/* Maps / a full-screen page / the game loading: every move of §8 ends now (the hero seated at its table, the camera there,
+ * arrivals seated, leavers and the readers left behind gone, an outgoing plane gone, an incoming one landed). */
+void menu_library_travel_finish(MenuLibrary *L);
+/* §8 paper planes: my hero throws one towards `to_id`'s table (an invite or a friend request sent); false: not now (not seated
+ * and free, or a plane is up). Incoming: a plane from `from_id`'s side lands in front of my seat; plane_close: its panel closed. */
+bool menu_library_throw_plane(MenuLibrary *L, const char *to_id);
+bool menu_library_receive_plane(MenuLibrary *L, const char *from_id);
+void menu_library_plane_close(MenuLibrary *L);
+/* The bay of `id`'s own table as this device places it (its seed's bay, the next one if that is the lobby's table) */
+int menu_library_home_bay(const MenuLibrary *L, const char *id);
+/* hall point (x, y, z) off screen by the travel rule: |screen x| > travel.offscreen_at, or behind the camera */
+bool menu_library_off_screen(const MenuLibrary *L, HMM_Vec3 p);
 /* The hero comes in through the door and sits (the first onboarding screen after a fresh install). */
 void menu_library_hero_walk_in(MenuLibrary *L);
 /* The menu camera as a world pose (LIB-1 step 6: the move's library end). */

@@ -220,37 +220,79 @@ static int npc_done(LibraryTest *t, const MenuLibrary *L)
     return 1;
 }
 
-/* The demo friend, every frame */
+/* a member slot by id (0..7), -1 none */
+static int slot_of(const MenuLibrary *L, const char *id)
+{
+    for (int i = 1; i < LIB_MEMBERS; i++) {
+        if (L->seat[i].state != LM_EMPTY && SDL_strcmp(L->seat[i].id, id) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* §8 seat 0's stand point at id's own table, as the library places it */
+static HMM_Vec2 home_spot(const MenuLibrary *L, const char *id)
+{
+    const int b = menu_library_home_bay(L, id);
+    return HMM_AddV2(L->sc.seats[0].stand, HMM_V2(L->bay_x[b], L->bay_z[b]));
+}
+
+/* §15.8 the off-screen speed rule for one walker (k: 0 the friend, 1 the hero) this frame: the distance its agent walked over this
+ * frame's fixed ticks, per second of them, may exceed walk_speed only when it was off screen (the real projection) as they began */
+static void speed_watch(LibraryTest *t, const MenuLibrary *L, const LibMember *mb, int k)
+{
+    const double pt = L->people ? L->people->time : L->clock;
+    const bool walking = mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT;
+    if (walking && t->sw_on[k] && pt > t->sw_t[k] + 1e-6) {
+        const float v = HMM_LenV2(HMM_SubV2(mb->pos, t->sw_p[k])) / (float)(pt - t->sw_t[k]), walk = L->sc.study.walk_speed;
+        if (v > walk * 1.05f + 0.05f) {
+            t->fast_frames++;
+            if (!mb->off_now) {
+                t->fast_on_screen++;
+            }
+        }
+        if (mb->off_now) {
+            t->off_frames++;
+        }
+    }
+    t->sw_on[k] = walking;
+    t->sw_p[k] = mb->pos;
+    t->sw_t[k] = pt;
+}
+/* The demo friend ("friend"), every menu frame: where it starts, how fast it walks, when it is seated, gone */
 static void watch(LibraryTest *t, const MenuLibrary *L, double now)
 {
-    const LibMember *mb = &L->seat[1];
-    const LibScene *s = &L->sc;
-    const bool walking = mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT;
-    if (mb->state != LM_EMPTY && !t->seen) {
+    const int i = slot_of(L, "friend");
+    const LibMember *mb = i >= 0 ? &L->seat[i] : NULL;
+    if (mb && !t->seen && t->stage >= 3) {
         t->seen = true;
         t->joined = now;
-        t->outside_first = HMM_LenV2(HMM_SubV2(mb->pos, s->door.outside)) < 0.15f;
+        t->start_err = HMM_LenV2(HMM_SubV2(mb->start, home_spot(L, "friend")));
+        t->door_near = 1e9f;
     }
-    if (walking && HMM_LenV2(HMM_SubV2(mb->pos, s->door.centre)) < 0.5f) {
-        t->door_max = fmaxf(t->door_max, L->door_angle);
+    if (!mb) {
+        if (t->left > 0.0 && t->gone <= 0.0 && L->gone.t_gone > 0.0 && SDL_strcmp(L->gone.id, "friend") == 0) {
+            t->gone = now;
+        }
+        return;
     }
-    if ((mb->state == LM_SETTLE || mb->state == LM_STUDY) && t->seated <= 0.0) { /* seated: the sit done (then it settles) */
+    speed_watch(t, L, mb, 0);
+    if (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) { /* never in through a door to the outside (the back row's) */
+        for (int b = 0; b < LIB_BAYS; b++) {
+            if (L->bay_z[b] < L->sc.mid_wall_z) {
+                const HMM_Vec2 out = HMM_AddV2(L->sc.door.outside, HMM_V2(L->bay_x[b], L->bay_z[b]));
+                t->door_near = fminf(t->door_near, HMM_LenV2(HMM_SubV2(mb->pos, out)));
+            }
+        }
+    }
+    if ((mb->state == LM_SETTLE || mb->state == LM_STUDY) && i < LIB_SEATS && t->seated <= 0.0) { /* seated: the sit done */
         t->seated = now;
         t->open_at_seat = mb->blend;
     }
-    if (t->seated > 0.0 && t->left <= 0.0 && (mb->state == LM_PACK || mb->state == LM_STAND || mb->state == LM_WALK_OUT)) {
+    if (t->seated > 0.0 && t->left <= 0.0 && i >= LIB_SEATS) {
         t->left = now;
     }
-    if (t->left > 0.0 && t->gone <= 0.0 && mb->state == LM_EMPTY) {
-        t->gone = now;
-    }
-    if (t->gone > 0.0 && menu_library_npc_at_door(L, L->table_bay)) { /* a background NPC walking through holds it open: */
-        t->door_clear = now;                                          /* the 2 s count from when the door is clear */
-    }
-    if (t->gone > 0.0 && t->shut <= 0.0 && L->door_angle < 0.05f) {
-        t->shut = now;
-    }
-    t->prev_state = mb->state;
 }
 
 /* a tap on a widget: down now, up 80 ms later; true once it is up */
@@ -642,6 +684,220 @@ static int life_run(LibraryTest *t, const MenuLibrary *L, const AutotestProbe *p
     return 1;
 }
 
+/* §15.7: my hero's trip to another table (`back`: Ieși, to my own). Every frame: the camera does not move until the hero is off
+ * screen, then moves with no jump (§15.11's rule: camera distances per second, steps of at least half a frame, no judging across a
+ * picture), every frame draws the hall; seated there within 12 s. Under Reduse: no trip, seated at once under the cross-dissolve. */
+static int trip_run(LibraryTest *t, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out, double now, bool back)
+{
+    const uint32_t seed_a = lib_seed_of("hostA");
+    if (t->tk == 0) {
+        t->demo = back ? 0 : 2;
+        t->tk = 1;
+        t->at = now;
+        t->bay_before = L->table_bay;
+        if (!back) {
+            t->my_bay = L->my_bay;
+            t->my_dress = L->dress[L->my_bay];
+        }
+        return 0;
+    }
+    const LibMember *h = &L->seat[0];
+    if (t->tk == 1) { /* the lobby changed this frame (the library sees it on the next call) */
+        if (L->table_bay == t->bay_before) {
+            return now - t->at > 2.0 ? failf(t, "trip: the table did not change (bay %d)", L->table_bay) : 0;
+        }
+        t->tk = 2;
+        t->trip_t0 = now;
+        t->eye0 = p->cam_eye, t->prev_eye = p->cam_eye, t->prev_clk = L->trav.cam_clock;
+        t->cam_wait = 0.0f, t->worst_jump = 0.0f, t->prev_speed = 0.0f, t->frames = 0, t->blank = 0, t->ghost_bad = 0, t->trip_draws = 0;
+        t->shot_frame = -100, t->shots = 0, t->rebase = false, t->dissolve_seen = false;
+        t->fast_frames = t->fast_on_screen = t->off_frames = 0;
+        const int want = back ? t->my_bay : lib_table_bay(seed_a, LIB_BAYS, t->my_bay);
+        if (L->table_bay != want) {
+            return failf(t, "trip: the lobby's table in bay %d, want %d", L->table_bay, want);
+        }
+        if (!back) { /* §8 1: dressed from the host's seed at once, its members seated there with their things */
+            const int a = slot_of(L, "hostA"), b = slot_of(L, "mateB");
+            if (L->dress[L->table_bay].seed != seed_a || a < 1 || a >= LIB_SEATS || b < 1 || b >= LIB_SEATS || L->seat[a].state != LM_STUDY ||
+                L->seat[b].state != LM_STUDY || L->seat[a].bay != L->table_bay) {
+                return failf(t, "trip: the host's table not dressed (seed %08x) or its members not seated at once", L->dress[L->table_bay].seed);
+            }
+        }
+        return 0;
+    }
+    /* every frame of the trip */
+    if (p->dissolve > 0.0f) {
+        t->dissolve_seen = true;
+    }
+    if (p->draws == 0 || L->visible == 0) {
+        t->blank++;
+    }
+    t->trip_draws = p->draws > t->trip_draws ? p->draws : t->trip_draws;
+    speed_watch(t, L, h, 1);
+    if (L->trav.phase == LT_OUT || (L->trav.phase == LT_NONE && t->frames == 0)) { /* the camera waits for the hero to be off screen */
+        t->cam_wait = fmaxf(t->cam_wait, HMM_LenV3(HMM_SubV3(p->cam_eye, t->eye0)));
+    }
+    /* by the trip's own clock (the one the camera placed this eye by), as the Maps move is judged by the move's */
+    const float dt = (float)(L->trav.cam_clock - t->prev_clk), min_step = 0.5f / 60.0f;
+    const bool after_shot = t->shots > 0 && t->frames - t->shot_frame <= 2;
+    if (after_shot) {
+        t->rebase = true;
+    }
+    if (t->frames > 0 && dt >= min_step && !after_shot) {
+        const float speed = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye)) / dt / fmaxf(L->dist * L->cam_zoom * L->scale, 1e-3f);
+        if (t->frames > 1 && !t->rebase && speed > 1.5f * t->prev_speed + 0.06f) {
+            t->worst_jump = fmaxf(t->worst_jump, speed - 1.5f * t->prev_speed);
+            mg_log_info("autotest library: trip jump at frame %d: %.4f dist/s after %.4f", t->frames, (double)speed, (double)t->prev_speed);
+        }
+        t->prev_speed = speed;
+        t->rebase = false;
+    }
+    if (dt >= min_step || t->frames == 0) {
+        t->prev_eye = p->cam_eye;
+        t->prev_clk = L->trav.cam_clock;
+    }
+    t->frames++;
+    for (int k = 0; k < 2 && back; k++) { /* §8: the ones I leave stay seated until they are out of view */
+        const char *id = k ? "mateB" : "hostA";
+        if (L->gone.t_gone > t->gone_seen[k] && SDL_strcmp(L->gone.id, id) == 0) {
+            t->gone_seen[k] = L->gone.t_gone;
+            if (!L->gone.removed_off) {
+                t->ghost_bad++;
+            }
+        }
+    }
+    if (!back && !L->instant) { /* pictures of the first trip */
+        static const char *const names[3] = {"library_travel_out", "library_travel_pan", "library_travel_arrive"};
+        const bool want = t->shots == 0   ? (h->state == LM_WALK_IN && L->trav.phase == LT_OUT)
+                        : t->shots == 1 ? (L->trav.phase == LT_PAN && L->trav.t >= 0.5f)
+                        : t->shots == 2 ? (L->trav.phase == LT_ARRIVE && h->state == LM_SETTLE)
+                                        : false;
+        if (want) {
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", names[t->shots]);
+            t->shots++;
+            t->shot_frame = t->frames;
+        }
+    }
+    const bool done = L->trav.phase == LT_NONE && h->state == LM_STUDY && h->bay == L->table_bay && !h->has_dest;
+    if (!done) {
+        return now - t->trip_t0 > 12.0 ? failf(t, "trip: not seated at the table 12 s after %s (hero state %d, phase %d)", back ? "leaving" : "joining",
+                                               (int)h->state, (int)L->trav.phase)
+                                       : 0;
+    }
+    const double took = now - t->trip_t0;
+    if (L->instant) { /* Reduse */
+        mg_log_info("autotest library: 15.7 Reduse %s: seated at once (%.3f s), the cross-dissolve %s, %d frames without the hall", back ? "Ieși" : "join",
+                    took, t->dissolve_seen ? "on" : "NOT SEEN", t->blank);
+        if (!t->dissolve_seen || took > 0.2 || t->blank > 0) {
+            return failf(t, "reduced trip: dissolve %d, %.3f s, %d blank frames", t->dissolve_seen, took, t->blank);
+        }
+    } else {
+        mg_log_info("autotest library: 15.7 %s: bay %d -> %d, the camera still (%.4f m) until the hero was off screen (%.2f s), pan %.2f s, "
+                    "seated %.2f s after (want <= 12), worst jump %.4f camera distances/s, %d frames without the hall, <= %u draws travelling (budget 60)",
+                    back ? "Ieși" : "join", t->bay_before, L->table_bay, (double)t->cam_wait, L->trav.t_off - L->trav.t_start, (double)L->trav.dur, took,
+                    (double)t->worst_jump, t->blank, t->trip_draws);
+        mg_log_info("autotest library: 15.8 the hero's trip: %d frames walking faster than walk_speed, %d of them on screen; %d frames off screen",
+                    t->fast_frames, t->fast_on_screen, t->off_frames);
+        if (t->cam_wait > 1e-3f || t->worst_jump > 0.0f || t->blank > 0 || t->fast_on_screen > 0 || !L->trav.off_seen) {
+            return failf(t, "trip: camera moved %.4f m before the hero was off screen, jump %.3f, %d blank frames, %d fast frames on screen, off screen %d",
+                         (double)t->cam_wait, (double)t->worst_jump, t->blank, t->fast_on_screen, L->trav.off_seen);
+        }
+    }
+    if (back) {
+        const LibDressing *d = &L->dress[t->my_bay];
+        if (L->table_bay != t->my_bay || SDL_memcmp(d, &t->my_dress, sizeof(*d)) != 0 || t->ghost_bad > 0) {
+            return failf(t, "Ieși: table bay %d (mine %d), my table changed %d, %d readers removed in view", L->table_bay, t->my_bay,
+                         SDL_memcmp(d, &t->my_dress, sizeof(*d)) != 0, t->ghost_bad);
+        }
+        mg_log_info("autotest library: 15.7 Ieși: back alone at my own unchanged table (bay %d, seed %08x); the readers left behind removed only out "
+                    "of view (%d still seated)",
+                    t->my_bay, d->seed, (slot_of(L, "hostA") >= 0) + (slot_of(L, "mateB") >= 0));
+    }
+    return 1;
+}
+
+/* §15.9: a plane out (an invite sent: the RPC itself is not delayed by it) leaves on the side of the friend's table; a plane in lands
+ * in front of my seat, my hero glances at it, it shrinks away when the panel closes */
+static int plane_run(LibraryTest *t, const MenuLibrary *L, AutotestOut *out, double now)
+{
+    const LibPlane *pl = &L->plane;
+    const LibMember *h = &L->seat[0];
+    switch (t->tk) {
+    case 0:
+        out->lib_plane = 1;
+        t->thrown0 = pl->thrown, t->landed0 = pl->landed;
+        t->at = now;
+        t->tk = 1;
+        return 0;
+    case 1:
+        if (pl->thrown == t->thrown0 || pl->mode == LP_HAND) {
+            return now - t->at > 3.0 ? failf(t, "plane: no throw (mode %d)", (int)pl->mode) : 0;
+        }
+        if (pl->mode == LP_OUT) {
+            if (pl->t >= 0.4f && !t->plane_shot) {
+                t->plane_shot = true;
+                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_plane_out");
+            }
+            return now - t->at > 8.0 ? failf(t, "plane: still flying after 8 s") : 0;
+        }
+        { /* landed out of the hall: which side */
+            const int b = menu_library_home_bay(L, "friend");
+            const float dx = L->bay_x[b] - L->bay_x[h->bay];
+            float mid = 0.0f;
+            for (int k = 0; k < LIB_BAYS; k++) {
+                mid += L->bay_x[k] / (float)LIB_BAYS;
+            }
+            const float side = fabsf(dx) > 0.5f ? (dx > 0.0f ? 1.0f : -1.0f) : (L->bay_x[h->bay] < mid ? 1.0f : -1.0f);
+            const float went = pl->out_end.X - pl->out_start.X;
+            mg_log_info("autotest library: 15.9 a plane out towards bay %d: thrown %.2f s after the send, flew %.1f m %s (want %s)", b, now - t->at,
+                        (double)fabsf(went), went > 0.0f ? "right" : "left", side > 0.0f ? "right" : "left");
+            if (went * side < 12.0f) {
+                return failf(t, "plane: it left %.1f m to the %s, the friend's table is to the %s", (double)went, went > 0 ? "right" : "left", side > 0 ? "right" : "left");
+            }
+        }
+        out->lib_plane = 2;
+        t->at = now;
+        t->tk = 2;
+        return 0;
+    case 2:
+        if (pl->landed == t->landed0) {
+            if (pl->mode == LP_IN && pl->t >= 0.5f && !t->plane_shot2) {
+                t->plane_shot2 = true;
+                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_plane_in");
+            }
+            return now - t->at > L->sc.plane.in_s + 1.0 ? failf(t, "plane: no landing (mode %d)", (int)pl->mode) : 0;
+        }
+        {
+            const HMM_Vec3 want = lib_seat_to_hall(h->at.pos, HMM_AngleDeg(h->at.yaw_deg), HMM_V3(0.0f, 0.79f, 1.1f));
+            const float err = HMM_LenV3(HMM_SubV3(pl->pos, want));
+            mg_log_info("autotest library: 15.9 a plane in landed %.2f s after the invite (in_s %.1f), %.4f m from seat frame (0, 0.79, 1.1), the hero "
+                        "glanced %u time(s)",
+                        now - t->at, (double)L->sc.plane.in_s, (double)err, pl->glances);
+            if (err > 0.02f || pl->mode != LP_LANDED) {
+                return failf(t, "plane: landed %.3f m off (mode %d)", (double)err, (int)pl->mode);
+            }
+        }
+        SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_plane_landed");
+        t->at = now;
+        t->tk = 3;
+        return 0;
+    case 3:
+        if (now - t->at < 1.0) {
+            return 0;
+        }
+        out->lib_plane = 3; /* the panel closes */
+        t->at = now;
+        t->tk = 4;
+        return 0;
+    default:
+        if (pl->mode != LP_NONE) {
+            return now - t->at > 0.5 ? failf(t, "plane: still there 0.5 s after its panel closed") : 0;
+        }
+        mg_log_info("autotest library: 15.9 the landed plane shrank away %.2f s after its panel closed (ok)", now - t->at);
+        return 1;
+    }
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     const MenuLibrary *L = p->library;
@@ -653,6 +909,7 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         npc_watch(t, L);
     }
     out->lib_cat_hold = t->stage < 14 ? 1 : 2; /* the scripted steps run without the cat's pets; 13 is the cat's */
+    out->lib_demo = t->demo + 1; /* the demo lobby: the scenario this step plays (0 me alone) */
     switch (t->stage) {
     case 0:
         if (p->fe_state == FE_WELCOME && !t->fresh) { /* 10: a fresh install */
@@ -730,48 +987,111 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         t->stage = 3;
         return 0;
     }
-    case 3: /* the friend comes in */
+    case 3: /* the friend comes in (§8: from seat 0's stand point at its own table, carrying book and mug) */
+        t->demo = 1;
         if (t->seated <= 0.0) {
             /* §7: an A* walk among the people (it may wait for someone in a doorway); §15.7's 12 s for a walk to a table */
+            const int i = slot_of(L, "friend");
             if (t->seen && now - t->joined > 12.0) {
-                const LibMember *mb = &L->seat[1];
-                return failf(t, "join: not seated 12 s after joining (state %d at %.2f, %.2f)", (int)mb->state, (double)mb->pos.X, (double)mb->pos.Y);
+                return failf(t, "join: not seated 12 s after joining (state %d)", i >= 0 ? (int)L->seat[i].state : -1);
             }
             return 0;
         }
-        mg_log_info("autotest library: 4 a friend joined: outside the door first %s, the door opened to %.2f rad as it passed, seated in %.2f s, sit "
-                    "blend %.2f there (book open)",
-                    t->outside_first ? "yes" : "NO", (double)t->door_max, t->seated - t->joined, (double)t->open_at_seat);
-        if (!t->outside_first || t->door_max <= 1.5f || t->open_at_seat <= 0.9f) {
-            return failf(t, "join: outside first %d, door %.2f rad (want > 1.5), sit blend %.2f", t->outside_first, (double)t->door_max, (double)t->open_at_seat);
+        if (L->instant) { /* Reduse: §8 seats players directly */
+            mg_log_info("autotest library: 4 Reduse: a friend joined and was seated directly (%.2f s, sit blend %.2f)", t->seated - t->joined, (double)t->open_at_seat);
+            if (t->seated - t->joined > 0.1 || t->open_at_seat <= 0.9f) {
+                return failf(t, "reduced join: seated after %.2f s", t->seated - t->joined);
+            }
+            t->at = now;
+            t->stage = 4;
+            return 0;
+        }
+        mg_log_info("autotest library: 4 a friend joined: from seat 0's stand point at its own table (bay %d, %.3f m off), never by a door to the "
+                    "outside (closest %.1f m), seated in %.2f s, sit blend %.2f there (book open); %d frames faster than walking, %d of them on screen",
+                    menu_library_home_bay(L, "friend"), (double)t->start_err, (double)t->door_near, t->seated - t->joined, (double)t->open_at_seat,
+                    t->fast_frames, t->fast_on_screen);
+        if (t->start_err > 0.15f || t->door_near < 1.0f || t->open_at_seat <= 0.9f || t->fast_on_screen > 0) {
+            return failf(t, "join: start %.2f m off its table, %.2f m from an outside door, sit blend %.2f, %d fast frames on screen", (double)t->start_err,
+                         (double)t->door_near, (double)t->open_at_seat, t->fast_on_screen);
         }
         SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_joined");
+        t->at = now;
         t->stage = 4;
         return 0;
-    case 4: /* ... and leaves */
-        if (t->shut <= 0.0) {
-            if (t->gone > 0.0 && now - fmax(t->gone, t->door_clear) > 2.0) {
-                return failf(t, "leave: the door still open (%.2f rad) 2 s after the friend left (and no NPC at it)", (double)L->door_angle);
-            }
-            if (t->left > 0.0 && now - t->left > 15.0) {
-                return failf(t, "leave: not gone 15 s after leaving");
-            }
+    case 4: /* ... and leaves: walks back towards its own table, removed off screen and far from the focus, or on arrival */
+        if (now - t->at < 2.0) {
             return 0;
         }
-        mg_log_info("autotest library: 5 the friend left: walked out in %.2f s, the door shut %.2f s after (ok)", t->gone - t->left, t->shut - t->gone);
-        t->stage = 5;
+        t->demo = 0;
+        if (t->gone <= 0.0) {
+            return now - t->at > 25.0 ? failf(t, "leave: the friend not gone 23 s after leaving") : 0;
+        }
+        {
+            const float home = HMM_LenV2(HMM_SubV2(L->gone.pos, home_spot(L, "friend")));
+            mg_log_info("autotest library: 5 the friend left: gone %.2f s after it got up, %s (%.1f m from its table's stand point); %d frames faster than "
+                        "walking, %d on screen, %d off screen",
+                        t->gone - t->left, L->gone.removed_off ? "out of view" : "in view, at its table", (double)home, t->fast_frames, t->fast_on_screen,
+                        t->off_frames);
+            if (L->instant) {
+                mg_log_info("autotest library: 5 Reduse: the friend left at once (%.2f s, faded where it sat if in view)", t->gone - t->left);
+                if (t->gone - t->left > 0.5) {
+                    return failf(t, "reduced leave: gone after %.2f s", t->gone - t->left);
+                }
+            } else if ((!L->gone.removed_off && home > 0.6f) || t->fast_on_screen > 0) {
+                return failf(t, "leave: removed in view %.1f m from its table, %d fast frames on screen", (double)home, t->fast_on_screen);
+            }
+        }
+        t->at = now;
+        t->tk = 0;
+        t->stage = 20;
         return 0;
+    case 20: { /* §15.7: I join hostA's lobby (mateB with it): the trip there */
+        const int r = trip_run(t, p, L, out, now, false);
+        if (r > 0) {
+            t->at = now;
+            t->stage = 21;
+            t->tk = 0;
+            return 0;
+        }
+        return r;
+    }
+    case 21: { /* Ieși: the trip back */
+        if (t->tk == 0 && now - t->at < 2.0) {
+            return 0;
+        }
+        const int r = trip_run(t, p, L, out, now, true);
+        if (r > 0) {
+            t->at = now;
+            t->stage = 22;
+            t->tk = 0;
+            return 0;
+        }
+        return r;
+    }
+    case 22: { /* §15.9 paper planes */
+        if (t->tk == 0 && now - t->at < 1.5) {
+            return 0;
+        }
+        const int r = plane_run(t, L, out, now);
+        if (r > 0) {
+            t->at = now;
+            t->stage = 5;
+            return 0;
+        }
+        return r;
+    }
     case 5: /* 7: Maps */
         if (t->second && now - t->at < 0.8) {
             return 0;
         }
         if (!tap(t, app, p, "menurow4", now)) {
-            return now - (t->second ? t->at : t->shut) > 10.0 ? failf(t, "maps: the row did not take the tap (preloaded? %d)", p->wm != NULL) : 0;
+            return now - t->at > 10.0 ? failf(t, "maps: the row did not take the tap (preloaded? %d)", p->wm != NULL) : 0;
         }
         t->rows_before = p->ui ? 1 : 0;
         t->move_start = now, t->frames = 0, t->worst_jump = 0.0f, t->empty_frames = 0, t->prev_t = 0.0f, t->prev_speed = 0.0f, t->shot_frame = -100;
         t->shots = t->second ? 5 : 0; /* the second Maps takes no pictures: its wall-clock time is measured */
         t->back_took = 0.0;
+        t->dissolve_seen = false; /* a trip's cross-dissolve (Reduse) is not the Maps one */
         t->stage = 6;
         return 0;
     case 6:

@@ -228,6 +228,8 @@ void lobby_invite_send(Lobby *l, const char *guest)
     char body[NET_RPC_BODY];
     SDL_snprintf(body, sizeof(body), "{\"p_guest\":\"%s\"}", guest);
     net_rpc(l->session->net, NET_RPC_INVITE, body);
+    l->invites_sent++;
+    SDL_snprintf(l->last_invite, sizeof(l->last_invite), "%s", guest);
     LobbySent *m = &l->sent[l->sent_count++];
     memset(m, 0, sizeof(*m));
     SDL_snprintf(m->id, sizeof(m->id), "%s", guest);

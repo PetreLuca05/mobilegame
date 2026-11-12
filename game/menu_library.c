@@ -13,6 +13,9 @@
 #include "gfx/mesh.h"
 #include "world_data.h"
 
+static void place_table(MenuLibrary *L, int bay);
+static void member_assign(MenuLibrary *L, int i);
+
 /* ------------------------------------------------------------------ library.scene.json */
 
 static float jnum(const cJSON *o, const char *key, float dflt)
@@ -138,6 +141,14 @@ static bool load_scene(LibScene *s)
     const cJSON *tr = cJSON_GetObjectItemCaseSensitive(root, "transition");
     s->transition.duration_s = jnum(tr, "duration_s", 3.0f), s->transition.hump = jnum(tr, "hump", 0.3f);
     jfloats(cJSON_GetObjectItemCaseSensitive(tr, "shell_fade"), s->transition.shell_fade, 2);
+    const cJSON *tv = cJSON_GetObjectItemCaseSensitive(root, "travel"); /* §8 */
+    s->travel.pan_s_per_bay = jnum(tv, "pan_s_per_bay", 1.4f), s->travel.pan_s_max = jnum(tv, "pan_s_max", 3.2f);
+    s->travel.zoom_out = jnum(tv, "zoom_out", 0.12f), s->travel.offscreen_speed = jnum(tv, "offscreen_speed", 5.5f);
+    s->travel.offscreen_at = jnum(tv, "offscreen_at", 1.1f), s->travel.despawn_beyond_m = jnum(tv, "despawn_beyond_m", 14.0f);
+    s->hall_pitch = jnum(hall, "pitch", 16.0f);
+    const cJSON *pl = cJSON_GetObjectItemCaseSensitive(life, "plane");
+    s->plane.out_s = jnum(pl, "out_s", 2.4f), s->plane.in_s = jnum(pl, "in_s", 2.4f);
+    s->plane.land_yaw_deg = jnum(pl, "land_yaw_deg", 200.0f), s->plane.rest_s = jnum(pl, "rest_s", 4.0f);
     for (const cJSON *nj = cJSON_GetObjectItemCaseSensitive(root, "npcs") ? cJSON_GetObjectItemCaseSensitive(root, "npcs")->child : NULL; nj && s->npc_n < LIB_NPCS;
          nj = nj->next) {
         LibNpcDef *d = &s->npcs[s->npc_n++];
@@ -587,7 +598,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->phone = upload(L, g, scratch, &mb, "phone");
     L->phone_glow = upload(L, g, scratch, &mb, "phone_glow");
     L->anger = upload(L, g, scratch, &mb, "anger");
-    L->plane = upload(L, g, scratch, &mb, "paper_plane");
+    L->plane_mesh = upload(L, g, scratch, &mb, "paper_plane");
     { /* §10 */
         static const char *const parts[5] = {"clock_hand_m", "clock_hand_h", "clock_pendulum", "skeleton", "fish"};
         static const char *const cat[3] = {"cat_body", "cat_head", "cat_tail"};
@@ -610,10 +621,15 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     for (int i = 0; i < LIB_SEATS; i++) {
         L->member_n[i] = L->seat_phys[i] = i; /* until a lobby seed orders the seats */
     }
-    menu_library_set_table(L, L->home_bay);
+    L->force_bay = -1;
+    L->my_bay = L->home_bay;
+    L->cam_zoom = 1.0f;
+    place_table(L, L->home_bay);
+    L->cam_at = HMM_V2(L->table_x, L->table_z);
     L->seat[0].state = LM_STUDY; /* the hero: always at seat 0 */
     L->seat[0].blend = L->seat[0].study_w = L->seat[0].place = 1.0f;
-    L->seat[0].pos = L->tseats[0].pos, L->seat[0].yaw_deg = L->tseats[0].yaw_deg;
+    member_assign(L, 0);
+    L->seat[0].pos = L->seat[0].at.pos, L->seat[0].yaw_deg = L->seat[0].at.yaw_deg;
     lib_study_init(&L->seat[0].study, &L->sc, 1u);
     lib_fidget_init(&L->seat[0].fid, &L->fcfg, 2u);
     L->gfx = g;
@@ -639,7 +655,11 @@ static HMM_Vec2 door_c(const MenuLibrary *L, int b) { return HMM_V2(L->bay_x[b] 
 static float bay_hide(const MenuLibrary *L, int b)
 {
     const float mid = L->sc.mid_wall_z;
-    if (L->bay_z[b] < mid || L->bay_z[L->table_bay] >= mid) {
+    /* §8: by the menu camera's framing point (the table it frames, or on a trip on its way along the hall), not by the lobby's
+     * table: a trip into the back row fades the front rooms over the 3 m of the framing point's travel past the wall */
+    float f = mg_clampf((mid - L->focus.Z) / 3.0f, 0.0f, 1.0f);
+    f = f * f * (3.0f - 2.0f * f);
+    if (L->bay_z[b] < mid || f <= 0.0f) {
         return 0.0f;
     }
     const HMM_Vec3 e = HMM_MulM4V4(HMM_InvGeneralM4(L->xf), HMM_V4V(L->view_eye, 1.0f)).XYZ;
@@ -647,7 +667,7 @@ static float bay_hide(const MenuLibrary *L, int b)
         return 0.0f;
     }
     const float k = mg_clampf((e.Y - L->sc.room.Y) / 2.0f, 0.0f, 1.0f);
-    return 1.0f - k * k * (3.0f - 2.0f * k);
+    return f * (1.0f - k * k * (3.0f - 2.0f * k));
 }
 
 void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look)
@@ -670,7 +690,8 @@ void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look)
     lib_fidget_init(&n->fid, &L->fcfg, 978u);
 }
 
-void menu_library_set_table(MenuLibrary *L, int bay)
+/* The lobby's table in bay `bay`: tseats[i] = member slot i's seat there (seat_phys[i], the table's seat order) */
+static void place_table(MenuLibrary *L, int bay)
 {
     bay = bay < 0 ? 0 : bay >= LIB_BAYS ? LIB_BAYS - 1 : bay;
     L->table_bay = bay;
@@ -689,30 +710,155 @@ void menu_library_set_table(MenuLibrary *L, int bay)
     L->tcentre = HMM_AddV2(L->sc.table.centre, dx);
 }
 
-void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed)
+/* member slot i (0..3) takes its seat at the lobby's table: its own copy, its chair, its book's cover */
+static void member_assign(MenuLibrary *L, int i)
 {
-    if (!L->dress_ok || (seed == L->my_seed && L->dress[L->table_bay].seed == seed)) {
-        return;
-    }
-    L->my_seed = seed;
-    for (int b = 0; b < LIB_BAYS; b++) { /* the empty tables, then mine */
-        lib_dress(&L->dress_cfg, b == L->table_bay ? seed : lib_empty_table_seed(b), &L->dress[b]);
-        L->dress[b].bay = b;
-    }
+    LibMember *mb = &L->seat[i];
+    mb->at = L->tseats[i];
+    mb->bay = L->table_bay;
+    mb->seat_k = L->seat_phys[i] >= 0 && L->seat_phys[i] < LIB_SEATS ? L->seat_phys[i] : i;
+    mb->cover = L->dress_ok ? L->dress[L->table_bay].cover[mb->seat_k] : 0;
+}
+
+/* slots 0..3 seated at the lobby's table sit in their (re-ordered) seats at once (a seed changed under them) */
+static void members_reseat(MenuLibrary *L)
+{
     for (int i = 0; i < LIB_SEATS; i++) {
-        L->seat_phys[i] = L->dress[L->table_bay].seat_order[L->member_n[i] >= 0 && L->member_n[i] < LIB_SEATS ? L->member_n[i] : i];
-    }
-    menu_library_set_table(L, L->table_bay);
-    dressing_rebuild(L);
-    for (int i = 0; i < LIB_SEATS; i++) { /* whoever is seated sits in its (new) seat at once */
         LibMember *mb = &L->seat[i];
+        if (mb->state == LM_EMPTY || mb->has_dest || (mb->bay != L->table_bay && mb->state != LM_WALK_IN)) {
+            continue;
+        }
+        const HMM_Vec2 stand = mb->at.stand;
+        member_assign(L, i);
         if (mb->state == LM_STUDY || mb->state == LM_SETTLE || mb->state == LM_PACK) {
-            mb->pos = L->tseats[i].pos, mb->yaw_deg = L->tseats[i].yaw_deg;
+            mb->pos = mb->at.pos, mb->yaw_deg = mb->at.yaw_deg;
+        } else if (mb->state == LM_WALK_IN && L->people && HMM_LenV2(HMM_SubV2(stand, mb->at.stand)) > 1e-3f) {
+            lib_people_walker_goal(L->people, i, mb->at.stand);
         }
     }
-    mg_log_info("library: my lobby's seed %08x -> table in bay %d, seats %d %d %d %d, %d things on it", seed, L->table_bay,
-                L->dress[L->table_bay].seat_order[0], L->dress[L->table_bay].seat_order[1], L->dress[L->table_bay].seat_order[2],
-                L->dress[L->table_bay].seat_order[3], L->dress[L->table_bay].item_count);
+}
+
+void menu_library_set_table(MenuLibrary *L, int bay)
+{
+    L->force_bay = bay < 0 ? 0 : bay >= LIB_BAYS ? LIB_BAYS - 1 : bay;
+    L->my_bay = L->force_bay;
+    place_table(L, L->my_bay);
+    members_reseat(L);
+    L->cam_at = HMM_V2(L->table_x, L->table_z);
+}
+
+void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed)
+{
+    if (L->lobby_seed == L->my_seed) { /* my own lobby follows (the name before the sign-in, then the user id) */
+        L->lobby_seed = seed;
+    }
+    L->my_seed = seed;
+}
+
+/* ------------------------------------------------------------------ §5 / §8 which table, dressed how */
+
+/* The seed bay b's table should have: the lobby's, my own (unchanged while I am away), or the empty table's */
+static uint32_t want_seed(const MenuLibrary *L, int b)
+{
+    return b == L->table_bay ? L->lobby_seed : b == L->my_bay ? L->my_seed : lib_empty_table_seed(b);
+}
+
+/* hall point p through the caller's camera: clip-space */
+static HMM_Vec4 clip_of(const MenuLibrary *L, HMM_Vec3 p) { return HMM_MulM4V4(L->view_proj, HMM_V4V(lib_point(L, p), 1.0f)); }
+
+bool menu_library_off_screen(const MenuLibrary *L, HMM_Vec3 p)
+{
+    if (!L->has_vp) {
+        return false;
+    }
+    const HMM_Vec4 c = clip_of(L, p);
+    return c.W <= 1e-3f || fabsf(c.X / c.W) > L->sc.travel.offscreen_at;
+}
+
+/* any of the points inside the view (the real projection, x and y) */
+static bool any_on_screen(const MenuLibrary *L, const HMM_Vec3 *pts, int n)
+{
+    if (!L->has_vp) {
+        return true;
+    }
+    for (int i = 0; i < n; i++) {
+        const HMM_Vec4 c = clip_of(L, pts[i]);
+        if (c.W > 1e-3f && fabsf(c.X) <= c.W && fabsf(c.Y) <= c.W) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* bay b's table, its things and its four seats (floor to a seated head) on screen: the box's corners in the view, or the view's
+ * centre ray through the box (a close camera) */
+static bool table_on_screen(const MenuLibrary *L, int b)
+{
+    const LibScene *s = &L->sc;
+    const float bx = L->bay_x[b], bz = L->bay_z[b];
+    float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+    for (int i = 0; i < LIB_SEATS; i++) {
+        x0 = fminf(x0, s->seats[i].pos.X), x1 = fmaxf(x1, s->seats[i].pos.X), z0 = fminf(z0, s->seats[i].pos.Y), z1 = fmaxf(z1, s->seats[i].pos.Y);
+    }
+    x0 = fminf(x0, s->table.centre.X - 0.5f * s->table.size.X) - 0.5f, x1 = fmaxf(x1, s->table.centre.X + 0.5f * s->table.size.X) + 0.5f;
+    z0 = fminf(z0, s->table.centre.Y - 0.5f * s->table.size.Y) - 0.5f, z1 = fmaxf(z1, s->table.centre.Y + 0.5f * s->table.size.Y) + 0.5f;
+    if (!L->has_vp) {
+        return true;
+    }
+    int out[5] = {0, 0, 0, 0, 0};
+    for (int k = 0; k < 8; k++) {
+        const HMM_Vec4 c = clip_of(L, HMM_V3(bx + (k & 1 ? x1 : x0), k & 2 ? 1.7f : 0.0f, bz + (k & 4 ? z1 : z0)));
+        out[0] += c.X < -c.W, out[1] += c.X > c.W, out[2] += c.Y < -c.W, out[3] += c.Y > c.W, out[4] += c.W <= 0.0f;
+    }
+    return out[0] < 8 && out[1] < 8 && out[2] < 8 && out[3] < 8 && out[4] < 8;
+}
+
+static bool ghost_at(const MenuLibrary *L, int b)
+{
+    for (int i = LIB_SEATS; i < LIB_MEMBERS; i++) {
+        if (L->seat[i].state != LM_EMPTY && L->seat[i].bay == b && (L->seat[i].ghost || L->seat[i].state != LM_WALK_OUT)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Each table to the seed it should have: the lobby's at once (§8: dressed the moment I join), the others only while off screen
+ * with nobody left sitting at them (§14: dressing happens off screen), or everything at once (`now`) */
+static void dress_sync(MenuLibrary *L, bool now)
+{
+    if (!L->dress_ok) {
+        return;
+    }
+    bool changed = false;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        const uint32_t want = want_seed(L, b);
+        if (L->dress[b].seed == want && L->dress[b].bay == b) {
+            continue;
+        }
+        if (!now && b != L->table_bay && (table_on_screen(L, b) || ghost_at(L, b))) {
+            continue;
+        }
+        lib_dress(&L->dress_cfg, want, &L->dress[b]);
+        L->dress[b].bay = b;
+        changed = true;
+        if (b == L->table_bay) {
+            mg_log_info("library: the lobby's seed %08x -> table in bay %d, seats %d %d %d %d, %d things on it", want, b, L->dress[b].seat_order[0],
+                        L->dress[b].seat_order[1], L->dress[b].seat_order[2], L->dress[b].seat_order[3], L->dress[b].item_count);
+        }
+    }
+    if (changed) {
+        dressing_rebuild(L);
+    }
+}
+
+int menu_library_home_bay(const MenuLibrary *L, const char *id) { return lib_table_bay(lib_seed_of(id), LIB_BAYS, L->table_bay); }
+
+/* seat 0's stand point at `id`'s own table (§8: where a friend comes from and goes back to) */
+static HMM_Vec2 home_of(const MenuLibrary *L, const char *id)
+{
+    const int b = menu_library_home_bay(L, id);
+    return HMM_AddV2(L->sc.seats[0].stand, HMM_V2(L->bay_x[b], L->bay_z[b]));
 }
 
 /* the room's yaw in the world (radians, about +y) */
@@ -827,8 +973,12 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     const float ease = L->snap_camera ? 1.0f : mg_minf(app->frame_dt * 6.0f, 1.0f); /* --lib-still: no float wobble at rest */
     L->dist = L->dist <= 0.0f ? dist : L->dist + (dist - L->dist) * ease;
     L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * ease;
-    const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->table_x, 0, L->table_z)), HMM_MulV3F(right, L->shift));
-    const HMM_Vec3 eye = orbit_eye(target, L->dist, c->pitch_deg, c->yaw_deg);
+    /* §8: the fit is the lobby table's (every bay frames alike); the camera stands at cam_at, the lobby table's origin or on a
+     * trip on its way there, its distance widened mid-pan */
+    const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->cam_at.X, 0, L->cam_at.Y)), HMM_MulV3F(right, L->shift));
+    const HMM_Vec3 eye = orbit_eye(target, L->dist * L->cam_zoom, c->pitch_deg, c->yaw_deg);
+    L->focus = target;
+    L->trav.cam_clock = L->trav.clock; /* the trip's clock this eye was placed by (tests judge the camera's speed by it) */
     L->creator_t += ((L->creator ? 1.0f : 0.0f) - L->creator_t) * (1.0f - expf(-CREATOR_RATE * mg_minf(app->frame_dt, 0.1f)));
     HMM_Vec3 eye_l = eye, target_l = target;
     if (L->creator_t > 1e-4f) { /* towards the Locker camera, the hero re-centred right of the creator panel */
@@ -996,7 +1146,7 @@ static void table_life(MenuLibrary *L, float dt)
     L->life_acc += dt;
     int n = 0;
     while (L->life_acc >= LIB_TICK && n < LIB_TICKS_MAX) {
-        for (int i = 0; i < LIB_SEATS; i++) {
+        for (int i = 0; i < LIB_MEMBERS; i++) {
             LibMember *mb = &L->seat[i];
             if (mb->state != LM_STUDY || (i == 0 && L->creator_t > LOCKER_PAUSE)) {
                 continue;
@@ -1004,7 +1154,7 @@ static void table_life(MenuLibrary *L, float dt)
             if (L->debug_turns && i == 0 && !mb->study.turning && !lib_fidget_busy(&mb->fid) && mb->study.t >= 2.5f - s->study.turn_s) {
                 lib_study_force_turn(&mb->study);
             }
-            seat_life(L, &mb->study, &mb->fid, L->tseats[i].pos, L->tseats[i].yaw_deg, (float)LIB_TICK);
+            seat_life(L, &mb->study, &mb->fid, mb->at.pos, mb->at.yaw_deg, (float)LIB_TICK);
         }
         if (L->fid_ok) {
             lib_balls_step(&L->balls, &L->fcfg, (float)LIB_TICK);
@@ -1061,7 +1211,7 @@ float menu_library_pet_weight(const MenuLibrary *L, int i)
 
 void menu_library_phone_place(MenuLibrary *L, bool on_table)
 {
-    for (int i = 0; i < LIB_SEATS; i++) {
+    for (int i = 0; i < LIB_MEMBERS; i++) {
         lib_fidget_set_phone(&L->seat[i].fid, on_table);
     }
     for (int i = 0; i < L->sc.npc_n; i++) {
@@ -1114,39 +1264,155 @@ static uint32_t id_hash(const char *id)
     return h;
 }
 
-static void member_start(MenuLibrary *L, int i, const LobbyRow *r, int place, bool seated)
+/* p (hall x z) on screen at the floor or at a standing head's height */
+static bool spot_on_screen(const MenuLibrary *L, HMM_Vec2 p)
+{
+    const HMM_Vec3 pts[2] = {HMM_V3(p.X, 0.0f, p.Y), HMM_V3(p.X, 1.7f, p.Y)};
+    return any_on_screen(L, pts, 2);
+}
+
+#define LIB_FADE_S 0.3f /* an appear / disappear that happens on screen: a dithered fade, never a pop */
+
+/* a walk from `from` to the seat's stand point (the grid's agent; the straight legs without a grid) */
+static void walk_to_seat(MenuLibrary *L, int i, HMM_Vec2 from)
+{
+    LibMember *mb = &L->seat[i];
+    const HMM_Vec2 d = HMM_SubV2(mb->at.stand, from);
+    mb->at.path[0] = from, mb->at.path[1] = mb->at.stand, mb->at.path_n = 2;
+    mb->pos = from;
+    mb->yaw_deg = HMM_LenV2(d) > 1e-4f ? yaw_of(HMM_NormV2(d)) : mb->yaw_deg;
+    mb->start = from;
+    mb->s = 0.0f;
+    mb->state = LM_WALK_IN;
+    if (L->people) {
+        lib_people_walker_start(L->people, i, from, HMM_AngleDeg(mb->yaw_deg), mb->at.stand);
+    }
+}
+
+static void member_remove(MenuLibrary *L, int i)
+{
+    LibMember *mb = &L->seat[i];
+    mb->removed_off = !spot_on_screen(L, mb->pos);
+    mb->state = LM_EMPTY;
+    mb->t_gone = L->clock;
+    if (L->people) {
+        lib_people_walker_stop(L->people, i);
+    }
+    L->gone = *mb;
+    L->gone.t_shut = 0.0;
+}
+
+static void seat_now(MenuLibrary *L, int i)
+{
+    LibMember *mb = &L->seat[i];
+    if (mb->state != LM_STUDY) {
+        lib_fidget_init(&mb->fid, &L->fcfg, (id_hash(mb->id) + (uint32_t)i) ^ 0x9E3779B9u);
+    }
+    mb->state = LM_STUDY;
+    mb->blend = mb->study_w = mb->place = 1.0f;
+    mb->chair = 0.0f;
+    mb->pos = mb->at.pos, mb->yaw_deg = mb->at.yaw_deg;
+    mb->vel = HMM_V2(0, 0);
+    mb->has_dest = false;
+    if (L->people) {
+        lib_people_walker_stop(L->people, i);
+    }
+}
+
+static void member_start(MenuLibrary *L, int i, const LobbyRow *r, int place, bool seated, bool snap)
 {
     L->member_n[i] = place; /* §5: member n (host first, by join time) sits in seat_order[n] */
     L->seat_phys[i] = L->dress_ok ? L->dress[L->table_bay].seat_order[place >= 0 && place < LIB_SEATS ? place : i] : i;
-    menu_library_set_table(L, L->table_bay);
+    place_table(L, L->table_bay);
     LibMember *mb = &L->seat[i];
-    const LibSeat *seat = &L->tseats[i];
     SDL_zerop(mb);
     SDL_snprintf(mb->id, sizeof(mb->id), "%s", r->id);
     SDL_snprintf(mb->name, sizeof(mb->name), "%s", r->name);
     mb->skin = r->skin;
     mb->host = r->host;
     mb->listed = true;
+    member_assign(L, i);
+    mb->home = home_of(L, r->id); /* §8: seat 0's stand point at its own table */
     lib_study_init(&mb->study, &L->sc, id_hash(r->id) + (uint32_t)i);
     lib_fidget_init(&mb->fid, &L->fcfg, (id_hash(r->id) + (uint32_t)i) ^ 0x9E3779B9u); /* §6: its own bag and timer */
     mb->t_join = seated ? 0.0 : L->clock; /* seated at once: no walk to check */
     if (seated) {
         mb->state = LM_STUDY;
         mb->blend = mb->study_w = mb->place = 1.0f; /* already seated: the things are on the table */
-        mb->pos = seat->pos, mb->yaw_deg = seat->yaw_deg;
-    } else {
-        HMM_Vec2 dir;
-        mb->state = LM_WALK_IN;
-        mb->pos = path_at(seat, 0.0f, &dir);
-        mb->yaw_deg = yaw_of(dir);
-        mb->outside_first = HMM_LenV2(HMM_SubV2(mb->pos, L->sc.door.outside)) < 0.15f;
-        if (L->people) { /* §7: an A* walk from the door to the seat's stand among everyone else */
-            lib_people_walker_start(L->people, i, mb->pos, HMM_AngleDeg(mb->yaw_deg), seat->stand);
-        }
+        mb->pos = mb->at.pos, mb->yaw_deg = mb->at.yaw_deg;
+        mb->fade = !snap && spot_on_screen(L, mb->pos) ? 1.0f : 0.0f; /* seated at once in view (Reduse): faded in */
+    } else { /* §8: from its own table, carrying book and mug, an A* walk among everyone */
+        walk_to_seat(L, i, mb->home);
+        mb->fade = spot_on_screen(L, mb->home) ? 1.0f : 0.0f;
     }
 }
 
-void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
+/* member slot i walks home (§8: pack, stand, walk back to its own table) */
+static void member_leave(MenuLibrary *L, int j)
+{
+    LibMember *mb = &L->seat[j];
+    mb->leaving = true;
+    mb->ghost = false;
+    switch (mb->state) {
+    case LM_WALK_IN:
+        mb->state = LM_WALK_OUT; /* turns round where it is */
+        mb->at.path[0] = mb->home, mb->at.path[1] = mb->at.stand, mb->at.path_n = 2;
+        if (L->people) {
+            lib_people_walker_goal(L->people, j, mb->home);
+        }
+        break;
+    case LM_SIT:
+        mb->state = LM_STAND;
+        break;
+    case LM_STUDY:
+    case LM_SETTLE:
+        mb->state = LM_PACK; /* the things go back into the hands first */
+        lib_fidget_cancel(&mb->fid, &L->fcfg); /* the prototype's leavePlayer: no fidget, the phone pocketed */
+        break;
+    default:
+        break;
+    }
+}
+
+/* slot i (1..3) leaves the lobby: into a free slot 4..7, where it walks home (or, `ghost`, stays seated at a table I left until it
+ * is off screen) */
+static void member_depart(MenuLibrary *L, int i, bool ghost)
+{
+    int j = -1;
+    for (int k = LIB_SEATS; k < LIB_MEMBERS && j < 0; k++) {
+        j = L->seat[k].state == LM_EMPTY ? k : -1;
+    }
+    if (j < 0) { /* no room (more leaving at once than slots): gone, faded if in view */
+        member_remove(L, i);
+        return;
+    }
+    L->seat[j] = L->seat[i];
+    if (L->people) {
+        lib_people_walker_swap(L->people, i, j);
+    }
+    SDL_zero(L->seat[i]);
+    L->seat[i].state = LM_EMPTY;
+    LibMember *mb = &L->seat[j];
+    mb->listed = false;
+    if (ghost && mb->state != LM_WALK_IN && mb->state != LM_WALK_OUT) {
+        mb->ghost = true;
+        mb->state = mb->state == LM_PACK ? LM_SETTLE : mb->state == LM_STAND ? LM_SIT : mb->state;
+        return;
+    }
+    member_leave(L, j);
+}
+
+static int find_member(const MenuLibrary *L, const char *id, int from, int to)
+{
+    for (int i = from; i < to; i++) {
+        if (L->seat[i].state != LM_EMPTY && SDL_strcmp(L->seat[i].id, id) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void roster_apply(MenuLibrary *L, const LobbyRow *rows, int n, bool seat_at_once, bool snap)
 {
     for (int i = 1; i < LIB_SEATS; i++) {
         L->seat[i].listed = false;
@@ -1155,12 +1421,25 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
         if (rows[r].me) {
             continue;
         }
-        int at = -1, free_at = -1;
-        for (int i = 1; i < LIB_SEATS; i++) {
-            if (L->seat[i].state != LM_EMPTY && SDL_strcmp(L->seat[i].id, rows[r].id) == 0) {
-                at = i;
-            } else if (L->seat[i].state == LM_EMPTY && free_at < 0) {
-                free_at = i;
+        int at = find_member(L, rows[r].id, 1, LIB_SEATS), free_at = -1;
+        for (int i = 1; i < LIB_SEATS && free_at < 0; i++) {
+            free_at = L->seat[i].state == LM_EMPTY ? i : -1;
+        }
+        if (at < 0 && free_at >= 0) { /* back before it was gone (walking home at this table's side): it turns round */
+            const int j = find_member(L, rows[r].id, LIB_SEATS, LIB_MEMBERS);
+            if (j >= 0 && L->seat[j].bay == L->table_bay && L->seat[j].leaving) {
+                L->seat[free_at] = L->seat[j];
+                if (L->people) {
+                    lib_people_walker_swap(L->people, j, free_at);
+                }
+                SDL_zero(L->seat[j]);
+                L->seat[j].state = LM_EMPTY;
+                at = free_at;
+                LibMember *mb = &L->seat[at];
+                mb->leaving = mb->fading_out = false;
+                L->member_n[at] = r;
+                L->seat_phys[at] = mb->seat_k;
+                place_table(L, L->table_bay);
             }
         }
         if (at >= 0) { /* still here: new name / look / host; back in if it was leaving */
@@ -1173,7 +1452,7 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
                 mb->state = LM_WALK_IN;
                 mb->t_left = 0.0;
                 if (L->people) {
-                    lib_people_walker_goal(L->people, at, L->tseats[at].stand);
+                    lib_people_walker_goal(L->people, at, mb->at.stand);
                 }
             } else if (mb->state == LM_STAND) {
                 mb->state = LM_SIT;
@@ -1183,7 +1462,7 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
                 mb->t_left = 0.0;
             }
         } else if (free_at >= 0) {
-            member_start(L, free_at, &rows[r], r, snap);
+            member_start(L, free_at, &rows[r], r, seat_at_once, snap);
         }
     }
     for (int i = 1; i < LIB_SEATS; i++) {
@@ -1196,17 +1475,241 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
             if (L->people) {
                 lib_people_walker_stop(L->people, i);
             }
-        } else if (mb->state == LM_WALK_IN) {
-            mb->state = LM_WALK_OUT; /* turns round where it is */
-            if (L->people) {
-                lib_people_walker_goal(L->people, i, L->tseats[i].path[0]);
-            }
-        } else if (mb->state == LM_SIT) {
-            mb->state = LM_STAND;
-        } else if (mb->state == LM_STUDY || mb->state == LM_SETTLE) {
-            mb->state = LM_PACK; /* the things go back into the hands first */
-            lib_fidget_cancel(&mb->fid, &L->fcfg); /* the prototype's leavePlayer: no fidget, the phone pocketed */
+            continue;
         }
+        const bool in_view = spot_on_screen(L, mb->pos);
+        char id[NET_ID_LEN];
+        SDL_snprintf(id, sizeof(id), "%s", mb->id);
+        member_depart(L, i, false);
+        if (L->instant) { /* a full-screen page, Reduse: gone at once (faded if in view) */
+            for (int j = LIB_SEATS; j < LIB_MEMBERS; j++) {
+                LibMember *d = &L->seat[j];
+                if (d->state != LM_EMPTY && d->leaving && !d->fading_out && SDL_strcmp(d->id, id) == 0) {
+                    if (in_view) {
+                        d->fading_out = true;
+                    } else {
+                        member_remove(L, j);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* the hero sits at the lobby's table now (the menu opening, a trip finished at once) */
+static void hero_seat_now(MenuLibrary *L)
+{
+    LibMember *mb = &L->seat[0];
+    member_assign(L, 0);
+    mb->fade = 0.0f;
+    mb->fading_out = false;
+    if (mb->state != LM_EMPTY) {
+        seat_now(L, 0);
+    }
+    L->trav.phase = LT_NONE;
+    L->cam_at = HMM_V2(L->table_x, L->table_z);
+    L->cam_zoom = 1.0f;
+}
+
+/* §8: my hero leaves its table for the lobby's: packs, stands, then walks (member_step); the camera waits until it is off screen */
+static void hero_trip(MenuLibrary *L, int from_bay)
+{
+    LibMember *mb = &L->seat[0];
+    mb->dest = L->tseats[0];
+    mb->dest_bay = L->table_bay;
+    mb->dest_k = L->seat_phys[0] >= 0 && L->seat_phys[0] < LIB_SEATS ? L->seat_phys[0] : 0;
+    mb->dest_cover = L->dress_ok ? L->dress[L->table_bay].cover[mb->dest_k] : 0;
+    mb->has_dest = true;
+    switch (mb->state) {
+    case LM_STUDY:
+    case LM_SETTLE:
+        mb->state = LM_PACK;
+        lib_study_cancel_turn(&mb->study, &L->sc);
+        lib_fidget_cancel(&mb->fid, &L->fcfg);
+        break;
+    case LM_SIT:
+        mb->state = LM_STAND;
+        break;
+    case LM_WALK_IN:
+    case LM_WALK_OUT: /* already on its feet: straight on to the new seat */
+        mb->has_dest = false;
+        member_assign(L, 0);
+        walk_to_seat(L, 0, mb->pos);
+        break;
+    case LM_EMPTY:
+        hero_seat_now(L);
+        return;
+    default:
+        break;
+    }
+    LibTravel *t = &L->trav;
+    t->phase = LT_OUT;
+    t->from = L->cam_at;
+    t->to = HMM_V2(L->table_x, L->table_z);
+    const float d = HMM_LenV2(HMM_SubV2(t->to, t->from));
+    t->dur = fminf(L->sc.travel.pan_s_max, L->sc.travel.pan_s_per_bay * d / fmaxf(L->sc.hall_pitch, 1e-3f));
+    t->t = 0.0f;
+    t->t_start = L->clock, t->t_off = t->t_pan_end = t->t_seated = 0.0;
+    t->off_seen = false;
+    t->from_bay = from_bay, t->to_bay = L->table_bay;
+    mg_log_info("library: trip from the table in bay %d to bay %d (%.1f m, the camera's pan %.2f s)", from_bay, L->table_bay, (double)d, (double)t->dur);
+}
+
+void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, bool instant)
+{
+    L->instant = instant;
+    int me = 0;
+    const LobbyRow *host = NULL;
+    for (int r = 0; r < n; r++) {
+        me = rows[r].me ? r : me;
+        host = rows[r].host && !rows[r].me ? &rows[r] : host;
+    }
+    const uint32_t lseed = host ? lib_seed_of(host->id) : L->my_seed;
+    if (!L->table_set || snap) { /* my own table: my seed's bay, taken when the menu opens (a sign-in mid-menu only re-dresses it) */
+        L->my_bay = L->force_bay >= 0 ? L->force_bay : lib_table_bay(L->my_seed, LIB_BAYS, -1);
+    }
+    const int bay = host ? lib_table_bay(lseed, LIB_BAYS, L->my_bay) : L->my_bay;
+    const bool trip = L->table_set && !snap && bay != L->table_bay;
+    if (trip && instant && !L->dissolve_armed) { /* Reduse: this frame is captured for the cross-dissolve, the trip happens next */
+        L->dissolve_armed = true;
+        return;
+    }
+    L->dissolve_armed = false;
+    const int from_bay = L->table_bay;
+    if (trip) { /* the lobby I leave: its others stay seated at their table until it is out of view */
+        for (int i = 1; i < LIB_SEATS; i++) {
+            if (L->seat[i].state != LM_EMPTY) {
+                member_depart(L, i, true);
+            }
+        }
+        for (int i = 1; i < LIB_SEATS; i++) {
+            L->member_n[i] = i;
+        }
+    }
+    L->lobby_seed = lseed;
+    L->member_n[0] = me;
+    L->table_bay = bay;
+    dress_sync(L, snap || !L->table_set);
+    for (int i = 0; i < LIB_SEATS; i++) {
+        L->seat_phys[i] = L->dress_ok ? L->dress[bay].seat_order[L->member_n[i] >= 0 && L->member_n[i] < LIB_SEATS ? L->member_n[i] : i] : i;
+    }
+    place_table(L, bay);
+    if (!L->table_set || snap) {
+        hero_seat_now(L);
+    } else if (trip && instant) {
+        hero_seat_now(L);
+    } else if (trip) {
+        hero_trip(L, from_bay);
+    } else {
+        members_reseat(L);
+    }
+    L->table_set = true;
+    const bool travelling = L->trav.phase == LT_OUT || L->trav.phase == LT_PAN; /* the new table's members are already there */
+    roster_apply(L, rows, n, snap || instant || trip || travelling, snap);
+}
+
+void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap) { menu_library_lobby(L, rows, n, snap, false); }
+
+void menu_library_travel_finish(MenuLibrary *L)
+{
+    bool any = false;
+    if (L->trav.phase != LT_NONE || L->seat[0].has_dest) {
+        hero_seat_now(L);
+        L->trav.trips++;
+        any = true;
+    }
+    for (int i = 1; i < LIB_SEATS; i++) {
+        LibMember *mb = &L->seat[i];
+        if (mb->state == LM_WALK_IN || mb->state == LM_SIT || mb->state == LM_SETTLE || mb->fade > 0.0f) {
+            seat_now(L, i);
+            mb->fade = 0.0f;
+            any = true;
+        }
+    }
+    for (int i = LIB_SEATS; i < LIB_MEMBERS; i++) {
+        if (L->seat[i].state != LM_EMPTY) {
+            member_remove(L, i);
+            any = true;
+        }
+    }
+    if (L->plane.mode == LP_HAND || L->plane.mode == LP_OUT) {
+        L->plane.mode = LP_NONE;
+    } else if (L->plane.mode == LP_IN) {
+        L->plane.mode = LP_LANDED;
+        L->plane.t = 0.0f;
+        L->plane.pos = L->plane.P[3];
+    }
+    if (any) {
+        dress_sync(L, true);
+    }
+}
+
+/* §8 paper planes ------------------------------------------------------------------ */
+
+/* +1: bay b is to the right of my table (hall +x), -1 left; the same column: towards the hall's middle */
+static float side_of(const MenuLibrary *L, int b)
+{
+    const int mine = L->seat[0].has_dest ? L->seat[0].dest_bay : L->seat[0].bay;
+    const float from = L->bay_x[mine >= 0 && mine < LIB_BAYS ? mine : L->table_bay];
+    const float dx = L->bay_x[b < 0 || b >= LIB_BAYS ? 0 : b] - from;
+    if (fabsf(dx) > 0.5f) {
+        return dx > 0.0f ? 1.0f : -1.0f;
+    }
+    float mid = 0.0f;
+    for (int k = 0; k < LIB_BAYS; k++) {
+        mid += L->bay_x[k] / (float)LIB_BAYS;
+    }
+    return from < mid ? 1.0f : -1.0f;
+}
+
+bool menu_library_throw_plane(MenuLibrary *L, const char *to_id)
+{
+    LibMember *h = &L->seat[0];
+    if (!L->fid_ok || L->plane.mode != LP_NONE || h->state != LM_STUDY || h->place < 1.0f || L->trav.phase != LT_NONE || L->creator_t > LOCKER_PAUSE) {
+        return false;
+    }
+    if (!menu_library_fidget(L, 0, LA_THROW)) {
+        return false;
+    }
+    LibPlane *p = &L->plane;
+    p->mode = LP_HAND;
+    p->dir = side_of(L, menu_library_home_bay(L, to_id));
+    p->shrink = 1.0f;
+    p->thrown++;
+    mg_log_info("library: a paper plane for %s (bay %d, %s)", to_id, menu_library_home_bay(L, to_id), p->dir > 0.0f ? "right" : "left");
+    return true;
+}
+
+bool menu_library_receive_plane(MenuLibrary *L, const char *from_id)
+{
+    LibPlane *p = &L->plane;
+    if (p->mode != LP_NONE) {
+        return false;
+    }
+    const LibMember *h = &L->seat[0];
+    const LibSeat *s = h->has_dest ? &h->dest : &h->at;
+    const int bay = h->has_dest ? h->dest_bay : h->bay;
+    const float d = side_of(L, menu_library_home_bay(L, from_id));
+    /* §8: the mirrored path in, landing in front of my seat (seat frame 0, 0.79, 1.1) */
+    const HMM_Vec3 ld = lib_seat_to_hall(s->pos, HMM_AngleDeg(s->yaw_deg), HMM_V3(0.0f, 0.79f, 1.1f));
+    const float oz = L->bay_z[bay >= 0 && bay < LIB_BAYS ? bay : L->table_bay];
+    p->P[0] = HMM_V3(ld.X + 13.0f * d, 2.2f, oz + 1.4f);
+    p->P[1] = HMM_V3(ld.X + 6.0f * d, 2.6f, oz + 2.4f);
+    p->P[2] = HMM_V3(ld.X + 0.85f * d, 1.9f, ld.Z + 1.5f);
+    p->P[3] = ld;
+    p->mode = LP_IN;
+    p->t = 0.0f;
+    p->dir = d;
+    p->shrink = 1.0f;
+    p->closing = false;
+    p->yaw = HMM_AngleDeg(L->sc.plane.land_yaw_deg + s->yaw_deg); /* where it comes to rest (turned with the seat) */
+    return true;
+}
+
+void menu_library_plane_close(MenuLibrary *L)
+{
+    if (L->plane.mode == LP_IN || L->plane.mode == LP_LANDED) {
+        L->plane.closing = true;
     }
 }
 
@@ -1214,23 +1717,83 @@ void menu_library_hero_walk_in(MenuLibrary *L)
 {
     LibMember *mb = &L->seat[0];
     HMM_Vec2 dir;
+    member_assign(L, 0);
     mb->state = LM_WALK_IN;
     mb->s = mb->blend = mb->study_w = mb->chair = mb->place = 0.0f;
-    mb->pos = path_at(&L->tseats[0], 0.0f, &dir);
+    mb->pos = path_at(&mb->at, 0.0f, &dir);
+    mb->start = mb->pos;
     mb->yaw_deg = yaw_of(dir);
     SDL_zero(mb->anim);
     lib_fidget_init(&mb->fid, &L->fcfg, 2u);
     if (L->people) {
-        lib_people_walker_start(L->people, 0, mb->pos, HMM_AngleDeg(mb->yaw_deg), L->tseats[0].stand);
+        lib_people_walker_start(L->people, 0, mb->pos, HMM_AngleDeg(mb->yaw_deg), mb->at.stand);
+    }
+}
+
+/* a walker's arrival: at its seat it sits; on its way home it is gone (faded if that happens in view) */
+static void walk_arrived(MenuLibrary *L, int i, bool in)
+{
+    LibMember *mb = &L->seat[i];
+    mb->vel = HMM_V2(0, 0);
+    if (in) {
+        mb->state = LM_SIT;
+        mb->sit_from = L->people ? mb->pos : mb->at.stand;
+    } else if (spot_on_screen(L, mb->pos)) {
+        mb->fading_out = true; /* member_step removes it once faded */
+        mb->state = LM_WALK_OUT;
+    } else {
+        member_remove(L, i);
+    }
+}
+
+/* §8 the off-screen speed rule (the real projection, this frame's camera), before the frame's ticks: a walker off screen walks at
+ * offscreen_speed, on screen at walk_speed; my hero only on a trip (its onboarding walk-in is a normal walk) */
+static void walker_speeds(MenuLibrary *L)
+{
+    for (int i = 0; i < LIB_MEMBERS; i++) {
+        LibMember *mb = &L->seat[i];
+        const bool walking = mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT;
+        mb->off_now = walking && menu_library_off_screen(L, HMM_V3(mb->pos.X, 1.0f, mb->pos.Y));
+        mb->speed_now = (mb->off_now && (i != 0 || L->trav.phase != LT_NONE)) ? L->sc.travel.offscreen_speed : L->sc.study.walk_speed;
+        if (walking && L->people) {
+            lib_people_walker_speed(L->people, i, mb->speed_now);
+        }
     }
 }
 
 static void member_step(MenuLibrary *L, int i, float dt)
 {
     LibMember *mb = &L->seat[i];
-    const LibSeat *seat = &L->tseats[i];
+    const LibSeat *seat = &mb->at;
     const LibScene *s = &L->sc;
-    const float total = path_len(seat), speed = s->study.walk_speed;
+    if (mb->state == LM_EMPTY) {
+        return;
+    }
+    /* the dithered appear / disappear (on screen only) */
+    if (mb->fading_out) {
+        mb->fade = fminf(mb->fade + dt / LIB_FADE_S, 1.0f);
+        mb->vel = HMM_V2(0, 0);
+        if (L->people) {
+            lib_people_walker_stop(L->people, i);
+        }
+        if (mb->fade >= 1.0f) {
+            member_remove(L, i);
+        }
+        return;
+    }
+    mb->fade = fmaxf(mb->fade - dt / LIB_FADE_S, 0.0f);
+    if (mb->leaving && mb->state == LM_WALK_OUT && mb->off_now && HMM_LenV2(HMM_SubV2(mb->pos, HMM_V2(L->focus.X, L->focus.Z))) > s->travel.despawn_beyond_m) {
+        member_remove(L, i); /* off screen and far from the camera's focus */
+        return;
+    }
+    if (mb->ghost && mb->state == LM_STUDY) { /* a reader at a table I left: until it is out of view */
+        const HMM_Vec3 pts[2] = {HMM_V3(mb->pos.X, 0.0f, mb->pos.Y), HMM_V3(mb->pos.X, 1.5f, mb->pos.Y)};
+        if (!any_on_screen(L, pts, 2)) {
+            member_remove(L, i);
+            return;
+        }
+    }
+    const float total = path_len(seat), speed = mb->speed_now;
     const HMM_Vec2 fwd = HMM_V2(HMM_SinF(HMM_AngleDeg(seat->yaw_deg)), HMM_CosF(HMM_AngleDeg(seat->yaw_deg)));
     const HMM_Vec2 chair_at = HMM_SubV2(seat->pos, HMM_MulV2F(fwd, s->study.chair_slide * mb->chair));
     HMM_Vec2 dir;
@@ -1246,23 +1809,14 @@ static void member_step(MenuLibrary *L, int i, float dt)
                 mb->vel = a->vel;
                 mb->yaw_deg = a->yaw * 57.29578f;
             }
-            const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
+            const bool near = in && HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
             mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
-            if (HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, L->table_bay))) < 0.5f) {
+            if (HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, mb->bay))) < 0.5f) {
                 mb->door_max = fmaxf(mb->door_max, L->door_angle);
             }
             if (lib_people_walker_arrived(L->people, i)) {
                 lib_people_walker_stop(L->people, i);
-                mb->vel = HMM_V2(0, 0);
-                if (in) {
-                    mb->state = LM_SIT;
-                    mb->sit_from = mb->pos;
-                } else {
-                    mb->state = LM_EMPTY;
-                    mb->t_gone = L->clock;
-                    L->gone = *mb;
-                    L->gone.t_shut = 0.0;
-                }
+                walk_arrived(L, i, in);
             }
             break;
         }
@@ -1274,19 +1828,10 @@ static void member_step(MenuLibrary *L, int i, float dt)
         }
         mb->vel = HMM_MulV2F(dir, speed);
         mb->yaw_deg = yaw_of(dir);
-        const bool near = HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
+        const bool near = in && HMM_LenV2(HMM_SubV2(mb->pos, seat->pos)) < CHAIR_NEAR_M;
         mb->chair = approach(mb->chair, near ? 1.0f : 0.0f, CHAIR_RATE, dt);
-        if (HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, L->table_bay))) < 0.5f) {
-            mb->door_max = fmaxf(mb->door_max, L->door_angle);
-        }
-        if (in && mb->s >= total) {
-            mb->state = LM_SIT;
-            mb->sit_from = seat->stand;
-        } else if (!in && mb->s <= 0.0f) {
-            mb->state = LM_EMPTY;
-            mb->t_gone = L->clock;
-            L->gone = *mb;
-            L->gone.t_shut = 0.0;
+        if ((in && mb->s >= total) || (!in && mb->s <= 0.0f)) {
+            walk_arrived(L, i, in);
         }
         break;
     }
@@ -1337,10 +1882,22 @@ static void member_step(MenuLibrary *L, int i, float dt)
         mb->chair = 1.0f - mb->blend;
         mb->pos = HMM_LerpV2(seat->stand, mb->blend * (3.0f - 2.0f * mb->blend) * mb->blend, chair_at);
         if (mb->blend <= 0.0f) {
+            if (mb->has_dest) { /* §8: my hero on a trip: on to the lobby's table */
+                mb->has_dest = false;
+                mb->at = mb->dest, mb->bay = mb->dest_bay, mb->seat_k = mb->dest_k, mb->cover = mb->dest_cover;
+                mb->chair = 0.0f;
+                walk_to_seat(L, i, mb->pos);
+                break;
+            }
             mb->state = LM_WALK_OUT;
             mb->s = total;
+            if (mb->leaving) { /* §8: back to its own table */
+                mb->at.path[0] = mb->home, mb->at.path[1] = seat->stand, mb->at.path_n = 2;
+                mb->s = path_len(&mb->at);
+            }
+            mb->start = mb->pos;
             if (L->people) {
-                lib_people_walker_start(L->people, i, mb->pos, HMM_AngleDeg(seat->yaw_deg + 180.0f), seat->path[0]);
+                lib_people_walker_start(L->people, i, mb->pos, HMM_AngleDeg(seat->yaw_deg + 180.0f), mb->leaving ? mb->home : seat->path[0]);
             }
         }
         break;
@@ -1349,10 +1906,155 @@ static void member_step(MenuLibrary *L, int i, float dt)
     }
 }
 
+/* §8 the hero's trip: the camera waits until the hero is off screen, pans along the hall (quintic, the distance widened by
+ * zoom_out at the middle), and the trip ends once the hero studies at its new seat */
+static void travel_step(MenuLibrary *L, float dt)
+{
+    LibTravel *t = &L->trav;
+    if (t->phase == LT_NONE) {
+        L->cam_at = HMM_V2(L->table_x, L->table_z);
+        L->cam_zoom = 1.0f;
+        return;
+    }
+    t->clock += dt;
+    const LibMember *h = &L->seat[0];
+    const bool walking = h->state == LM_WALK_IN && !h->has_dest;
+    if (walking && h->off_now) {
+        t->off_seen = true;
+    }
+    if (t->phase == LT_OUT && ((walking && h->off_now) || (!h->has_dest && (h->state == LM_SIT || h->state == LM_SETTLE || h->state == LM_STUDY)))) {
+        t->phase = LT_PAN; /* off screen (or it got there in view: the camera follows now) */
+        t->t_off = L->clock;
+    }
+    if (t->phase == LT_PAN) {
+        t->t = t->dur > 1e-4f ? fminf(t->t + dt / t->dur, 1.0f) : 1.0f;
+        if (t->t >= 1.0f) {
+            t->phase = LT_ARRIVE;
+            t->t_pan_end = L->clock;
+        }
+    }
+    const float u = t->phase == LT_OUT ? 0.0f : t->t;
+    const float e = u * u * u * (u * (6.0f * u - 15.0f) + 10.0f); /* quintic */
+    L->cam_at = HMM_LerpV2(t->from, e, t->to);
+    L->cam_zoom = 1.0f + L->sc.travel.zoom_out * sinf(3.14159265f * e); /* eased: no jump at either end (§15.11) */
+    if (t->phase == LT_ARRIVE && h->state == LM_STUDY && !h->has_dest) {
+        t->phase = LT_NONE;
+        t->t_seated = L->clock;
+        t->trips++;
+        mg_log_info("library: trip done: the hero off screen after %.2f s, the camera's pan %.2f s, seated %.2f s after leaving", t->t_off - t->t_start,
+                    (double)t->dur, t->t_seated - t->t_start);
+    }
+}
+
+/* §8 a plane's flight: along its Bezier, nose along the path, rolling */
+static HMM_Vec3 bez3(const HMM_Vec3 *P, float t)
+{
+    const float u = 1.0f - t;
+    return HMM_AddV3(HMM_AddV3(HMM_MulV3F(P[0], u * u * u), HMM_MulV3F(P[1], 3.0f * u * u * t)), HMM_AddV3(HMM_MulV3F(P[2], 3.0f * u * t * t), HMM_MulV3F(P[3], t * t * t)));
+}
+
+static void plane_fly(LibPlane *p, float t)
+{
+    const HMM_Vec3 a = bez3(p->P, t), b = bez3(p->P, fminf(1.0f, t + 0.02f));
+    p->pos = a;
+    if (t < 0.98f) {
+        const HMM_Vec3 d = HMM_SubV3(b, a);
+        p->pitch = -atan2f(d.Y, sqrtf(d.X * d.X + d.Z * d.Z));
+        p->yaw = atan2f(d.X, d.Z);
+    }
+}
+
+static void plane_step(MenuLibrary *L, float dt)
+{
+    LibPlane *p = &L->plane;
+    const LibScene *s = &L->sc;
+    LibMember *h = &L->seat[0];
+    switch (p->mode) {
+    case LP_HAND:
+        if (h->state != LM_STUDY || h->fid.act != LA_THROW) {
+            p->mode = LP_NONE; /* the throw was cut short */
+            break;
+        }
+        if (h->fo.plane_in_hand) {
+            p->hand = lib_seat_to_hall(h->at.pos, HMM_AngleDeg(h->at.yaw_deg), h->fo.plane_pos);
+            p->pos = p->hand;
+        } else { /* released: §8's path out towards the friend's side */
+            const HMM_Vec3 q = p->hand;
+            const float d = p->dir, oz = L->bay_z[h->bay >= 0 && h->bay < LIB_BAYS ? h->bay : L->table_bay];
+            p->P[0] = q;
+            p->P[1] = HMM_AddV3(q, HMM_V3(0.3f * d, 0.7f, 1.8f));
+            p->P[2] = HMM_V3(q.X + 6.0f * d, 2.6f, oz + 2.4f);
+            p->P[3] = HMM_V3(q.X + 13.0f * d, 2.2f, oz + 1.4f);
+            p->mode = LP_OUT;
+            p->t = 0.0f;
+            p->out_start = q;
+        }
+        break;
+    case LP_OUT:
+        p->t = fminf(p->t + dt / s->plane.out_s, 1.0f);
+        plane_fly(p, p->t);
+        if (p->t >= 1.0f) {
+            p->out_end = p->pos;
+            p->mode = LP_NONE;
+        }
+        break;
+    case LP_IN: {
+        const float land_yaw = p->yaw;
+        p->t = fminf(p->t + dt / s->plane.in_s, 1.0f);
+        if (p->t >= 1.0f) { /* landed: my hero glances at it */
+            p->mode = LP_LANDED;
+            p->t = 0.0f;
+            p->pos = p->P[3];
+            p->yaw = HMM_AngleDeg(s->plane.land_yaw_deg + (h->has_dest ? h->dest.yaw_deg : h->at.yaw_deg));
+            p->pitch = 0.0f;
+            p->landed++;
+            if (h->state == LM_STUDY && !lib_fidget_busy(&h->fid) && menu_library_fidget(L, 0, LA_GLANCE)) {
+                h->fid.glance_yaw = 0.15f; /* the prototype: a small turn of the head to the plane */
+                p->glances++;
+            }
+        } else {
+            plane_fly(p, p->t);
+            (void)land_yaw;
+        }
+        break;
+    }
+    case LP_LANDED:
+        p->t += dt;
+        if (p->closing || p->t > s->plane.rest_s) { /* shrinks away over 0.25 s (the prototype) */
+            p->shrink = fmaxf(p->shrink - dt / 0.25f, 0.0f);
+            if (p->shrink <= 0.0f) {
+                p->mode = LP_NONE;
+            }
+        }
+        break;
+    default:
+        break;
+    }
+    if (L->life) { /* the cat, awake, watches a flying plane */
+        lib_cat_watch_plane(L->life, p->mode == LP_OUT || p->mode == LP_IN, HMM_V2(p->pos.X, p->pos.Z));
+    }
+}
+
+static void plane_draw(MenuLibrary *L, GfxContext *g)
+{
+    const LibPlane *p = &L->plane;
+    if (L->plane_mesh == GFX_MESH_NONE || (p->mode != LP_OUT && p->mode != LP_IN && p->mode != LP_LANDED)) {
+        return;
+    }
+    const float roll = p->mode == LP_LANDED ? 0.0f : 0.3f * sinf((float)L->clock * 9.0f), sc = p->mode == LP_LANDED ? fmaxf(p->shrink, 0.001f) : 1.0f;
+    const HMM_Mat4 m = HMM_MulM4(HMM_MulM4(HMM_MulM4(HMM_MulM4(HMM_MulM4(L->xf, HMM_Translate(p->pos)), HMM_Rotate_RH(p->yaw, HMM_V3(0, 1, 0))),
+                                                     HMM_Rotate_RH(p->pitch, HMM_V3(1, 0, 0))),
+                                           HMM_Rotate_RH(roll, HMM_V3(0, 0, 1))),
+                                 HMM_Scale(HMM_V3(sc, sc, sc)));
+    const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    gfx_draw(g, L->plane_mesh, &m, &toon, 0);
+}
+
 static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
 {
     const LibMember *mb = &L->seat[i];
-    menu_library_study_pose(L, i, &mb->study, mb->study_w, p);
+    study_pose_at(L, mb->at.pos, mb->at.yaw_deg, &mb->study, mb->study_w, p);
+    p->hide = mb->fade; /* §8: appearing / disappearing in view */
     p->feet = lib_point(L, HMM_V3(mb->pos.X, 0.0f, mb->pos.Y));
     p->yaw = HMM_AngleDeg(mb->yaw_deg) + HMM_PI32 + lib_yaw(L);
     const HMM_Vec3 v = HMM_MulM4V4(L->rot, HMM_V4(mb->vel.X, 0.0f, mb->vel.Y, 0.0f)).XYZ;
@@ -1519,7 +2221,7 @@ static void life_pre_tick(MenuLibrary *L)
     for (int i = 0; i < LIB_SEATS; i++) {
         seats[i] = HMM_V3(L->tseats[i].pos.X, L->tseats[i].pos.Y, HMM_AngleDeg(L->tseats[i].yaw_deg));
         const LibMember *mb = &L->seat[i];
-        if (mb->state == LM_STUDY && mb->place >= 1.0f && !(i == 0 && L->creator_t > LOCKER_PAUSE) && !L->cat_hold) {
+        if (mb->state == LM_STUDY && mb->place >= 1.0f && mb->bay == L->table_bay && !(i == 0 && L->creator_t > LOCKER_PAUSE) && !L->cat_hold) {
             occ |= 1u << i;
         }
     }
@@ -1590,7 +2292,7 @@ static void people_ticks(MenuLibrary *L, float dt)
     while (L->tick_acc >= LIB_TICK && n < LIB_TICKS_MAX) {
         for (int b = 0; b < LIB_BAYS && b < L->pcfg->bays; b++) { /* the members walking hold doors too */
             bool want = false;
-            for (int i = 0; i < LIB_SEATS && !want; i++) {
+            for (int i = 0; i < LIB_MEMBERS && !want; i++) {
                 const LibMember *mb = &L->seat[i];
                 want = (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(mb->vel) > 0.2f &&
                        HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, b))) < s->door.open_radius;
@@ -1798,11 +2500,11 @@ static void draw_seat_things(MenuLibrary *L, GfxContext *g, const AvatarMeshes *
     if (fo->ball_in_hand) { /* the crumpled page */
         puff_at(L, g, LIB_PUFF_BALL, lib_seat_to_hall(pos, yr, fo->ball_pos), c->rage.radius, PUFF_PAPER);
     }
-    if (fo->plane_in_hand && L->plane != GFX_MESH_NONE) { /* the prototype: at the hand + 5 cm, turned (-0.3, 0.2, 0) in the hall */
+    if (fo->plane_in_hand && L->plane_mesh != GFX_MESH_NONE) { /* the prototype: at the hand + 5 cm, turned (-0.3, 0.2, 0) in the hall */
         const HMM_Vec3 at = lib_seat_to_hall(pos, HMM_AngleDeg(yaw_deg), fo->plane_pos);
         const HMM_Mat4 pm = HMM_MulM4(HMM_MulM4(HMM_MulM4(L->xf, HMM_Translate(at)), HMM_Rotate_RH(-0.3f, HMM_V3(1, 0, 0))),
                                       HMM_Rotate_RH(0.2f, HMM_V3(0, 1, 0)));
-        gfx_draw(g, L->plane, &pm, &toon, 0);
+        gfx_draw(g, L->plane_mesh, &pm, &toon, 0);
     }
     if (fo->anger || fo->dots) { /* over the drawn head: the prototype's offsets from its centre, in the seat frame */
         AvatarSolved sv;
@@ -1984,13 +2686,6 @@ static void draw_table_extras(MenuLibrary *L, GfxContext *g, int b, float hide)
             }
         }
     }
-    if (b != L->table_bay) {
-        for (int i = 0; i < LIB_SEATS; i++) {
-            const LibSeat *seat = &s->seats[i];
-            const HMM_Mat4 cm = placed(L, bx + seat->pos.X, bz + seat->pos.Y, seat->yaw_deg);
-            gfx_draw(g, L->chair, &cm, &toon, 0);
-        }
-    }
 }
 
 /* The merged dressing: per row of bays one toon draw (lamps, clutter). hide: per bay; a row's bays share their fade. */
@@ -2159,11 +2854,13 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     L->avatar_push_ahead = m->rig.push_ahead_m;
     {
         PROF_SCOPE("lib.npcs");
+        walker_speeds(L);
         people_ticks(L, dt);
     }
-    for (int i = 0; i < LIB_SEATS; i++) {
+    for (int i = 0; i < LIB_MEMBERS; i++) {
         member_step(L, i, dt);
     }
+    travel_step(L, dt); /* §8: after the steps (the hero's off-screen test) */
     {
         PROF_SCOPE("lib.fidget");
         table_life(L, dt);
@@ -2174,7 +2871,7 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             continue;
         }
         bool walker = false;
-        for (int i = 0; i < LIB_SEATS && !walker; i++) {
+        for (int i = 0; i < LIB_MEMBERS && !walker; i++) {
             const LibMember *mb = &L->seat[i];
             walker = (mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT) && HMM_LenV2(HMM_SubV2(mb->pos, door_c(L, b))) < s->door.open_radius;
         }
@@ -2185,6 +2882,7 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         L->visible = bays_visible(L);
     }
     L->clock += dt;
+    dress_sync(L, false); /* §8: a table I left takes its empty dressing once it is off screen */
     if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && menu_library_npc_at_door(L, L->table_bay)) {
         L->gone.t_door_clear = L->clock;
     }
@@ -2228,11 +2926,24 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         draw_table_extras(L, g, b, hide[b]);
     }
     draw_dressing_rows(L, g, hide);
-    for (int i = 0; i < LIB_SEATS; i++) { /* one instanced draw: the seats' chairs (slid back for a walker), the extra chairs */
-        const LibSeat *seat = &L->tseats[i];
-        const float yw = HMM_AngleDeg(seat->yaw_deg), back = s->study.chair_slide * L->seat[i].chair;
-        const HMM_Mat4 cm = placed(L, seat->pos.X - HMM_SinF(yw) * back, seat->pos.Y - HMM_CosF(yw) * back, seat->yaw_deg);
-        gfx_draw(g, L->chair, &cm, &room, 0);
+    for (int b = 0; b < LIB_BAYS; b++) { /* one instanced draw: every table's four chairs (slid back for whoever gets up or sits), the
+                                            * extra chairs */
+        if ((!((L->visible >> b) & 1u) && b != L->table_bay) || hide[b] >= 0.98f) {
+            continue;
+        }
+        GfxMaterial cmat = room;
+        cmat.hide = hide[b];
+        for (int k = 0; k < LIB_SEATS; k++) {
+            const LibSeat *seat = &s->seats[k];
+            float slide = 0.0f;
+            for (int i = 0; i < LIB_MEMBERS; i++) {
+                const LibMember *mb = &L->seat[i];
+                slide = mb->state != LM_EMPTY && mb->bay == b && mb->seat_k == k ? fmaxf(slide, mb->chair) : slide;
+            }
+            const float yw = HMM_AngleDeg(seat->yaw_deg), back = s->study.chair_slide * slide;
+            const HMM_Mat4 cm = placed(L, L->bay_x[b] + seat->pos.X - HMM_SinF(yw) * back, L->bay_z[b] + seat->pos.Y - HMM_CosF(yw) * back, seat->yaw_deg);
+            gfx_draw(g, L->chair, &cm, &cmat, 0);
+        }
     }
     for (int i = 0; i < s->extra_n; i++) {
         const HMM_Mat4 cm = placed(L, s->extra_chairs[i][0], s->extra_chairs[i][1], s->extra_chairs[i][2]);
@@ -2253,17 +2964,17 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             gfx_draw(g, L->cart, &cart, &room, 0);
         }
     }
-    for (int i = 0; i < LIB_SEATS; i++) {
+    for (int i = 0; i < LIB_MEMBERS; i++) {
         LibMember *mb = &L->seat[i];
         if (mb->state == LM_EMPTY) {
             continue; /* §4: empty seats are bare */
         }
-        const LibSeat *seat = &L->tseats[i];
+        const LibSeat *seat = &mb->at;
         const float swap = s->study.items.swap_at;
         const bool on_table = mb->place >= swap && (mb->state == LM_SETTLE || mb->state == LM_STUDY || mb->state == LM_PACK);
         if (on_table) { /* the open book (popping to full width over 0.15 of the settle), the mug, the pencil */
             const float pop = mb->state == LM_SETTLE ? mg_lerpf(0.3f, 1.0f, mg_clampf((mb->place - swap) / 0.15f, 0.0f, 1.0f)) : 1.0f;
-            draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop, L->dress[L->table_bay].cover[L->seat_phys[i]]);
+            draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop, mb->cover);
             if (!L->fid_ok) {
                 const HMM_Mat4 mm = at_seat(L, seat, s->mug_rest), pm = at_seat(L, seat, s->pencil_rest);
                 gfx_draw(g, L->mug, &mm, &room, 0);
@@ -2287,12 +2998,15 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             HMM_Mat4 bk = sv.root, mg = sv.root;
             bk.Columns[3] = HMM_V4V(HMM_SubV3(sv.hand[1], HMM_MulM4V4(sv.root, HMM_V4(0.0f, 0.075f, 0.0f, 0.0f)).XYZ), 1.0f);
             mg.Columns[3] = HMM_V4V(HMM_SubV3(sv.hand[0], HMM_MulM4V4(sv.root, HMM_V4V(s->mug_grip, 0.0f)).XYZ), 1.0f);
-            GfxMaterial bc = room;
-            bc.extra = cover_extra(L->dress[L->table_bay].cover[L->seat_phys[i]]);
+            GfxMaterial bc = room, mm = room;
+            bc.extra = cover_extra(mb->cover);
+            bc.hide = mm.hide = mb->fade;
             gfx_draw(g, L->book_closed, &bk, &bc, 0);
-            gfx_draw(g, L->mug, &mg, &room, 0);
+            gfx_draw(g, L->mug, &mg, &mm, 0);
         }
     }
+    plane_step(L, dt); /* §8: after the hero's fidget (the plane in its hand) */
+    plane_draw(L, g);
     npc_lods(L, dt);
     for (int i = 0; i < s->npc_n; i++) {
         npc_draw(L, g, m, i, dt);

@@ -637,32 +637,37 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
                 continue;
             }
             if (mb->state != LM_STUDY && mb->state != LM_SETTLE) { /* seated (settling counts) */
-                if (mb->t_join > 0.0 && p->library->clock - mb->t_join > 6.0) {
-                    return fail_now(t, "library: a friend is not seated 6 s after joining");
+                if (mb->t_join > 0.0 && p->library->clock - mb->t_join > 12.0) { /* §15.7: 12 s for a walk to a table */
+                    return fail_now(t, "library: a friend is not seated 12 s after joining");
                 }
                 return 0;
             }
-            if (mb->t_join > 0.0 && (!mb->outside_first || mb->door_max <= 1.5f || mb->t_seated - mb->t_join > 6.0 || mb->blend_seated <= 0.9f)) {
-                SDL_snprintf(t->why, sizeof(t->why), "library: seat %d outside first %d, door %.2f rad, seated in %.2f s, sit blend %.2f", k, mb->outside_first,
-                             (double)mb->door_max, mb->t_seated - mb->t_join, (double)mb->blend_seated);
+            /* §8: from seat 0's stand point at its own table (its seed's bay), never by a door */
+            const float from = HMM_LenV2(HMM_SubV2(mb->start, mb->home));
+            if (mb->t_join > 0.0 && (from > 0.15f || mb->t_seated - mb->t_join > 12.0 || mb->blend_seated <= 0.9f)) {
+                SDL_snprintf(t->why, sizeof(t->why), "library: seat %d started %.2f m from its own table's stand point, seated in %.2f s, sit blend %.2f", k,
+                             (double)from, mb->t_seated - mb->t_join, (double)mb->blend_seated);
                 return -1;
             }
             if (mb->t_join > 0.0) {
-                mg_log_info("autotest friends: library seat %d: in through the door (%.2f rad), seated in %.2f s, book open", k, (double)mb->door_max,
-                            mb->t_seated - mb->t_join);
+                mg_log_info("autotest friends: library seat %d: walked over from its own table (bay %d), seated in %.2f s, book open", k,
+                            menu_library_home_bay(p->library, mb->id), mb->t_seated - mb->t_join);
             }
         }
         done = true;
         break;
-    case OP_LIB_LEFT: { /* LIB-1: the kicked one walked out and the door shut within 2 s */
+    case OP_LIB_LEFT: { /* LIB-1 §8: the kicked one walked back towards its own table, removed only out of view (or on arrival) */
         const LibMember *g = p->library ? &p->library->gone : NULL;
-        if (!g || g->t_gone <= 0.0 || g->t_shut <= 0.0) {
+        if (!g || g->t_gone <= 0.0 || g->t_gone <= t->lib_gone_seen) {
             return 0;
         }
-        if (g->t_shut - SDL_max(g->t_gone, g->t_door_clear) > 2.0) { /* from when no background NPC holds the door */
-            return fail_now(t, "library: the door did not shut within 2 s of the walk out");
+        t->lib_gone_seen = g->t_gone;
+        const float home = HMM_LenV2(HMM_SubV2(g->pos, g->home));
+        if (!g->removed_off && home > 0.6f) {
+            return fail_now(t, "library: the kicked friend was removed in view, away from its table");
         }
-        mg_log_info("autotest friends: library: the kicked friend walked out in %.2f s, the door shut %.2f s after", g->t_gone - g->t_left, g->t_shut - g->t_gone);
+        mg_log_info("autotest friends: library: the kicked friend walked home for %.2f s, removed %s", g->t_gone - g->t_left,
+                    g->removed_off ? "out of view" : "at its table");
         done = true;
         break;
     }

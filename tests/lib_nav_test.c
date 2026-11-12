@@ -439,9 +439,9 @@ static void people_run(LibPeople *P, float seconds, bool members, int *cell_bad,
     const LibNav *n = &g_nav;
     lib_people_init(P, &g_pc, n);
     const float dt = 1.0f / 60.0f;
-    MemberRun mr[LIB_PEOPLE_WALKERS] = {{0}};
+    MemberRun mr[4] = {{0}};
     const int bay = 1;
-    for (int k = 1; k < LIB_PEOPLE_WALKERS; k++) {
+    for (int k = 1; k < 4; k++) {
         mr[k].out = HMM_V2(g_nav.bx[bay] + 4.4f, g_nav.bz[bay] - 6.7f);
         mr[k].t = 2.0f + 7.0f * (float)k;
         mr[k].stand = g_stands[k];
@@ -453,7 +453,7 @@ static void people_run(LibPeople *P, float seconds, bool members, int *cell_bad,
     for (int t = 0; t < ticks; t++) {
         float now = (float)t * dt;
         if (members) {
-            for (int k = 1; k < LIB_PEOPLE_WALKERS; k++) {
+            for (int k = 1; k < 4; k++) {
                 MemberRun *m = &mr[k];
                 m->t -= dt;
                 if (m->state == 0 && m->t <= 0) {
