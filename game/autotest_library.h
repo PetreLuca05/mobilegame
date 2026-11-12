@@ -24,7 +24,13 @@
  *   8  Back: the reverse ends on the menu camera, the hero studying, the lobby's rows unchanged
  *   9  Locker: the creator pose (sitting up, study blend 0.15) within 1.5 s, and back
  *      with --ui-motion reduced: no move; the map at once under a 300 ms cross-dissolve (the run ends there)
- *  10  run with --frontend welcome (tools/library_test.sh): the library behind onboarding, the hero walks in once
+ *  10  run with --frontend welcome (tools/library_test.sh): §11 onboarding at my table: the hero walks in once (from its bay's
+ *      door.outside, carrying book and mug every frame, seated within 1.5 x its path / walk_speed + sit + settle + 1 s), the table
+ *      inside each screen's free rect (Welcome, Username), the Creator's Locker (as 9) and its closing; library_onb_* pictures.
+ *      With --lib-walked (a second run on the same profile): no walk-in, the hero seated from the first frame
+ *   9  (and 10) the Locker camera: no jump by §15.11 (camera distances per second, the ease's own step), ends on camera.creator moved
+ *      onto the hero's seat (in front of it), study blend 0.15, the hero's loop paused while open; Reduse (before Maps): no move,
+ *      at once under the cross-dissolve, both ways
  *  11  the table and its seats inside the free rect (checked in 1; tools/library_test.sh: iPhone both ways, iPad)
  *  12  §6 life at the table: every action forced on the hero in turn (the phone in the pocket and on the table): its things
  *      appear only in it (phone, glow, anger mark, pencil in the hand, mug in the hand, ball, call dots, plane, pet), the
@@ -106,6 +112,20 @@ typedef struct LibraryTest {
     bool sw_on[2];          /* speed_watch: the friend, the hero: walking last frame, where, at which people time */
     HMM_Vec2 sw_p[2];
     double sw_t[2];
+    /* §11 onboarding and Locker (onboarding_run, locker_watch) */
+    int ob;                 /* onboarding's step */
+    double ob_at;
+    bool ob_shot, ob_carry_bad, ob_expect_none;
+    float ob_bound, ob_from_err;
+    bool lk_on;             /* the Locker camera is being judged */
+    HMM_Vec3 lk_prev;
+    float lk_prev_speed, lk_worst, lk_top;
+    int lk_frames;
+    bool lk_rebase, lk_mid_seen, lk_shot;
+    int lk_shot_frame; /* the Locker frame a picture was taken on (its next two are not judged) */
+    float lk_acc;      /* the ease clock since the last judged eye */
+    float lk_study_t;
+    int lk_red;             /* Reduse: the Locker's own step (before Maps) */
     char npc_why[160];
     char why[200];
 } LibraryTest;

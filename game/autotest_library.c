@@ -898,6 +898,347 @@ static int plane_run(LibraryTest *t, const MenuLibrary *L, AutotestOut *out, dou
     }
 }
 
+/* ------------------------------------------------------------------ §11 onboarding and Locker */
+
+static bool argv_has(const MgApp *app, const char *f)
+{
+    for (int i = 1; i < app->argc; i++) {
+        if (SDL_strcmp(app->argv[i], f) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* the hero's loop as one number: it changes on any tick of its read, turn or fidget */
+static float loop_sig(const LibMember *h) { return h->study.t + 7.0f * h->study.u + 1000.0f * h->fid.t; }
+
+/* the table and its four seats inside the free rect the camera fitted them to (2 pt slack) */
+static bool fit_ok(const MenuLibrary *L, const MgApp *app, const char *screen)
+{
+    float box[4];
+    menu_library_fit_box(L, &L->view_proj, app->width_pt, app->height_pt, box);
+    const float *f = L->fit_free;
+    const bool ok = box[0] >= f[0] - 2.0f && box[1] <= f[1] + 2.0f && box[2] >= f[2] - 2.0f && box[3] <= f[3] + 2.0f;
+    mg_log_info("autotest library: 10 %s: table and seats %.0f .. %.0f x %.0f .. %.0f pt in the free rect %.0f .. %.0f x %.0f .. %.0f (%s)", screen,
+                (double)box[0], (double)box[1], (double)box[2], (double)box[3], (double)f[0], (double)f[1], (double)f[2], (double)f[3], ok ? "ok" : "FAIL");
+    return ok;
+}
+
+static void locker_begin(LibraryTest *t, const MenuLibrary *L)
+{
+    t->lk_on = true;
+    t->lk_prev = L->eye;
+    t->lk_prev_speed = 0.0f, t->lk_worst = 0.0f, t->lk_top = 0.0f;
+    t->lk_frames = 0;
+    t->lk_rebase = false, t->lk_mid_seen = false;
+    t->lk_shot_frame = -100;
+    t->lk_acc = 0.0f;
+}
+
+/* one frame of the Locker's camera (§15.11): speed = the eye's step over the ease's own dt, over the camera's distance to its
+ * target; at most 1.5 x the previous judged frame's + 0.06; the step after a picture only sets the baseline */
+static void locker_watch(LibraryTest *t, const MenuLibrary *L, const AutotestOut *out)
+{
+    if (!t->lk_on) {
+        return;
+    }
+    /* §15.11 as for the Maps move: a step is judged once it spans at least half a frame of the ease's clock (short frames add up
+     * from the last judged eye); the two frames after a picture are not judged (the capture stalls one of them) and the first
+     * step after them only sets the baseline */
+    t->lk_acc += L->creator_dt;
+    const bool after_shot = t->lk_frames - t->lk_shot_frame <= 2;
+    if (after_shot) {
+        t->lk_rebase = true;
+        t->lk_prev = L->eye, t->lk_acc = 0.0f;
+    } else if (t->lk_acc >= 0.5f / 60.0f) {
+        const float d = HMM_LenV3(HMM_SubV3(L->eye, L->target));
+        if (d > 1e-4f) {
+            const float speed = HMM_LenV3(HMM_SubV3(L->eye, t->lk_prev)) / t->lk_acc / d;
+            if (!t->lk_rebase) {
+                const float over = speed - (1.5f * t->lk_prev_speed + 0.06f);
+                if (over > t->lk_worst) {
+                    mg_log_info("autotest library: Locker camera frame %d: speed %.3f after %.3f (creator %.3f)", t->lk_frames, (double)speed,
+                                (double)t->lk_prev_speed, (double)L->creator_t);
+                }
+                t->lk_worst = fmaxf(t->lk_worst, over);
+            }
+            t->lk_prev_speed = speed;
+            t->lk_top = fmaxf(t->lk_top, speed);
+            t->lk_rebase = false;
+        }
+        t->lk_prev = L->eye, t->lk_acc = 0.0f;
+    }
+    if (out->screenshot[0]) {
+        t->lk_shot_frame = t->lk_frames;
+    }
+    t->lk_frames++;
+    if (L->creator_t > 0.0f && L->creator_t < 1.0f) {
+        t->lk_mid_seen = true;
+    }
+}
+
+/* open: the camera on the Locker camera, which stands in front of the hero's own seat; the hero sits up, its loop paused */
+static int locker_open_check(LibraryTest *t, const MenuLibrary *L, bool reduced)
+{
+    const LibMember *h = &L->seat[0];
+    const HMM_Vec3 seat = menu_library_seat_world(L, 0), fwd = HMM_SubV3(menu_library_seat_point(L, 0, HMM_V3(0, 0, 1)), seat);
+    const HMM_Vec3 to_eye = HMM_SubV3(L->eye, seat);
+    const float facing = HMM_DotV3(HMM_NormV3(HMM_V3(to_eye.X, 0, to_eye.Z)), HMM_NormV3(HMM_V3(fwd.X, 0, fwd.Z)));
+    const float off = HMM_LenV3(HMM_SubV3(L->eye, L->creator_eye));
+    mg_log_info("autotest library: Locker open: seat %d (yaw %.0f), the eye %.4f from camera.creator moved onto it, facing %.2f, study blend %.3f, "
+                "pose %.2f, camera jump %.3f (top speed %.2f distances/s, %d frames)%s",
+                h->seat_k, (double)h->at.yaw_deg, (double)off, (double)facing, (double)h->study_w, (double)L->creator_w, (double)t->lk_worst,
+                (double)t->lk_top, t->lk_frames, reduced ? (t->lk_mid_seen ? ", a MOVE under Reduse" : ", at once under the dissolve") : "");
+    if (L->creator_t < 1.0f || L->creator_w < 1.0f || off > 1e-3f || facing < 0.5f || fabsf(h->study_w - 0.15f) > 0.01f || (t->lk_worst > 0.0f && !reduced) ||
+        (reduced && t->lk_mid_seen)) {
+        return failf(t, "locker: creator %.2f pose %.2f, the eye %.4f off, facing %.2f, study %.3f, jump %.3f, reduced move %d", (double)L->creator_t,
+                     (double)L->creator_w, (double)off, (double)facing, (double)h->study_w, (double)t->lk_worst, reduced && t->lk_mid_seen);
+    }
+    return 1;
+}
+
+/* closed: back on the menu camera, bent over the book, the loop running */
+static int locker_closed_check(LibraryTest *t, const MenuLibrary *L, bool reduced)
+{
+    mg_log_info("autotest library: Locker closed: camera jump %.3f (top %.2f distances/s, %d frames)%s, study blend %.2f (%s)", (double)t->lk_worst,
+                (double)t->lk_top, t->lk_frames, reduced ? (t->lk_mid_seen ? ", a MOVE under Reduse" : ", at once under the dissolve") : "",
+                (double)L->seat[0].study_w, (t->lk_worst > 0.0f && !reduced) || (reduced && t->lk_mid_seen) ? "FAIL" : "ok");
+    if ((t->lk_worst > 0.0f && !reduced) || (reduced && t->lk_mid_seen)) {
+        return failf(t, "locker closing: jump %.3f, reduced move %d", (double)t->lk_worst, reduced && t->lk_mid_seen);
+    }
+    t->lk_on = false;
+    return 1;
+}
+
+/* §11 a fresh install (--frontend welcome): Welcome with the walk-in, Username, the Creator's Locker and its closing */
+static int onboarding_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out, double now)
+{
+    const LibMember *h = &L->seat[0];
+    const LibScene *sc = &L->sc;
+    locker_watch(t, L, out);
+    switch (t->ob) {
+    case 0: { /* Welcome: the walk-in (or, --lib-walked, none) */
+        if (p->fe_state != FE_WELCOME) {
+            return 0;
+        }
+        if (t->ob_bound == 0.0f) { /* the probe is the last frame's: the first Welcome frame's library shows on the next */
+            t->ob_bound = -1.0f;
+            return 0;
+        }
+        if (t->ob_at == 0.0) {
+            t->ob_at = now;
+            t->ob_expect_none = argv_has(app, "--lib-walked");
+            if (t->ob_expect_none) {
+                if (L->walk_in_seen || h->state != LM_STUDY) {
+                    return failf(t, "onboarding again: the hero walked in a second time (state %d)", (int)h->state);
+                }
+                mg_log_info("autotest library: 10 onboarding again (the walk-in done before): no walk-in, the hero seated from the first frame (ok)");
+            } else {
+                if (!L->walk_in_seen || h->state != LM_WALK_IN) {
+                    return failf(t, "onboarding: no walk-in on the first launch (state %d)", (int)h->state);
+                }
+                const HMM_Vec2 door = HMM_AddV2(sc->door.outside, HMM_V2(L->bay_x[h->bay], L->bay_z[h->bay]));
+                t->ob_from_err = HMM_LenV2(HMM_SubV2(L->walk_in_from, door));
+                float len = 0.0f;
+                for (int k = 1; k < h->at.path_n; k++) {
+                    len += HMM_LenV2(HMM_SubV2(h->at.path[k], h->at.path[k - 1]));
+                }
+                t->ob_bound = 1.5f * len / sc->study.walk_speed + sc->study.sit_s + sc->study.items.place_s + 1.0f;
+            }
+        }
+        if (!t->ob_expect_none) {
+            if ((h->state == LM_WALK_IN || h->state == LM_SIT) && h->place >= sc->study.items.swap_at) {
+                t->ob_carry_bad = true; /* walking without its book and mug */
+            }
+            if (h->state != LM_WALK_IN && h->state != LM_SIT && h->state != LM_SETTLE && h->state != LM_STUDY) {
+                return failf(t, "onboarding: the hero left its walk-in (state %d)", (int)h->state);
+            }
+            const float walked = HMM_LenV2(HMM_SubV2(h->pos, L->walk_in_from)), all = HMM_LenV2(HMM_SubV2(h->at.stand, L->walk_in_from));
+            if (!t->ob_shot && h->state == LM_WALK_IN && walked >= 0.5f * all) {
+                t->ob_shot = true;
+                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_onb_welcome_walk");
+            }
+            if (h->state != LM_STUDY || h->place < 1.0f) {
+                return now - t->ob_at > t->ob_bound + 2.0 ? failf(t, "onboarding: not seated after %.1f s (bound %.1f s, state %d)", now - t->ob_at,
+                                                                  (double)t->ob_bound, (int)h->state)
+                                                          : 0;
+            }
+            const double took = h->t_seated - L->walk_in_t0 + sc->study.items.place_s;
+            const bool ok = t->ob_from_err < 0.05f && !t->ob_carry_bad && took <= t->ob_bound && t->ob_shot;
+            mg_log_info("autotest library: 10 the first launch: the hero came in through bay %d's door (%.3f m from its door.outside), carrying book "
+                        "and mug %s, seated and settled %.2f s after it appeared (bound %.1f s) at seat %d (%s)",
+                        h->bay, (double)t->ob_from_err, t->ob_carry_bad ? "NOT every frame" : "every frame", took, (double)t->ob_bound, h->seat_k,
+                        ok ? "ok" : "FAIL");
+            if (!ok) {
+                return failf(t, "onboarding walk-in: start %.3f m off, carried %d, %.2f s (bound %.1f), picture %d", (double)t->ob_from_err,
+                             !t->ob_carry_bad, took, (double)t->ob_bound, t->ob_shot);
+            }
+        } else if (now - t->ob_at < 2.0) {
+            if (h->state != LM_STUDY) {
+                return failf(t, "onboarding again: the hero is not seated (state %d)", (int)h->state);
+            }
+            return 0;
+        }
+        t->ob = 1, t->ob_at = now, t->lk_shot = false;
+        return 0;
+    }
+    case 1: /* Welcome settled: the free rect, then Guest */
+        if (now - t->ob_at < 1.5) {
+            return 0;
+        }
+        if (!t->lk_shot) {
+            t->lk_shot = true;
+            if (!fit_ok(L, app, "Welcome")) {
+                return failf(t, "onboarding: the table leaves Welcome's free rect");
+            }
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_onb_welcome");
+            return 0;
+        }
+        if (!tap(t, app, p, "guest", now)) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: no guest button") : 0;
+        }
+        t->ob = 2, t->ob_at = now, t->lk_shot = false;
+        return 0;
+    case 2: /* Username */
+        if (p->fe_state != FE_USERNAME) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: not on Username (screen %d)", p->fe_state) : 0;
+        }
+        if (now - t->ob_at < 1.5) {
+            return 0;
+        }
+        if (!t->lk_shot) {
+            t->lk_shot = true;
+            if (!fit_ok(L, app, "Username")) {
+                return failf(t, "onboarding: the table leaves Username's free rect");
+            }
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_onb_username");
+            return 0;
+        }
+        if (!tap(t, app, p, "name_ok", now)) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: no name_ok") : 0;
+        }
+        locker_begin(t, L);
+        t->ob = 3, t->ob_at = now, t->ob_shot = false;
+        return 0;
+    case 3: /* the Creator: the Locker opens */
+        if (p->fe_state != FE_CREATOR) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: not on the Creator (screen %d)", p->fe_state) : 0;
+        }
+        if (L->creator_t < 1.0f || L->creator_w < 1.0f) {
+            return now - t->ob_at > 3.0 ? failf(t, "onboarding: the Locker not open after 3 s (creator %.2f, pose %.2f)", (double)L->creator_t,
+                                                 (double)L->creator_w)
+                                         : 0;
+        }
+        if (!t->ob_shot) {
+            const int r = locker_open_check(t, L, false);
+            if (r < 0) {
+                return r;
+            }
+            t->ob_shot = true;
+            t->lk_study_t = loop_sig(h);
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_onb_creator");
+            t->ob_at = now;
+            return 0;
+        }
+        if (now - t->ob_at < 1.0) {
+            return 0;
+        }
+        if (loop_sig(h) != t->lk_study_t) {
+            return failf(t, "onboarding: the hero's loop ran while the Locker was open (%.3f -> %.3f)", (double)t->lk_study_t, (double)loop_sig(h));
+        }
+        if (!tap(t, app, p, "creator", now)) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: no Done on the Creator") : 0;
+        }
+        mg_log_info("autotest library: 10 the Locker held 1 s: the hero's loop paused (ok)");
+        locker_begin(t, L);
+        t->ob = 4, t->ob_at = now, t->ob_shot = false;
+        return 0;
+    case 4: /* Done: the Locker closes onto the main menu */
+        if (!t->ob_shot && L->creator_t <= 0.5f && L->creator_t > 0.0f) {
+            t->ob_shot = true;
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_onb_closing");
+        }
+        if (L->creator_t > 0.0f || L->creator_w > 0.0f) {
+            return now - t->ob_at > 3.0 ? failf(t, "onboarding: the Locker not closed after 3 s") : 0;
+        }
+        if (p->fe_state != FE_MAIN_MENU) {
+            return now - t->ob_at > 8.0 ? failf(t, "onboarding: not on the main menu after Done (screen %d)", p->fe_state) : 0;
+        }
+        if (t->ob_bound > -2.0f) { /* closed: the loop gets 0.5 s from here to show it runs again */
+            t->ob_bound = -2.0f, t->ob_at = now;
+            return 0;
+        }
+        if (now - t->ob_at < 0.5) {
+            return 0;
+        }
+        if (loop_sig(h) == t->lk_study_t) {
+            return failf(t, "onboarding: the hero's loop did not resume 0.5 s after the Locker closed (state %d, study t %.3f)", (int)h->state,
+                         (double)h->study.t);
+        }
+        return locker_closed_check(t, L, false);
+    default:
+        return 1;
+    }
+}
+
+/* Reduse (before Maps): the Locker opens and closes at once under the 300 ms cross-dissolve, no camera move */
+static int locker_reduced(LibraryTest *t, MgApp *app, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out, double now)
+{
+    locker_watch(t, L, out);
+    if (p->dissolve > 0.0f) {
+        t->dissolve_seen = true;
+    }
+    switch (t->lk_red) {
+    case 0:
+        if (now - t->at < 0.8) {
+            return 0;
+        }
+        if (!tap(t, app, p, "menurow31", now)) {
+            return now - t->at > 5.0 ? failf(t, "reduced locker: the row did not take the tap") : 0;
+        }
+        locker_begin(t, L);
+        t->dissolve_seen = false;
+        t->lk_red = 1, t->at = now;
+        return 0;
+    case 1:
+        if (L->creator_t < 1.0f || L->creator_w < 1.0f) {
+            return now - t->at > 1.0 ? failf(t, "reduced locker: not open after 1 s (creator %.2f)", (double)L->creator_t) : 0;
+        }
+        if (!t->dissolve_seen) {
+            return now - t->at > 1.0 ? failf(t, "reduced locker: no cross-dissolve") : 0;
+        }
+        if (locker_open_check(t, L, true) < 0) {
+            return -1;
+        }
+        t->lk_red = 2, t->at = now;
+        return 0;
+    case 2:
+        if (now - t->at < 0.6) {
+            return 0;
+        }
+        if (!tap(t, app, p, "creator", now)) {
+            return now - t->at > 5.0 ? failf(t, "reduced locker: Done did not take the tap") : 0;
+        }
+        locker_begin(t, L);
+        t->dissolve_seen = false;
+        t->lk_red = 3, t->at = now;
+        return 0;
+    case 3:
+        if (L->creator_t > 0.0f || L->creator_w > 0.0f || p->fe_state != FE_MAIN_MENU || !t->dissolve_seen) {
+            return now - t->at > 1.0 ? failf(t, "reduced locker: not closed at once (creator %.2f, dissolve %d)", (double)L->creator_t, t->dissolve_seen) : 0;
+        }
+        if (locker_closed_check(t, L, true) < 0) {
+            return -1;
+        }
+        mg_log_info("autotest library: 9 Reduse: the Locker opened and closed at once under the cross-dissolve (ok)");
+        t->lk_red = 4, t->at = now;
+        return 1;
+    default:
+        return 1;
+    }
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     const MenuLibrary *L = p->library;
@@ -912,26 +1253,17 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     out->lib_demo = t->demo + 1; /* the demo lobby: the scenario this step plays (0 me alone) */
     switch (t->stage) {
     case 0:
-        if (p->fe_state == FE_WELCOME && !t->fresh) { /* 10: a fresh install */
+        if (p->fe_state == FE_WELCOME && !t->fresh) { /* 10: a fresh install (§11) */
             t->fresh = true;
             t->at = now;
         }
         if (t->fresh) {
-            const LibMember *h = &L->seat[0];
-            if (h->state == LM_WALK_IN && !t->seen) {
-                t->seen = true;
-                SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_welcome_walk");
-            }
-            if (t->seen && h->state == LM_STUDY) {
-                mg_log_info("autotest library: 10 onboarding shows the library, the hero walked in (outside the door first %s) and sat (ok)",
-                            HMM_LenV2(HMM_SubV2(L->sc.seats[0].path[0], L->sc.door.outside)) < 0.15f ? "yes" : "no");
+            const int r = onboarding_run(t, app, p, L, out, now);
+            if (r > 0) {
                 t->acts_skip = true; /* onboarding is a short run */
                 return npc_done(t, L);
             }
-            if (now - t->at > 12.0) {
-                return failf(t, "onboarding: the hero did not walk in and sit (state %d)", (int)h->state);
-            }
-            return 0;
+            return r;
         }
         if (p->fe_state != FE_MAIN_MENU) {
             return 0;
@@ -1081,6 +1413,13 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         return r;
     }
     case 5: /* 7: Maps */
+        if (argv_has(app, "reduced") && t->lk_red < 4) { /* Reduse: the Locker first (this run ends at the map) */
+            const int r = locker_reduced(t, app, p, L, out, now);
+            if (r <= 0) {
+                return r;
+            }
+            return 0;
+        }
         if (t->second && now - t->at < 0.8) {
             return 0;
         }
@@ -1204,35 +1543,53 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         if (!tap(t, app, p, "menurow31", now)) {
             return now - t->at > 5.0 ? failf(t, "locker: the row did not take the tap") : 0;
         }
+        locker_begin(t, L);
+        t->lk_shot = false;
         t->at = now;
         t->stage = 10;
         return 0;
     case 10:
-        if (now - t->at < 1.5) {
+        locker_watch(t, L, out);
+        if (L->creator_t < 1.0f || L->creator_w < 1.0f) {
+            return now - t->at > 3.0 ? failf(t, "locker: not open after 3 s (creator %.2f, pose %.2f, study %.2f)", (double)L->creator_t,
+                                              (double)L->creator_w, (double)L->seat[0].study_w)
+                                      : 0;
+        }
+        if (!t->lk_shot) {
+            if (locker_open_check(t, L, false) < 0) {
+                return -1;
+            }
+            mg_log_info("autotest library: 9 Locker: open %.2f s after the tap (ok)", now - t->at);
+            t->lk_shot = true;
+            t->lk_study_t = loop_sig(&L->seat[0]);
+            SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_locker");
+            t->at = now;
             return 0;
         }
-        if (L->creator_t < 0.95f || fabsf(L->seat[0].study_w - 0.15f) > 0.03f) {
-            return failf(t, "locker: creator blend %.2f, study blend %.2f (want 1, 0.15)", (double)L->creator_t, (double)L->seat[0].study_w);
+        if (now - t->at < 0.8) {
+            return 0;
         }
-        mg_log_info("autotest library: 9 Locker: the camera on camera.creator (%.2f), the hero sits up (study blend %.2f) (ok)", (double)L->creator_t,
-                    (double)L->seat[0].study_w);
-        SDL_snprintf(out->screenshot, sizeof(out->screenshot), "library_locker");
+        if (loop_sig(&L->seat[0]) != t->lk_study_t) {
+            return failf(t, "locker: the hero's loop ran while it was open");
+        }
         t->at = now;
         t->stage = 11;
         return 0;
     case 11:
-        if (now - t->at < 0.5) {
-            return 0;
-        }
         if (!tap(t, app, p, "creator", now)) {
             return now - t->at > 5.0 ? failf(t, "locker: Done did not take the tap") : 0;
         }
+        locker_begin(t, L);
         t->at = now;
         t->stage = 12;
         return 0;
     case 12:
-        if (L->creator_t > 0.01f || L->seat[0].study_w < 0.9f) {
+        locker_watch(t, L, out);
+        if (L->creator_t > 0.0f || L->creator_w > 0.0f || L->seat[0].study_w < 0.9f) {
             return now - t->at > 3.0 ? failf(t, "locker: not back (creator %.2f, study %.2f)", (double)L->creator_t, (double)L->seat[0].study_w) : 0;
+        }
+        if (locker_closed_check(t, L, false) < 0) {
+            return -1;
         }
         mg_log_info("autotest library: 9 Locker closed: back on the menu camera, bent over the book again (ok)");
         t->fat = now;

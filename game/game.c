@@ -156,7 +156,7 @@ typedef struct Game {
     AvatarMeshes avatar_meshes;
     AvatarGallery gallery; /* --avatar-gallery NAME */
     MenuLibrary lib;       /* LIB-1: the menu's backdrop */
-    bool lib_hero_walked;  /* the first onboarding screen's walk-in happened */
+    float lib_free[2];     /* the menu camera's free rect (pt, left right) before the Locker opened (§11) */
     bool lib_demo_join;    /* --lib-demo-join: a friend joins at 1 s and leaves at 10 s (no network) */
     double lib_demo_t0;
     int lib_demo_ctl;      /* --autotest library: the demo lobby by scenario (-1: the timeline above; 0 me alone, 1 + a friend, 2 a guest
@@ -2362,13 +2362,24 @@ static bool menu_world(Game *g, MgApp *app)
         }
     }
     library_planes(g, app, st == FE_MAIN_MENU);
-    if (st == FE_WELCOME && !g->lib_hero_walked) { /* a fresh install: the hero comes in once */
-        g->lib_hero_walked = true;
+    if (onboarding && !g->prefs.lib_walked_in) { /* §11: the first launch: the hero comes in through its bay's door, once ever */
+        g->prefs.lib_walked_in = true;
+        save_prefs(g);
         menu_library_hero_walk_in(&g->lib);
     }
     const bool panel = st == FE_MAIN_MENU && g->lobby_visible;
-    menu_library_set_creator(&g->lib, st == FE_CREATOR, frontend_menu_right(app, FE_CREATOR));
-    const float free_l = frontend_menu_right(app, st == FE_CREATOR ? FE_MAIN_MENU : (FeState)st) + 8.0f, free_r = frontend_menu_free_right(app, panel) - 8.0f;
+    menu_library_set_creator(&g->lib, st == FE_CREATOR, frontend_menu_right(app, FE_CREATOR), motion_reduced(g));
+    if (g->lib.creator_dissolve_armed) { /* Reduse: the Locker opens / closes next frame under a 300 ms cross-dissolve of this one */
+        gfx_dissolve_capture(app->gfx);
+        g->dissolve_t0 = app->time;
+    }
+    float free_l = frontend_menu_right(app, st == FE_CREATOR ? FE_MAIN_MENU : (FeState)st) + 8.0f, free_r = frontend_menu_free_right(app, panel) - 8.0f;
+    if ((st == FE_CREATOR || g->lib.creator_t > 0.0f) && g->lib_free[1] > 0.0f) { /* §11: the menu camera keeps the opener's fit while the Locker is open or moving
+                                                         * (a refit under it is the Locker camera moving on its own) */
+        free_l = g->lib_free[0], free_r = g->lib_free[1];
+    } else {
+        g->lib_free[0] = free_l, g->lib_free[1] = free_r;
+    }
     GfxSceneParams sp = {0};
     menu_library_camera(&g->lib, app, free_l, free_r, 12.0f, app->height_pt - 12.0f, &sp);
     { /* TILT-1: the backdrop sways around its framing point, opposite to the UI's shift (the gameplay camera never does) */
@@ -2520,8 +2531,8 @@ static void begin_back_move(Game *g, MgApp *app)
     const FeState saved = g->fe.state;
     g->fe.state = FE_MAIN_MENU; /* the menu camera for the menu's layout */
     GfxSceneParams sp = {0};
-    menu_library_set_creator(&g->lib, false, 0.0f);
-    g->lib.creator_t = 0.0f;
+    menu_library_set_creator(&g->lib, false, 0.0f, false);
+    g->lib.creator_t = g->lib.creator_u = g->lib.creator_w = g->lib.lock_u = 0.0f;
     const bool panel = g->lobby_visible;
     menu_library_camera(&g->lib, app, frontend_menu_right(app, FE_MAIN_MENU) + 8.0f, frontend_menu_free_right(app, panel) - 8.0f, 12.0f,
                         app->height_pt - 12.0f, &sp);

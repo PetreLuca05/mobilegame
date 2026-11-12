@@ -101,6 +101,7 @@ void prefs_load(Prefs *p, const char *profile)
         g->sound_on = flag(s, "sound", g->sound_on);
     }
     p->onboarding_done = flag(j, "onboarding_done", false);
+    p->lib_walked_in = flag(j, "lib_walked_in", p->onboarding_done); /* an install from before §11 had its first launch */
     p->content_cleaned = flag(j, "content_cleaned", false);
     p->lobby_open = flag(j, "lobby_open", true);
     text(j, "auth_provider", p->auth_provider, sizeof(p->auth_provider));
@@ -175,6 +176,7 @@ bool prefs_save(const Prefs *p, const char *profile)
 #endif
     cJSON_AddBoolToObject(s, "sound", g->sound_on);
     cJSON_AddBoolToObject(j, "onboarding_done", p->onboarding_done);
+    cJSON_AddBoolToObject(j, "lib_walked_in", p->lib_walked_in);
     cJSON_AddBoolToObject(j, "content_cleaned", p->content_cleaned);
     cJSON_AddBoolToObject(j, "lobby_open", p->lobby_open);
     cJSON_AddStringToObject(j, "auth_provider", p->auth_provider);
