@@ -250,6 +250,7 @@ typedef struct MenuLibrary {
      * last open put it there with me at my own table */
     int stored_bay, rebay_to;
     bool rebay_applied, rebay_cold;
+    int rebay_moves; /* how many times an open moved my table (tests) */
     bool table_set;              /* the lobby's table has been placed once */
     LibTravel trav;              /* §8 */
     LibPlane plane;              /* §8 */

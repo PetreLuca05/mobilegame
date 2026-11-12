@@ -29,6 +29,11 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
   the account's seed later puts my table in a different bay, the change happens only when the menu is next opened from a cold start or
   from a game, never while the library is on screen (the library test signs in on a fresh install, stays 30 s with nothing moving, then
   reopens the menu on the seed's bay with no pop).
+- **"Front facing the road"** (step 9, accepted): the building's +z side, where the portico and the path are; the square hall's outside
+  doors (the back row's) face away from the road, as since step 4.
+- **"Ends clean" for Reduce Motion mid-move** (step 9, accepted): Reduce Motion switched on during a Maps / Back move ends the move at once
+  under the 300 ms cross-dissolve.
+- **Maps move draws** (user decision, 2026-11-12): at most **60** in any frame of the move (`tools/perf_gate.py`, `menu_to_map`).
 - **Triangles at rest** (user decision, 2026-11-12): **≈ 58 k** for the square hall in place of ≈ 26 k, stop line **75 k**
   (`tools/perf_gate.py`, `menu`). Measured with the wall-aware bay rule (93d2a65): 57.9 k average (61.1 k without it). No doorway
   culling of people and particles. Why: 57.9 k is below the old hospital's `stress200` scene, which passed every iPad budget at 87 k
@@ -203,7 +208,7 @@ Clock tick 1.8 kHz 12 ms gain 0.012 once a second (visible clocks only); page tu
 
 ## 14. Performance (PERF-1 rules apply)
 
-- At rest (one bay and slivers of its neighbours): **≤ 46 draws, ≈ 26 k triangles** [changed: ≈ 58 k for the square hall, stop line 75 k]; today's `menu` scenario is 76 draws. During travel (two to three bays): **≤ 60 draws, ≈ 45 k triangles**. During the Maps move add one island (≤ 16). One pass throughout.
+- At rest (one bay and slivers of its neighbours): **≤ 46 draws, ≈ 26 k triangles** [changed: ≈ 58 k for the square hall, stop line 75 k]; today's `menu` scenario is 76 draws. During travel (two to three bays): **≤ 60 draws, ≈ 45 k triangles**. During the Maps move add one island (≤ 16) [changed: at most 60 in any frame of the move]. One pass throughout.
 - Estimated on the iPad Air 4: GPU ≤ 1.7 ms at rest, ≤ 2.6 ms travelling or zooming; tick ≤ 0.15 ms (25 people with at most ~10 at full rate, one cat, fidget timers, closed-form props); nav bake < 4 ms at load; memory ≈ + 16 MB (hall + preloaded map). Avatar: 570 / 154 triangles, `stress200` must stay within budget (shorten the LOD0 distance first; do not change the model).
 - Zero heap allocations per frame: fixed pools for particles (320), balls (6), paths. Dressing a table happens once per lobby change, off screen.
 - If a Mac measurement is more than 2× an estimate, stop and report.

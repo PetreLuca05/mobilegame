@@ -296,7 +296,7 @@ typedef struct Game {
     uint32_t lib_ab_frame; /* --lib-wall-ab */
     struct RebayTest {
         bool on, watch_walk;
-        int stage, first_bay, seed_bay, keep, lobby, rows, watch_bay;
+        int stage, first_bay, seed_bay, keep, lobby, rows, watch_bay, moves0;
         double t0, wait_until;
         char id[16];
         HMM_Vec2 hero, cam;
@@ -996,7 +996,10 @@ bool game_init(MgApp *app)
             g->rb.on = true;
             g->rb.watch_bay = g->rb.seed_bay = -1;
             g->rb.rows = 1;
-            if (has_flag(app->argc, app->argv, "--rebay-cold")) { /* a cold start with an account whose bay is not remembered yet */
+            if (has_flag(app->argc, app->argv, "--rebay-game")) { /* end to end: a real game into the institute between the opens */
+                g->rb.stage = 30;
+                g->rb.wait_until = 1.0; /* the hero is placed during the first frames */
+            } else if (has_flag(app->argc, app->argv, "--rebay-cold")) { /* a cold start with an account whose bay is not remembered yet */
                 SDL_snprintf(g->rb.id, sizeof(g->rb.id), "rbacctD");
                 g->rb.seed_bay = 2;
                 g->rb.stage = 20;
@@ -2483,6 +2486,7 @@ static bool rb_opened_on(Game *g, MgApp *app, int bay, int members)
 
 static int rb_stored(const Game *g, const char *id) { return lib_bay_lookup(&g->prefs, lib_seed_of(id)); }
 
+static void rebay_menu_back(Game *g, MgApp *app);
 static void rebay_test(Game *g, MgApp *app)
 {
     RebayTest *t = &g->rb;
@@ -2644,6 +2648,29 @@ static void rebay_test(Game *g, MgApp *app)
         t->watch_bay = t->seed_bay, t->watch_walk = true; /* 2 s: nobody walks between bays, nothing moves */
         t->stage = 14, t->wait_until = now + 2.0;
         break;
+    case 30: /* --rebay-game: a fresh install; the sign-in, the account's seed bay another bay */
+        t->first_bay = L->my_bay;
+        SDL_snprintf(t->id, sizeof(t->id), "rbacctE");
+        t->seed_bay = (t->first_bay + 1) % 4;
+        rb_mark(g);
+        t->watch_bay = t->first_bay;
+        mg_log_info("autotest rebay: game 0 fresh install in bay %d, signed in (seed bay %d)", t->first_bay, t->seed_bay);
+        t->stage = 31, t->wait_until = now + 3.0;
+        break;
+    case 31: /* into the institute through the map's Join (the real load), once the map has preloaded */
+        if (!g->wm.loaded) {
+            return;
+        }
+        t->moves0 = L->rebay_moves;
+        mg_log_info("autotest rebay: game 1 3 s after the sign-in still bay %d; joining Gastro (the institute)", t->first_bay);
+        g->wm.cur = 0;
+        join_level(g, app, 0);
+        t->stage = 32;
+        break;
+    case 34:
+    case 35:
+        rebay_menu_back(g, app);
+        break;
     case 20: /* the first open after a cold start, at my own table: the account's bay on the first frame, seated, no pop */
         if (!rb_opened_on(g, app, t->seed_bay, 1) || rb_stored(g, t->id) != t->seed_bay) {
             if (g->rb.on) {
@@ -2672,6 +2699,49 @@ static void rebay_test(Game *g, MgApp *app)
         break;
     default:
         break;
+    }
+}
+
+/* --rebay-game, while playing: walk a few seconds, then Save & back to menu (the pause card's action) */
+static void rebay_play(Game *g, MgApp *app)
+{
+    RebayTest *t = &g->rb;
+    const double now = app->time - t->t0;
+    if (t->stage == 32) {
+        mg_log_info("autotest rebay: game 2 playing (%s), walking", g->scene ? "the scene is up" : "?");
+        g->demo_walk = true;
+        t->stage = 33, t->wait_until = now + 4.0;
+    } else if (t->stage == 33 && now >= t->wait_until) {
+        g->demo_walk = false;
+        mg_log_info("autotest rebay: game 3 walked 4 s to (%.1f, %.1f); Save & back to menu", (double)g->player.kin.pos.X,
+                    (double)g->player.kin.pos.Z);
+        t->stage = 34;
+        leave_play(g, app);
+    }
+}
+
+static void rebay_menu_back(Game *g, MgApp *app)
+{
+    RebayTest *t = &g->rb;
+    const double now = app->time - t->t0;
+    const MenuLibrary *L = &g->lib;
+    if (t->stage == 34) { /* the first menu frame after the game */
+        if (!rb_opened_on(g, app, t->seed_bay, 1)) {
+            return;
+        }
+        if (L->rebay_moves != t->moves0 + 1 || rb_stored(g, t->id) != t->seed_bay) {
+            rb_fail(g, app, "the table did not move exactly once, or the bay was not remembered");
+            return;
+        }
+        rb_mark(g);
+        t->watch_bay = t->seed_bay;
+        t->stage = 35, t->wait_until = now + 3.0;
+    } else if (t->stage == 35) { /* rebay_test held it still for 3 s first */
+        mg_log_info("autotest rebay: game 4 PASS: after a real game in the institute the menu opened on the account's bay %d on its "
+                    "first frame, hero seated, moved once, nothing moving for 3 s", t->seed_bay);
+        mg_log_info("AUTOTEST PASSED");
+        app->quit_requested = true;
+        t->on = false;
     }
 }
 
@@ -4560,6 +4630,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
     if (g->playing) {
         g->lib_open_kind = 2; /* §11: the library's next open is after a game */
+        if (g->rb.on) {
+            rebay_play(g, app); /* --autotest rebay --rebay-game */
+        }
     }
     ui_haptic_set_level((HapticLevel)s->haptics);
     if (g->npcs_ok && g->playing) {

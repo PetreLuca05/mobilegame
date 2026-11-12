@@ -55,6 +55,8 @@ done
 rm -f "$PREF/rebay-"* "$PREF/rebaycold-"* 2>/dev/null
 run rebay $GAME --profile rebay --frontend menu --autotest rebay
 run rebay_cold $GAME --profile rebaycold --frontend menu --autotest rebay --rebay-cold
+rm -f "$PREF/rebaygame-"* 2>/dev/null
+run rebay_game $GAME --profile rebaygame --frontend menu --autotest rebay --rebay-game # a real game into the institute between the opens
 for W in iphone iphone-flip ipad; do
   run lobbylayout_$W env MG_WINDOW=$W $GAME --autotest lobbylayout
   run layout_$W env MG_WINDOW=$W $GAME --autotest layout # §15.12: --autotest layout on the iPhone presets and the iPad
