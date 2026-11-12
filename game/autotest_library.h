@@ -122,6 +122,8 @@ typedef struct LibraryTest {
     float lk_prev_speed, lk_worst, lk_top;
     int lk_frames;
     bool lk_rebase, lk_mid_seen, lk_shot;
+    int lk_shot_frame; /* the Locker frame a picture was taken on (its next two are not judged) */
+    float lk_acc;      /* the ease clock since the last judged eye */
     float lk_study_t;
     int lk_red;             /* Reduse: the Locker's own step (before Maps) */
     char npc_why[160];

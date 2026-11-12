@@ -932,6 +932,8 @@ static void locker_begin(LibraryTest *t, const MenuLibrary *L)
     t->lk_prev_speed = 0.0f, t->lk_worst = 0.0f, t->lk_top = 0.0f;
     t->lk_frames = 0;
     t->lk_rebase = false, t->lk_mid_seen = false;
+    t->lk_shot_frame = -100;
+    t->lk_acc = 0.0f;
 }
 
 /* one frame of the Locker's camera (§15.11): speed = the eye's step over the ease's own dt, over the camera's distance to its
@@ -941,22 +943,35 @@ static void locker_watch(LibraryTest *t, const MenuLibrary *L, const AutotestOut
     if (!t->lk_on) {
         return;
     }
-    const float dt = L->creator_dt, d = HMM_LenV3(HMM_SubV3(L->eye, L->target));
-    if (dt > 1e-5f && d > 1e-4f) {
-        const float speed = HMM_LenV3(HMM_SubV3(L->eye, t->lk_prev)) / dt / d;
-        if (!t->lk_rebase) {
-            const float over = speed - (1.5f * t->lk_prev_speed + 0.06f);
-            if (over > t->lk_worst) {
-                mg_log_info("autotest library: Locker camera frame %d: speed %.3f after %.3f (creator %.3f)", t->lk_frames, (double)speed,
-                            (double)t->lk_prev_speed, (double)L->creator_t);
+    /* §15.11 as for the Maps move: a step is judged once it spans at least half a frame of the ease's clock (short frames add up
+     * from the last judged eye); the two frames after a picture are not judged (the capture stalls one of them) and the first
+     * step after them only sets the baseline */
+    t->lk_acc += L->creator_dt;
+    const bool after_shot = t->lk_frames - t->lk_shot_frame <= 2;
+    if (after_shot) {
+        t->lk_rebase = true;
+        t->lk_prev = L->eye, t->lk_acc = 0.0f;
+    } else if (t->lk_acc >= 0.5f / 60.0f) {
+        const float d = HMM_LenV3(HMM_SubV3(L->eye, L->target));
+        if (d > 1e-4f) {
+            const float speed = HMM_LenV3(HMM_SubV3(L->eye, t->lk_prev)) / t->lk_acc / d;
+            if (!t->lk_rebase) {
+                const float over = speed - (1.5f * t->lk_prev_speed + 0.06f);
+                if (over > t->lk_worst) {
+                    mg_log_info("autotest library: Locker camera frame %d: speed %.3f after %.3f (creator %.3f)", t->lk_frames, (double)speed,
+                                (double)t->lk_prev_speed, (double)L->creator_t);
+                }
+                t->lk_worst = fmaxf(t->lk_worst, over);
             }
-            t->lk_worst = fmaxf(t->lk_worst, over);
+            t->lk_prev_speed = speed;
+            t->lk_top = fmaxf(t->lk_top, speed);
+            t->lk_rebase = false;
         }
-        t->lk_prev_speed = speed;
-        t->lk_top = fmaxf(t->lk_top, speed);
+        t->lk_prev = L->eye, t->lk_acc = 0.0f;
     }
-    t->lk_rebase = out->screenshot[0] != 0; /* a picture this frame stalls the next one */
-    t->lk_prev = L->eye;
+    if (out->screenshot[0]) {
+        t->lk_shot_frame = t->lk_frames;
+    }
     t->lk_frames++;
     if (L->creator_t > 0.0f && L->creator_t < 1.0f) {
         t->lk_mid_seen = true;
