@@ -4110,6 +4110,7 @@ static void game_frame_inner(MgApp *app, float alpha)
                            g->ia_ok && g->ia.active != IA_NONE ? (int)g->ia.hot[g->ia.active].kind : -1,
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
+    probe.npc_world = g->npcs_ok;
     probe.show_stats = s->show_stats;
     probe.scene_kind = g->scene ? (int)scene_kind(g->scene) : -1;
     probe.lift_count = lift_count(g);

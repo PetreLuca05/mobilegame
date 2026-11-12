@@ -152,6 +152,7 @@ typedef struct AutotestProbe {
     const struct BookPack *book;
     struct BookProgress *progress; /* NULL: no progress file open */
     uint32_t ui_draws, passes;     /* last frame's */
+    bool npc_world; /* set after the initialiser: this scene simulates NPCs (the institute without a pack has none) */
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */

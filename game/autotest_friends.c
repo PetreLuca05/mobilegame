@@ -487,6 +487,11 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         done = l->open == (o->n != 0.0);
         break;
     case OP_NPC:
+        if (!p->npc_world) { /* the institute without a pack simulates nobody: both sides trivially agree */
+            mg_log_info("autotest friends: no NPC world in this scene, nothing to compare");
+            done = true;
+            break;
+        }
         for (uint32_t tick = t->npc_seen; tick > 0 && !done && tick + 3000 > t->npc_seen; tick -= 600) {
             char mine_file[48], theirs[48], a[24], b[24];
             SDL_snprintf(mine_file, sizeof(mine_file), "npc_%u_%s", tick, t->role);

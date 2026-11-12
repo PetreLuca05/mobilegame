@@ -1306,6 +1306,7 @@ static void member_remove(MenuLibrary *L, int i)
         lib_people_walker_stop(L->people, i);
     }
     L->gone = *mb;
+    mb->t_left = 0.0; /* the slot's next member times its own leave (a stale one read as a 64 s walk) */
     L->gone.t_shut = 0.0;
 }
 
@@ -1362,6 +1363,7 @@ static void member_leave(MenuLibrary *L, int j)
     mb->ghost = false;
     switch (mb->state) {
     case LM_WALK_IN:
+        mb->t_left = L->clock; /* never sat: the leave is timed from here (pack / stand time the others) */
         mb->state = LM_WALK_OUT; /* turns round where it is */
         mb->at.path[0] = mb->home, mb->at.path[1] = mb->at.stand, mb->at.path_n = 2;
         if (L->people) {
@@ -1754,13 +1756,19 @@ static void walk_arrived(MenuLibrary *L, int i, bool in)
 }
 
 /* §8 the off-screen speed rule (the real projection, this frame's camera), before the frame's ticks: a walker off screen walks at
- * offscreen_speed, on screen at walk_speed; my hero only on a trip (its onboarding walk-in is a normal walk) */
+ * offscreen_speed, on screen at walk_speed; my hero only on a trip (its onboarding walk-in is a normal walk). Another player in a
+ * bay hidden by the middle wall is off screen too (else a friend walking home behind it is never removed until arrival). */
+static int bay_at(const MenuLibrary *L, HMM_Vec2 p);
+
 static void walker_speeds(MenuLibrary *L)
 {
     for (int i = 0; i < LIB_MEMBERS; i++) {
         LibMember *mb = &L->seat[i];
         const bool walking = mb->state == LM_WALK_IN || mb->state == LM_WALK_OUT;
-        mb->off_now = walking && menu_library_off_screen(L, HMM_V3(mb->pos.X, 1.0f, mb->pos.Y));
+        /* another player also counts as off screen while the middle wall hides their bay (bays_occluded: not drawn); my hero
+         * keeps the screen-x rule, which starts the trip's camera */
+        const bool hidden = i != 0 && L->has_vp && !((L->visible >> bay_at(L, mb->pos)) & 1u);
+        mb->off_now = walking && (hidden || menu_library_off_screen(L, HMM_V3(mb->pos.X, 1.0f, mb->pos.Y)));
         mb->speed_now = (mb->off_now && (i != 0 || L->trav.phase != LT_NONE)) ? L->sc.travel.offscreen_speed : L->sc.study.walk_speed;
         if (walking && L->people) {
             lib_people_walker_speed(L->people, i, mb->speed_now);
