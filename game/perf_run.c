@@ -183,7 +183,9 @@ static void write_report(const PerfRun *p, MgApp *app)
         const bool below = hz0 > 0.0f && fps < 0.9 * (double)SDL_min(hz0, hz_end);
         /* above the refresh: nothing paced the loop (display asleep or locked, window hidden): not comparable with a paced run */
         const bool above = hz0 > 0.0f && fps > 1.1 * (double)SDL_max(hz0, hz_end);
-        const bool unpaced = above || p->asleep_s > 0 || p->occluded_frames > 0 || p->unfocused_frames > 0;
+        /* a covered or inactive window for more than 0.5 % of the recording (18 frames a minute; a raise lands a frame or two late) */
+        const double away_max = 0.005 * (double)fr.frames;
+        const bool unpaced = above || p->asleep_s > 0 || (double)p->occluded_frames > away_max || (double)p->unfocused_frames > away_max;
         const char *why = changed ? "the display refresh changed during the recording"
                           : unpaced ? "the loop was not paced by the screen (display asleep or locked, window hidden, or another app active)" : "";
         PUT("\"valid\": %s,\n\"invalid_why\": \"%s\",\n\"display_hz_start\": %.1f,\n\"display_hz_end\": %.1f,\n\"fps\": %.1f,\n\"paced_below_refresh\": %s,\n"
@@ -304,6 +306,14 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
         prof_set_enabled(true);
         gfx_set_gpu_timing(app->gfx, true);
     }
+#if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
+    /* desktop: macOS paces the window to the screen only while it is the active app; launched from a terminal or an editor it starts
+     * behind it, so ask for the front once a second while it is not (a run that stays behind is still marked invalid) */
+    if (app->window && !(SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) && app->time >= p->next_raise) {
+        p->next_raise = app->time + 1.0;
+        SDL_RaiseWindow(app->window);
+    }
+#endif
     if (!p->recording && app->time - p->start >= SETTLE_SECONDS) {
         p->recording = true;
         p->record_start = app->time;
