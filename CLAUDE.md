@@ -667,7 +667,8 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   from my seat (sent from the Friends page: once back on the menu, within 30 s) towards the friend's table's side; an incoming
   invite's panel shows at once and a plane lands in front of my seat (the hero glances; it shrinks after `rest_s` or when the panel
   closes); the cat watches a flying one. `--autotest library` 15.7-15.9 (stages 20-22, `AutotestOut.lib_demo` / `lib_plane`; pictures
-  docs/autotest/library/step7/); the camera's speed on a trip is judged by the trip's own clock (`LibTravel.cam_clock`).
+  docs/autotest/library/step7/); the camera's speed on a trip is judged by the trip's own clock (`LibTravel.cam_clock`). Desktop
+  `--lib-demo-id ID` gives `--lib-demo-join`'s friend another id (so another own table).
 
 ## Book content (BOOK-1)
 
