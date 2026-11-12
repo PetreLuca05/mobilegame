@@ -158,6 +158,10 @@ typedef struct Game {
     MenuLibrary lib;       /* LIB-1: the menu's backdrop */
     float lib_free[2];     /* the menu camera's free rect (pt, left right) before the Locker opened (§11) */
     bool lib_demo_join;    /* --lib-demo-join: a friend joins at 1 s and leaves at 10 s (no network) */
+    bool lib_worst_trip;   /* --lib-worst-trip: the §8 trip's worst case for draws (see lib_worst_trip) */
+    double lib_wt_t0;
+    bool lib_wt_plane;
+    double lib_wt_pan_t;
     double lib_demo_t0;
     int lib_demo_ctl;      /* --autotest library: the demo lobby by scenario (-1: the timeline above; 0 me alone, 1 + a friend, 2 a guest
                             * of hostA with mateB) */
@@ -290,6 +294,7 @@ typedef struct Game {
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
     double fs_t0;
+    uint32_t fs_draws_max, fs_tris_max;
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -967,6 +972,7 @@ bool game_init(MgApp *app)
             g->force_reduced = true; /* tests: Animații interfață = Reduse for this run, never written to prefs */
         }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
+        g->lib_worst_trip = has_flag(app->argc, app->argv, "--lib-worst-trip");
         g->lib_demo_ctl = -1;
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
         if (arg_value(app->argc, app->argv, "--lib-bay")) { /* desktop: my table in another bay of the hall (pictures) */
@@ -2663,6 +2669,56 @@ static void move_frame(Game *g, MgApp *app)
 }
 
 /* FE_MAP: the island instead of the menu's backdrop */
+/* --lib-worst-trip (desktop, no network): the §8 trip's worst case for draws. My table is bay 0 (--lib-bay 0); at 1 s I join a
+ * host whose own table is the diagonal bay 3 (the pan crosses two bays); when the pan starts two more friends join that lobby
+ * and walk in from their own tables (bays 1 and 2), and a paper plane flies in: a full lobby of four, two friends walking, a
+ * plane in the air, the camera panning; the cat roams as it likes. --log-frame-stats records draws and the worst frame. */
+static void lib_worst_trip(Game *g, MgApp *app)
+{
+    if (g->lib_wt_t0 <= 0.0) {
+        g->lib_wt_t0 = app->time;
+    }
+    static char ids[3][16]; /* host (bay 3), friends from bays 1 and 2 */
+    if (!ids[0][0]) {
+        const int want[3] = {3, 1, 2};
+        for (int k = 0; k < 3; k++) {
+            for (int n = 0; n < 1000 && !ids[k][0]; n++) {
+                char id[16];
+                SDL_snprintf(id, sizeof(id), "wt%d", n);
+                if (menu_library_home_bay(&g->lib, id) == want[k]) {
+                    SDL_snprintf(ids[k], sizeof(ids[k]), "%s", id);
+                }
+            }
+        }
+        mg_log_info("lib-worst-trip: host %s (bay 3), friends %s (bay 1) and %s (bay 2)", ids[0], ids[1], ids[2]);
+    }
+    const double t = app->time - g->lib_wt_t0;
+    if (g->lib.trav.phase == LT_PAN && g->lib_wt_pan_t <= 0.0) {
+        g->lib_wt_pan_t = t; /* the two friends join as the pan starts: they walk during it */
+    }
+    const bool seated = has_flag(app->argc, app->argv, "--lib-worst-seated"); /* the friends join at 1.5 s: seated at the host's
+                                                                                * table when the pan starts (its own worst case) */
+    const int n = t < 1.0 ? 1 : seated ? (t < 1.5 ? 2 : 4) : (g->lib_wt_pan_t <= 0.0 || t < g->lib_wt_pan_t) ? 2 : 4;
+    const char *row_ids[4] = {n == 1 ? "me" : ids[0], "me", ids[1], ids[2]};
+    static const char *const names[4] = {"Mihai", "Petre", "Ana", "Ioana"};
+    g->lobby_visible = true;
+    g->menu_row_count = n;
+    for (int i = 0; i < n; i++) {
+        LobbyRow *r = &g->menu_rows[i];
+        SDL_zerop(r);
+        SDL_snprintf(r->id, sizeof(r->id), "%s", row_ids[i]);
+        SDL_snprintf(r->name, sizeof(r->name), "%s", n == 1 ? "Petre" : names[i]);
+        r->skin = AVATAR_DEFAULT_SKIN;
+        r->skin.suit = (uint8_t)(i * 3), r->skin.hair = (uint8_t)(1 + i), r->skin.accessory = (uint8_t)(i % 3);
+        r->me = SDL_strcmp(r->id, "me") == 0;
+        r->host = i == 0;
+    }
+    if (!g->lib_wt_plane && g->lib.trav.phase == LT_PAN) {
+        g->lib_wt_plane = menu_library_receive_plane(&g->lib, ids[1]);
+        mg_log_info("lib-worst-trip: the pan started at %.2f s, a plane flies in (%s)", t, g->lib_wt_plane ? "yes" : "no");
+    }
+}
+
 static void map_flow(Game *g, MgApp *app)
 {
     (void)menu_world(g, app); /* off: the hospital's crowd stops */
@@ -2816,6 +2872,8 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = SDL_strcmp(id, "me") == 0;
             r->host = sc == 2 ? i == 0 : r->me;
         }
+    } else if (g->lib_worst_trip && f->state == FE_MAIN_MENU) { /* the trip's worst case for draws (perf, desktop) */
+        lib_worst_trip(g, app);
     } else if (g->lib_demo_join && f->state == FE_MAIN_MENU) { /* LIB-1 tests: a friend walks in, studies, walks out */
         if (g->lib_demo_t0 <= 0.0) {
             g->lib_demo_t0 = app->time;
@@ -4239,6 +4297,8 @@ static void game_frame_inner(MgApp *app, float alpha)
         GfxStats st;
         gfx_get_stats(app->gfx, &st);
         g->fs_n++, g->fs_draws += st.draws, g->fs_tris += st.tris;
+        g->fs_draws_max = SDL_max(g->fs_draws_max, st.draws);
+        g->fs_tris_max = SDL_max(g->fs_tris_max, st.tris);
         for (int b = 0; b < 4; b++) {
             g->fs_vis[b] += (g->lib.visible >> b) & 1u;
         }
@@ -4250,6 +4310,8 @@ static void game_frame_inner(MgApp *app, float alpha)
             mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
                         (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible");
             g->fs_t0 = app->time;
+            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0, (int)g->lib.trav.phase);
+            g->fs_draws_max = g->fs_tris_max = 0;
             mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
                         g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
                         g->fs_cat[GFX_CAT_AVATAR] / n / 1000.0, g->fs_cat[GFX_CAT_OTHER] / n / 1000.0);

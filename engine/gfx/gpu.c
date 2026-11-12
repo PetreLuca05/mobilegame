@@ -1763,7 +1763,7 @@ static bool instanceable(const GfxContext *g, const DrawItem *d)
 }
 
 /* bucket | kind | x-ray-always | two 16-bit fields | position:
- *   opaque: mesh then depth (front to back), so one mesh's instances are neighbours
+ *   opaque: mesh, solid / dithered, then depth (front to back), so one mesh's instances on one pipeline are neighbours
  *   blended: depth (back to front) then mesh; ground sprites all sort as "farthest"; GFX_MAT_ALPHA: mesh, then back to front */
 static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
 {
@@ -1777,8 +1777,9 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
     } else if (d->kind == GFX_MAT_SPRITE || d->kind == GFX_MAT_TEXT || d->kind == GFX_MAT_GHOST || d->kind == GFX_MAT_GLASS) {
         a = (d->flags & GFX_DRAW_GROUND) ? 0u : 65535u - near_first;
         b = d->mesh;
-    } else {
-        a = d->mesh;
+    } else { /* the mesh, then its pipeline (solid / dithered), then depth: one mesh's solid instances are one run and its dithered
+              * ones another however they interleave in depth (people fading in or out, LOD crossfades: a body mesh in 7 runs was 2) */
+        a = ((uint64_t)d->mesh << 1) | (d->hide > 0.0f ? 1u : 0u); /* GFX_MAX_MESHES 512: 10 bits */
         b = near_first >> 1; /* 15 bits: 1/128 m */
     }
     (void)g;
