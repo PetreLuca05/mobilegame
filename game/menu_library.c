@@ -261,6 +261,8 @@ static void npcs_reset(MenuLibrary *L)
         if (d->seated && d->read_s[1] > 0.0f) {
             lib_study_read_range(&n->study, d->read_s[0], d->read_s[1]);
         }
+        lib_fidget_init(&n->fid, &L->fcfg, 0x6A09E667u + 131u * (uint32_t)i); /* §6: the readers sip and have a phone (seatNow / addPhone) */
+        SDL_zero(n->fo);
     }
 }
 
@@ -386,6 +388,10 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         cJSON *root = cJSON_ParseWithLength((const char *)a->data, a->size);
         L->nav = ARENA_PUSH(scratch, LibNav, 1);
         L->dress_ok = lib_dressing_config(&L->dress_cfg, root);
+        L->fid_ok = lib_fidget_config(&L->fcfg, root); /* §6: life.fidget, life.mug, life.plane, study, the hall's walls */
+        if (!L->fid_ok) {
+            mg_log_error("library: life.fidget did not parse: nobody fidgets");
+        }
         if (!lib_nav_bake(L->nav, root)) {
             L->nav = NULL;
         } else {
@@ -428,6 +434,10 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->pencil = upload(L, g, scratch, &mb, "pencil");
     L->puff = upload(L, g, scratch, &mb, "puff");
     L->zee = upload(L, g, scratch, &mb, "zee");
+    L->phone = upload(L, g, scratch, &mb, "phone");
+    L->phone_glow = upload(L, g, scratch, &mb, "phone_glow");
+    L->anger = upload(L, g, scratch, &mb, "anger");
+    L->plane = upload(L, g, scratch, &mb, "paper_plane");
     arena_reset_to(scratch, mark);
     L->ok = rooms && L->shell != GFX_MESH_NONE && L->chair != GFX_MESH_NONE && L->door != GFX_MESH_NONE &&
             L->cart != GFX_MESH_NONE && L->book_open != GFX_MESH_NONE && L->book_closed != GFX_MESH_NONE && L->leaf_a != GFX_MESH_NONE &&
@@ -447,6 +457,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     L->seat[0].blend = L->seat[0].study_w = L->seat[0].place = 1.0f;
     L->seat[0].pos = L->tseats[0].pos, L->seat[0].yaw_deg = L->tseats[0].yaw_deg;
     lib_study_init(&L->seat[0].study, &L->sc, 1u);
+    lib_fidget_init(&L->seat[0].fid, &L->fcfg, 2u);
     L->gfx = g;
     dressing_init(L, g, scratch);
     mg_log_info("library: %s (%d seats, %d extra chairs), %u vertices welded to %u", L->ok ? "loaded" : "FAILED", LIB_SEATS, L->sc.extra_n, L->weld_in,
@@ -497,6 +508,7 @@ void menu_library_add_guest(MenuLibrary *L, int bay, const AvatarLook *look)
     n->pos = d->seat_pos, n->yaw_deg = d->seat_yaw_deg;
     n->look = *look;
     lib_study_init(&n->study, &L->sc, 977u);
+    lib_fidget_init(&n->fid, &L->fcfg, 978u);
 }
 
 void menu_library_set_table(MenuLibrary *L, int bay)
@@ -767,6 +779,136 @@ void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, fl
     study_pose_at(L, seat->pos, seat->yaw_deg, st, w, p);
 }
 
+/* ------------------------------------------------------------------ §6 life at the table */
+
+/* One tick of a seated reader (the prototype's Av.pose study block): an action runs to its end and the read waits; between
+ * actions the timer runs only while reading (not in a turn), and an action starts only in the first 80 % of a read. A rage's
+ * ball joins the hall's balls the tick it leaves the hand. Deterministic: the seed and the tick count only. */
+static void seat_life(MenuLibrary *L, LibStudy *st, LibFidget *f, HMM_Vec2 seat_pos, float seat_yaw_deg, float dt)
+{
+    if (!L->fid_ok) {
+        lib_study_step(st, &L->sc, dt);
+        return;
+    }
+    lib_fidget_reading(f, st->hand_l, st->hand_r, st->head_yaw, st->head_pitch);
+    f->late = st->turning || st->t >= 0.8f * st->read_len;
+    const LibAction was = f->act;
+    if (L->debug_fidget != LA_NONE && f->act == LA_NONE && !st->turning) { /* --debug fidget <name>: whenever it is free */
+        lib_fidget_force(f, &L->fcfg, L->debug_fidget);
+    }
+    lib_fidget_step(f, &L->fcfg, dt, !st->turning);
+    if (f->act != LA_NONE && f->act != was) {
+        L->fidget_seen[f->act]++;
+    }
+    if (f->released) {
+        const float yw = HMM_AngleDeg(seat_yaw_deg);
+        lib_balls_throw(&L->balls, &L->fcfg, lib_seat_to_hall(seat_pos, yw, f->rel_pos), lib_seat_dir_to_hall(yw, f->rel_vel));
+    }
+    if (!lib_fidget_busy(f)) {
+        lib_study_step(st, &L->sc, dt);
+    }
+}
+
+/* The pose while an action plays: its hands, head and lean replace the reading pose's (w: the study blend) */
+static void fidget_pose(const MenuLibrary *L, const LibFidgetOut *fo, float w, AvatarPose *p)
+{
+    if (fo->w <= 0.0f) {
+        return;
+    }
+    const LibScene *s = &L->sc;
+    p->lean = (s->study.lean + fo->lean) * w;
+    p->head_pitch = -(s->study.head_pitch + fo->head_pitch) * w; /* AvatarPose: + looks up */
+    p->head_yaw = fo->head_yaw * w;
+    p->body_yaw = 0.25f * fo->head_yaw * w; /* the prototype: the body turns a quarter of the head */
+    p->hand_l = fo->hand_l, p->hand_r = fo->hand_r;
+}
+
+/* creator_t eases towards 0 and takes ~20 s to underflow: below this the Locker is closed (the hero's loop runs again) */
+#define LOCKER_PAUSE 1e-3f
+#define LIB_TICK (1.0 / 60.0)
+#define LIB_TICKS_MAX 6 /* per frame; a longer stall drops the rest (the room goes on from where it was) */
+
+/* The members' reads, turns and fidgets and the paper balls on fixed 60 Hz ticks (the background readers tick with the
+ * people). The Locker pauses the hero's loop (the prototype: nothing runs while it looks at the camera). */
+static void table_life(MenuLibrary *L, float dt)
+{
+    const LibScene *s = &L->sc;
+    L->life_acc += dt;
+    int n = 0;
+    while (L->life_acc >= LIB_TICK && n < LIB_TICKS_MAX) {
+        for (int i = 0; i < LIB_SEATS; i++) {
+            LibMember *mb = &L->seat[i];
+            if (mb->state != LM_STUDY || (i == 0 && L->creator_t > LOCKER_PAUSE)) {
+                continue;
+            }
+            if (L->debug_turns && i == 0 && !mb->study.turning && !lib_fidget_busy(&mb->fid) && mb->study.t >= 2.5f - s->study.turn_s) {
+                lib_study_force_turn(&mb->study);
+            }
+            seat_life(L, &mb->study, &mb->fid, L->tseats[i].pos, L->tseats[i].yaw_deg, (float)LIB_TICK);
+        }
+        if (L->fid_ok) {
+            lib_balls_step(&L->balls, &L->fcfg, (float)LIB_TICK);
+        }
+        n++;
+        L->life_acc -= LIB_TICK;
+    }
+    if (n == LIB_TICKS_MAX && L->life_acc > LIB_TICK) {
+        L->life_acc = LIB_TICK;
+    }
+}
+
+bool menu_library_fidget(MenuLibrary *L, int i, LibAction a)
+{
+    if (!L->fid_ok || i < 0 || i >= LIB_SEATS || L->seat[i].state != LM_STUDY || a <= LA_NONE || a >= LA_COUNT) {
+        return false;
+    }
+    if (a == LA_PET) {
+        return menu_library_pet(L, i);
+    }
+    LibMember *mb = &L->seat[i];
+    lib_study_cancel_turn(&mb->study, &L->sc);
+    lib_fidget_reading(&mb->fid, mb->study.hand_l, mb->study.hand_r, mb->study.head_yaw, mb->study.head_pitch);
+    if (mb->fid.act == LA_PHONE) {
+        mb->fid.phone_on_table = mb->fid.phone_dst;
+    }
+    lib_fidget_force(&mb->fid, &L->fcfg, a);
+    L->fidget_seen[mb->fid.act]++;
+    return true;
+}
+
+bool menu_library_pet(MenuLibrary *L, int i)
+{
+    if (!L->fid_ok || i < 0 || i >= LIB_SEATS || L->seat[i].state != LM_STUDY || L->seat[i].place < 1.0f) {
+        return false;
+    }
+    LibMember *mb = &L->seat[i];
+    if (mb->fid.act == LA_THROW) {
+        return false;
+    }
+    lib_study_cancel_turn(&mb->study, &L->sc); /* the prototype: st.turn = false */
+    lib_fidget_reading(&mb->fid, mb->study.hand_l, mb->study.hand_r, mb->study.head_yaw, mb->study.head_pitch);
+    if (!lib_fidget_pet(&mb->fid, &L->fcfg)) {
+        return false;
+    }
+    L->fidget_seen[LA_PET]++;
+    return true;
+}
+
+float menu_library_pet_weight(const MenuLibrary *L, int i)
+{
+    return i >= 0 && i < LIB_SEATS && L->seat[i].state == LM_STUDY ? L->seat[i].fo.pet : 0.0f;
+}
+
+void menu_library_phone_place(MenuLibrary *L, bool on_table)
+{
+    for (int i = 0; i < LIB_SEATS; i++) {
+        lib_fidget_set_phone(&L->seat[i].fid, on_table);
+    }
+    for (int i = 0; i < L->sc.npc_n; i++) {
+        lib_fidget_set_phone(&L->npc[i].fid, on_table);
+    }
+}
+
 /* ------------------------------------------------------------------ the seats' people */
 
 #define CHAIR_NEAR_M 1.6f  /* a walker this close to its seat: the chair slides back */
@@ -826,6 +968,7 @@ static void member_start(MenuLibrary *L, int i, const LobbyRow *r, int place, bo
     mb->host = r->host;
     mb->listed = true;
     lib_study_init(&mb->study, &L->sc, id_hash(r->id) + (uint32_t)i);
+    lib_fidget_init(&mb->fid, &L->fcfg, (id_hash(r->id) + (uint32_t)i) ^ 0x9E3779B9u); /* §6: its own bag and timer */
     mb->t_join = seated ? 0.0 : L->clock; /* seated at once: no walk to check */
     if (seated) {
         mb->state = LM_STUDY;
@@ -902,6 +1045,7 @@ void menu_library_roster(MenuLibrary *L, const LobbyRow *rows, int n, bool snap)
             mb->state = LM_STAND;
         } else if (mb->state == LM_STUDY || mb->state == LM_SETTLE) {
             mb->state = LM_PACK; /* the things go back into the hands first */
+            lib_fidget_cancel(&mb->fid, &L->fcfg); /* the prototype's leavePlayer: no fidget, the phone pocketed */
         }
     }
 }
@@ -915,6 +1059,7 @@ void menu_library_hero_walk_in(MenuLibrary *L)
     mb->pos = path_at(&L->tseats[0], 0.0f, &dir);
     mb->yaw_deg = yaw_of(dir);
     SDL_zero(mb->anim);
+    lib_fidget_init(&mb->fid, &L->fcfg, 2u);
     if (L->people) {
         lib_people_walker_start(L->people, 0, mb->pos, HMM_AngleDeg(mb->yaw_deg), L->tseats[0].stand);
     }
@@ -1017,16 +1162,12 @@ static void member_step(MenuLibrary *L, int i, float dt)
         break;
     case LM_STUDY:
         mb->pos = seat->pos;
-        if (i == 0 && L->creator_t > 0.0f) { /* the Locker: sits up to 0.15 and the loop pauses */
+        if (i == 0 && L->creator_t > LOCKER_PAUSE) { /* the Locker: sits up to 0.15 and the loop pauses */
             mb->study_w = 1.0f - (1.0f - CREATOR_STUDY_W) * L->creator_t;
             break;
         }
         mb->study_w = approach(mb->study_w, 1.0f, STUDY_IN_RATE, dt);
-        if (L->debug_turns && i == 0 && !mb->study.turning && mb->study.t >= 2.5f - s->study.turn_s) {
-            lib_study_force_turn(&mb->study);
-        }
-        lib_study_step(&mb->study, s, dt);
-        break;
+        break; /* the read, the turns and the fidgets: table_life's fixed ticks */
     case LM_STAND: /* up out of the seat: the chair slides back as the body rises */
         mb->study_w = approach(mb->study_w, 0.0f, STUDY_OUT_RATE, dt);
         if (mb->t_left <= 0.0) {
@@ -1066,6 +1207,8 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
         p->carry_l = s->study.items.carry_left, p->carry_r = s->study.items.carry_right;
         p->hands_w = 1.0f; /* the seated half of the sit blend */
         p->hand_l = s->study.items.seated_left, p->hand_r = s->study.items.seated_right;
+    } else if (st == LM_STUDY) {
+        fidget_pose(L, &mb->fo, mb->study_w, p); /* §6 */
     } else if (st == LM_SETTLE || st == LM_PACK) {
         const float pl = mb->place, ha = s->study.items.hands_arrive, hl = s->study.items.hands_leave;
         const HMM_Vec3 tl = HMM_AddV3(s->mug_rest, s->mug_grip), tr = s->study.items.book_hand;
@@ -1091,8 +1234,6 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
 
 /* ------------------------------------------------------------------ background people (§9) */
 
-#define LIB_TICK (1.0 / 60.0)
-#define LIB_TICKS_MAX 6 /* per frame; a longer stall drops the rest (the room goes on from where it was) */
 #define LIB_TAU 6.28318531f
 
 static int bay_at(const MenuLibrary *L, HMM_Vec2 p)
@@ -1134,8 +1275,8 @@ static void people_ticks(MenuLibrary *L, float dt)
     const LibScene *s = &L->sc;
     if (!L->people) { /* no grid: the seated read, nobody walks */
         for (int i = 0; i < s->npc_n; i++) {
-            if (s->npcs[i].seated) {
-                lib_study_step(&L->npc[i].study, s, dt);
+            if (s->npcs[i].seated && !s->npcs[i].sleeper) {
+                seat_life(L, &L->npc[i].study, &L->npc[i].fid, s->npcs[i].seat_pos, s->npcs[i].seat_yaw_deg, dt);
             }
         }
         return;
@@ -1162,8 +1303,8 @@ static void people_ticks(MenuLibrary *L, float dt)
                 continue;
             }
             const int rate = (L->visible >> bay_at(L, d->seat_pos)) & 1u ? 1 : LIB_PEOPLE_SLOW;
-            if ((tick + (uint32_t)i) % (uint32_t)rate == 0) {
-                lib_study_step(&L->npc[i].study, s, (float)LIB_TICK * (float)rate);
+            if ((tick + (uint32_t)i) % (uint32_t)rate == 0) { /* §6: reads, turns and fidgets */
+                seat_life(L, &L->npc[i].study, &L->npc[i].fid, d->seat_pos, d->seat_yaw_deg, (float)LIB_TICK * (float)rate);
             }
         }
         n++;
@@ -1291,6 +1432,84 @@ static HMM_Vec3 sleeper_head(const MenuLibrary *L, const LibNpcDef *d)
     return HMM_V3(d->seat_pos.X + hz * HMM_SinF(yw), hy, d->seat_pos.Y + hz * HMM_CosF(yw));
 }
 
+/* a seat-frame offset (metres) as a world vector */
+static HMM_Vec3 seat_vec(const MenuLibrary *L, float yaw_deg, HMM_Vec3 v)
+{
+    const HMM_Vec3 h = lib_seat_dir_to_hall(HMM_AngleDeg(yaw_deg), v);
+    return HMM_MulV3F(HMM_MulM4V4(L->rot, HMM_V4V(h, 0.0f)).XYZ, L->scale);
+}
+
+/* §6 drawn for one seated reader: the mug (on the table, or by its handle in the hand), the pencil (resting, or riding the
+ * writing hand), the phone and its additive screen light (one instanced alpha draw for all of them), the steam over a standing
+ * mug, the paper ball and the plane in the hand, the anger mark and the call's three dots over the head. Puffs (steam, dots,
+ * balls) are one instanced unlit draw of `puff`. */
+static void draw_seat_things(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,
+                             const AvatarAnim *anim, HMM_Vec2 pos, float yaw_deg, const LibFidgetOut *fo)
+{
+    const LibFidgetCfg *c = &L->fcfg;
+    const HMM_Mat4 seat = placed(L, pos.X, pos.Y, yaw_deg);
+    const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
+    HMM_Mat4 mm = HMM_MulM4(seat, fo->mug);
+    gfx_draw(g, L->mug, &mm, &toon, 0);
+    mm = HMM_MulM4(seat, fo->pencil);
+    gfx_draw(g, L->pencil, &mm, &toon, 0);
+    if (fo->phone_drawn && L->phone != GFX_MESH_NONE) {
+        mm = HMM_MulM4(seat, fo->phone);
+        gfx_draw(g, L->phone, &mm, &toon, 0);
+        if (fo->glow > 0.0f && L->phone_glow != GFX_MESH_NONE) { /* a child of the phone, its length with how far it is raised */
+            const HMM_Mat4 gm = HMM_MulM4(mm, HMM_Scale(HMM_V3(1.0f, 1.0f, fo->glow_len)));
+            const GfxMaterial glow = mat_alpha_add(HMM_V4(1, 1, 1, fo->glow));
+            gfx_draw(g, L->phone_glow, &gm, &glow, 0);
+        }
+    }
+    if (L->puff != GFX_MESH_NONE) {
+        const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
+        if (fo->steam) { /* 3 puffs rising from the mug standing on the table */
+            for (int k = 0; k < c->mug.steam_puffs; k++) {
+                HMM_Vec3 sp;
+                const float size = lib_mug_steam(c, L->clock, k, &sp);
+                if (size > 1e-4f) {
+                    const HMM_Mat4 pm = HMM_MulM4(HMM_MulM4(seat, HMM_Translate(sp)), HMM_Scale(HMM_V3(size, size, size)));
+                    gfx_draw(g, L->puff, &pm, &white, 0);
+                }
+            }
+        }
+        if (fo->ball_in_hand) { /* the crumpled page (the prototype's 0xf4efe0) */
+            const float r = c->rage.radius;
+            const HMM_Mat4 bm = HMM_MulM4(HMM_MulM4(seat, HMM_Translate(fo->ball_pos)), HMM_Scale(HMM_V3(r, r, r)));
+            const GfxMaterial paper = mat_unlit(HMM_V4(0xF4 / 255.0f, 0xEF / 255.0f, 0xE0 / 255.0f, 1.0f));
+            gfx_draw(g, L->puff, &bm, &paper, 0);
+        }
+    }
+    if (fo->plane_in_hand && L->plane != GFX_MESH_NONE) { /* the prototype: at the hand + 5 cm, turned (-0.3, 0.2, 0) in the hall */
+        const HMM_Vec3 at = lib_seat_to_hall(pos, HMM_AngleDeg(yaw_deg), fo->plane_pos);
+        const HMM_Mat4 pm = HMM_MulM4(HMM_MulM4(HMM_MulM4(L->xf, HMM_Translate(at)), HMM_Rotate_RH(-0.3f, HMM_V3(1, 0, 0))),
+                                      HMM_Rotate_RH(0.2f, HMM_V3(0, 1, 0)));
+        gfx_draw(g, L->plane, &pm, &toon, 0);
+    }
+    if (fo->anger || fo->dots) { /* over the drawn head: the prototype's offsets from its centre, in the seat frame */
+        AvatarSolved sv;
+        avatar_solve(m, look, p, anim, &sv);
+        const HMM_Mat4 turn = HMM_MulM4(L->rot, HMM_Rotate_RH(HMM_AngleDeg(yaw_deg), HMM_V3(0, 1, 0)));
+        if (fo->anger && L->anger != GFX_MESH_NONE) {
+            const HMM_Vec3 off = HMM_V3(c->rage.mark.X, fo->anger_pos.Y - fo->head_y, fo->anger_pos.Z - fo->head_z);
+            const float sc = fo->anger_scale * L->scale;
+            const HMM_Mat4 am = HMM_MulM4(HMM_MulM4(HMM_Translate(HMM_AddV3(sv.head_centre, seat_vec(L, yaw_deg, off))), turn), HMM_Scale(HMM_V3(sc, sc, sc)));
+            gfx_draw(g, L->anger, &am, &toon, 0);
+        }
+        if (fo->dots && L->puff != GFX_MESH_NONE) {
+            const GfxMaterial white = mat_unlit(HMM_V4(1, 1, 1, 1));
+            const float sc = 0.03f * L->scale;
+            for (int k = 0; k < 3; k++) {
+                const HMM_Vec3 d = lib_fidget_dot(fo, k);
+                const HMM_Vec3 off = HMM_V3(d.X, d.Y - fo->head_y, d.Z - fo->head_z);
+                const HMM_Mat4 dm = HMM_MulM4(HMM_Translate(HMM_AddV3(sv.head_centre, seat_vec(L, yaw_deg, off))), HMM_Scale(HMM_V3(sc, sc, sc)));
+                gfx_draw(g, L->puff, &dm, &white, 0);
+            }
+        }
+    }
+}
+
 static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i, float dt)
 {
     const LibNpcDef *d = &L->sc.npcs[i];
@@ -1305,6 +1524,10 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
     AvatarPose p;
     if (d->seated) {
         study_pose_at(L, d->seat_pos, d->seat_yaw_deg, &n->study, 1.0f, &p);
+        if (!d->sleeper && L->fid_ok) {
+            lib_fidget_eval(&n->fid, &L->fcfg, &n->fo);
+            fidget_pose(L, &n->fo, 1.0f, &p); /* §6 */
+        }
         if (d->sleeper && L->pcfg) { /* leaned onto the table, head rolled, slow deep breathing */
             const LibPeopleCfg *c = L->pcfg;
             p.lean = c->sleeper.lean;
@@ -1344,6 +1567,9 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
         p0.small_own = true; /* eyes, hands, accessories: swapped at the middle, not dithered (each dithered part is a batch) */
         p0.hide_small = lk < 0.5f ? p.hide : 1.0f;
         avatar_draw(g, m, &n->look, &p0, &n->anim, NULL);
+    }
+    if (d->seated && !d->sleeper && L->fid_ok) { /* §6: the reader's mug, pencil, phone and the rest */
+        draw_seat_things(L, g, m, &n->look, &p, &n->anim, d->seat_pos, d->seat_yaw_deg, &n->fo);
     }
     const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
     if (pp && (pp->read > 0.25f || pp->has_book)) { /* the book in the hands: open (read), or closed under the left hand / on the desk */
@@ -1520,6 +1746,10 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     for (int i = 0; i < LIB_SEATS; i++) {
         member_step(L, i, dt);
     }
+    {
+        PROF_SCOPE("lib.fidget");
+        table_life(L, dt);
+    }
     for (int b = 0; b < LIB_BAYS; b++) { /* each bay's door: open while anyone walking is near it (lib_people's ticks) */
         if (L->people && b < L->pcfg->bays) {
             L->door_open[b] = L->people->door[b];
@@ -1594,15 +1824,23 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         if (on_table) { /* the open book (popping to full width over 0.15 of the settle), the mug, the pencil */
             const float pop = mb->state == LM_SETTLE ? mg_lerpf(0.3f, 1.0f, mg_clampf((mb->place - swap) / 0.15f, 0.0f, 1.0f)) : 1.0f;
             draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop, L->dress[L->table_bay].cover[L->seat_phys[i]]);
-            const HMM_Mat4 mm = at_seat(L, seat, s->mug_rest), pm = at_seat(L, seat, s->pencil_rest);
-            gfx_draw(g, L->mug, &mm, &room, 0);
-            gfx_draw(g, L->pencil, &pm, &room, 0);
+            if (!L->fid_ok) {
+                const HMM_Mat4 mm = at_seat(L, seat, s->mug_rest), pm = at_seat(L, seat, s->pencil_rest);
+                gfx_draw(g, L->mug, &mm, &room, 0);
+                gfx_draw(g, L->pencil, &pm, &room, 0);
+            }
+        }
+        if (L->fid_ok) {
+            lib_fidget_eval(&mb->fid, &L->fcfg, &mb->fo); /* idle outside STUDY: the things at rest */
         }
         AvatarPose p;
         member_pose(L, i, &p);
         const AvatarLook look = i == 0 ? *hero : avatar_look_from_skin(mb->skin);
         avatar_animate(m, &mb->anim, &p, dt);
         avatar_draw(g, m, &look, &p, &mb->anim, NULL);
+        if (on_table && L->fid_ok) { /* §6 */
+            draw_seat_things(L, g, m, &look, &p, &mb->anim, seat->pos, seat->yaw_deg, &mb->fo);
+        }
         if (!on_table) { /* carried: the closed book 7.5 cm under the right hand, the mug by its handle in the left */
             AvatarSolved sv;
             avatar_solve(m, &look, &p, &mb->anim, &sv);
@@ -1618,5 +1856,17 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     npc_lods(L, dt);
     for (int i = 0; i < s->npc_n; i++) {
         npc_draw(L, g, m, i, dt);
+    }
+    if (L->fid_ok && L->puff != GFX_MESH_NONE) { /* §6: the paper balls flying or resting, in bays on screen */
+        const GfxMaterial paper = mat_unlit(HMM_V4(0xF4 / 255.0f, 0xEF / 255.0f, 0xE0 / 255.0f, 1.0f));
+        for (int k = 0; k < L->balls.n; k++) {
+            const LibBall *b = &L->balls.b[k];
+            if (!((L->visible >> bay_at(L, HMM_V2(b->p.X, b->p.Z))) & 1u)) {
+                continue;
+            }
+            const float r = lib_ball_size(&L->fcfg, b);
+            const HMM_Mat4 bm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(b->p), HMM_Scale(HMM_V3(r, r, r))));
+            gfx_draw(g, L->puff, &bm, &paper, 0);
+        }
     }
 }

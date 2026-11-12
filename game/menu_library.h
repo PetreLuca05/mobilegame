@@ -13,6 +13,7 @@
 #include "lib_nav.h"
 #include "lib_people.h"
 #include "lib_dressing.h"
+#include "lib_fidget.h"
 #include "platform/app.h"
 
 #define LIB_SEATS 4
@@ -37,6 +38,8 @@ typedef struct LibNpc {
     float yaw_deg, cart_yaw_deg;
     AvatarAnim anim;
     LibStudy study;
+    LibFidget fid;     /* §6: a seated reader's table life (not the sleeper's) */
+    LibFidgetOut fo;   /* this frame's (drawn readers) */
     bool drawn; /* this frame: in a bay on screen and not outside the door */
 } LibNpc;
 
@@ -116,6 +119,8 @@ typedef struct LibMember {
     float yaw_deg;
     AvatarAnim anim;
     LibStudy study;
+    LibFidget fid;    /* §6: runs while studying (fixed ticks with the study); cancelled when it packs */
+    LibFidgetOut fo;  /* this frame's */
     /* what tests check (the library's clock, s): the walk in and the walk out */
     double t_join, t_seated, t_left, t_gone, t_shut;
     double t_door_clear; /* after t_gone: the last moment a background NPC held the door (the shut is timed from then) */
@@ -195,6 +200,14 @@ typedef struct MenuLibrary {
     double clock;  /* seconds the room has been drawn (tests' timestamps) */
     LibMember gone; /* the last walker to leave, for tests (its seat may already be taken again) */
     bool debug_turns; /* --debug turn-page: a page every 2.5 s */
+    /* §6 life at the table: every seated reader's fidgets (members and the round tables' readers), the paper balls */
+    LibFidgetCfg fcfg;
+    bool fid_ok;
+    LibBalls balls;
+    double life_acc;     /* the members' study + fidget run on fixed 60 Hz ticks (seed + tick) */
+    GfxMeshId phone, phone_glow, anger, plane;
+    uint32_t fidget_seen[LA_COUNT]; /* actions started anywhere in the hall since load (tests) */
+    LibAction debug_fidget;         /* --debug fidget <name>: every seated reader plays it each time it is free (0 off) */
     int closeup;      /* --lib-closeup [side]: the camera on seat 0's book (tests, pictures); 2 from the side, level */
 } MenuLibrary;
 
@@ -229,6 +242,15 @@ LibCamPose menu_library_cam_pose(const MenuLibrary *L);
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt);
 /* Seat i's (1..3) member for its name chip: false if nobody is drawn there. `top` is above the head. */
 bool menu_library_chip(const MenuLibrary *L, const AvatarMeshes *m, int i, HMM_Vec3 *top, const char **name, bool *host);
+/* §6: seat i (0 the hero) starts action `a` now if it is studying (--debug fidget, tests; THROW for a paper plane, §8).
+ * PET goes through menu_library_pet. False: nobody studying there. */
+bool menu_library_fidget(MenuLibrary *L, int i, LibAction a);
+/* §10's hook for the cat: seat i's player plays `pet` (a page turn is cut short; not over a throw). False: not started. */
+bool menu_library_pet(MenuLibrary *L, int i);
+/* Seat i's pet weight 0..1 this frame (the cat squashes, lifts its head and hearts rise while it is > 0). */
+float menu_library_pet_weight(const MenuLibrary *L, int i);
+/* --debug phone-place <table|pocket>: every seated reader's phone (between uses) */
+void menu_library_phone_place(MenuLibrary *L, bool on_table);
 /* A point in seat i's frame (forward +z, the reader's left +x, y from the floor) in the world. */
 HMM_Vec3 menu_library_seat_point(const MenuLibrary *L, int i, HMM_Vec3 p);
 /* The pose of an avatar studying in seat i (w 0 sits up .. 1 bent over the book). */

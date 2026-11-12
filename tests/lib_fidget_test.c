@@ -75,6 +75,79 @@ static void run_action(LibFidget *f, const LibFidgetCfg *c, LibAction a, Run *r)
 
 static bool inside_rect(const float *o, HMM_Vec3 p) { return p.X > o[0] && p.X < o[2] && p.Z > o[1] && p.Z < o[3]; }
 
+/* A seated reader as the menu runs it (menu_library.c seat_life), with a stand-in study loop: reads of study.read_s (here a
+ * fixed 9..15 s from the seed), page turns of 1.15 s; the timer runs only while reading, an action starts only in the first
+ * 80 % of a read, the read waits while one plays. Fixed 60 Hz ticks. Records what started and a hash of everything drawn. */
+typedef struct Sim {
+    LibFidget f;
+    uint32_t rng;
+    bool turning;
+    float t, read_len;
+    int started[LA_COUNT];
+    int starts, bad_start, short_gap;
+    float gap;          /* reading seconds (can_start) since the last action ended */
+    float min_gap;
+    LibAction seq[4096];
+    int seq_n;
+    uint32_t hash;
+} Sim;
+
+static uint32_t sim_rnd(Sim *m)
+{
+    m->rng ^= m->rng << 13, m->rng ^= m->rng >> 17, m->rng ^= m->rng << 5;
+    return m->rng;
+}
+
+static void hash_f(uint32_t *h, float v)
+{
+    uint32_t u;
+    memcpy(&u, &v, 4);
+    *h = (*h ^ u) * 16777619u;
+}
+
+static void sim_run(Sim *m, const LibFidgetCfg *c, uint32_t seed, int ticks)
+{
+    memset(m, 0, sizeof *m);
+    lib_fidget_init(&m->f, c, seed);
+    m->rng = seed * 747796405u + 1u;
+    m->read_len = 9.0f + 6.0f * (float)(sim_rnd(m) >> 8) / 16777216.0f;
+    m->hash = 2166136261u;
+    m->min_gap = 1e9f;
+    m->gap = -1.0f; /* the first wait is first_s */
+    for (int k = 0; k < ticks; k++) {
+        lib_fidget_reading(&m->f, c->study.hand_left, c->study.hand_right, 0.1f, 0.02f);
+        m->f.late = m->turning || m->t >= 0.8f * m->read_len;
+        const LibAction was = m->f.act;
+        const bool can = !m->turning;
+        lib_fidget_step(&m->f, c, DT, can);
+        if (m->f.act != LA_NONE && m->f.act != was) {
+            m->started[m->f.act]++;
+            if (m->seq_n < 4096) m->seq[m->seq_n++] = m->f.act;
+            if (m->turning || m->t >= 0.8f * m->read_len) m->bad_start++;
+            if (m->gap >= 0.0f) {
+                if (m->gap < m->min_gap) m->min_gap = m->gap;
+                if (m->gap < c->every_s[0] - 1.5f * DT) m->short_gap++;
+            }
+            m->starts++;
+        }
+        if (was != LA_NONE && m->f.act == LA_NONE) m->gap = 0.0f;
+        if (!lib_fidget_busy(&m->f)) {
+            if (can && m->gap >= 0.0f && was == LA_NONE) m->gap += DT;
+            m->t += DT; /* the study: read, then turn */
+            if (!m->turning && m->t >= m->read_len) m->turning = true, m->t = 0.0f;
+            else if (m->turning && m->t >= 1.15f) {
+                m->turning = false, m->t = 0.0f;
+                m->read_len = 9.0f + 6.0f * (float)(sim_rnd(m) >> 8) / 16777216.0f;
+            }
+        }
+        LibFidgetOut o;
+        lib_fidget_eval(&m->f, c, &o);
+        hash_f(&m->hash, o.hand_l.X), hash_f(&m->hash, o.hand_r.Y), hash_f(&m->hash, o.head_yaw), hash_f(&m->hash, o.glow);
+        hash_f(&m->hash, o.phone.Elements[3][0]), hash_f(&m->hash, o.mug.Elements[3][1]);
+        m->hash = (m->hash ^ (uint32_t)m->f.act) * 16777619u;
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "assets/menu/library.scene.json";
@@ -348,6 +421,76 @@ int main(int argc, char **argv)
         check(bs.n == cfg.rage.max, "balls: at most rage.max", buf);
         for (int k = 0; k < (int)(cfg.rage.life_s * 60.0f) + 2; k++) lib_balls_step(&bs, c, DT);
         check(bs.n == 0, "balls: gone after life_s", "");
+    }
+
+    /* 9. long seeded runs of a reader (the menu's loop): every action of the bag reached on its own, the bag's rules on what
+     * started, nothing during a turn or the last 20 % of a read, pet and throw never on their own, gaps >= every_s[0] */
+    {
+        static Sim sim, again;
+        int total[LA_COUNT] = {0}, bad_start = 0, short_gap = 0, rage_bad = 0, blocks = 0, starts = 0;
+        float min_gap = 1e9f;
+        const int hours = 2, readers = 8;
+        for (int r = 0; r < readers; r++) {
+            sim_run(&sim, c, 5000u + (uint32_t)r * 77u, 60 * 3600 * hours / readers);
+            for (int a = 1; a < LA_COUNT; a++) total[a] += sim.started[a];
+            bad_start += sim.bad_start, short_gap += sim.short_gap, starts += sim.starts;
+            min_gap = sim.min_gap < min_gap ? sim.min_gap : min_gap;
+            for (int b = 0; b + cfg.bag_n <= sim.seq_n; b += cfg.bag_n) { /* each draw is one bag item: one rage per bag */
+                int rage = 0;
+                for (int k = 0; k < cfg.bag_n; k++) rage += sim.seq[b + k] == LA_RAGE;
+                rage_bad += rage != 1;
+                blocks++;
+            }
+        }
+        char got[400] = "";
+        bool all = true;
+        for (int i = 0; i < cfg.bag_n; i++) all &= total[cfg.bag[i]] > 0;
+        for (int a = 1; a < LA_COUNT; a++)
+            snprintf(got + strlen(got), sizeof got - strlen(got), "%s %d ", lib_action_name((LibAction)a), total[a]);
+        snprintf(buf, sizeof buf, "%d readers x %.2f h: %d actions: %s", readers, (double)hours / readers, starts, got);
+        check(all, "long run: every action of the bag reached on its own (buzz with the phone left on the table)", buf);
+        check(total[LA_PET] == 0 && total[LA_THROW] == 0, "long run: pet and throw never start on their own", "");
+        snprintf(buf, sizeof buf, "%d bags, %d without exactly one rage", blocks, rage_bad);
+        check(rage_bad == 0 && blocks > 20, "long run: one rage in every bag of started actions", buf);
+        snprintf(buf, sizeof buf, "%d bad starts, shortest reading gap %.2f s (every_s %.0f..%.0f), %d short", bad_start, min_gap,
+                 cfg.every_s[0], cfg.every_s[1], short_gap);
+        check(bad_start == 0 && short_gap == 0, "long run: nothing starts in a turn or the last 20 % of a read; gaps >= every_s[0]", buf);
+        /* determinism: the same seed and tick count give the same everything; another seed does not */
+        sim_run(&sim, c, 4321u, 60 * 900);
+        sim_run(&again, c, 4321u, 60 * 900);
+        const uint32_t h1 = sim.hash, h2 = again.hash;
+        sim_run(&again, c, 4322u, 60 * 900);
+        snprintf(buf, sizeof buf, "hash %08x %08x, other seed %08x", h1, h2, again.hash);
+        check(h1 == h2 && again.hash != h1, "determinism: seed + tick", buf);
+    }
+
+    /* 10. the hooks: pet (the cat) replaces anything but a throw; cancel (packing) stops it and pockets the phone */
+    {
+        LibFidget f;
+        lib_fidget_init(&f, c, 31);
+        lib_fidget_reading(&f, c->study.hand_left, c->study.hand_right, 0.0f, 0.0f);
+        lib_fidget_force(&f, c, LA_THROW);
+        const bool refused = !lib_fidget_pet(&f, c) && f.act == LA_THROW;
+        lib_fidget_force(&f, c, LA_NOTES);
+        const bool took = lib_fidget_pet(&f, c) && f.act == LA_PET && f.t == 0.0f;
+        float wmax = 0.0f;
+        LibFidgetOut o;
+        while (lib_fidget_busy(&f)) {
+            lib_fidget_eval(&f, c, &o);
+            wmax = o.pet > wmax ? o.pet : wmax;
+            lib_fidget_step(&f, c, DT, false);
+        }
+        lib_fidget_eval(&f, c, &o);
+        snprintf(buf, sizeof buf, "pet weight up to %.2f, %.2f after", wmax, o.pet);
+        check(refused && took && wmax > 0.95f && o.pet == 0.0f, "pet: refused over a throw, replaces notes, weight rises and ends at 0", buf);
+        lib_fidget_set_phone(&f, true);
+        lib_fidget_force(&f, c, LA_CALL);
+        lib_fidget_step(&f, c, 0.5f, false);
+        lib_fidget_cancel(&f, c);
+        lib_fidget_eval(&f, c, &o);
+        snprintf(buf, sizeof buf, "next wait %.1f s", f.wait);
+        check(!lib_fidget_busy(&f) && !f.phone_on_table && !o.phone_drawn && f.wait >= c->every_s[0] && f.wait <= c->every_s[1],
+              "cancel: no action, the phone in the pocket, the timer from every_s", buf);
     }
 
     cJSON_Delete(root);

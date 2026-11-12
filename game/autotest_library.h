@@ -19,6 +19,11 @@
  *      with --ui-motion reduced: no move; the map at once under a 300 ms cross-dissolve (the run ends there)
  *  10  run with --frontend welcome (tools/library_test.sh): the library behind onboarding, the hero walks in once
  *  11  the table and its seats inside the free rect (checked in 1; tools/library_test.sh: iPhone both ways, iPad)
+ *  12  §6 life at the table: every action forced on the hero in turn (the phone in the pocket and on the table): its things
+ *      appear only in it (phone, glow, anger mark, pencil in the hand, mug in the hand, ball, call dots, plane, pet), the
+ *      hands end on the pages, buzz rattles, decline stops the rattle on the press, call puts the phone back where it was,
+ *      the rage's ball comes to rest in the hall outside every obstacle; every action of the bag seen in the hall
+ *      (fidget_seen) and the main pass <= 46 draws throughout (§14 at rest)
  * The two-instance version of 4 and 5 (a real friend, a real kick) runs in tools/friends2_test.sh. */
 #ifndef MG_AUTOTEST_LIBRARY_H
 #define MG_AUTOTEST_LIBRARY_H
@@ -53,6 +58,16 @@ typedef struct LibraryTest {
     double door_clear; /* the last moment a background NPC was at my table's door (after the friend left) */
     bool canary;    /* the third Maps / Back: one stale camera frame injected into the Back, which must be caught */
     bool acts_skip; /* a short run (onboarding, Reduse): the acts are not judged */
+    /* §6: every action forced on the hero in turn (fidget_run) */
+    int fk, fsub;
+    double fat;
+    uint32_t fseen;        /* bits: phone, glow, anger, pencil, mug, ball, dots, plane, pet, rattle (fidget_flags) */
+    bool f_rattle_late;    /* decline: the rattle after the press */
+    bool f_phone_was;
+    int f_balls;           /* balls before the rage */
+    uint32_t draws_max;    /* worst main-pass draws while the hero fidgets at rest (§14: <= 46) */
+    float f_hand_end;      /* the worst distance of a hand from the page at an action's end */
+    float f_hand_last;     /* this action's, on its last frame */
     char npc_why[160];
     char why[200];
 } LibraryTest;

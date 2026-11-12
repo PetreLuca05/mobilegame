@@ -9,6 +9,7 @@
 #include "avatar.h"
 #include "lobby.h"
 #include "lib_nav.h"
+#include "lib_fidget.h"
 #include "core/assets.h"
 #include "cJSON.h"
 
@@ -321,6 +322,190 @@ static int move_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary 
     return 0;
 }
 
+/* §6 (§15.5): every action forced on the hero in turn. Per action: the things that may show, the things that must show, and
+ * where its phone lies (1 pocket, 2 table). */
+enum {
+    FF_PHONE = 1, FF_GLOW = 2, FF_ANGER = 4, FF_PENCIL = 8, FF_MUG = 16, FF_BALL = 32, FF_DOTS = 64, FF_PLANE = 128, FF_PET = 256,
+    FF_RATTLE = 512
+};
+static const struct {
+    LibAction a;
+    int phone;
+    uint32_t must, may;
+} k_fplan[] = {
+    {LA_SIP, 1, FF_MUG, FF_MUG},
+    {LA_NOTES, 1, FF_PENCIL, FF_PENCIL},
+    {LA_PHONE, 1, FF_PHONE | FF_GLOW, FF_PHONE | FF_GLOW},
+    {LA_BUZZ, 2, FF_PHONE | FF_GLOW | FF_RATTLE, FF_PHONE | FF_GLOW | FF_RATTLE},
+    {LA_CALL, 2, FF_PHONE | FF_DOTS | FF_RATTLE, FF_PHONE | FF_GLOW | FF_DOTS | FF_RATTLE},
+    {LA_CALL, 1, FF_PHONE | FF_DOTS, FF_PHONE | FF_DOTS},
+    {LA_DECLINE, 2, FF_PHONE | FF_RATTLE, FF_PHONE | FF_GLOW | FF_RATTLE},
+    {LA_STRETCH, 1, 0, 0},
+    {LA_THINK, 1, 0, 0},
+    {LA_GLANCE, 1, 0, 0},
+    {LA_RAGE, 1, FF_ANGER | FF_BALL, FF_ANGER | FF_BALL},
+    {LA_PET, 1, FF_PET, FF_PET},
+    {LA_THROW, 1, FF_PLANE, FF_PLANE},
+};
+#define FPLAN_N ((int)(sizeof(k_fplan) / sizeof(k_fplan[0])))
+
+static uint32_t fidget_flags(const LibFidgetOut *o)
+{
+    return (o->phone_drawn ? FF_PHONE : 0u) | (o->glow > 0.0f ? FF_GLOW : 0u) | (o->anger ? FF_ANGER : 0u) | (o->pencil_in_hand ? FF_PENCIL : 0u) |
+           (o->mug_in_hand ? FF_MUG : 0u) | (o->ball_in_hand ? FF_BALL : 0u) | (o->dots ? FF_DOTS : 0u) | (o->plane_in_hand ? FF_PLANE : 0u) |
+           (o->pet > 0.0f ? FF_PET : 0u) | (o->rattle ? FF_RATTLE : 0u);
+}
+
+/* a resting ball: inside the hall's side walls and its bay's walls, outside every obstacle (the study table's rect only from
+ * the floor: on its top is fine) */
+static bool ball_ok(const LibFidgetCfg *c, const LibBall *b, char *why, size_t n)
+{
+    const float r = c->rage.radius;
+    if (b->p.X < c->x_min + 0.1f || b->p.X > c->x_max - 0.1f) {
+        SDL_snprintf(why, n, "x %.2f outside the hall", (double)b->p.X);
+        return false;
+    }
+    const int bay = lib_fidget_bay_of(c, b->p.X, b->p.Z);
+    if (b->p.Z < c->bz[bay] + c->z_back + 0.1f || b->p.Z > c->bz[bay] + c->z_front - 0.1f) {
+        SDL_snprintf(why, n, "z %.2f outside bay %d", (double)b->p.Z, bay);
+        return false;
+    }
+    for (int k = 0; k < c->obst_n; k++) {
+        const float *o = c->obst[k];
+        if (c->obst_table[k] && b->p.Y > 0.5f) {
+            continue;
+        }
+        if (b->p.X > o[0] && b->p.X < o[2] && b->p.Z > o[1] && b->p.Z < o[3]) {
+            SDL_snprintf(why, n, "(%.2f, %.2f, %.2f) inside obstacle %d", (double)b->p.X, (double)b->p.Y, (double)b->p.Z, k);
+            return false;
+        }
+    }
+    if (b->p.Y > r + 1e-3f && fabsf(b->p.Y - (c->table_top_y + r)) > 1e-3f) {
+        SDL_snprintf(why, n, "resting in the air at y %.3f", (double)b->p.Y);
+        return false;
+    }
+    return true;
+}
+
+static int fidget_run(LibraryTest *t, const MenuLibrary *L, const AutotestProbe *p, AutotestOut *out, double now)
+{
+    const LibMember *h = &L->seat[0];
+    if (!L->fid_ok) {
+        return failf(t, "fidget: life.fidget did not load");
+    }
+    t->draws_max = p->draws > t->draws_max ? p->draws : t->draws_max;
+    if (t->fk >= FPLAN_N) {
+        static const LibAction extra[2] = {LA_PET, LA_THROW};
+        char missing[160] = "", seen[400] = "";
+        for (int i = 0; i < L->fcfg.bag_n + 2; i++) {
+            const LibAction a = i < L->fcfg.bag_n ? (LibAction)L->fcfg.bag[i] : extra[i - L->fcfg.bag_n];
+            if (L->fidget_seen[a] == 0 && !SDL_strstr(missing, lib_action_name(a))) {
+                SDL_strlcat(missing, " ", sizeof(missing));
+                SDL_strlcat(missing, lib_action_name(a), sizeof(missing));
+            }
+        }
+        for (int a = 1; a < LA_COUNT; a++) {
+            char one[32];
+            SDL_snprintf(one, sizeof(one), " %s %u", lib_action_name((LibAction)a), L->fidget_seen[a]);
+            SDL_strlcat(seen, one, sizeof(seen));
+        }
+        mg_log_info("autotest library: 12 actions started in the hall (forced ones included):%s", seen);
+        if (missing[0]) {
+            return failf(t, "fidget: never seen:%s", missing);
+        }
+        if (t->draws_max > 46) {
+            return failf(t, "fidget: %u draws while fidgeting at rest (§14: <= 46)", t->draws_max);
+        }
+        mg_log_info("autotest library: 12 every action played on the hero with only its own things showing, hands back on the pages "
+                    "(worst %.4f m), worst %u draws at rest (<= 46) (ok)",
+                    (double)t->f_hand_end, t->draws_max);
+        return 1;
+    }
+    const LibAction a = k_fplan[t->fk].a;
+    switch (t->fsub) {
+    case 0: /* free and reading: ask for it (the phone placed first, the same frame) */
+        if (h->state != LM_STUDY || L->creator_t > 1e-3f) {
+            return now - t->fat > 5.0 ? failf(t, "fidget: the hero is not studying (state %d)", (int)h->state) : 0;
+        }
+        out->lib_phone = k_fplan[t->fk].phone;
+        out->lib_fidget = 1 + (int)a;
+        t->fseen = 0, t->f_rattle_late = false, t->f_hand_last = 0.0f;
+        t->f_phone_was = k_fplan[t->fk].phone == 2;
+        t->f_balls = L->balls.n;
+        t->fat = now;
+        t->fsub = 1;
+        return 0;
+    case 1: /* it plays */
+        if (h->fid.act == LA_NONE) {
+            if (t->fseen == 0 && now - t->fat < 0.5) {
+                return 0; /* not started yet (the probe is a frame behind) */
+            }
+            break;
+        }
+        if (now - t->fat > 15.0) {
+            return failf(t, "fidget: %s did not end", lib_action_name(a));
+        }
+        {
+            const LibAction want = a == LA_BUZZ && !t->f_phone_was ? LA_CALL : a;
+            if (h->fid.act != want) {
+                return failf(t, "fidget: forced %s, the hero plays %s", lib_action_name(a), lib_action_name(h->fid.act));
+            }
+        }
+        t->fseen |= fidget_flags(&h->fo) | 0x80000000u;
+        if (a == LA_DECLINE && h->fo.rattle && h->fid.t > L->fcfg.phone.decline[1] + 0.03f + 2.0f / (60.0f * h->fid.dur)) {
+            t->f_rattle_late = true;
+        }
+        { /* the last busy frame's hands against the reading hands they return to */
+            const float dl = HMM_LenV3(HMM_SubV3(h->fo.hand_l, h->study.hand_l)), dr = HMM_LenV3(HMM_SubV3(h->fo.hand_r, h->study.hand_r));
+            t->f_hand_last = fmaxf(dl, dr);
+        }
+        return 0;
+    case 2: /* the rage's ball comes to rest */
+    {
+        if (L->balls.n <= 0) {
+            return failf(t, "fidget: rage threw no ball");
+        }
+        const LibBall *b = &L->balls.b[L->balls.n - 1];
+        if (HMM_LenV3(b->v) > 0.02f) {
+            return now - t->fat > 10.0 ? failf(t, "fidget: the ball still moving %.2f m/s after 10 s", (double)HMM_LenV3(b->v)) : 0;
+        }
+        char why[120];
+        if (!ball_ok(&L->fcfg, b, why, sizeof(why))) {
+            return failf(t, "fidget: the ball came to rest badly: %s", why);
+        }
+        mg_log_info("autotest library: 12 rage: the ball rests at (%.2f, %.2f, %.2f) after %.2f s, in the hall, outside every obstacle (ok)",
+                    (double)b->p.X, (double)b->p.Y, (double)b->p.Z, now - t->fat);
+        t->fk++, t->fsub = 0, t->fat = now;
+        return 0;
+    }
+    default:
+        return 1;
+    }
+    /* it ended: judge it */
+    const uint32_t seen = t->fseen & 0x7FFFFFFFu, must = k_fplan[t->fk].must, may = k_fplan[t->fk].may;
+    mg_log_info("autotest library: 12 %s (phone %s): %.2f s, showed %03x (must %03x, may %03x), phone on the table after: %d", lib_action_name(a),
+                k_fplan[t->fk].phone == 2 ? "on the table" : "in the pocket", now - t->fat, seen, must, may, h->fid.phone_on_table);
+    if ((seen & must) != must || (seen & ~may)) {
+        return failf(t, "fidget: %s showed %03x (must %03x, may only %03x)", lib_action_name(a), seen, must, may);
+    }
+    t->f_hand_end = fmaxf(t->f_hand_end, t->f_hand_last);
+    if (t->f_hand_last > 0.01f) {
+        return failf(t, "fidget: %s ends with a hand %.4f m from the page", lib_action_name(a), (double)t->f_hand_last);
+    }
+    if (a == LA_DECLINE && t->f_rattle_late) {
+        return failf(t, "fidget: decline: the phone still rattles after the press");
+    }
+    if ((a == LA_CALL || a == LA_DECLINE || a == LA_BUZZ) && h->fid.phone_on_table != t->f_phone_was) {
+        return failf(t, "fidget: %s did not put the phone back where it was (table %d -> %d)", lib_action_name(a), t->f_phone_was, h->fid.phone_on_table);
+    }
+    if (a == LA_RAGE) {
+        t->fsub = 2, t->fat = now;
+        return 0;
+    }
+    t->fk++, t->fsub = 0, t->fat = now;
+    return 0;
+}
+
 int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
 {
     const MenuLibrary *L = p->library;
@@ -593,7 +778,13 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             return now - t->at > 3.0 ? failf(t, "locker: not back (creator %.2f, study %.2f)", (double)L->creator_t, (double)L->seat[0].study_w) : 0;
         }
         mg_log_info("autotest library: 9 Locker closed: back on the menu camera, bent over the book again (ok)");
-        return npc_done(t, L);
+        t->fat = now;
+        t->stage = 13;
+        return 0;
+    case 13: { /* 12: §6 life at the table */
+        const int r = fidget_run(t, L, p, out, now);
+        return r > 0 ? npc_done(t, L) : r;
+    }
     default:
         return 1;
     }
