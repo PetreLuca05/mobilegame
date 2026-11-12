@@ -97,6 +97,7 @@
 #include "world_data.h"
 #include "worldmap.h"
 
+typedef struct RebayTest RebayTest;
 typedef struct Game {
     Scene *scene;          /* the level scene built last (stays built after play until another kind is needed) */
     Arena level;           /* the level scene's memory: scene, nav, NPCs, interactables; reset on a scene switch */
@@ -290,6 +291,15 @@ typedef struct Game {
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
     bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
     uint32_t lib_ab_frame; /* --lib-wall-ab */
+    struct RebayTest {
+        bool on, watch_walk;
+        int stage, first_bay, seed_bay, keep, lobby, rows, watch_bay;
+        double t0, wait_until;
+        char id[16];
+        HMM_Vec2 hero, cam;
+    } rb; /* --autotest rebay */
+    int lib_open_kind;      /* §11: the next library open is the first after 1 a cold start / 2 a game (0 neither): it may move my table */
+    uint32_t lib_rebay_seed;
     uint32_t fs_n;          /* --log-frame-stats */
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
@@ -855,6 +865,7 @@ bool game_init(MgApp *app)
     kinematic_default_params(&g->kparams);
     prefs_load(&g->prefs, g->profile_name);
     g->settings = g->prefs.settings; /* per device */
+    g->lib_open_kind = 1; /* §11: the first library open after a cold start may move my table to the account's bay */
     ui_haptic_set_level((HapticLevel)g->settings.haptics);
     ui_haptics_init(); /* Core Haptics players are built off this thread: launch time does not change */
     if (!g->prefs.content_cleaned) { /* once: book files from builds that carried the pack (save older than v8) */
@@ -978,6 +989,16 @@ bool game_init(MgApp *app)
             g->force_reduced = true; /* tests: Animații interfață = Reduse for this run, never written to prefs */
         }
         g->lib_demo_join = has_flag(app->argc, app->argv, "--lib-demo-join") || (at && SDL_strcmp(at, "library") == 0);
+        if (at && SDL_strcmp(at, "rebay") == 0) { /* §11: the account's table bay (rebay_test) */
+            g->rb.on = true;
+            g->rb.watch_bay = g->rb.seed_bay = -1;
+            g->rb.rows = 1;
+            if (has_flag(app->argc, app->argv, "--rebay-cold")) { /* a cold start with an account whose bay is not remembered yet */
+                SDL_snprintf(g->rb.id, sizeof(g->rb.id), "rbacctD");
+                g->rb.seed_bay = 2;
+                g->rb.stage = 20;
+            }
+        }
         g->lib_worst_trip = has_flag(app->argc, app->argv, "--lib-worst-trip");
         g->lib_demo_ctl = -1;
         g->lib.closeup = has_flag(app->argc, app->argv, "--lib-closeup") ? (cu && SDL_strcmp(cu, "side") == 0 ? 2 : 1) : 0;
@@ -2349,6 +2370,308 @@ static void library_planes(Game *g, MgApp *app, bool on_menu)
     }
 }
 
+/* §11 my own table's bay per account (user decision): the account's remembered bay (prefs lib_bays), else its seed's. A library
+ * open may move my table there only when it is the first open after a cold start or after a game (g->lib_open_kind, set at boot
+ * and while playing, used up by every open) and I sit at my own table; it is then remembered and never moves again. A sign-in
+ * mid-menu, Back from the map, Settings / Friends or a friend's table never move it. */
+static int lib_bay_lookup(const Prefs *p, uint32_t seed)
+{
+    for (int i = 0; i < p->lib_bay_n; i++) {
+        if (p->lib_bay_seed[i] == seed) {
+            return p->lib_bay[i];
+        }
+    }
+    return -1;
+}
+
+static void lib_rebay_prepare(Game *g, MgApp *app, bool opened, bool account, uint32_t seed)
+{
+    const int stored = account ? lib_bay_lookup(&g->prefs, seed) : -1;
+    g->lib.stored_bay = stored;
+    if (!opened) {
+        g->lib.rebay_to = -1;
+        return;
+    }
+    const char *dbg = arg_value(app->argc, app->argv, "--lib-seed-bay"); /* tests: the account's seed bay forced (never vacuous) */
+    const int seed_bay = g->rb.on && g->rb.seed_bay >= 0 ? g->rb.seed_bay : dbg ? SDL_clamp(SDL_atoi(dbg), 0, 3) : lib_table_bay(seed, 4, -1);
+    g->lib.rebay_to = account && g->lib_open_kind != 0 ? (stored >= 0 ? stored : seed_bay) : -1;
+    g->lib.rebay_cold = g->lib_open_kind == 1;
+    g->lib_rebay_seed = seed;
+    g->lib_open_kind = 0; /* used up by this open, whatever it decides */
+}
+
+static void lib_rebay_done(Game *g)
+{
+    if (g->lib.rebay_applied && g->lib.stored_bay < 0 && g->lib.rebay_to >= 0) {
+        Prefs *p = &g->prefs;
+        if (p->lib_bay_n == PREFS_LIB_BAYS) { /* the oldest account on this device goes */
+            SDL_memmove(p->lib_bay_seed, p->lib_bay_seed + 1, sizeof(p->lib_bay_seed[0]) * (PREFS_LIB_BAYS - 1));
+            SDL_memmove(p->lib_bay, p->lib_bay + 1, sizeof(p->lib_bay[0]) * (PREFS_LIB_BAYS - 1));
+            p->lib_bay_n--;
+        }
+        p->lib_bay_seed[p->lib_bay_n] = g->lib_rebay_seed, p->lib_bay[p->lib_bay_n++] = g->lib.my_bay;
+        g->lib.stored_bay = g->lib.my_bay;
+        save_prefs(g);
+        mg_log_info("library: the account's table bay %d remembered on this device", g->lib.my_bay);
+    }
+    g->lib.rebay_to = -1;
+}
+
+/* --autotest rebay (user decision, §11 first-launch bay): the table moves to the account's bay only on the first library open after
+ * a cold start or a game, with me at my own table, once per account on a device. The test plays the account (rb.id) and the
+ * account's seed bay (forced, never the bay the table stands on) and reopens the library the way the menu does (leaving it for the
+ * map or a game, then back). Stages: fresh install, sign-in, 30 s with nothing moving; Back from the map; back from a game (moves,
+ * remembered); Back after the game; sign-out and in again with another seed bay (stays); a friend's table during a game return
+ * (stays), then alone back from a game (moves); friends in my lobby back from a game (everyone seated on the new bay at once). */
+static void rb_reopen(Game *g, int kind)
+{
+    g->menu_world_on = false; /* the next menu frame is an open, as after the map or a game */
+    g->lib_open_kind = kind;
+}
+
+static bool rb_fail(Game *g, MgApp *app, const char *why)
+{
+    mg_log_error("autotest rebay: FAILED at stage %d: %s", g->rb.stage, why);
+    mg_log_info("AUTOTEST FAILED");
+    app->quit_requested = true;
+    g->rb.on = false;
+    return false;
+}
+
+/* nothing of my table moves: its bay, the hero's place, the camera's framing point, no trip */
+static bool rb_still(Game *g, MgApp *app, int bay)
+{
+    const MenuLibrary *L = &g->lib;
+    char why[160];
+    if (L->table_bay != bay || L->my_bay != bay || L->trav.phase != LT_NONE ||
+        HMM_LenV2(HMM_SubV2(L->seat[0].pos, g->rb.hero)) > 1e-4f || HMM_LenV2(HMM_SubV2(L->cam_at, g->rb.cam)) > 1e-4f) {
+        SDL_snprintf(why, sizeof(why), "moved: table bay %d / mine %d (expected %d), trip %d, hero %.3f m, camera %.3f m", L->table_bay,
+                     L->my_bay, bay, (int)L->trav.phase, (double)HMM_LenV2(HMM_SubV2(L->seat[0].pos, g->rb.hero)),
+                     (double)HMM_LenV2(HMM_SubV2(L->cam_at, g->rb.cam)));
+        return rb_fail(g, app, why);
+    }
+    return true;
+}
+
+static void rb_mark(Game *g)
+{
+    g->rb.hero = g->lib.seat[0].pos;
+    g->rb.cam = g->lib.cam_at;
+}
+
+/* the open's first frame: my table on `bay`, the hero and every member seated there, nobody walking, no trip */
+static bool rb_opened_on(Game *g, MgApp *app, int bay, int members)
+{
+    const MenuLibrary *L = &g->lib;
+    char why[160];
+    int seated = 0, walking = 0;
+    for (int i = 0; i < LIB_SEATS; i++) {
+        const int st = L->seat[i].state;
+        seated += st == LM_STUDY || st == LM_SIT || st == LM_SETTLE;
+        walking += st == LM_WALK_IN || st == LM_WALK_OUT || st == LM_STAND || st == LM_PACK;
+    }
+    if (L->table_bay != bay || L->my_bay != bay || L->trav.phase != LT_NONE || walking || seated != members) {
+        SDL_snprintf(why, sizeof(why), "opened on bay %d / mine %d (expected %d), trip %d, %d seated (expected %d), %d walking", L->table_bay,
+                     L->my_bay, bay, (int)L->trav.phase, seated, members, walking);
+        return rb_fail(g, app, why);
+    }
+    return true;
+}
+
+static int rb_stored(const Game *g, const char *id) { return lib_bay_lookup(&g->prefs, lib_seed_of(id)); }
+
+static void rebay_test(Game *g, MgApp *app)
+{
+    RebayTest *t = &g->rb;
+    if (t->t0 <= 0.0) {
+        t->t0 = app->time;
+    }
+    const double now = app->time - t->t0;
+    const MenuLibrary *L = &g->lib;
+    char why[160];
+    if (now < t->wait_until) {
+        if (t->watch_bay >= 0 && !rb_still(g, app, t->watch_bay)) {
+            return;
+        }
+        if (t->watch_walk) { /* nobody walks between bays after the open (stage 9) */
+            for (int i = 0; i < LIB_SEATS; i++) {
+                if (L->seat[i].state == LM_WALK_IN || L->seat[i].state == LM_WALK_OUT) {
+                    rb_fail(g, app, "a member walks after the open");
+                    return;
+                }
+            }
+        }
+        return;
+    }
+    t->watch_bay = -1, t->watch_walk = false;
+    switch (t->stage) {
+    case 0: /* a fresh install: no account; the first open after the cold start */
+        t->first_bay = L->my_bay;
+        if (L->table_bay != t->first_bay || L->seat[0].state == LM_EMPTY) {
+            rb_fail(g, app, "the fresh install's table is not set");
+            return;
+        }
+        mg_log_info("autotest rebay: 0 fresh install: my table in bay %d", t->first_bay);
+        t->stage = 1, t->wait_until = now + 2.0;
+        break;
+    case 1: /* the sign-in arrives; the account's seed bay is another bay; 30 s in the menu: nothing moves */
+        SDL_snprintf(t->id, sizeof(t->id), "rbacctA");
+        t->seed_bay = (t->first_bay + 1) % 4;
+        rb_mark(g);
+        t->watch_bay = t->first_bay;
+        mg_log_info("autotest rebay: 1 signed in (seed bay %d): 30 s in the menu", t->seed_bay);
+        t->stage = 2, t->wait_until = now + 30.0;
+        break;
+    case 2:
+        if (rb_stored(g, t->id) >= 0) {
+            rb_fail(g, app, "a bay was remembered without a permitted open");
+            return;
+        }
+        mg_log_info("autotest rebay: 1 PASS: 30 s after the sign-in my table is still in bay %d, nothing moved", t->first_bay);
+        rb_reopen(g, 0); /* Back from the map */
+        t->stage = 3, t->wait_until = now + 0.05;
+        break;
+    case 3:
+        if (!rb_opened_on(g, app, t->first_bay, 1)) {
+            return;
+        }
+        mg_log_info("autotest rebay: 2 PASS: Back from the map opens on bay %d (not the account's)", t->first_bay);
+        rb_reopen(g, 2); /* back from a game */
+        t->stage = 4, t->wait_until = now + 0.05;
+        break;
+    case 4:
+        if (!rb_opened_on(g, app, t->seed_bay, 1)) {
+            return;
+        }
+        if (rb_stored(g, t->id) != t->seed_bay) {
+            rb_fail(g, app, "the account's bay was not remembered");
+            return;
+        }
+        mg_log_info("autotest rebay: 3 PASS: back from a game the library opens on the account's bay %d, hero seated, remembered",
+                    t->seed_bay);
+        rb_mark(g);
+        rb_reopen(g, 0); /* case 1: Back from the map after the game */
+        t->stage = 5, t->wait_until = now + 0.05;
+        break;
+    case 5:
+        if (!rb_opened_on(g, app, t->seed_bay, 1)) {
+            return;
+        }
+        mg_log_info("autotest rebay: 4 PASS: Back from the map after the game: still bay %d", t->seed_bay);
+        t->id[0] = 0; /* case 4: sign out ... */
+        rb_reopen(g, 2);
+        t->stage = 6, t->wait_until = now + 0.05;
+        break;
+    case 6: {
+        if (!rb_opened_on(g, app, t->seed_bay, 1)) {
+            return;
+        }
+        SDL_snprintf(t->id, sizeof(t->id), "rbacctA"); /* ... and in again; its seed would say another bay now */
+        const int remembered = t->seed_bay;
+        t->seed_bay = (remembered + 1) % 4;
+        rb_reopen(g, 2);
+        t->keep = remembered;
+        t->stage = 7, t->wait_until = now + 0.05;
+        break;
+    }
+    case 7:
+        if (!rb_opened_on(g, app, t->keep, 1)) {
+            return;
+        }
+        mg_log_info("autotest rebay: 5 PASS: sign-out and in again with the same account: bay %d kept (its seed now says %d)", t->keep,
+                    t->seed_bay);
+        SDL_snprintf(t->id, sizeof(t->id), "rbacctB"); /* case 2: another account, at a friend's table when the game returns */
+        t->seed_bay = (t->keep + 2) % 4;
+        t->lobby = 1, t->rows = 2;
+        rb_reopen(g, 2);
+        t->stage = 8, t->wait_until = now + 0.05;
+        break;
+    case 8:
+        if (L->my_bay != t->keep || L->table_bay == t->keep || rb_stored(g, t->id) >= 0) {
+            SDL_snprintf(why, sizeof(why), "at a friend's table: my bay %d (expected %d), table bay %d, remembered %d", L->my_bay, t->keep,
+                         L->table_bay, rb_stored(g, t->id));
+            rb_fail(g, app, why);
+            return;
+        }
+        mg_log_info("autotest rebay: 6 PASS: back from a game at a friend's table (bay %d): my own table stays in bay %d", L->table_bay,
+                    t->keep);
+        t->lobby = 0, t->rows = 1; /* Ieşi: back to my own table (a trip, not an open) */
+        t->stage = 9, t->wait_until = now + 0.05;
+        break;
+    case 9:
+        menu_library_travel_finish(&g->lib);
+        if (L->my_bay != t->keep || L->table_bay != t->keep) {
+            rb_fail(g, app, "leaving the friend's table moved my own table");
+            return;
+        }
+        rb_reopen(g, 0); /* Back from the map: still no move */
+        t->stage = 10, t->wait_until = now + 0.05;
+        break;
+    case 10:
+        if (!rb_opened_on(g, app, t->keep, 1)) {
+            return;
+        }
+        rb_reopen(g, 2); /* alone at my own table, back from a game: now it moves */
+        t->stage = 11, t->wait_until = now + 0.05;
+        break;
+    case 11:
+        if (!rb_opened_on(g, app, t->seed_bay, 1) || rb_stored(g, t->id) != t->seed_bay) {
+            if (g->rb.on) {
+                rb_fail(g, app, "the next open from a game at my own table did not move it");
+            }
+            return;
+        }
+        mg_log_info("autotest rebay: 7 PASS: the next open from a game at my own table puts it on the account's bay %d", t->seed_bay);
+        SDL_snprintf(t->id, sizeof(t->id), "rbacctC"); /* case 3: friends in my lobby when we all return from a game */
+        t->keep = t->seed_bay;
+        t->seed_bay = (t->keep + 1) % 4;
+        t->lobby = 2, t->rows = 3;
+        t->stage = 12, t->wait_until = now + 0.5; /* they sit at my table first */
+        break;
+    case 12:
+        menu_library_travel_finish(&g->lib);
+        rb_reopen(g, 2);
+        t->stage = 13, t->wait_until = now + 0.05;
+        break;
+    case 13:
+        if (!rb_opened_on(g, app, t->seed_bay, 3)) {
+            return;
+        }
+        rb_mark(g);
+        t->watch_bay = t->seed_bay, t->watch_walk = true; /* 2 s: nobody walks between bays, nothing moves */
+        t->stage = 14, t->wait_until = now + 2.0;
+        break;
+    case 20: /* the first open after a cold start, at my own table: the account's bay on the first frame, seated, no pop */
+        if (!rb_opened_on(g, app, t->seed_bay, 1) || rb_stored(g, t->id) != t->seed_bay) {
+            if (g->rb.on) {
+                rb_fail(g, app, "the cold start did not open on the account's bay");
+            }
+            return;
+        }
+        rb_mark(g);
+        t->watch_bay = t->seed_bay;
+        t->stage = 21, t->wait_until = now + 3.0;
+        break;
+    case 21:
+        mg_log_info("autotest rebay: 9 PASS: a cold start opens on the account's bay %d with the hero seated from the first frame, "
+                    "nothing moving for 3 s, remembered", t->seed_bay);
+        mg_log_info("AUTOTEST PASSED");
+        app->quit_requested = true;
+        t->on = false;
+        break;
+    case 14:
+        mg_log_info("autotest rebay: 8 PASS: friends in my lobby back from a game: the table opens on bay %d with all three seated, "
+                    "nobody walking",
+                    t->seed_bay);
+        mg_log_info("AUTOTEST PASSED");
+        app->quit_requested = true;
+        t->on = false;
+        break;
+    default:
+        break;
+    }
+}
+
 /* The main menu's backdrop (LIB-1): the library reading room, the hero studying in seat 0. Also behind
  * onboarding, Settings and Friends. The hospital is no longer loaded for the menu: a game builds it while
  * loading. */
@@ -2371,7 +2694,13 @@ static bool menu_world(Game *g, MgApp *app)
     { /* §5: my table is dressed from my lobby's seed: my user id (cached for the first frame), the name before any sign-in */
         const char *id = g->profile.user_id[0] ? g->profile.user_id : g->prefs.cache_user_id[0] ? g->prefs.cache_user_id
                          : g->profile.display_name[0] ? g->profile.display_name : g->prefs.cache_name;
+        bool account = g->profile.user_id[0] || g->prefs.cache_user_id[0];
+        if (g->rb.on) { /* --autotest rebay: the test is the account (the network's sign-in plays no part) */
+            id = g->rb.id[0] ? g->rb.id : "";
+            account = g->rb.id[0] != 0;
+        }
         menu_library_set_lobby_seed(&g->lib, lib_seed_of(id));
+        lib_rebay_prepare(g, app, opened, account, lib_seed_of(id));
     }
     { /* §8: the lobby's table (the host's), trips, arrivals and leavers; a full-screen page or Reduse: at once */
         const bool page = st == FE_SETTINGS || st == FE_FRIENDS || st == FE_CREATOR; /* the Locker too */
@@ -2379,6 +2708,7 @@ static bool menu_world(Game *g, MgApp *app)
             menu_library_travel_finish(&g->lib);
         }
         menu_library_lobby(&g->lib, g->menu_rows, g->lobby_visible ? g->menu_row_count : 0, opened, page || motion_reduced(g));
+        lib_rebay_done(g);
         if (g->lib.dissolve_armed && !page) { /* Reduse: this frame is kept and dissolved over the trip done at once (next frame) */
             gfx_dissolve_capture(app->gfx);
             g->dissolve_t0 = app->time;
@@ -2907,7 +3237,22 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = i == 0;
         }
     }
-    if (g->lib_demo_ctl >= 0 && f->state != FE_MAP) { /* --autotest library: the scenario the script asks for */
+    if (g->rb.on && f->state == FE_MAIN_MENU) { /* --autotest rebay: the lobby the stage asks for */
+        g->lobby_visible = true;
+        g->menu_row_count = g->rb.rows;
+        static const char *const ids[4][4] = {{"me"}, {"rbhost", "me"}, {"me", "rbf1", "rbf2"}, {"me"}};
+        const int k = g->rb.lobby; /* 0 me alone, 1 a guest at rbhost's, 2 hosting two friends */
+        for (int i = 0; i < g->rb.rows; i++) {
+            LobbyRow *r = &g->menu_rows[i];
+            SDL_zerop(r);
+            SDL_snprintf(r->id, sizeof(r->id), "%s", ids[k][i]);
+            SDL_snprintf(r->name, sizeof(r->name), "%s", i == 0 ? "A" : i == 1 ? "B" : "C");
+            r->skin = AVATAR_DEFAULT_SKIN;
+            r->skin.suit = (uint8_t)(i * 4);
+            r->me = SDL_strcmp(r->id, "me") == 0;
+            r->host = i == 0;
+        }
+    } else     if (g->lib_demo_ctl >= 0 && f->state != FE_MAP) { /* --autotest library: the scenario the script asks for */
         static const char *const ids[3] = {"me", "friend", "hostA"};
         static const char *const names[3] = {"Petre", "Ana", "Mihai"};
         const int sc = g->lib_demo_ctl;
@@ -2950,6 +3295,9 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         return;
     }
     const bool world_behind = menu_world(g, app);
+    if (g->rb.on && f->state == FE_MAIN_MENU) {
+        rebay_test(g, app);
+    }
     FrontendCtx ctx = {g->profile.display_name,
                        &g->profile.skin,
                        g->profile.guest || !g->profile_loaded,
@@ -4167,6 +4515,9 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->frame_alpha = alpha;
     GameSettings *s = &g->settings;
     ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
+    if (g->playing) {
+        g->lib_open_kind = 2; /* §11: the library's next open is after a game */
+    }
     ui_haptic_set_level((HapticLevel)s->haptics);
     if (g->npcs_ok && g->playing) {
         /* other autotests keep the world empty, so their numbers stay comparable */

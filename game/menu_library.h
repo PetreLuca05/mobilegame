@@ -221,6 +221,11 @@ typedef struct MenuLibrary {
     uint32_t lobby_seed;         /* the lobby I am in: its host's seed (mine when I host or am alone) */
     int my_bay;                  /* my own table: my seed's bay (§5), or --lib-bay */
     int force_bay;               /* --lib-bay N: my table there (-1 off) */
+    /* §11 my table's bay per account (the game decides, menu_library_lobby applies): stored_bay, the account's remembered bay (-1
+     * none); rebay_to, where a cold-start or from-a-game open may put my table (-1: this open may not move it); rebay_applied: the
+     * last open put it there with me at my own table */
+    int stored_bay, rebay_to;
+    bool rebay_applied, rebay_cold;
     bool table_set;              /* the lobby's table has been placed once */
     LibTravel trav;              /* §8 */
     LibPlane plane;              /* §8 */

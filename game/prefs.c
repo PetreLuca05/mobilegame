@@ -103,6 +103,16 @@ void prefs_load(Prefs *p, const char *profile)
     p->onboarding_done = flag(j, "onboarding_done", false);
     p->lib_walked_in = flag(j, "lib_walked_in", p->onboarding_done); /* an install from before §11 had its first launch */
     p->content_cleaned = flag(j, "content_cleaned", false);
+    p->lib_bay_n = 0;
+    const cJSON *lb = cJSON_GetObjectItemCaseSensitive(j, "lib_bays");
+    const cJSON *e = NULL;
+    cJSON_ArrayForEach(e, lb) {
+        const cJSON *sd = cJSON_GetObjectItemCaseSensitive(e, "seed"), *by = cJSON_GetObjectItemCaseSensitive(e, "bay");
+        if (p->lib_bay_n < PREFS_LIB_BAYS && cJSON_IsNumber(sd) && cJSON_IsNumber(by) && by->valueint >= 0 && by->valueint < 4) {
+            p->lib_bay_seed[p->lib_bay_n] = (uint32_t)sd->valuedouble;
+            p->lib_bay[p->lib_bay_n++] = by->valueint;
+        }
+    }
     p->lobby_open = flag(j, "lobby_open", true);
     text(j, "auth_provider", p->auth_provider, sizeof(p->auth_provider));
     const cJSON *pc = cJSON_GetObjectItemCaseSensitive(j, "profile_cache");
@@ -178,6 +188,15 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddBoolToObject(j, "onboarding_done", p->onboarding_done);
     cJSON_AddBoolToObject(j, "lib_walked_in", p->lib_walked_in);
     cJSON_AddBoolToObject(j, "content_cleaned", p->content_cleaned);
+    {
+        cJSON *lb = cJSON_AddArrayToObject(j, "lib_bays");
+        for (int i = 0; i < p->lib_bay_n; i++) {
+            cJSON *e = cJSON_CreateObject();
+            cJSON_AddNumberToObject(e, "seed", (double)p->lib_bay_seed[i]);
+            cJSON_AddNumberToObject(e, "bay", p->lib_bay[i]);
+            cJSON_AddItemToArray(lb, e);
+        }
+    }
     cJSON_AddBoolToObject(j, "lobby_open", p->lobby_open);
     cJSON_AddStringToObject(j, "auth_provider", p->auth_provider);
     if (p->has_profile_cache) {

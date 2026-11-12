@@ -51,6 +51,10 @@ for W in iphone iphone-flip ipad; do
   run library_fresh_$W env MG_WINDOW=$W $GAME --profile libfresh_$W --frontend welcome --autotest library
   if [ "$W" = iphone ]; then onb_pics _iphone; else rm -f "$PREF"/library_onb_*.png; fi
 done
+# §11 the account's table bay (user decision): moves only on the first open after a cold start or a game, at my own table, once
+rm -f "$PREF/rebay-"* "$PREF/rebaycold-"* 2>/dev/null
+run rebay $GAME --profile rebay --frontend menu --autotest rebay
+run rebay_cold $GAME --profile rebaycold --frontend menu --autotest rebay --rebay-cold
 for W in iphone iphone-flip ipad; do
   run lobbylayout_$W env MG_WINDOW=$W $GAME --autotest lobbylayout
 done

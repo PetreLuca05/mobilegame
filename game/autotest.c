@@ -9,12 +9,12 @@
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
-       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY, AUTOTEST_INSTITUTE, AUTOTEST_BOOKPEOPLE, AUTOTEST_MISSIONS, AUTOTEST_BOOK_UI, AUTOTEST_BOOK };
+       AUTOTEST_OFFLINE, AUTOTEST_FRIENDS, AUTOTEST_INTERACT, AUTOTEST_TEXT, AUTOTEST_HUDCLAMP, AUTOTEST_WORLDMAP, AUTOTEST_WORLDMAP2, AUTOTEST_UI, AUTOTEST_STICK, AUTOTEST_HAPTICS, AUTOTEST_TILT, AUTOTEST_NETSOAK, AUTOTEST_AVATAR, AUTOTEST_LIBRARY, AUTOTEST_INSTITUTE, AUTOTEST_BOOKPEOPLE, AUTOTEST_MISSIONS, AUTOTEST_BOOK_UI, AUTOTEST_BOOK, AUTOTEST_REBAY };
 
 static int kind_of(int argc, char **argv)
 {
     static const char *const names[] = {"touch", "onboarding", "save", "continue", "stickdir", "screenshot", "autonav", "markers",
-                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library", "institute", "bookpeople", "missions", "book_ui", "book"};
+                                        "offline", "friends", "interact", "text", "hudclamp", "worldmap", "worldmap2", "ui", "stick", "haptics", "tilt", "netsoak", "avatar", "library", "institute", "bookpeople", "missions", "book_ui", "book", "rebay"};
     for (int i = 1; i + 1 < argc; i++) {
         for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
             if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
@@ -1418,6 +1418,8 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
             mg_log_info("AUTOTEST PASSED");
             t->passed = finished = true;
         }
+        break;
+    case AUTOTEST_REBAY: /* §11: the game runs it (rebay_test in game.c) and quits */
         break;
     default:
         finished = run_continue(t, app, p);

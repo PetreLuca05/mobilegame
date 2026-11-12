@@ -622,6 +622,7 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         L->member_n[i] = L->seat_phys[i] = i; /* until a lobby seed orders the seats */
     }
     L->force_bay = -1;
+    L->stored_bay = L->rebay_to = -1;
     L->my_bay = L->home_bay;
     L->cam_zoom = 1.0f;
     place_table(L, L->home_bay);
@@ -1666,8 +1667,23 @@ void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, 
     if (L->hold_seed) {
         lseed = L->lobby_seed;
     }
-    if (!L->table_set || snap) { /* my own table: my seed's bay, taken when the menu opens (a sign-in mid-menu only re-dresses it) */
-        L->my_bay = L->force_bay >= 0 ? L->force_bay : lib_table_bay(L->my_seed, LIB_BAYS, -1);
+    /* my own table's bay (§11, user decision): set when the library first opens (the account's remembered bay, else the permitted
+     * move, else my seed's); afterwards only an open the game permits (a cold start, back from a game: rebay_to) with me at my own
+     * table moves it, on that open's frame; a sign-in mid-menu, Back from the map or a friend's table never do */
+    L->rebay_applied = false;
+    if (!L->table_set) {
+        L->my_bay = L->force_bay >= 0   ? L->force_bay
+                    : L->stored_bay >= 0 ? L->stored_bay
+                    : L->rebay_to >= 0   ? L->rebay_to
+                                         : lib_table_bay(L->my_seed, LIB_BAYS, -1);
+        L->rebay_applied = !host && L->force_bay < 0 && L->rebay_to >= 0 && L->my_bay == L->rebay_to;
+    } else if (snap && !host && L->force_bay < 0 && L->rebay_to >= 0) {
+        if (L->my_bay != L->rebay_to) {
+            mg_log_info("library: my table moves from bay %d to the account's bay %d (the menu opened from %s)", L->my_bay, L->rebay_to,
+                        L->rebay_cold ? "a cold start" : "a game");
+        }
+        L->my_bay = L->rebay_to;
+        L->rebay_applied = true;
     }
     const int bay = host ? lib_table_bay(lseed, LIB_BAYS, L->my_bay) : L->my_bay;
     const bool trip = L->table_set && !snap && bay != L->table_bay;

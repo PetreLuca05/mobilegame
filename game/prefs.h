@@ -14,6 +14,12 @@
 typedef struct Prefs {
     GameSettings settings;
     bool onboarding_done;
+    /* LIB-1 §11: my own table's bay per account on this device (keyed by the account's library seed), written once, the first time
+     * a cold-start or from-a-game library open put it on the seed's bay; never changed after, kept on sign-out */
+#define PREFS_LIB_BAYS 8
+    uint32_t lib_bay_seed[PREFS_LIB_BAYS];
+    int lib_bay[PREFS_LIB_BAYS];
+    int lib_bay_n;
     bool lib_walked_in;     /* LIB-1 §11: the first launch's walk-in into the library happened (never again; kept on sign-out) */
     bool content_cleaned;   /* the one-time book file cleanup (content_cleanup.c) has run */
     bool lobby_open;        /* FRIENDS-1: last state of my lobby, default on */
