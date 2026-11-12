@@ -667,7 +667,9 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   `--content build/<dir>/fixture`.
 - Leak guard: `tools/precommit.sh` refuses a commit holding a run of 12 or more consecutive words of the book
   (`tools/book/leakguard.py` + the hashed shingles in `tools/book/leakguard.txt`, hashes only); `leakguard.py repo GUARD .`
-  scans every tracked file. The rest of `tools/book/` is the content pipeline's code (no book text).
+  scans every tracked file. `tools/book/` keeps only what the engine and tests need: the leak guard and its hashes,
+  `packbin.py` (the pack writer, used by the fixture generator) and `figpack.py` + `astc_encode.swift` (figure packs); the rest of the
+  content pipeline is not in the repository.
 
 ## Book engine (BOOK-ENGINE)
 
