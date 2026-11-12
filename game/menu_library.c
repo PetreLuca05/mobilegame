@@ -1097,6 +1097,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     L->target = lib_point(L, target_l);
     if (L->look_dist > 0.0f) { /* --lib-look: pictures of a spot in the hall, the menu camera's pitch and yaw */
         const HMM_Vec3 at = HMM_V3(L->look_at.X, 0.9f, L->look_at.Y);
+        L->focus = at; /* the framing point: the rooms fade by it (bay_hide), as for a table there */
         L->target = lib_point(L, at);
         L->eye = lib_point(L, orbit_eye(at, L->look_dist, c->pitch_deg, c->yaw_deg));
     }
@@ -2786,11 +2787,84 @@ LibCamPose menu_library_cam_pose(const MenuLibrary *L)
 
 static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt);
 
+/* a hall point inside the view (the real projection, x and y) */
+static bool in_view(const MenuLibrary *L, HMM_Vec3 p)
+{
+    if (!L->has_vp) {
+        return false;
+    }
+    const HMM_Vec4 c = clip_of(L, p);
+    return c.W > 1e-3f && fabsf(c.X / c.W) <= 1.0f && fabsf(c.Y / c.W) <= 1.0f;
+}
+
+/* §13: this frame's sounds (asked here, played by the game after its UI). Menu only: the open cutaway with my hero.
+ *   tick   once per second of the device clock (the clock's own time: local_clock), while a clock is on screen
+ *   page   my hero's leaf leaving the page (lib_study lifts), nobody else's
+ *   stamp  the bottom of each stamping dip (act_pose's dip, people time) of someone stamping in a bay on screen */
+static void lib_sounds(MenuLibrary *L, const AvatarLook *hero)
+{
+    LibSound *S = &L->snd;
+    SDL_zeroa(S->want);
+    if (!hero || L->shell_k > 0.0f || !L->life || !L->has_vp) {
+        S->primed = false;
+        return;
+    }
+    const LibLifeCfg *lc = L->lcfg;
+    S->clock_seen = false;
+    for (int b = 0; b < lc->bays && b < LIB_BAYS; b++) {
+        if (lc->has_clock[b] && ((L->life_vis >> b) & 1u) &&
+            in_view(L, HMM_V3(lc->bx[b] + lc->clock_pos.X, lc->hands_y, lc->bz[b] + lc->clock_pos.Y + lc->hands_z))) {
+            S->clock_seen = true;
+        }
+    }
+    const long long sec = (long long)floor(L->local_time_s);
+    const uint32_t lifts = L->seat[0].study.lifts;
+    const double pt = L->people ? L->people->time : 0.0;
+    const float period = L->pcfg ? fmaxf(L->pcfg->stamp.period_s, 0.05f) : 1.0f;
+    const long long stamp_k = (long long)floor((pt - 0.25 * period) / period); /* sin(t 2pi / P) peaks at P / 4 */
+    if (!S->primed) {
+        S->primed = true;
+        S->sec = sec, S->stamp_k = stamp_k, S->lifts = lifts;
+        return;
+    }
+    if (sec > S->sec || S->sec - sec > 43200) { /* on, or over midnight; a resync a hair back waits for the same second again */
+        const bool next = sec == S->sec + 1 || (S->sec == 86399 && sec == 0);
+        S->clock_secs += next ? 1u : 0u;
+        if (next && S->clock_seen) {
+            S->want[LIB_SND_TICK] = true;
+            const float gap = (float)(L->clock - S->tick_last);
+            if (S->asked[LIB_SND_TICK] > 0 && gap < 1.5f) { /* consecutive ticks (a longer gap: no clock in view between) */
+                S->tick_gap_min = S->tick_gap_min > 0.0f ? fminf(S->tick_gap_min, gap) : gap;
+                S->tick_gap_max = fmaxf(S->tick_gap_max, gap);
+            }
+            S->tick_last = L->clock;
+        }
+        S->sec = sec;
+    }
+    if (lifts > S->lifts && L->seat[0].state == LM_STUDY) {
+        S->want[LIB_SND_PAGE] = true;
+    }
+    S->lifts = lifts;
+    if (stamp_k != S->stamp_k && L->people) {
+        for (int i = 0; i < L->pcfg->n && i < L->sc.npc_n; i++) {
+            const LibPerson *pp = &L->people->p[i];
+            if (pp->act == LIB_ACT_STAMP && pp->stamp > 0.5f && L->npc[i].drawn && in_view(L, HMM_V3(pp->pos.X, 1.0f, pp->pos.Y))) {
+                S->want[LIB_SND_STAMP] = true;
+            }
+        }
+    }
+    S->stamp_k = stamp_k;
+    for (int k = 0; k < LIB_SND_COUNT; k++) {
+        S->asked[k] += S->want[k] ? 1u : 0u;
+    }
+}
+
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     const int cat = gfx_set_category(g, GFX_CAT_PROP); /* the perf counters: rooms, props (furniture, books, mugs), avatars */
     draw_body(L, g, m, hero, dt);
     gfx_set_category(g, cat);
+    lib_sounds(L, hero);
 }
 
 /* §5: what is not in the merged row meshes: a bay's globe (it spins) and the other tables' four chairs (mine are the seats'
@@ -3093,14 +3167,22 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             gfx_draw(g, L->cart, &cart, &room, 0);
         }
     }
+    L->items_frames++;
     for (int i = 0; i < LIB_MEMBERS; i++) {
         LibMember *mb = &L->seat[i];
+        mb->items = 0;
+        mb->items_state = (uint8_t)mb->state;
+        mb->mug_err = 0.0f;
         if (mb->state == LM_EMPTY) {
             continue; /* §4: empty seats are bare */
         }
         const LibSeat *seat = &mb->at;
         const float swap = s->study.items.swap_at;
         const bool on_table = mb->place >= swap && (mb->state == LM_SETTLE || mb->state == LM_STUDY || mb->state == LM_PACK);
+        if (on_table && mb->t_on_table < mb->t_seated) {
+            mb->t_on_table = L->clock; /* (tests) §4: on the table within place_s of the sit */
+        }
+        mb->items = on_table ? LIB_ITEM_BOOK_OPEN | LIB_ITEM_MUG_TABLE | LIB_ITEM_PENCIL : LIB_ITEM_BOOK_CARRIED | LIB_ITEM_MUG_CARRIED;
         if (on_table) { /* the open book (popping to full width over 0.15 of the settle), the mug, the pencil */
             const float pop = mb->state == LM_SETTLE ? mg_lerpf(0.3f, 1.0f, mg_clampf((mb->place - swap) / 0.15f, 0.0f, 1.0f)) : 1.0f;
             draw_book(L, g, seat, true, mb->state == LM_STUDY ? &mb->study : NULL, pop, mb->cover);
@@ -3132,6 +3214,8 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             bc.hide = mm.hide = mb->fade;
             gfx_draw(g, L->book_closed, &bk, &bc, 0);
             gfx_draw(g, L->mug, &mg, &mm, 0);
+            /* (tests) §4: the drawn mug's handle against the drawn hand */
+            mb->mug_err = HMM_LenV3(HMM_SubV3(HMM_MulM4V4(mg, HMM_V4V(s->mug_grip, 1.0f)).XYZ, sv.hand[0])) / fmaxf(L->scale, 1e-3f);
         }
     }
     plane_step(L, dt); /* §8: after the hero's fidget (the plane in its hand) */

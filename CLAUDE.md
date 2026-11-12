@@ -664,6 +664,12 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   (`lib_open_kind`, used up by every open) with me at my own table; a sign-in mid-menu, Back from the map, Settings / Friends or a
   friend's table never move it. `--autotest rebay` (+ `--rebay-cold`): fresh install, sign-in, 30 s still, Back, back from a game,
   sign-out / in, a friend's table, friends in my lobby, a cold start, and `--rebay-game` end to end (Join Gastro, the institute loads, a 4 s walk, Save & back to menu); `--lib-seed-bay N` forces the seed's bay.
+- Sound (step 10, §13): `menu_library_draw` asks (`L->snd`, `lib_sounds`), `library_sounds` in game.c plays after the frame's UI on
+  the existing audio voices (`audio_tone`; wave 2 = band-passed noise): the clock tick (1.8 kHz, 12 ms, 0.012) on each second of the
+  device-time clock (lib_life's), only with a clock face on screen in a drawn bay; the page (noise 3.2 -> 1.4 kHz, 70 ms, 0.03) when
+  my hero's leaf leaves the page (`LibStudy.lifts`); the stamp (140 Hz, 40 ms, 0.015) at the bottom of each dip of the librarian's
+  `stamp` act, in view. Menu only (the open cutaway with my hero, not the map), silent under a modal, under Sound + `ui_sounds`;
+  `asked` / `played` / `dropped` counters for the tests (`--autotest library` step 14).
 - The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
   camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
   of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one

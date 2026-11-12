@@ -14,6 +14,8 @@ typedef struct Voice {
     float f0, f1, dur, delay, gain, phase, t;
     int wave;
     bool on;
+    uint32_t noise;   /* wave 2: the white noise's xorshift state */
+    float low, band;  /* wave 2: the state-variable filter (band-pass at the glided frequency) */
 } Voice;
 
 struct Audio {
@@ -122,7 +124,17 @@ static void SDLCALL feed(void *user, SDL_AudioStream *stream, int additional, in
                 const float hz = vo->f0 + (vo->f1 - vo->f0) * u;
                 vo->phase += hz / (float)AUDIO_RATE;
                 vo->phase -= floorf(vo->phase);
-                const float w = vo->wave ? 4.0f * fabsf(vo->phase - 0.5f) - 1.0f : sinf(2.0f * (float)M_PI * vo->phase);
+                float w;
+                if (vo->wave == 2) { /* filtered noise: white noise through a Chamberlin band-pass (Q ~1.4) centred on hz */
+                    vo->noise ^= vo->noise << 13, vo->noise ^= vo->noise >> 17, vo->noise ^= vo->noise << 5;
+                    const float white = (float)(vo->noise >> 8) * (2.0f / 16777216.0f) - 1.0f;
+                    const float f = 2.0f * sinf((float)M_PI * fminf(hz, 0.2f * (float)AUDIO_RATE) / (float)AUDIO_RATE);
+                    vo->low += f * vo->band;
+                    vo->band += f * (white - vo->low - 0.7f * vo->band);
+                    w = vo->band;
+                } else {
+                    w = vo->wave ? 4.0f * fabsf(vo->phase - 0.5f) - 1.0f : sinf(2.0f * (float)M_PI * vo->phase);
+                }
                 const float env = fminf(vo->t / 0.003f, 1.0f) * expf(-u * 4.6f); /* -40 dB by the end */
                 buf[i] += vo->gain * env * w;
                 vo->t += 1.0f / (float)AUDIO_RATE;
@@ -224,6 +236,6 @@ void audio_tone(Audio *a, float f0, float f1, float dur_s, float delay_s, float 
             best = v;
         }
     }
-    a->voices[best] = (Voice){f0, f1, dur_s, delay_s, gain, 0.0f, 0.0f, wave, true};
+    a->voices[best] = (Voice){f0, f1, dur_s, delay_s, gain, 0.0f, 0.0f, wave, true, 0x9E3779B9u ^ (uint32_t)best, 0.0f, 0.0f};
     SDL_UnlockAudioStream(a->stream);
 }

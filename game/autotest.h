@@ -181,6 +181,9 @@ typedef struct AutotestOut {
     int lib_cat_hold;      /* library: 1 the cat visits nobody (the scripted steps before §10), 2 it visits again, 0 unchanged */
     int lib_demo;          /* library: 1 + the demo lobby's scenario (0 me alone, 1 + "friend", 2 a guest of "hostA" with "mateB"), 0 unchanged */
     int lib_plane;         /* library: 1 an invite sent to "friend" (a plane out), 2 an invite from "hostA" (a plane in), 3 its panel closed */
+    int lib_sound;         /* library §13: 1 + flags this frame: 1 a modal up (a real ui_modal), 2 ui_sounds off, 4 a page every 2.5 s, 8 the camera
+                            * on lib_look; 0 unchanged (everything back) */
+    HMM_Vec3 lib_look;     /* x, z (hall frame) and distance for the camera (lib_sound & 8) */
     bool teleport;         /* bookpeople: put the player at teleport_pos facing teleport_yaw */
     HMM_Vec3 teleport_pos;
     float teleport_yaw;
