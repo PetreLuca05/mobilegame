@@ -4,6 +4,7 @@
 
 #include "core/log.h"
 #include "frontend.h"
+#include "strings.h"
 #include "player.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
@@ -1370,9 +1371,17 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     }
     case AUTOTEST_UI: {
         const int r = p->uitest ? ut_run(p->uitest, app, p, out, app->time) : -1;
+        const char *raw = NULL, *eng = NULL;
+        const int n_raw = strings_missing(&raw), n_eng = strings_untranslated(&eng);
         if (r < 0) {
             finished = fail(t, "ui", p->uitest ? p->uitest->why : "no test screen");
+        } else if (r > 0 && (n_raw > 0 || n_eng > 0)) { /* every screen the test opened, in Romanian only */
+            char why[160];
+            SDL_snprintf(why, sizeof(why), "%d raw keys (last %s), %d English-only strings (last %s) reached the screen", n_raw, raw ? raw : "-", n_eng,
+                         eng ? eng : "-");
+            finished = fail(t, "ui", why);
         } else if (r > 0) {
+            mg_log_info("autotest ui: 0 raw keys, 0 English-only strings on every screen opened");
             mg_log_info("AUTOTEST PASSED");
             t->passed = finished = true;
         }
