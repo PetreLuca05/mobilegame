@@ -17,12 +17,24 @@ cmake --build build/desktop_rel > /dev/null || fail "build"
 BIN=build/desktop_rel/mobilegame
 strings "$BIN" | grep -qx "$HEAD" || fail "the binary is labelled $(strings "$BIN" | grep -E '^[0-9a-f]{7}(-dirty)?$' | head -1), HEAD is $HEAD"
 mkdir -p "$OUT"
+# macOS paces the game to the screen only while it is the active app: launched from a terminal or an editor it starts behind, so
+# bring it to the front before the recording starts (the settle period) and again a few seconds later
+run_front() {
+  "$@" &
+  local pid=$!
+  for t in 2 4 7; do
+    sleep 2
+    local gp=$(pgrep -n -f "$BIN --autotest perf" || true)
+    [[ -n $gp ]] && osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $gp) to true" > /dev/null 2>&1
+  done
+  wait $pid
+}
 PREF="$HOME/Library/Application Support/docvex/mobilegame"
 RC=0
 for i in $(seq 1 $RUNS); do
   echo "perf_mac: $SC run $i of $RUNS starts now (about $(( SECS + 15 )) s; keep the game window in front)"
   rm -f "$PREF/perf_$SC.json"
-  timeout $(( SECS + 120 )) "$BIN" --autotest perf "$SC" "$SECS" --quit-after $(( SECS + 40 )) "${EXTRA[@]}" > "$OUT/mac_${SC}_$i.log" 2>&1
+  run_front timeout $(( SECS + 120 )) "$BIN" --autotest perf "$SC" "$SECS" --quit-after $(( SECS + 40 )) "${EXTRA[@]}" > "$OUT/mac_${SC}_$i.log" 2>&1
   J="$OUT/mac_${SC}_$i.json"
   cp "$PREF/perf_$SC.json" "$J" 2>/dev/null || { echo "perf_mac: run $i wrote no result"; RC=1; continue; }
   python3 - "$J" "$HEAD" <<'PY' || RC=1
