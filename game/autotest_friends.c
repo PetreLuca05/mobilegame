@@ -344,6 +344,17 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         t->started = now;
         mg_log_info("autotest friends %s: op %d (%d) %s", t->role, t->pc, (int)o->op, o->s ? o->s : "");
     }
+    if (t->started_any <= 0.0) {
+        t->started_any = now;
+    }
+    if (p->lib_declared >= 0 && !t->lib_count_checked && now - t->started_any > 5.0) { /* the library's people, once */
+        t->lib_count_checked = true;
+        if (p->lib_live != p->lib_declared) {
+            SDL_snprintf(t->why, sizeof(t->why), "the library declares %d people, %d running", p->lib_declared, p->lib_live);
+            return -1;
+        }
+        mg_log_info("autotest friends: the library runs its %d declared people", p->lib_live);
+    }
     if (p->npc_sync_tick && p->npc_sync_tick != t->npc_seen) { /* published all the time: the other side may be slower to look */
         t->npc_seen = p->npc_sync_tick;
         char name[48], mine[24];
@@ -487,10 +498,25 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         done = l->open == (o->n != 0.0);
         break;
     case OP_NPC:
-        if (!p->npc_world) { /* the institute without a pack simulates nobody: both sides trivially agree */
-            mg_log_info("autotest friends: no NPC world in this scene, nothing to compare");
+        if (p->npc_declared < 0) {
+            return 0; /* no play scene yet */
+        }
+        if (p->npc_declared == 0) { /* the scene declares nobody (the institute without a pack): nobody may be simulated */
+            if (p->npc_world || p->npc_alive != 0) {
+                SDL_snprintf(t->why, sizeof(t->why), "the scene declares 0 NPCs but %d are simulated", p->npc_alive);
+                return -1;
+            }
+            mg_log_info("autotest friends: the scene declares 0 NPCs and simulates none: nothing to compare");
             done = true;
             break;
+        }
+        /* people leave and are refilled: at least the declared count less 3 (the npcs autotest's rule: 44 of 47) */
+        if (!p->npc_world || p->npc_alive < p->npc_declared - 3) {
+            if (now - t->started > 20.0) { /* catch-up and the room tick need a moment after the scene loads */
+                SDL_snprintf(t->why, sizeof(t->why), "the scene declares %d NPCs, %d simulated", p->npc_declared, p->npc_alive);
+                return -1;
+            }
+            return 0;
         }
         for (uint32_t tick = t->npc_seen; tick > 0 && !done && tick + 3000 > t->npc_seen; tick -= 600) {
             char mine_file[48], theirs[48], a[24], b[24];

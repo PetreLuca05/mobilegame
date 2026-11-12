@@ -13,5 +13,7 @@ int device_boost_render_thread(void);
 /* The highest refresh the window's screen can run at (ProMotion: 120 where SDL's display mode says 60), 0 if unknown.
  * `native_window`: SDL's NSWindow / UIWindow pointer. */
 float device_screen_max_hz(void *native_window);
+/* macOS: the main display is asleep or the session is locked (no screen refresh paces the window then); 0 elsewhere. */
+int device_display_asleep(void);
 
 #endif

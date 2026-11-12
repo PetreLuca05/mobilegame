@@ -18,6 +18,8 @@ typedef struct FriendsTest {
     const void *ops;
     int pc;
     double started;      /* when this op began */
+    double started_any;  /* the test's first frame */
+    bool lib_count_checked;
     double wait_until;
     int finger;          /* 1: down, waiting to release */
     int finger_frames;   /* frames held: a stalled frame must not merge press and release */

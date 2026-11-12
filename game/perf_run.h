@@ -42,6 +42,8 @@ typedef struct PerfRun {
     /* the run's validity (a halved window refresh on battery once read as a 79 fps regression): the display's refresh at the
      * start and end of the recording; desktop runs refuse to start on battery */
     float hz_start, hz_end;
+    uint32_t asleep_s, occluded_frames; /* recording seconds with the display asleep / locked, frames with the window hidden */
+    double next_sleep_check;
     bool refused;
 } PerfRun;
 

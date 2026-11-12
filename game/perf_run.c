@@ -181,9 +181,15 @@ static void write_report(const PerfRun *p, MgApp *app)
         const double fps = p->seconds > 0.0 ? (double)fr.frames / p->seconds : 0.0;
         const bool changed = hz0 > 0.0f && SDL_fabsf(hz_end - hz0) > 0.5f;
         const bool below = hz0 > 0.0f && fps < 0.9 * (double)SDL_min(hz0, hz_end);
-        PUT("\"valid\": %s,\n\"invalid_why\": \"%s\",\n\"display_hz_start\": %.1f,\n\"display_hz_end\": %.1f,\n\"fps\": %.1f,\n\"paced_below_refresh\": %s,\n",
-            changed ? "false" : "true", changed ? "the display refresh changed during the recording" : "", (double)hz0, (double)hz_end, fps,
-            below ? "true" : "false");
+        /* above the refresh: nothing paced the loop (display asleep or locked, window hidden): not comparable with a paced run */
+        const bool above = hz0 > 0.0f && fps > 1.1 * (double)SDL_max(hz0, hz_end);
+        const bool unpaced = above || p->asleep_s > 0 || p->occluded_frames > 0;
+        const char *why = changed ? "the display refresh changed during the recording"
+                          : unpaced ? "the loop was not paced by the screen (display asleep or locked, or the window hidden)" : "";
+        PUT("\"valid\": %s,\n\"invalid_why\": \"%s\",\n\"display_hz_start\": %.1f,\n\"display_hz_end\": %.1f,\n\"fps\": %.1f,\n\"paced_below_refresh\": %s,\n"
+            "\"paced_above_refresh\": %s,\n\"display_asleep_s\": %u,\n\"window_occluded_frames\": %u,\n",
+            changed || unpaced ? "false" : "true", why, (double)hz0, (double)hz_end, fps, below ? "true" : "false", above ? "true" : "false",
+            p->asleep_s, p->occluded_frames);
         if (changed || below) {
             mg_log_warn("perf: %s: refresh %.0f -> %.0f Hz, %.1f fps%s", p->scenario, (double)hz0, (double)hz_end, fps,
                         changed ? " (INVALID: the refresh changed)" : " (paced below the refresh: the OS slowed the window, check power and occlusion)");
@@ -340,6 +346,13 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     add(&p->f[PERF_UI_DRAWS], g->ui_draws);
     add(&p->f[PERF_UI_QUADS], g->ui_quads);
     p->samples++;
+    if (app->window && (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED))) {
+        p->occluded_frames++;
+    }
+    if (app->time >= p->next_sleep_check) { /* once a second: the display asleep or the session locked */
+        p->next_sleep_check = app->time + 1.0;
+        p->asleep_s += device_display_asleep() ? 1u : 0u;
+    }
     p->panel_samples += probe->interact_visible || probe->lift_panel_open;
     p->sim_max = s->sim > p->sim_max ? s->sim : p->sim_max;
     p->rendered_max = s->rendered > p->rendered_max ? s->rendered : p->rendered_max;

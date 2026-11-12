@@ -289,6 +289,7 @@ typedef struct Game {
     uint32_t fs_n;          /* --log-frame-stats */
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
+    double fs_t0;
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -3152,6 +3153,24 @@ static void npc_save_test_compare(Game *g, MgApp *app)
     app->quit_requested = true;
 }
 
+/* How many NPCs the play scene declares: the hospital its roster (the targets of compute_targets), the institute the pack's
+ * people (0 without a pack); -1 with no scene. The two-instance test fails when the sim does not hold that many. */
+static int scene_npcs_declared(const Game *g)
+{
+    if (!g->scene) {
+        return -1;
+    }
+    if (scene_ambient_npcs(g->scene)) {
+        int n = 0;
+        for (int a = 0; a < NPC_ARCHETYPES; a++) {
+            n += g->npcs.target[a];
+        }
+        return n;
+    }
+    const char *bump = SDL_getenv("MG_TEST_NPC_DECLARE"); /* tests only: a wrong declaration must fail the two-instance test */
+    return (g->bp_ok ? (int)g->book.person_count : 0) + (bump ? SDL_atoi(bump) : 0);
+}
+
 /* One sim tick, plus what the tests watch */
 static void npc_step(Game *g, MgApp *app)
 {
@@ -4111,6 +4130,10 @@ static void game_frame_inner(MgApp *app, float alpha)
                            g->panel.x + g->panel.size * 0.5f,
                            g->panel.y + g->panel.size * 0.5f};
     probe.npc_world = g->npcs_ok;
+    probe.npc_declared = scene_npcs_declared(g);
+    probe.npc_alive = g->npcs_on ? g->npcs.pool.count : 0;
+    probe.lib_declared = g->lib.ok ? g->lib.sc.npc_n : -1;
+    probe.lib_live = g->lib.ok && g->lib.people ? g->lib.pcfg->n : 0;
     probe.show_stats = s->show_stats;
     probe.scene_kind = g->scene ? (int)scene_kind(g->scene) : -1;
     probe.lift_count = lift_count(g);
@@ -4213,6 +4236,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         }
         if (g->fs_n == 120) {
             const double n = 120.0;
+            mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
+                        (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible");
+            g->fs_t0 = app->time;
             mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
                         g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
                         g->fs_cat[GFX_CAT_AVATAR] / n / 1000.0, g->fs_cat[GFX_CAT_OTHER] / n / 1000.0);
