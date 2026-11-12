@@ -172,6 +172,8 @@ typedef struct AutotestOut {
     int set_haptics;       /* haptics: 1 + the Vibrații level to set, 0 none */
     bool net_drop;         /* netsoak: drop the realtime socket now */
     bool stale_eye_once;   /* library: the next Back keeps one frame's camera stale past t 0.3 (the jump rule's canary) */
+    int lib_fidget;        /* library: 1 + a LibAction the hero plays now (§6), 0 none */
+    int lib_phone;         /* library: the phones between uses: 1 pocket, 2 table, 0 as they are */
     bool teleport;         /* bookpeople: put the player at teleport_pos facing teleport_yaw */
     HMM_Vec3 teleport_pos;
     float teleport_yaw;

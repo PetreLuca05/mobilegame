@@ -1,0 +1,25 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    half4 i_col [[user(locn2)]];
+    half4 i_tint [[user(locn3), flat]];
+    half4 i_params [[user(locn4), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]])
+{
+    PSMain_out out = {};
+    float _115 = fast::clamp(float(in.i_tint.w), 0.0, 1.0);
+    out._entryPointOutput = float4(float3(in.i_col.xyz * in.i_tint.xyz) * _115, (float(in.i_params.x) > 0.5) ? 0.0 : _115);
+    return out;
+}
+

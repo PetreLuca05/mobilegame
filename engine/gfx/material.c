@@ -37,6 +37,12 @@ GfxMaterial mat_alpha(HMM_Vec4 color)
     return m;
 }
 
+GfxMaterial mat_alpha_add(HMM_Vec4 color)
+{
+    GfxMaterial m = {GFX_MAT_ALPHA, color, HMM_V4(1, 0, 0, 0)}; /* params.x 1: additive (alpha.frag) */
+    return m;
+}
+
 GfxMaterial mat_depth_only(void)
 {
     GfxMaterial m = {GFX_MAT_DEPTH, HMM_V4(1, 1, 1, 1), HMM_V4(0, 0, 0, 0)};

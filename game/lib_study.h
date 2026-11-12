@@ -40,6 +40,9 @@ void lib_study_init(LibStudy *s, const LibScene *sc, uint32_t seed);
 void lib_study_read_range(LibStudy *s, float lo, float hi);
 void lib_study_step(LibStudy *s, const LibScene *sc, float dt);
 void lib_study_force_turn(LibStudy *s); /* --debug turn-page: the next step starts a turn */
+/* A turn cut short (the cat came to be petted, §10): the leaf drops back flat and the hands go to the pages; the read is at its
+ * end, so the turn starts again once the reader goes back to the book. */
+void lib_study_cancel_turn(LibStudy *s, const LibScene *sc);
 /* The leaf's outer edge (tip) in the seat frame for the two half angles. */
 HMM_Vec3 lib_study_tip(const LibScene *sc, float theta, float theta_b);
 

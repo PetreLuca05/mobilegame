@@ -149,6 +149,12 @@ bool lib_fidget_busy(const LibFidget *f); /* reading paused */
 /* Start `a` now (--debug fidget <name>; PET when the cat visits, THROW for a paper plane: only this way). */
 void lib_fidget_force(LibFidget *f, const LibFidgetCfg *c, LibAction a);
 void lib_fidget_set_phone(LibFidget *f, bool on_table); /* --debug phone-place */
+/* The reader packs to leave (§4 / the prototype's leavePlayer): the action stops where it is, the phone goes into the
+ * pocket (taken without an animation), the timer waits every_s again. */
+void lib_fidget_cancel(LibFidget *f, const LibFidgetCfg *c);
+/* §10: the cat sat in front of this reader pet_delay_s ago: `pet` replaces whatever it is doing, except a paper plane's
+ * throw (the prototype: w.fid !== 'throw'). The caller ends a page turn first. False: not started. */
+bool lib_fidget_pet(LibFidget *f, const LibFidgetCfg *c);
 /* The next action from the shuffle bag (consumes it; what step() uses). */
 LibAction lib_fidget_next(LibFidget *f, const LibFidgetCfg *c);
 

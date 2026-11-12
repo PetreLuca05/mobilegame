@@ -935,6 +935,13 @@ bool game_init(MgApp *app)
     gfx_settle_uploads(app->gfx); /* the library's meshes are in */
     for (int i = 1; i + 1 < app->argc; i++) { /* --debug turn-page: the hero turns a page every 2.5 s */
         g->lib.debug_turns |= SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "turn-page") == 0;
+        /* --debug fidget <name>: every seated reader plays it each time it is free; --debug phone-place <table|pocket> (LIB-1 §15) */
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "fidget") == 0 && i + 2 < app->argc) {
+            g->lib.debug_fidget = lib_action_from_name(app->argv[i + 2]);
+        }
+        if (SDL_strcmp(app->argv[i], "--debug") == 0 && SDL_strcmp(app->argv[i + 1], "phone-place") == 0 && i + 2 < app->argc) {
+            menu_library_phone_place(&g->lib, SDL_strcmp(app->argv[i + 2], "table") == 0);
+        }
     }
     {
         const char *cu = arg_value(app->argc, app->argv, "--lib-closeup");
@@ -4145,6 +4152,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     }
     if (ato.stale_eye_once) {
         g->stale_eye_armed = true;
+    }
+    if (ato.lib_phone > 0) { /* --autotest library: where the phones lie (1 pocket, 2 table) */
+        menu_library_phone_place(&g->lib, ato.lib_phone == 2);
+    }
+    if (ato.lib_fidget > 0) { /* --autotest library: the hero plays this action now (PET through the cat's hook) */
+        menu_library_fidget(&g->lib, 0, (LibAction)(ato.lib_fidget - 1));
     }
     if (ato.last_book[0]) {
         SDL_snprintf(g->prefs.world.last_book, sizeof(g->prefs.world.last_book), "%s", ato.last_book);

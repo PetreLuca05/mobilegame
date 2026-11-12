@@ -37,6 +37,16 @@ void lib_study_init(LibStudy *s, const LibScene *sc, uint32_t seed)
 
 void lib_study_force_turn(LibStudy *s) { s->force = true; }
 
+void lib_study_cancel_turn(LibStudy *s, const LibScene *sc)
+{
+    if (!s->turning) {
+        return;
+    }
+    s->turning = false;
+    s->t = 0.999f * s->read_len;
+    lib_study_step(s, sc, 0.0f);
+}
+
 void lib_study_read_range(LibStudy *s, float lo, float hi) { s->read_s[0] = lo, s->read_s[1] = hi; }
 
 HMM_Vec3 lib_study_tip(const LibScene *sc, float theta, float theta_b)

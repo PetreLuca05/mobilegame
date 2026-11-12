@@ -261,6 +261,27 @@ void lib_fidget_force(LibFidget *f, const LibFidgetCfg *c, LibAction a)
 
 void lib_fidget_set_phone(LibFidget *f, bool on_table) { f->phone_on_table = on_table; }
 
+void lib_fidget_cancel(LibFidget *f, const LibFidgetCfg *c)
+{
+    f->act = LA_NONE;
+    f->t = 0.0f;
+    f->released = false;
+    f->phone_on_table = false;
+    f->wait = lerpf(c->every_s[0], c->every_s[1], rnd(f));
+}
+
+bool lib_fidget_pet(LibFidget *f, const LibFidgetCfg *c)
+{
+    if (f->act == LA_THROW) {
+        return false;
+    }
+    if (f->act == LA_PHONE) { /* cut short: the phone ends where this use would have put it */
+        f->phone_on_table = f->phone_dst;
+    }
+    lib_fidget_force(f, c, LA_PET);
+    return true;
+}
+
 bool lib_fidget_busy(const LibFidget *f) { return f->act != LA_NONE; }
 
 /* ------------------------------------------------------------------ the pose (Av.pose's fidget block) */

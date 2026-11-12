@@ -526,6 +526,7 @@ static bool create_pipelines(GfxContext *g)
                 {GFX_MAT_UNLIT, "toon_inst.vert", "unlit_inst.frag", "unlit_inst_dither.frag", 0},
                 {GFX_MAT_SPRITE, "sprite_inst.vert", "sprite_inst.frag", NULL, 0},
                 {GFX_MAT_PATTERN, "pattern_inst.vert", "pattern_inst.frag", "pattern_inst_dither.frag", 1},
+                {GFX_MAT_ALPHA, "toon_inst.vert", "alpha_inst.frag", NULL, 0}, /* LIB-1 §10: light pools, phone glows */
             };
             for (size_t k = 0; k < MG_ARRAY_COUNT(k_inst); k++) {
                 const MaterialProgram *mp = material_program(k_inst[k].kind);
