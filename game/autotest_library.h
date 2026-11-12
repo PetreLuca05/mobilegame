@@ -14,6 +14,9 @@
  *      camera still until my hero is off screen, then the pan with no jump (the trip's own clock), no blank frame, seated
  *      within 12 s (pictures library_travel_out / _pan / _arrive); Ieși: the same back, my own table unchanged, the readers
  *      left behind removed only out of view. Reduse: seated at once under the cross-dissolve
+ *      With the argument maps-mid-trip (tools/library_test.sh): Maps is tapped during Ieși's pan (§8: Maps finishes the trip
+ *      at once); the move starts from the pan's camera with no jump (judged from the last trip frame by §15.11), the hero
+ *      seated at my table on the move's first frame, the move lands on the map (the run ends there)
  *  15.9 (stage 22) a plane out leaves on the side of the friend's table; a plane in lands in front of my seat (2 cm), the hero
  *      glances, it shrinks away when its panel closes (library_plane_out / _in / _landed)
  *   6  the menu opening with three friends already in the lobby: all seated on that frame (a scratch copy)
@@ -126,6 +129,9 @@ typedef struct LibraryTest {
     float lk_acc;      /* the ease clock since the last judged eye */
     float lk_study_t;
     int lk_red;             /* Reduse: the Locker's own step (before Maps) */
+    int mt;                 /* maps-mid-trip: 0 waiting for the pan, 1 tapping Maps, 2 the move */
+    double mt_pan_at;       /* when the trip back's pan was first seen */
+    float mt_trip_speed;    /* the pan's last judged speed (camera distances per second) */
     char npc_why[160];
     char why[200];
 } LibraryTest;

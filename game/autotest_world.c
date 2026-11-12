@@ -5,6 +5,7 @@
 #include "autotest.h"
 #include "core/log.h"
 #include "frontend.h"
+#include "menu_library.h"
 #include "worldmap.h"
 
 #define WT_FINGER 61
@@ -380,8 +381,37 @@ int wt_run(WorldTest *w, MgApp *app, const AutotestProbe *p, AutotestOut *out, d
         }
         mg_log_info("autotest worldmap: 7 layout %.0f x %.0f: the card and its 3 buttons in the safe rect, 3 rows + Continue without scrolling (ok)", (double)app->width_pt,
                     (double)app->height_pt);
-        return 1;
+        next_stage(w, now);
+        return 0;
     }
+    case 16: /* LIB-1: the pause card's Map keeps its scene switch (no move); its Back lands on the open library, the menu's cutaway */
+        if (p->move_state != 0) {
+            return fail(w, "pause -> Map -> Back ran the camera move");
+        }
+        if (w->count == 0 && !p->playing && in > 0.5) {
+            tap_key(&w->tap, app, p, now, "menurow1"); /* Continue */
+        } else if (w->count == 0 && p->playing && in > 2.0) {
+            w->count = 1;
+        } else if (w->count == 1 && tap_key(&w->tap, app, p, now, "gear")) {
+            w->count = 2;
+        } else if (w->count == 2 && tap_key(&w->tap, app, p, now, "p_map")) {
+            w->count = 3;
+        } else if (w->count == 3 && p->fe_state == FE_MAP && !p->playing) {
+            w->count = 4;
+            w->stage_at = now;
+        } else if (w->count == 4 && in > 1.5 && tap_key(&w->tap, app, p, now, "wm_back")) {
+            w->count = 5;
+        } else if (w->count == 5 && p->fe_state == FE_MAIN_MENU && in > 2.5) {
+            const float k = p->library ? p->library->shell_k : -1.0f;
+            mg_log_info("autotest worldmap: 8 pause -> Map -> Back: the menu at once (no move), the library's shell %.2f (want 0: the open cutaway)", (double)k);
+            if (k != 0.0f) {
+                return fail(w, "after pause -> Map -> Back the library is still closed");
+            }
+            return 1;
+        } else {
+            tap_busy(&w->tap, app, now);
+        }
+        return 0;
     default:
         return 0;
     }

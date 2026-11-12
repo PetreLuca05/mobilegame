@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """place_library: choose the library spot on every island of the world map (LIB-1 section 6).
 
-usage: python3 -I tools/place_library.py [--dry-run]
+usage: python3 -I tools/place_library.py [--dry-run | --check]
+
+--check measures every number of the rule again on the committed JSON (PASS / FAIL per point), then
+runs the rule and fails if it would write anything different.
 
 Rule (product owner, LIB-1): "The library stands on the island at lib_scale (0.35 map units
 per metre). Add library {x, z, yaw_deg} to each island JSON by rule and commit it: the point
@@ -381,8 +384,66 @@ def place(isl, mesh, off_x, check_scenery=True):
     return best
 
 
+def check_committed(isl, mesh, radius):
+    """--check: every number of the rule measured again on the committed library / library_pad / library_path
+    (not by trusting the search). Returns a list of (name, ok, detail)."""
+    out = []
+    lib, pad, path = isl.get("library"), isl.get("library_pad"), isl.get("library_path")
+    if not (lib and pad and path):
+        return [("library, library_pad, library_path present", False, "missing")]
+    scene = json.load(open(os.path.join(ROOT, "assets/menu/library.scene.json"), encoding="utf-8"))
+    hall, s = scene["hall"], scene["lib_scale"]
+    bw, bd = (hall["x_max"] - hall["x_min"]) * s, (hall["z_max"] - hall["z_min"]) * s
+    bcx, bcz = 0.5 * (hall["x_min"] + hall["x_max"]) * s, 0.5 * (hall["z_min"] + hall["z_max"]) * s
+    out.append(("lib_scale 0.35, building 11.2 x 11.2 centred at local (PAD_OFF_X, PAD_OFF_Z)",
+                abs(s - LIB_SCALE) < 1e-9 and abs(bw - 11.2) < 1e-6 and abs(bd - 11.2) < 1e-6 and
+                abs(bcx - PAD_OFF_X) < 1e-6 and abs(bcz - PAD_OFF_Z) < 1e-6,
+                f"scale {s}, {bw:.2f} x {bd:.2f}, centre {bcx:.3f}, {bcz:.3f}"))
+    yaw = math.radians(lib["yaw_deg"])
+    cx, cz = to_world(lib["x"], lib["z"], yaw, PAD_OFF_X, PAD_OFF_Z)
+    out.append(("pad 15 x 15 centred on the building, same yaw",
+                pad["w"] == PAD_W and pad["d"] == PAD_D and abs(pad["yaw_deg"] - lib["yaw_deg"]) < 1e-6 and
+                math.hypot(cx - pad["x"], cz - pad["z"]) < 0.02 and pad["w"] >= bw + 2 * 1.9 - 1e-6,
+                f"{pad['w']} x {pad['d']}, centre off by {math.hypot(cx - pad['x'], cz - pad['z']):.3f}"))
+    x, z = pad["x"], pad["z"]
+    prect = rect(x, z, yaw, PAD_W, PAD_D)
+    dh = min(poly_dist(prect, lv["hospital"]["x"], lv["hospital"]["z"]) for lv in isl["levels"])
+    out.append((f"pad >= {MIN_HOSPITAL:g} from every hospital plot centre", dh >= MIN_HOSPITAL - 0.02, f"nearest {dh:.2f}"))
+    dr = polyline_poly_dist(isl["road"], prect)
+    out.append((f"pad >= {MIN_ROAD:g} from the road", dr >= MIN_ROAD - 0.02, f"{dr:.2f}"))
+    terrain, scenery = TriGrid(mesh.get("terrain", [])), TriGrid(mesh.get("scenery", []))
+    gy = float(isl["ground_y"])
+    tops = [on_plateau(terrain, gy, px, pz) for px, pz in rect_samples(x, z, yaw, PAD_W, PAD_D, PAD_SAMPLE)]
+    out.append(("pad on the grass plateau (every 0.5 sample flat at ground_y)", all(t[0] for t in tops),
+                f"{sum(1 for t in tops if not t[0])} of {len(tops)} samples off"))
+    out.append(("pad on bare grass (no scenery triangle under it)", not scenery_overlaps(scenery, prect), ""))
+    _d, rx, rz = road_nearest(isl["road"], x, z)
+    face = math.degrees(math.atan2(rx - x, rz - z)) - lib["yaw_deg"]
+    face = (face + 180.0) % 360.0 - 180.0
+    out.append(("front faces the road (front = local +z towards the nearest road point)", abs(face) < 0.05, f"off by {face:.3f} deg"))
+    fx, fz = to_world(x, z, yaw, 0.0, PAD_D / 2)
+    ends = math.hypot(path["from"][0] - fx, path["from"][1] - fz) + math.hypot(path["to"][0] - rx, path["to"][1] - rz)
+    out.append(("path 3.4 wide from the pad's front edge to the nearest road point", path["width"] == PATH_W and ends < 0.03,
+                f"ends off by {ends:.3f}"))
+    pcx, pcz, pyaw, plen = path_rect(path["from"][0], path["from"][1], path["to"][0], path["to"][1])
+    psamp = rect_samples(pcx, pcz, pyaw, PATH_W, plen, PATH_SAMPLE)
+    allowed = {h[1] for h in scenery.hits(path["to"][0], path["to"][1])}
+    bad = scenery_overlaps(scenery, rect(pcx, pcz, pyaw, PATH_W, plen), allowed) or \
+        any(wet(terrain, scenery, px, pz) or raised(terrain, scenery, gy + PATH_RISE, px, pz) for px, pz in psamp) or \
+        any(poly_dist(pl, px, pz) == 0.0 for pl in plot_rects(isl) for px, pz in psamp)
+    out.append(("path dry, on the grass, through no plot or scenery", not bad, f"length {plen:.2f}"))
+    path_poly = rect(pcx, pcz, pyaw, PATH_W, plen)
+    near = [(n, it) for n, inst in isl.get("props", {}).items() for it in inst
+            if poly_dist(prect, it[0], it[2]) - radius[n] * it[3] < PROP_MARGIN or
+            poly_dist(path_poly, it[0], it[2]) - radius[n] * it[3] < PATH_MARGIN]
+    out.append(("no prop on or over the pad or the path", not near, f"{len(near)} left"))
+    return out
+
+
 def main():
-    dry = "--dry-run" in sys.argv[1:]
+    check = "--check" in sys.argv[1:]
+    dry = "--dry-run" in sys.argv[1:] or check
+    failed = []
     off_x = PAD_OFF_X
     books = json.load(open(os.path.join(ROOT, "assets/world/books.json"), encoding="utf-8"))
     ok = True
@@ -392,6 +453,15 @@ def main():
         src = open(jpath, encoding="utf-8").read()
         isl = json.loads(src)
         mesh = load_mesh(mpath)
+        if check:
+            rad = {}
+            for g in isl.get("props", {}):
+                rad[g] = max([math.hypot(v[i], v[i + 2]) for _c, v in mesh.get(g, []) for i in (0, 3, 6)] or [0.0])
+            for name, good, detail in check_committed(isl, mesh, rad):
+                print(f"  {'PASS' if good else 'FAIL'}  {isl['id']}: {name}" + (f" ({detail})" if detail else ""))
+                if not good:
+                    failed.append(f"{isl['id']}: {name}")
+            isl = json.loads(src)
         res = place(isl, mesh, off_x)
         lit = place(isl, mesh, off_x, check_scenery=False)
         print(f"{isl['id']}:  (pad offset from the library point: local x {off_x:g}, z {PAD_OFF_Z:g})")
@@ -457,7 +527,12 @@ def main():
             if k == "levels":
                 out["library"], out["library_pad"], out["library_path"] = lib, pad, path
         text = json.dumps(out, separators=(",", ":"), ensure_ascii=False)
-        if dry:
+        if check:
+            same = text == src
+            print(f"  {'PASS' if same else 'FAIL'}  {isl['id']}: the rule run again gives the committed spot, path and props")
+            if not same:
+                failed.append(f"{isl['id']}: the rule gives another result than the committed JSON")
+        elif dry:
             print("  (dry run, not written)")
         elif text != src:
             with open(jpath + ".tmp", "w", encoding="utf-8") as f:
@@ -466,7 +541,9 @@ def main():
             print(f"  wrote {b['island']}")
         else:
             print(f"  {b['island']} unchanged")
-    return 0 if ok else 1
+    if check:
+        print("place_library --check: " + ("PASS" if ok and not failed else "FAIL: " + "; ".join(failed)))
+    return 0 if ok and not failed else 1
 
 
 if __name__ == "__main__":

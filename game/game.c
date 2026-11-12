@@ -303,6 +303,7 @@ typedef struct Game {
     bool force_reduced;    /* --ui-motion reduced (not saved) */
     bool force_full;       /* perf menu_to_map: the move, whatever the profile says (not saved) */
     int move_demo;         /* --lib-move-demo: Maps at 3 s, Back at 9 s (pictures); 1 armed, 2 out, 3 back; 4 perf menu_to_map (looped) */
+    int move_cut_test;     /* --lib-move-cut: at t 0.5 of the demo's Maps (1 the game starts, 2 Reduse) or Back (3, 4); -1 done */
     struct {               /* --lib-back-loop N: Maps + Back N times, every Back's camera checked (the library test's jump rule) */
         int want, done, bad, frame;
         HMM_Vec3 prev_eye;
@@ -783,6 +784,7 @@ static void progress_merged(Game *g)
 }
 static bool open_map(Game *g, MgApp *app, WmState state);
 static void erase_progress(Game *g);
+static void move_cut(Game *g);
 
 /* One head icon, for ui/head_icons.c: the interact preview's floating head, turned 15 degrees */
 static void draw_head_icon(void *user, GfxContext *gfx, const NetSkin *skin)
@@ -968,6 +970,10 @@ bool game_init(MgApp *app)
         const char *cu = arg_value(app->argc, app->argv, "--lib-closeup");
         const char *at = arg_value(app->argc, app->argv, "--autotest");
         g->move_demo = has_flag(app->argc, app->argv, "--lib-move-demo") ? 1 : 0;
+        if (arg_value(app->argc, app->argv, "--lib-move-cut")) { /* with --lib-move-demo: the game starts / Reduse at t 0.5 of a move */
+            const char *mc = arg_value(app->argc, app->argv, "--lib-move-cut");
+            g->move_cut_test = (SDL_strncmp(mc, "start", 5) == 0 ? 1 : 2) + (SDL_strstr(mc, "back") ? 2 : 0);
+        }
         if (arg_value(app->argc, app->argv, "--ui-motion") && SDL_strcmp(arg_value(app->argc, app->argv, "--ui-motion"), "reduced") == 0) {
             g->force_reduced = true; /* tests: Animații interfață = Reduse for this run, never written to prefs */
         }
@@ -2037,6 +2043,17 @@ static void account_loaded(Game *g, MgApp *app)
     save_prefs(g);
 }
 
+/* The host started the game (what = 4; --lib-move-cut start: 3): straight to the loading screen, a Maps / Back move in
+ * progress cut short (LIB-1 §8, §15.11). */
+static void game_starts(Game *g, int what)
+{
+    move_cut(g);
+    g->pending_play = what;
+    g->load_step = 0;
+    g->fe.depth = 0;
+    g->fe.state = FE_LOADING;
+}
+
 /* What the lobby has for the game: a grant to follow, a guest session that ended, toasts. */
 static void lobby_follow(Game *g, MgApp *app)
 {
@@ -2094,10 +2111,7 @@ static void lobby_follow(Game *g, MgApp *app)
             g->fpage.editing_search = false;
             friends_page(&g->friends, false);
         }
-        g->pending_play = 4;
-        g->load_step = 0;
-        g->fe.depth = 0;
-        g->fe.state = FE_LOADING;
+        game_starts(g, 4);
     }
     if (l->join_error[0]) {
         char key[80];
@@ -2351,6 +2365,9 @@ static bool menu_world(Game *g, MgApp *app)
     }
     const bool opened = !g->menu_world_on; /* members already in the lobby are seated on this frame */
     g->menu_world_on = true;
+    if (opened) { /* the menu always shows the open cutaway: the map from a hospital's pause card (no move back) left it closed */
+        g->lib.shell_k = 0.0f;
+    }
     { /* §5: my table is dressed from my lobby's seed: my user id (cached for the first frame), the name before any sign-in */
         const char *id = g->profile.user_id[0] ? g->profile.user_id : g->prefs.cache_user_id[0] ? g->prefs.cache_user_id
                          : g->profile.display_name[0] ? g->profile.display_name : g->prefs.cache_name;
@@ -2554,10 +2571,35 @@ static void begin_back_move(Game *g, MgApp *app)
     mg_log_info("library: move back to the menu over %.1f s", (double)sc->transition.duration_s);
 }
 
+/* The host started the game mid-move (§8's rule, §15.11): the move is cut short and nothing of it stays on (the map's
+ * camera override, its hidden HUD, the input lock); the loading screen follows. The library is left open: the menu after
+ * the game shows the cutaway. */
+static void move_cut(Game *g)
+{
+    if (g->move_state == 0) {
+        return;
+    }
+    mg_log_info("library: move %s cut short at t %.3f (the game starts)", g->move_state == 1 ? "to the map" : "back", (double)g->move.t);
+    g->move.active = false;
+    g->move_state = 0;
+    g->wm.cam_override = false;
+    g->wm.hud_off = false;
+    g->ui.input_off = false;
+    g->lib.shell_k = 0.0f;
+}
+
 /* One frame of the move: the map's world and the library, the shell fading in / out, no input. */
 static void move_frame(Game *g, MgApp *app)
 {
     const float dt = mg_minf(app->frame_dt, 0.1f);
+    if (motion_reduced(g) && g->move.active) { /* Reduse switched on mid-move (iOS Reduce Motion): the move ends at once under
+                                                * the same 300 ms cross-dissolve as a Reduse Maps / Back */
+        mg_log_info("library: Reduse mid-move: the move %s ends at once (t %.3f) under the dissolve", g->move_state == 1 ? "to the map" : "back",
+                    (double)g->move.t);
+        gfx_dissolve_capture(app->gfx);
+        g->dissolve_t0 = app->time;
+        g->move.t = 1.0f;
+    }
     const bool done = lib_move_step(&g->move, dt);
     const float e = done ? (g->move_state == 1 ? 1.0f : 0.0f) : lib_move_e(&g->move);
     const LibCamPose c = lib_move_pose(&g->move, e);
@@ -2807,6 +2849,17 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         if (a <= 0.0f) {
             g->dissolve_t0 = 0.0;
         }
+    }
+    if (g->move_cut_test > 0 && g->move_state == (g->move_cut_test > 2 ? 2 : 1) && g->move.t >= 0.5f) { /* --lib-move-cut */
+        if (g->move_cut_test == 1 || g->move_cut_test == 3) {
+            mg_log_info("lib-move-cut: the game starts at t %.3f", (double)g->move.t);
+            g->move_cut_test = -1;
+            game_starts(g, 3);
+            return;
+        }
+        mg_log_info("lib-move-cut: Reduse at t %.3f", (double)g->move.t);
+        g->move_cut_test = -1;
+        g->force_reduced = true;
     }
     if (g->move_state != 0) { /* LIB-1: the camera move between the library and the map */
         move_frame(g, app);

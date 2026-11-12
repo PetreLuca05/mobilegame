@@ -7,7 +7,8 @@
  *   5 level-progress gastro 50 -> Maps: Gastro selected with no tap, 50 %, In progress, yellow ring,
  *     island round(50 / N) %; screenshot
  *   6 level-progress gastro 100 -> Completed, Replay, 1 of N finished; screenshot
- *   7 layout: the menu's rows and Continue without scrolling; the card and its buttons inside the safe rect */
+ *   7 layout: the menu's rows and Continue without scrolling; the card and its buttons inside the safe rect
+ *   8 Continue, pause -> Map (a scene switch, no camera move) -> Back: the menu shows the open library (shell 0) */
 #ifndef MG_AUTOTEST_WORLD_H
 #define MG_AUTOTEST_WORLD_H
 

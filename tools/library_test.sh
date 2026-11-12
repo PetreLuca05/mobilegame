@@ -17,6 +17,21 @@ run() { # NAME ARGS...
 }
 run library $GAME --autotest library
 run library_reduced $GAME --ui-motion reduced --autotest library
+# §8 / §15.11: Maps during Ieși's pan finishes the trip at once, the move starts from the pan's camera (the run ends on the map)
+run library_maps_mid_trip $GAME --autotest library maps-mid-trip
+# §8 / §15.11: the game starting, and Reduse switched on, in the middle of the Maps move and of the Back move (--lib-move-demo)
+move_cut() { # NAME MODE WANT...
+  local n=$1 m=$2; shift 2
+  timeout 60 $GAME --profile libmovecut --frontend menu --lib-move-demo --lib-move-cut $m --quit-after 15 > "$OUT/$n.log" 2>&1
+  local bad=""
+  for w in "$@"; do grep -q "$w" "$OUT/$n.log" || bad="$bad [$w]"; done
+  if grep -q "ERROR" "$OUT/$n.log"; then bad="$bad [an ERROR line]"; fi
+  if [ -z "$bad" ]; then echo "PASS $n"; else echo "FAIL $n: missing$bad"; RC=1; fi
+}
+move_cut library_cut_start start "move to the map cut short" "frontend: LOADING" "frontend: PLAY"
+move_cut library_cut_start_back start-back "move back cut short" "frontend: LOADING" "frontend: PLAY"
+move_cut library_cut_reduce reduce "Reduse mid-move: the move to the map ends at once" "frontend: MAP" "move to the map done"
+move_cut library_cut_reduce_back reduce-back "Reduse mid-move: the move back ends at once" "move back done"
 # §11: a fresh install (the walk-in, Username, the Creator's Locker), then the same profile again (no second walk-in); the first
 # launch on the iPhone presets and the iPad too. Pictures into docs/autotest/library/step8/.
 mkdir -p docs/autotest/library/step8
