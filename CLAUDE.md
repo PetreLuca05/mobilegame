@@ -5,7 +5,7 @@ target for fast iteration. Current focus: desktop + iOS (Android code still
 builds in CI but is not verified). **Landscape only**: LandscapeLeft +
 LandscapeRight everywhere (SDL hint + Info.plist), never portrait; lay out
 for a short, wide screen and respect `app->safe_*` on both sides (notch /
-Dynamic Island flips sides with the rotation, home indicator at the bottom) on Settings, Friends and overlays; the in-game HUD (`hud_frame`) and the main menu and onboarding screens ignore them (12 pt from the edges, 8 pt from the top, on every model). Multiplayer over Supabase Realtime;
+Dynamic Island flips sides with the rotation, home indicator at the bottom) on Settings, Friends and overlays; the in-game HUD (`hud_frame`), the pause button, marker edge icons, the main menu and onboarding respect them on phones (`ui_hud_frame` in `engine/ui/layout.h`: a screen under 600 pt tall gets the real insets + 12 pt, 8 pt at the top) and ignore them on the iPad (12 pt from the screen edge). Multiplayer over Supabase Realtime;
 accounts (guest, linkable to Google), profiles and stats over Supabase.
 
 ## Layout
