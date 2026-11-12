@@ -364,6 +364,46 @@ static int move_watch(LibraryTest *t, const AutotestProbe *p, const MenuLibrary 
     return 0;
 }
 
+/* maps-mid-trip (§8, §15.11): Maps tapped while Ieși's pan runs. The trip must be finished on the move's first frame (the
+ * hero seated at my table, no trip phase) and the move must start from the pan's camera: its first step is judged against
+ * the eye of the last frame before it, with the pan's own speed as the previous one. Then the move as in step 7. */
+static int maps_mid_trip(LibraryTest *t, MgApp *app, const AutotestProbe *p, const MenuLibrary *L, AutotestOut *out, double now)
+{
+    if (t->mt == 1) {
+        if (p->move_state == 1 && p->move_t > 0.0f) { /* the move's first frame */
+            const LibMember *h = &L->seat[0];
+            mg_log_info("autotest library: Maps mid-trip: on the move's first frame trip phase %d, hero %s at bay %d (my table %d), the pan's speed %.3f camera distances/s",
+                        (int)L->trav.phase, h->state == LM_STUDY ? "studying" : "NOT studying", h->bay, t->my_bay, (double)t->mt_trip_speed);
+            if (L->trav.phase != LT_NONE || h->state != LM_STUDY || h->has_dest || L->table_bay != t->my_bay) {
+                return failf(t, "maps mid-trip: the trip did not finish at once (phase %d, hero state %d, table bay %d)", (int)L->trav.phase, (int)h->state,
+                             L->table_bay);
+            }
+            t->mt = 2;
+            t->frames = 2, t->prev_t = 0.0f, t->prev_speed = t->mt_trip_speed, t->worst_jump = 0.0f, t->empty_frames = 0;
+            t->shots = 5, t->rebase = false, t->move_start = now; /* no pictures: every step is judged */
+            return move_watch(t, p, L, out);
+        }
+        if (p->move_state == 0 || p->move_t <= 0.0f) {
+            t->prev_eye = p->cam_eye; /* the pan's camera, up to the frame Maps took */
+        }
+        if (p->move_state == 0) {
+            (void)tap(t, app, p, "menurow4", now);
+        }
+        return now - t->mt_pan_at > 4.0 ? failf(t, "maps mid-trip: no move started") : 0;
+    }
+    if (p->move_state == 1) {
+        return move_watch(t, p, L, out);
+    }
+    const float land = HMM_LenV3(HMM_SubV3(p->cam_eye, t->prev_eye));
+    mg_log_info("autotest library: Maps mid-trip: the move from the pan's camera, %d frames, worst jump %.4f camera distances/s, landing step %.4f, %d frames without the island, screen %d",
+                t->frames - 2, (double)t->worst_jump, (double)land, t->empty_frames, p->fe_state);
+    if (t->worst_jump > 0.0f || t->empty_frames > 0 || land > 0.05f || p->fe_state != FE_MAP) {
+        return failf(t, "maps mid-trip: jump %.3f, %d empty frames, landing %.4f, screen %d", (double)t->worst_jump, t->empty_frames, (double)land, p->fe_state);
+    }
+    t->acts_skip = true;
+    return npc_done(t, L); /* this run checks Maps during a trip only */
+}
+
 /* §6 (§15.5): every action forced on the hero in turn. Per action: the things that may show, the things that must show, and
  * where its phone lies (1 pocket, 2 table). */
 enum {
@@ -1390,6 +1430,18 @@ int lt_run(LibraryTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
     case 21: { /* Ieși: the trip back */
         if (t->tk == 0 && now - t->at < 2.0) {
             return 0;
+        }
+        if (argv_has(app, "maps-mid-trip") && t->tk >= 2) { /* §8: Maps during the pan finishes the trip at once */
+            if (t->mt == 0 && L->trav.phase == LT_PAN && t->mt_pan_at <= 0.0) {
+                t->mt_pan_at = now;
+            }
+            if (t->mt == 0 && t->mt_pan_at > 0.0 && now - t->mt_pan_at > 0.4) {
+                t->mt = 1;
+                t->mt_trip_speed = t->prev_speed;
+            }
+            if (t->mt > 0) {
+                return maps_mid_trip(t, app, p, L, out, now);
+            }
         }
         const int r = trip_run(t, p, L, out, now, true);
         if (r > 0) {

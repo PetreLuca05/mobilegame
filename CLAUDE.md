@@ -626,9 +626,14 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   (measured from the pad's edge), on the plateau, facing the road, on bare grass with no scenery triangle under it; the path crosses no
   water, plot, raised ground or scenery; props within 1.0 of the pad / 0.5 of the path removed; the pad and the path are part of the
   island's road mesh) at `lib_scale`. `library` is the hall's origin, `library_pad.x/z` the pad's centre (the hall's centre is off its origin).
+  `python3 -I tools/place_library.py --check` measures every number again on the committed JSON of both islands (PASS / FAIL per point)
+  and fails if the rule would now write anything different (pictures: docs/autotest/library/step9/).
 - The map preloads behind the menu (`worldmap_load_step`, one island per frame; the Maps row waits). Maps / Back / New Game are one camera
   move (`game/lib_move.c`: log-distance + hump, target along the cumulative distance, the shell dithers in, the map UI enters at t 0.9);
-  Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch.
+  Animații interfață = Reduse: a 300 ms cross-dissolve (`gfx_dissolve_capture` / `gfx_dissolve`). The pause card's Map keeps its scene switch
+  (its Back reopens the library open: the menu always opens on the cutaway). Mid-move: the game starting (a host's start) cuts the move
+  short (`move_cut`), Reduse switched on ends it at once under the dissolve, Maps during a §8 trip finishes the trip and starts from the
+  trip's camera (`--autotest library maps-mid-trip`; `--lib-move-cut start|reduce|start-back|reduce-back` with `--lib-move-demo`).
 - Desktop: `--debug turn-page`, `--lib-closeup [side]`, `--lib-demo-join`, `--lib-move-demo`, `--ui-motion reduced`, `--lib-back-loop N`
   (Maps + Back N times, every Back's camera checked), `--lib-still` (the library at dt 0, comparison pictures), `--lib-no-nav` (perf A/B: straight legs),
   `--lib-look x,z,d` (the menu camera on a hall point, pictures: docs/autotest/library/step4/), `--lib-log-acts` (each person's act as it starts).
@@ -654,6 +659,11 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   cull nothing); table-lamp light and `phone_glow` are instanced. `GFX_MAT_ALPHA` is drawn in bucket 3 (after the avatars), mesh first.
   ctest `lib_life` (+ the cat on the real grid among the people); `--autotest library` step 13 (the scripted steps before it hold the
   cat's visits, `AutotestOut.lib_cat_hold`); `--lib-log-acts` logs the cat's states too. Pictures: docs/autotest/library/step6/.
+- My own table's bay per account (§11, user decision): `prefs.json` `lib_bays` {seed, bay} remembers it once per account on a device
+  (kept on sign-out). The table moves to the account's bay only on the first library open after a cold start or a game
+  (`lib_open_kind`, used up by every open) with me at my own table; a sign-in mid-menu, Back from the map, Settings / Friends or a
+  friend's table never move it. `--autotest rebay` (+ `--rebay-cold`): fresh install, sign-in, 30 s still, Back, back from a game,
+  sign-out / in, a friend's table, friends in my lobby, a cold start; `--lib-seed-bay N` forces the seed's bay.
 - The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
   camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
   of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one
