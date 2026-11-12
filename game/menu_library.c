@@ -922,6 +922,9 @@ static void project_box(const HMM_Mat4 *vp, const HMM_Vec3 *pts, int n, float w,
 
 #define CREATOR_RATE 5.0f     /* §11: the Locker's ease, /s */
 #define CREATOR_STUDY_W 0.15f /* §11: the hero's study blend in the Locker */
+/* §11 the Locker's move: 1.0 s (an exponential at CREATOR_RATE 5 /s settles within 1 % in 0.92 s; at 0.92 s the quintic's start broke
+ * the §15.11 rule by 0.002 on the iPhone preset's larger relative move, now and then with frame jitter: its early speeds go as 1 / T^3) */
+#define LOCKER_S 1.0f
 #define FIT_RATE 6.0f         /* the menu camera's fit: a quintic over an exponential's 1 % settle time at this rate (/s) */
 
 void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_once)
@@ -939,8 +942,11 @@ void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_
     L->creator_l = creator_l;
 }
 
+/* the quintic t^3 (t (6t - 15) + 10): leaves and lands with no speed and the gentlest start (speed grows as u^2) */
+static float ease_q(float u) { return u * u * u * (u * (6.0f * u - 15.0f) + 10.0f); }
+
 /* §11 the Locker's ease: its progress u runs at a constant rate to the end in the time an exponential ease at CREATOR_RATE /s takes
- * to come within 1 % (ln 100 / 5 = 0.92 s), shaped by the quintic t^3 (t (6t - 15) + 10), so it leaves and lands with no speed (an
+ * to come within 1 % (ln 100 / 5 = 0.92 s), shaped by ease_cos, so it leaves and lands with no speed (an
  * exponential starts at full speed on its first frame: a jump by §15.11). Closing runs it back. Reduse: a switch at once under the
  * caller's cross-dissolve (creator_snap). */
 static void creator_ease(MenuLibrary *L, float dt)
@@ -950,10 +956,10 @@ static void creator_ease(MenuLibrary *L, float dt)
         L->creator_u = goal;
         L->creator_snap = false;
     }
-    const float step = dt * CREATOR_RATE / logf(100.0f);
+    const float step = dt / LOCKER_S;
     L->creator_u = L->creator_u < goal ? fminf(L->creator_u + step, goal) : fmaxf(L->creator_u - step, goal);
     const float u = L->creator_u;
-    L->creator_t = u * u * u * (u * (6.0f * u - 15.0f) + 10.0f);
+    L->creator_t = ease_q(u);
     L->creator_dt = dt;
     /* the hero's pose follows on the same clock once it studies with no page in the air (a turn in progress lands first; an
      * onboarding walk-in sits and settles first); closing takes it back with the camera */
@@ -963,7 +969,7 @@ static void creator_ease(MenuLibrary *L, float dt)
         L->lock_u = L->creator_snap_pose ? goal : L->lock_u < goal ? fminf(L->lock_u + step, goal) : fmaxf(L->lock_u - step, goal);
         L->creator_snap_pose = false;
     }
-    const float v = L->lock_u, k = v * v * v * (v * (6.0f * v - 15.0f) + 10.0f);
+    const float v = L->lock_u, k = ease_q(v);
     L->creator_w = fminf(L->creator_t, k);
 }
 
@@ -1040,7 +1046,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     }
     L->fit_u = fminf(L->fit_u + mg_minf(app->frame_dt, 0.1f) * FIT_RATE / logf(100.0f), 1.0f);
     {
-        const float u = L->fit_u, e = u * u * u * (u * (6.0f * u - 15.0f) + 10.0f);
+        const float u = L->fit_u, e = ease_q(u);
         L->dist = mg_lerpf(L->fit_from[0], L->fit_to[0], e);
         L->shift = mg_lerpf(L->fit_from[1], L->fit_to[1], e);
     }
