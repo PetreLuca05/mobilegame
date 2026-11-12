@@ -281,6 +281,7 @@ typedef struct Game {
     bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
+    double stale_eye_until; /* the canary's stale camera holds until then */
     bool move_from_pause;  /* the map came from a hospital's pause card: Back keeps the scene switch */
     double dissolve_t0;    /* Reduced motion: the 300 ms cross-dissolve's start (0 none) */
     bool force_reduced;    /* --ui-motion reduced (not saved) */
@@ -2503,8 +2504,12 @@ static void move_frame(Game *g, MgApp *app)
     }
     g->view_proj = HMM_MulM4(proj, view);
     if (g->stale_eye_armed && g->move_state == 2 && g->move.t > 0.3f) {
-        g->stale_eye_armed = false; /* the canary: this frame's camera is not reported (as a stale eye would be) */
-    } else {
+        /* the canary: the camera is not reported for one 60 Hz frame (as a stale eye would be); held for 1/60 s, not one loop
+         * iteration: at 120 fps one iteration is shorter than the half frame the jump rule needs to judge a step, so a single
+         * stale iteration merged into the next step and the canary passed or failed by luck */
+        g->stale_eye_armed = false;
+        g->stale_eye_until = app->time + 1.0 / 60.0;
+    } else if (app->time >= g->stale_eye_until) {
         g->last_eye = eye;
     }
     g->last_cam_dist = c.dist;
