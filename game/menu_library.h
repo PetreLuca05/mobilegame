@@ -179,6 +179,7 @@ typedef struct MenuLibrary {
     double tick_acc;
     uint32_t visible;   /* bit b: bay b is in the camera's frustum and not behind the middle wall this frame (people elsewhere
                          * tick at 1/6, are not drawn, emit nothing) */
+    bool snap_camera;   /* --lib-still: the fit distance and shift without easing (identical frames for comparisons) */
     bool no_wall_vis;   /* --lib-no-wall-vis: the frustum alone (A/B pictures and perf) */
     HMM_Mat4 view_proj; /* world: set by the caller with view_eye (has_vp) */
     bool has_vp;

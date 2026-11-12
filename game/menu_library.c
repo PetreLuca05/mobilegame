@@ -824,8 +824,9 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
             dist *= 1.04f;
         }
     }
-    L->dist = L->dist <= 0.0f ? dist : L->dist + (dist - L->dist) * mg_minf(app->frame_dt * 6.0f, 1.0f);
-    L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * mg_minf(app->frame_dt * 6.0f, 1.0f);
+    const float ease = L->snap_camera ? 1.0f : mg_minf(app->frame_dt * 6.0f, 1.0f); /* --lib-still: no float wobble at rest */
+    L->dist = L->dist <= 0.0f ? dist : L->dist + (dist - L->dist) * ease;
+    L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * ease;
     const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->table_x, 0, L->table_z)), HMM_MulV3F(right, L->shift));
     const HMM_Vec3 eye = orbit_eye(target, L->dist, c->pitch_deg, c->yaw_deg);
     L->creator_t += ((L->creator ? 1.0f : 0.0f) - L->creator_t) * (1.0f - expf(-CREATOR_RATE * mg_minf(app->frame_dt, 0.1f)));
@@ -1502,10 +1503,7 @@ static uint32_t bays_visible(const MenuLibrary *L)
             vis |= 1u << b;
         }
     }
-    const uint32_t occ = bays_occluded(L);
-    static uint32_t last_dbg = 0xffffffffu; /*DBG*/
-    if (((vis << 8) | occ) != last_dbg) { last_dbg = (vis << 8) | occ; mg_log_info("DBG wallvis: frustum %x occluded %x", vis, occ); }
-    return L->no_wall_vis ? vis : vis & ~occ;
+    return L->no_wall_vis ? vis : vis & ~bays_occluded(L);
 }
 
 /* §10 before a people tick: the cat learns which table the players are at and who is seated (studying, things on the table;
