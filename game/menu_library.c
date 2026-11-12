@@ -178,6 +178,44 @@ static GfxMeshId upload(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb 
     return id;
 }
 
+/* A back-row room with the triangles that reach through the middle wall first (any corner south of the wall's far face: the
+ * side walls' ends, the floor slab's edge, a rug), so a bay hidden behind the wall still draws those (*near: their index count)
+ * and nothing else. One mesh, one draw either way. */
+static GfxMeshId upload_split(MenuLibrary *L, GfxContext *g, Arena *arena, const Mgmb *mb, const char *name, float far_face_z,
+                              uint32_t *near)
+{
+    *near = 0;
+    const MgmbGroup *gr = mgmb_group(mb, name);
+    if (!gr || gr->vert_count == 0 || gr->vert_count % 3u) {
+        return upload(L, g, arena, mb, name);
+    }
+    const size_t mark = arena_mark(arena);
+    GfxVertex *v = ARENA_PUSH(arena, GfxVertex, gr->vert_count);
+    if (!v) {
+        arena_reset_to(arena, mark);
+        return GFX_MESH_NONE;
+    }
+    uint32_t n = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        for (uint32_t t = 0; t < gr->vert_count; t += 3) {
+            const GfxVertex *s = &gr->verts[t];
+            const bool through = s[0].pz > far_face_z || s[1].pz > far_face_z || s[2].pz > far_face_z;
+            if (through == (pass == 0)) {
+                v[n] = s[0], v[n + 1] = s[1], v[n + 2] = s[2];
+                n += 3;
+            }
+        }
+        if (pass == 0) {
+            *near = n;
+        }
+    }
+    uint32_t kept = 0;
+    const GfxMeshId id = mesh_upload_welded(g, arena, v, n, &kept);
+    L->weld_in += gr->vert_count, L->weld_out += kept;
+    arena_reset_to(arena, mark);
+    return id;
+}
+
 /* §5 covers: a book whose cover takes any colour. The cover's vertices (the prototype's palette b2, #1F6F8B) become white
  * zone 0, everything else zone 3 (own colour), so a draw with extra = (cover rgb, 0, 0, 1 << 3) colours just the cover. */
 #define LIB_COVER_SRC 0x1F6F8Bu
@@ -469,6 +507,8 @@ static void upload_alpha_bays(MenuLibrary *L, GfxContext *g, Arena *arena, const
 }
 
 /* the cat on the floor: an agent of this radius (LIB-1 §7: people walk round it) */
+/* the middle wall's thickness: its far face is mid_wall_z - this (the front rooms' walls span z -5.7 .. -5.5) */
+#define LIB_WALL_T 0.2f
 #define LIB_CAT_RADIUS 0.2f
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
@@ -524,7 +564,9 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
     for (int b = 0; b < LIB_BAYS; b++) {
         char name[16];
         SDL_snprintf(name, sizeof(name), "room_%d", b);
-        L->room[b] = upload(L, g, scratch, &mb, name);
+        L->room_near[b] = 0;
+        L->room[b] = L->sc.bay_z[b] < L->sc.mid_wall_z ? upload_split(L, g, scratch, &mb, name, L->sc.mid_wall_z - LIB_WALL_T + 0.001f, &L->room_near[b])
+                                                       : upload(L, g, scratch, &mb, name);
         rooms = rooms && L->room[b] != GFX_MESH_NONE;
     }
     L->shell = upload(L, g, scratch, &mb, "shell");
@@ -1361,8 +1403,87 @@ static int bay_at(const MenuLibrary *L, HMM_Vec2 p)
     return L->home_bay;
 }
 
+/* Wall-aware: the bays the middle wall hides from the eye. The wall: the front row's back walls, the room height tall, the
+ * hall's whole width, its one window pane opaque. A bay on the far side is projected from the eye onto the wall's plane (the
+ * rectangle round its box's 8 corners, conservative for the box inside). It is hidden when that rectangle is within the wall's
+ * width, misses every open doorway (the front rooms' doors, a 0.3 m margin), and whatever of it rises above the wall's top is
+ * off screen (the ray to a box point passes the wall's plane at its projection, so the two are on screen together). Nothing is
+ * hidden while a front room is dithered (bay_hide: the wall itself is fading). */
+static uint32_t bays_occluded(const MenuLibrary *L)
+{
+    if (!L->has_vp) {
+        return 0u;
+    }
+    const LibScene *s = &L->sc;
+    const float mid = s->mid_wall_z;
+    float x0 = 1e9f, x1 = -1e9f;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        x0 = mg_minf(x0, L->bay_x[b] - 0.5f * s->room.X);
+        x1 = mg_maxf(x1, L->bay_x[b] + 0.5f * s->room.X);
+        if (L->bay_z[b] >= mid && bay_hide(L, b) > 0.0f) {
+            return 0u; /* a front room's walls are fading */
+        }
+    }
+    const HMM_Vec3 e = HMM_MulM4V4(HMM_InvGeneralM4(L->xf), HMM_V4V(L->view_eye, 1.0f)).XYZ;
+    if (SDL_fabsf(e.Z - mid) < 0.05f) {
+        return 0u;
+    }
+    const HMM_Mat4 vp = HMM_MulM4(L->view_proj, L->xf);
+    uint32_t occ = 0;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        const bool bay_back = L->bay_z[b] < mid; /* the bay's box: back row z <= mid, front row z >= mid */
+        if (bay_back ? e.Z <= mid : e.Z >= mid) {
+            continue; /* the eye's side */
+        }
+        /* the box's corners seen from the eye on the wall's plane: their x / y extent (the box is on the far side) */
+        const float bx0 = L->bay_x[b] - 0.5f * s->room.X, bx1 = L->bay_x[b] + 0.5f * s->room.X;
+        const float bz0 = bay_back ? L->bay_z[b] - 7.0f : mid, bz1 = bay_back ? mid : L->bay_z[b] + 10.5f;
+        float px0 = 1e9f, px1 = -1e9f, py0 = 1e9f, py1 = -1e9f;
+        for (int k = 0; k < 8; k++) {
+            const float cx = k & 1 ? bx1 : bx0, cy = k & 2 ? s->room.Y : 0.0f, cz = k & 4 ? bz1 : bz0;
+            const float dz = cz - e.Z;
+            const float t = SDL_fabsf(dz) < 1e-4f ? 1.0f : (mid - e.Z) / dz; /* along eye -> corner, 0..1 */
+            const float wx = e.X + (cx - e.X) * t, wy = e.Y + (cy - e.Y) * t;
+            px0 = mg_minf(px0, wx), px1 = mg_maxf(px1, wx), py0 = mg_minf(py0, wy), py1 = mg_maxf(py1, wy);
+        }
+        if (px0 < x0 || px1 > x1) {
+            continue; /* past the wall's ends */
+        }
+        if (py1 > s->room.Y - 0.02f) { /* the part over the top: off screen? (all four corners beyond one clip plane) */
+            const float top = s->room.Y - 0.02f;
+            int out[5] = {0, 0, 0, 0, 0};
+            for (int k = 0; k < 4; k++) {
+                const HMM_Vec4 c = HMM_MulM4V4(vp, HMM_V4(k & 1 ? px1 : px0, k & 2 ? py1 : top, mid, 1.0f));
+                out[0] += c.X < -c.W, out[1] += c.X > c.W, out[2] += c.Y < -c.W, out[3] += c.Y > c.W, out[4] += c.W <= 0.0f;
+            }
+            if (out[0] < 4 && out[1] < 4 && out[2] < 4 && out[3] < 4 && out[4] < 4) {
+                continue; /* seen over the wall */
+            }
+        }
+        bool through = false;
+        for (int f = 0; f < LIB_BAYS && !through; f++) { /* the open doorways of the middle wall (the front rooms' doors) */
+            if (L->bay_z[f] < mid || L->door_open[f] <= 0.0f) {
+                continue;
+            }
+            const float m = 0.3f, dc = L->bay_x[f] + s->door.centre.X, hw = 0.5f * s->door.width + m;
+            through = px1 > dc - hw && px0 < dc + hw && py0 < s->door.height + m && py1 > -m;
+        }
+        if (!through) {
+            occ |= 1u << b;
+        }
+    }
+    return occ;
+}
+
+/* A bay's room shell and door: a back-row bay only while visible; a front-row room always (its back wall is the middle wall,
+ * the occluder itself, seen from either side; bay_hide fades it). */
+static bool bay_drawn(const MenuLibrary *L, int b)
+{
+    return L->bay_z[b] >= L->sc.mid_wall_z || ((L->visible >> b) & 1u);
+}
+
 /* The bays in the camera's frustum: each bay's box (16 m wide, floor to ceiling, from behind its back wall to the open floor
- * in front) through the caller's view-projection; no camera yet: all of them. */
+ * in front) through the caller's view-projection, minus the ones behind the middle wall (bays_occluded); no camera yet: all. */
 static uint32_t bays_visible(const MenuLibrary *L)
 {
     if (!L->has_vp) {
@@ -1381,7 +1502,10 @@ static uint32_t bays_visible(const MenuLibrary *L)
             vis |= 1u << b;
         }
     }
-    return vis;
+    const uint32_t occ = bays_occluded(L);
+    static uint32_t last_dbg = 0xffffffffu; /*DBG*/
+    if (((vis << 8) | occ) != last_dbg) { last_dbg = (vis << 8) | occ; mg_log_info("DBG wallvis: frustum %x occluded %x", vis, occ); }
+    return L->no_wall_vis ? vis : vis & ~occ;
 }
 
 /* §10 before a people tick: the cat learns which table the players are at and who is seated (studying, things on the table;
@@ -1845,7 +1969,7 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
 static void draw_table_extras(MenuLibrary *L, GfxContext *g, int b, float hide)
 {
     const LibScene *s = &L->sc;
-    if (!L->dress_ok || hide >= 0.98f) {
+    if (!L->dress_ok || hide >= 0.98f || !((L->visible >> b) & 1u)) {
         return;
     }
     const LibDressing *d = &L->dress[b];
@@ -1879,8 +2003,13 @@ static void draw_dressing_rows(MenuLibrary *L, GfxContext *g, const float *hide)
     }
     for (int r = 0; r < 2; r++) {
         float h = 0.0f;
+        bool on = false;
         for (int b = 0; b < LIB_BAYS; b++) {
             h = bay_row(L, b) == r ? mg_maxf(h, hide[b]) : h;
+            on = on || (bay_row(L, b) == r && ((L->visible >> b) & 1u));
+        }
+        if (!on) {
+            continue;
         }
         GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
         toon.hide = h;
@@ -2054,6 +2183,9 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         L->door_open[b] = approach(L->door_open[b], walker ? s->door.open_rad : 0.0f, s->door.rate, dt);
     }
     L->door_angle = L->door_open[L->table_bay]; /* my table's door (tests) */
+    if (L->has_vp) { /* again with this frame's doors: a doorway opening now shows the bay behind it this frame */
+        L->visible = bays_visible(L);
+    }
     L->clock += dt;
     if (L->gone.t_gone > 0.0 && L->gone.t_shut <= 0.0 && menu_library_npc_at_door(L, L->table_bay)) {
         L->gone.t_door_clear = L->clock;
@@ -2068,6 +2200,13 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         GfxMaterial rm = room;
         rm.hide = hide[b];
         gfx_set_category(g, GFX_CAT_ROOM);
+        if (!bay_drawn(L, b)) { /* behind the middle wall: only what reaches through it */
+            if (L->room_near[b] > 0) {
+                gfx_draw_range(g, L->room[b], 0, L->room_near[b], &L->xf, &rm, 0);
+            }
+            gfx_set_category(g, GFX_CAT_PROP);
+            continue;
+        }
         gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
         gfx_set_category(g, GFX_CAT_PROP);
     }
@@ -2081,6 +2220,9 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         lib_life_emit(L->life, L->lcfg, L->life_vis, L->local_time_s);
     }
     for (int b = 0; b < LIB_BAYS; b++) { /* one door per bay */
+        if (!bay_drawn(L, b)) {
+            continue;
+        }
         GfxMaterial dm = room;
         dm.hide = hide[b];
         const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, L->bay_z[b] + s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));

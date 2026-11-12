@@ -280,6 +280,7 @@ typedef struct Game {
     HMM_Vec3 last_eye;     /* the camera the last frame drew with (menu, move or map): tests */
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
     bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
+    uint32_t lib_ab_frame; /* --lib-wall-ab */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -962,6 +963,7 @@ bool game_init(MgApp *app)
             menu_library_set_table(&g->lib, SDL_atoi(arg_value(app->argc, app->argv, "--lib-bay")));
         }
         g->lib.no_nav = has_flag(app->argc, app->argv, "--lib-no-nav"); /* perf A/B: the straight-leg runner */
+        g->lib.no_wall_vis = has_flag(app->argc, app->argv, "--lib-no-wall-vis"); /* A/B: bay visibility by the frustum alone */
         g->lib_still = has_flag(app->argc, app->argv, "--lib-still");
         g->lib.log_acts = has_flag(app->argc, app->argv, "--lib-log-acts"); /* every background person's act as it starts (pictures) */
         if (arg_value(app->argc, app->argv, "--lib-look")) { /* desktop pictures: the menu camera on hall point x,z from d m */
@@ -4120,6 +4122,11 @@ static void game_frame_inner(MgApp *app, float alpha)
     /* --screenshot-at S:NAME[,S:NAME...]: timed pictures in any run */
     if (g->start_time == 0.0) {
         g->start_time = app->time;
+    }
+    if (has_flag(app->argc, app->argv, "--lib-wall-ab")) { /* test: the wall rule on for two frames, off for two (pixel compare of
+                                                              * frames of the same parity: some dither alternates every frame) */
+        g->lib_ab_frame++;
+        g->lib.no_wall_vis = (g->lib_ab_frame >> 1) & 1u;
     }
     const char *shots = arg_value(app->argc, app->argv, "--screenshot-at");
     int entry = 0;
