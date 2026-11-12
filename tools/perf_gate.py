@@ -59,6 +59,11 @@ def main():
             g = load(f"{new}/{dev}_{sc}_gpu.json", problems)
             if not d or not g:
                 continue
+            if d.get("valid") is False: # refused on battery, or the display refresh changed during the recording
+                problems.append(f"{dev} {sc}: run invalid ({d.get('invalid_why', '')})")
+                continue
+            if d.get("paced_below_refresh"):
+                print(f"WARN {dev:6} {sc:12} {d.get('fps', 0):.1f} fps under a {d.get('display_hz_start', 0):.0f} Hz refresh (the OS paced the window down?)")
             m = metrics(d, g)
             if sc in ("lift_panel", "interact_npc") and d.get("panel_samples", 0) < 0.9 * d["frames"]:
                 problems.append(f"{dev} {sc}: the panel was up in only {d.get('panel_samples', 0)} of {d['frames']} frames")
