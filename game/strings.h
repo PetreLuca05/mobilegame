@@ -8,5 +8,9 @@
 
 bool strings_init(Arena *perm);
 const char *str(const char *key);
+/* Lookups since start that fell back to English (no Romanian entry) / found no entry at all (the raw key showed);
+ * `last` gets the latest such key. --autotest ui fails on either (Romanian is the game's only language). */
+int strings_untranslated(const char **last);
+int strings_missing(const char **last);
 
 #endif

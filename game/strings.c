@@ -10,12 +10,17 @@
 
 typedef struct StringEntry {
     const char *key, *value;
+    bool fallback; /* from strings.json (English) only: the game's language (Romanian) has no entry */
 } StringEntry;
 
 /* filled once at startup from the embedded JSON, read-only afterwards */
 typedef struct StringTable {
     StringEntry e[MAX_STRINGS];
     int count;
+    bool loading_fallback;
+    /* what reached the screen without a Romanian text (ui autotest): counts and the last key of each */
+    int untranslated, missing;
+    const char *last_untranslated, *last_missing;
 } StringTable;
 
 static StringTable *g_strings_table(void)
@@ -53,6 +58,7 @@ static bool load_table(StringTable *t, Arena *perm, const char *path)
         }
         t->e[t->count].key = copy(perm, it->string);
         t->e[t->count].value = copy(perm, it->valuestring);
+        t->e[t->count].fallback = t->loading_fallback;
         t->count++;
     }
     cJSON_Delete(j);
@@ -64,6 +70,7 @@ bool strings_init(Arena *perm)
 {
     StringTable *t = g_strings_table();
     load_table(t, perm, "assets/strings_ro.json");
+    t->loading_fallback = true;
     if (!load_table(t, perm, "assets/strings.json")) {
         mg_log_error("strings: assets/strings.json missing or invalid");
         return false;
@@ -73,11 +80,35 @@ bool strings_init(Arena *perm)
 
 const char *str(const char *key)
 {
-    const StringTable *t = g_strings_table();
+    StringTable *t = g_strings_table();
     for (int i = 0; i < t->count; i++) {
         if (strcmp(t->e[i].key, key) == 0) {
+            if (t->e[i].fallback) { /* Romanian is the game's only language: an English-only key is a gap */
+                t->untranslated++;
+                t->last_untranslated = t->e[i].key;
+            }
             return t->e[i].value;
         }
     }
+    t->missing++; /* shows as its raw key */
+    t->last_missing = key;
     return key;
+}
+
+int strings_untranslated(const char **last)
+{
+    const StringTable *t = g_strings_table();
+    if (last) {
+        *last = t->last_untranslated;
+    }
+    return t->untranslated;
+}
+
+int strings_missing(const char **last)
+{
+    const StringTable *t = g_strings_table();
+    if (last) {
+        *last = t->last_missing;
+    }
+    return t->missing;
 }
