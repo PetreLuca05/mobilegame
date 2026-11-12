@@ -43,11 +43,14 @@ j = json.load(open(sys.argv[1])); head = sys.argv[2]
 if j.get("commit") != head:
     print(f"perf_mac: {sys.argv[1]}: labelled {j.get('commit')}, HEAD is {head}: does not count"); sys.exit(1)
 if not j.get("valid"):
-    print(f"perf_mac: {sys.argv[1]}: invalid ({j.get('invalid_why')}): does not count"); sys.exit(1)
+    fr = max(j.get("frames", 1), 1)
+    print(f"perf_mac: {sys.argv[1]}: invalid ({j.get('invalid_why')}; covered {100.0 * j.get('window_occluded_frames', 0) / fr:.2f} %, "
+          f"inactive {100.0 * j.get('window_unfocused_frames', 0) / fr:.2f} %, {j.get('fps', 0):.1f} fps): does not count"); sys.exit(1)
 c = j["counters"]; s = {x["name"]: x for x in j["scopes"]}
 print(f"perf_mac: {sys.argv[1]}: {head}, {j['display_hz_start']:.0f} Hz, {j['fps']:.1f} fps, draws {c['draws']['avg']:.1f}/{c['draws']['max']:.0f}, "
       f"tris {c['tris']['avg']/1000:.1f}k/{c['tris']['max']/1000:.1f}k, frame {s['frame']['avg']:.3f} ms, render {s['render']['avg']:.3f} ms, "
-      f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, {j['dropped']} dropped, {len(j['late_frames'])} late")
+      f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, {j['dropped']} dropped, {len(j['late_frames'])} late, "
+      f"covered {100.0 * j.get('window_occluded_frames', 0) / max(j['frames'], 1):.2f} %, inactive {100.0 * j.get('window_unfocused_frames', 0) / max(j['frames'], 1):.2f} % (limit 0.5 %)")
 PY
 done
 exit $RC

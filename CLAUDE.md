@@ -663,7 +663,7 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   (kept on sign-out). The table moves to the account's bay only on the first library open after a cold start or a game
   (`lib_open_kind`, used up by every open) with me at my own table; a sign-in mid-menu, Back from the map, Settings / Friends or a
   friend's table never move it. `--autotest rebay` (+ `--rebay-cold`): fresh install, sign-in, 30 s still, Back, back from a game,
-  sign-out / in, a friend's table, friends in my lobby, a cold start; `--lib-seed-bay N` forces the seed's bay.
+  sign-out / in, a friend's table, friends in my lobby, a cold start, and `--rebay-game` end to end (Join Gastro, the institute loads, a 4 s walk, Save & back to menu); `--lib-seed-bay N` forces the seed's bay.
 - The camera move's no-jump rule (accepted spec change, docs/LIB1.md §15.11): speed in camera distances per second (m/s over the
   camera's distance to its target), at most 1.5 x the previous judged frame's + 0.06; a step is judged only once it spans half a frame
   of the move's clock; no step across a picture capture is judged. `--autotest library` runs a third Maps / Back whose Back carries one

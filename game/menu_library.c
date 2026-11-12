@@ -1679,6 +1679,7 @@ void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, 
         L->rebay_applied = !host && L->force_bay < 0 && L->rebay_to >= 0 && L->my_bay == L->rebay_to;
     } else if (snap && !host && L->force_bay < 0 && L->rebay_to >= 0) {
         if (L->my_bay != L->rebay_to) {
+            L->rebay_moves++;
             mg_log_info("library: my table moves from bay %d to the account's bay %d (the menu opened from %s)", L->my_bay, L->rebay_to,
                         L->rebay_cold ? "a cold start" : "a game");
         }

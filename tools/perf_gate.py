@@ -13,6 +13,7 @@ import sys
 
 DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer tested
 PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
+MENU_TO_MAP_DRAWS_MAX = 60  # the Maps / Back move, the worst frame (user decision 2026-11-12: 60, not 46 + 16)
 MENU_TRIS_STOP_K = 75.0  # the menu at rest (LIB-1 square hall: estimate 58 k)
 SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "menu_to_map", "ui_juice", "worldmap", "worldmap_travel", "island", "worldmap_voyage", "institute", "book"]
 # WORLD-1 estimates (iPad Air 4); a measurement over 2x an estimate fails. Draws counted by the renderer include the
@@ -98,6 +99,11 @@ def main():
                 problems.append(f"{dev} {sc}: {fc['fade_violations']['max']:.0f} whole-object fade draws refused (only the Maps move may fade)")
             if "fade_draws" in fc and fc["fade_draws"]["max"] > 0 and sc != "menu_to_map":
                 problems.append(f"{dev} {sc}: {fc['fade_draws']['max']:.0f} whole-object fade draws outside the Maps move")
+            if sc == "menu_to_map" and "draws" in fc:
+                dm = fc["draws"]["max"]
+                print(f"{'PASS' if dm <= MENU_TO_MAP_DRAWS_MAX else 'FAIL'} {dev:6} {sc:12} {'draws_max':18} {dm:9.0f} limit {MENU_TO_MAP_DRAWS_MAX}")
+                if dm > MENU_TO_MAP_DRAWS_MAX:
+                    problems.append(f"{dev} {sc}: {dm:.0f} draws in a frame of the move, over {MENU_TO_MAP_DRAWS_MAX}")
             if sc == "menu" and "tris" in fc: # LIB-1 square hall: 58 k at rest, stop line 75 k (user decision 2026-11-12)
                 t = fc["tris"]["avg"] / 1000.0
                 print(f"{'PASS' if t <= MENU_TRIS_STOP_K else 'FAIL'} {dev:6} {sc:12} {'tris_k':18} {t:9.1f} estimate 58 (stop line {MENU_TRIS_STOP_K})")
