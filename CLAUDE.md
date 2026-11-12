@@ -651,6 +651,23 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   changes: docs/LIB1.md. Tests:
   `--autotest library` (`tools/library_test.sh`: + Reduse, a fresh install, the free rect on the iPhone presets and the iPad), the
   two-instance join / kick in `tools/friends2_test.sh` (role ma), perf scenario `menu_to_map` (the move looped).
+- Lobbies in motion (step 7, §8, `travel` in the scene JSON): my own table is my seed's bay (`lib_table_bay`, taken when the menu
+  opens; `--lib-bay` overrides), a lobby I join sits at its host's seed's bay (the next bay if that is mine). `menu_library_lobby(rows,
+  snap, instant)` each menu frame: a table change is a trip for my hero (pack, stand, walk; `LibTravel`: the camera waits until the
+  hero is off screen by the real projection (|x| > `offscreen_at`), then pans (`pan_s_per_bay`, max `pan_s_max`, quintic, distance
+  x (1 + `zoom_out` sin(pi e))), the hero walks at `offscreen_speed` only while off screen), the new table dressed and its members
+  seated at once; the members I leave stay seated (`ghost`, slots 4..7) until they are out of view, their table re-dressed only off
+  screen. Member slots: 0 me, 1..3 the lobby (`tseats`), 4..7 people leaving; every member carries its own seat copy (`at`, `bay`,
+  `seat_k`, `cover`) and `home` (seat 0's stand point at its own table). A friend joining walks from its home, a friend leaving walks
+  back there and is removed off screen and > `despawn_beyond_m` from the camera's focus, or on arrival (faded if in view). The front
+  rooms' fade follows the camera's framing point (`focus`), not the lobby's table. Maps, a full-screen page (Settings, Friends, the
+  Locker) and the game loading finish every move (`menu_library_travel_finish`); Reduse: the trip happens at once under the 300 ms
+  cross-dissolve (`dissolve_armed`: the frame is captured first), friends are seated / removed directly (faded in view). Paper planes
+  (`LibPlane`): an invite or friend request sent (`Lobby.invites_sent`, `Friends.requests_sent`; the RPC is not delayed) throws one
+  from my seat (sent from the Friends page: once back on the menu, within 30 s) towards the friend's table's side; an incoming
+  invite's panel shows at once and a plane lands in front of my seat (the hero glances; it shrinks after `rest_s` or when the panel
+  closes); the cat watches a flying one. `--autotest library` 15.7-15.9 (stages 20-22, `AutotestOut.lib_demo` / `lib_plane`; pictures
+  docs/autotest/library/step7/); the camera's speed on a trip is judged by the trip's own clock (`LibTravel.cam_clock`).
 
 ## Book content (BOOK-1)
 

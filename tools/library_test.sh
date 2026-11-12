@@ -24,5 +24,9 @@ done
 for f in library_menu library_joined library_locker library_welcome_walk library_move_000 library_move_025 library_move_050 library_move_075 library_move_100; do
   [ -f "$PREF/$f.png" ] && cp "$PREF/$f.png" docs/autotest/library/
 done
+mkdir -p docs/autotest/library/step7
+for f in library_travel_out library_travel_pan library_travel_arrive library_plane_out library_plane_in library_plane_landed; do
+  [ -f "$PREF/$f.png" ] && cp "$PREF/$f.png" docs/autotest/library/step7/
+done
 python3 tools/png_montage.py docs/autotest/library/library_move.png --cols 5 --scale 3 docs/autotest/library/library_move_{000,025,050,075,100}.png && echo "sheet docs/autotest/library/library_move.png"
 exit $RC

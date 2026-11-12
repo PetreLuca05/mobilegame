@@ -666,7 +666,9 @@ static float bay_hide(const MenuLibrary *L, int b)
     if (e.Z < mid) {
         return 0.0f;
     }
-    const float k = mg_clampf((e.Y - L->sc.room.Y) / 2.0f, 0.0f, 1.0f);
+    /* a trip's widening (cam_zoom) lifts the eye a little: judged at the resting height, so the front rooms do not dither in mid-pan */
+    const float ey = L->focus.Y + (e.Y - L->focus.Y) / fmaxf(L->cam_zoom, 1.0f);
+    const float k = mg_clampf((ey - L->sc.room.Y) / 2.0f, 0.0f, 1.0f);
     return f * (1.0f - k * k * (3.0f - 2.0f * k));
 }
 
@@ -725,8 +727,9 @@ static void members_reseat(MenuLibrary *L)
 {
     for (int i = 0; i < LIB_SEATS; i++) {
         LibMember *mb = &L->seat[i];
-        if (mb->state == LM_EMPTY || mb->has_dest || (mb->bay != L->table_bay && mb->state != LM_WALK_IN)) {
-            continue;
+        if (mb->state == LM_EMPTY || mb->has_dest || (mb->bay != L->table_bay && mb->state != LM_WALK_IN) ||
+            (mb->bay == L->table_bay && mb->seat_k == L->seat_phys[i] && mb->cover == (L->dress_ok ? L->dress[L->table_bay].cover[mb->seat_k] : 0))) {
+            continue; /* nothing changed under it */
         }
         const HMM_Vec2 stand = mb->at.stand;
         member_assign(L, i);
