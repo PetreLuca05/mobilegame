@@ -38,7 +38,10 @@ endif()
 # build_info.h: the commit, regenerated on every build (--autotest perf records it)
 set(MG_BUILDINFO ${CMAKE_BINARY_DIR}/generated/build_info.h)
 execute_process(COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${MG_BUILDINFO} -P ${CMAKE_SOURCE_DIR}/tools/gen_buildinfo.cmake)
-add_custom_target(mg_buildinfo COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${MG_BUILDINFO} -P ${CMAKE_SOURCE_DIR}/tools/gen_buildinfo.cmake)
+# BYPRODUCTS: Ninja learns this target writes the header, so the objects that include it are re-checked after it runs (without it the
+# first build after a commit compiled the previous commit's label: perf JSON from two Mac runs named the wrong commit)
+add_custom_target(mg_buildinfo COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${MG_BUILDINFO} -P ${CMAKE_SOURCE_DIR}/tools/gen_buildinfo.cmake
+                  BYPRODUCTS ${MG_BUILDINFO})
 function(mg_stamp_build target)
   add_dependencies(${target} mg_buildinfo)
   target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR}/generated)
