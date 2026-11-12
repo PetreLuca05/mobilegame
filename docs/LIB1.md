@@ -19,6 +19,16 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
   resets the slot, every island's ambulance and the last island; Maps opens the island overview when no hospital was played.
 - **Memory baseline**: step 5 = 180 MB, step 6 (map preload) = 191 MB; the menu's allowance is +16 MB over step 5.
 - **Rooms estimate**: 33.3 k triangles (the back rooms show through the open doors), in place of ~18 k.
+- **Locker camera** (step 8, user decision 2026-11-12): a fixed 1.0 s quintic that starts and lands at rest, in place of the literal
+  5 /s exponential (which starts at full speed on its first frame: a jump by §15.11). The no-jump rule wins.
+- **Menu camera refit** (step 8, user decision): the fit's change (the free rect moving: the lobby panel, another screen's column) uses
+  the same kind of curve, from rest to rest.
+- **Sign-in during the walk-in** (step 8, user decision): a seed that arrives while my table is in view and I am alone does not re-dress
+  it on screen; the new dressing applies once the table is out of view or someone joins.
+- **First-launch bay** (step 8, user decision, with a condition): before any sign-in every fresh install walks into the same bay. When
+  the account's seed later puts my table in a different bay, the change happens only when the menu is next opened from a cold start or
+  from a game, never while the library is on screen (the library test signs in on a fresh install, stays 30 s with nothing moving, then
+  reopens the menu on the seed's bay with no pop).
 - **Triangles at rest** (user decision, 2026-11-12): **≈ 58 k** for the square hall in place of ≈ 26 k, stop line **75 k**
   (`tools/perf_gate.py`, `menu`). Measured with the wall-aware bay rule (93d2a65): 57.9 k average (61.1 k without it). No doorway
   culling of people and particles. Why: 57.9 k is below the old hospital's `stress200` scene, which passed every iPad budget at 87 k
