@@ -183,13 +183,13 @@ static void write_report(const PerfRun *p, MgApp *app)
         const bool below = hz0 > 0.0f && fps < 0.9 * (double)SDL_min(hz0, hz_end);
         /* above the refresh: nothing paced the loop (display asleep or locked, window hidden): not comparable with a paced run */
         const bool above = hz0 > 0.0f && fps > 1.1 * (double)SDL_max(hz0, hz_end);
-        const bool unpaced = above || p->asleep_s > 0 || p->occluded_frames > 0;
+        const bool unpaced = above || p->asleep_s > 0 || p->occluded_frames > 0 || p->unfocused_frames > 0;
         const char *why = changed ? "the display refresh changed during the recording"
-                          : unpaced ? "the loop was not paced by the screen (display asleep or locked, or the window hidden)" : "";
+                          : unpaced ? "the loop was not paced by the screen (display asleep or locked, window hidden, or another app active)" : "";
         PUT("\"valid\": %s,\n\"invalid_why\": \"%s\",\n\"display_hz_start\": %.1f,\n\"display_hz_end\": %.1f,\n\"fps\": %.1f,\n\"paced_below_refresh\": %s,\n"
-            "\"paced_above_refresh\": %s,\n\"display_asleep_s\": %u,\n\"window_occluded_frames\": %u,\n",
+            "\"paced_above_refresh\": %s,\n\"display_asleep_s\": %u,\n\"window_occluded_frames\": %u,\n\"window_unfocused_frames\": %u,\n",
             changed || unpaced ? "false" : "true", why, (double)hz0, (double)hz_end, fps, below ? "true" : "false", above ? "true" : "false",
-            p->asleep_s, p->occluded_frames);
+            p->asleep_s, p->occluded_frames, p->unfocused_frames);
         if (changed || below) {
             mg_log_warn("perf: %s: refresh %.0f -> %.0f Hz, %.1f fps%s", p->scenario, (double)hz0, (double)hz_end, fps,
                         changed ? " (INVALID: the refresh changed)" : " (paced below the refresh: the OS slowed the window, check power and occlusion)");
@@ -349,6 +349,11 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     if (app->window && (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED))) {
         p->occluded_frames++;
     }
+#if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
+    if (app->window && !(SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS)) { /* desktop: another app in front */
+        p->unfocused_frames++;
+    }
+#endif
     if (app->time >= p->next_sleep_check) { /* once a second: the display asleep or the session locked */
         p->next_sleep_check = app->time + 1.0;
         p->asleep_s += device_display_asleep() ? 1u : 0u;
