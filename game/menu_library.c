@@ -752,10 +752,7 @@ void menu_library_set_table(MenuLibrary *L, int bay)
 
 void menu_library_set_lobby_seed(MenuLibrary *L, uint32_t seed)
 {
-    if (L->lobby_seed == L->my_seed) { /* my own lobby follows (the name before the sign-in, then the user id) */
-        L->lobby_seed = seed;
-    }
-    L->my_seed = seed;
+    L->my_seed = seed; /* my own lobby follows in menu_library_lobby (held while my table is in view, §11) */
 }
 
 /* ------------------------------------------------------------------ §5 / §8 which table, dressed how */
@@ -923,13 +920,67 @@ static void project_box(const HMM_Mat4 *vp, const HMM_Vec3 *pts, int n, float w,
     }
 }
 
-#define CREATOR_RATE 5.0f
-#define CREATOR_STUDY_W 0.15f
+#define CREATOR_RATE 5.0f     /* §11: the Locker's ease, /s */
+#define CREATOR_STUDY_W 0.15f /* §11: the hero's study blend in the Locker */
+#define FIT_RATE 6.0f         /* the menu camera's fit: a quintic over an exponential's 1 % settle time at this rate (/s) */
 
-void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l)
+void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_once)
 {
+    if (on != L->creator && at_once) {
+        if (!L->creator_dissolve_armed) { /* Reduse: this frame is captured first (the caller), the switch comes on the next */
+            L->creator_dissolve_armed = true;
+            L->creator_l = creator_l;
+            return;
+        }
+        L->creator_snap = L->creator_snap_pose = true;
+    }
+    L->creator_dissolve_armed = false;
     L->creator = on;
     L->creator_l = creator_l;
+}
+
+/* §11 the Locker's ease: its progress u runs at a constant rate to the end in the time an exponential ease at CREATOR_RATE /s takes
+ * to come within 1 % (ln 100 / 5 = 0.92 s), shaped by the quintic t^3 (t (6t - 15) + 10), so it leaves and lands with no speed (an
+ * exponential starts at full speed on its first frame: a jump by §15.11). Closing runs it back. Reduse: a switch at once under the
+ * caller's cross-dissolve (creator_snap). */
+static void creator_ease(MenuLibrary *L, float dt)
+{
+    const float goal = L->creator ? 1.0f : 0.0f;
+    if (L->creator_snap) {
+        L->creator_u = goal;
+        L->creator_snap = false;
+    }
+    const float step = dt * CREATOR_RATE / logf(100.0f);
+    L->creator_u = L->creator_u < goal ? fminf(L->creator_u + step, goal) : fmaxf(L->creator_u - step, goal);
+    const float u = L->creator_u;
+    L->creator_t = u * u * u * (u * (6.0f * u - 15.0f) + 10.0f);
+    L->creator_dt = dt;
+    /* the hero's pose follows on the same clock once it studies with no page in the air (a turn in progress lands first; an
+     * onboarding walk-in sits and settles first); closing takes it back with the camera */
+    const LibMember *h = &L->seat[0];
+    const bool wait = L->creator && (h->state != LM_STUDY || h->study.turning);
+    if (!wait) {
+        L->lock_u = L->creator_snap_pose ? goal : L->lock_u < goal ? fminf(L->lock_u + step, goal) : fmaxf(L->lock_u - step, goal);
+        L->creator_snap_pose = false;
+    }
+    const float v = L->lock_u, k = v * v * v * (v * (6.0f * v - 15.0f) + 10.0f);
+    L->creator_w = fminf(L->creator_t, k);
+}
+
+/* the hero's study and fidget loop is paused: the Locker is open (once its page is down) or still closing */
+static bool hero_paused(const MenuLibrary *L) { return L->creator_w > 0.0f || (L->creator && L->lock_u > 0.0f); }
+
+/* the seat the Locker frames: where my hero sits (its own copy), the lobby table's slot 0 before it has one */
+static const LibSeat *creator_seat(const MenuLibrary *L) { return L->seat[0].state != LM_EMPTY ? &L->seat[0].at : &L->tseats[0]; }
+
+/* p (bay-local, authored for the scene's seat s0) moved with that seat onto seat hs (hall frame): the same point in the seat's frame */
+static HMM_Vec3 seat_frame_point(const LibSeat *hs, const LibSeat *s0, HMM_Vec3 p)
+{
+    const float a0 = HMM_AngleDeg(s0->yaw_deg), c0 = HMM_CosF(a0), n0 = HMM_SinF(a0);
+    const float dx = p.X - s0->pos.X, dz = p.Z - s0->pos.Y;
+    const float lx = c0 * dx - n0 * dz, lz = n0 * dx + c0 * dz; /* into s0's frame */
+    const float a = HMM_AngleDeg(hs->yaw_deg), c = HMM_CosF(a), n = HMM_SinF(a);
+    return HMM_V3(hs->pos.X + c * lx + n * lz, p.Y, hs->pos.Y - n * lx + c * lz);
 }
 
 void menu_library_fit_box(const MenuLibrary *L, const HMM_Mat4 *vp, float w, float h, float box[4])
@@ -949,6 +1000,7 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     const float w = app->width_pt, h = app->height_pt, aspect = w / h;
     L->screen_h_pt = h;
     const HMM_Mat4 proj = camera_projection(HMM_AngleDeg(s->fov_deg), aspect, 0.05f, 80.0f, 0.0f);
+    L->fit_free[0] = free_l, L->fit_free[1] = free_r, L->fit_free[2] = top, L->fit_free[3] = bottom;
     HMM_Vec3 pts[FIT_POINTS];
     const int n = fit_points(L, pts);
     /* sideways: the camera's right vector in library space */
@@ -973,26 +1025,47 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
             dist *= 1.04f;
         }
     }
-    const float ease = L->snap_camera ? 1.0f : mg_minf(app->frame_dt * 6.0f, 1.0f); /* --lib-still: no float wobble at rest */
-    L->dist = L->dist <= 0.0f ? dist : L->dist + (dist - L->dist) * ease;
-    L->shift = L->shift == 0.0f ? shift : L->shift + (shift - L->shift) * ease;
+    /* a new fit (the free rect changed: the lobby panel, another screen's column) is a quintic from where the camera is over the
+     * time the old 6 /s exponential took to settle (ln 100 / 6): it leaves with no speed (the exponential left at full speed on its
+     * first frame, a jump by §15.11); a fit changing again mid-way starts a new one from there. --lib-still: no float wobble. */
+    if (L->dist <= 0.0f || L->snap_camera) {
+        L->fit_from[0] = L->fit_to[0] = L->dist = dist;
+        L->fit_from[1] = L->fit_to[1] = L->shift = shift;
+        L->fit_u = 1.0f;
+    }
+    if (fabsf(dist - L->fit_to[0]) > 1e-3f * dist || fabsf(shift - L->fit_to[1]) > 1e-3f) {
+        L->fit_from[0] = L->dist, L->fit_from[1] = L->shift;
+        L->fit_to[0] = dist, L->fit_to[1] = shift;
+        L->fit_u = 0.0f;
+    }
+    L->fit_u = fminf(L->fit_u + mg_minf(app->frame_dt, 0.1f) * FIT_RATE / logf(100.0f), 1.0f);
+    {
+        const float u = L->fit_u, e = u * u * u * (u * (6.0f * u - 15.0f) + 10.0f);
+        L->dist = mg_lerpf(L->fit_from[0], L->fit_to[0], e);
+        L->shift = mg_lerpf(L->fit_from[1], L->fit_to[1], e);
+    }
     /* §8: the fit is the lobby table's (every bay frames alike); the camera stands at cam_at, the lobby table's origin or on a
      * trip on its way there, its distance widened mid-pan */
     const HMM_Vec3 target = HMM_AddV3(HMM_AddV3(c->target, HMM_V3(L->cam_at.X, 0, L->cam_at.Y)), HMM_MulV3F(right, L->shift));
     const HMM_Vec3 eye = orbit_eye(target, L->dist * L->cam_zoom, c->pitch_deg, c->yaw_deg);
     L->focus = target;
     L->trav.cam_clock = L->trav.clock; /* the trip's clock this eye was placed by (tests judge the camera's speed by it) */
-    L->creator_t += ((L->creator ? 1.0f : 0.0f) - L->creator_t) * (1.0f - expf(-CREATOR_RATE * mg_minf(app->frame_dt, 0.1f)));
+    creator_ease(L, mg_minf(app->frame_dt, 0.1f));
     HMM_Vec3 eye_l = eye, target_l = target;
-    if (L->creator_t > 1e-4f) { /* towards the Locker camera, the hero re-centred right of the creator panel */
+    if (L->creator_t > 0.0f) { /* §11 towards the Locker camera: camera.creator moved with seat 0 onto the hero's own seat (framed
+                                * on it, facing it), the hero re-centred right of the creator panel; the orbit's target, log
+                                * distance, pitch and yaw blend (an even speed in camera distances per second, §15.11) */
         const LibCam *cc = &s->cam_creator;
-        const float cy = HMM_AngleDeg(cc->yaw_deg);
+        const LibSeat *s0 = &s->seats[0], *hs = creator_seat(L);
+        const float cyaw = cc->yaw_deg + (hs->yaw_deg - s0->yaw_deg);
+        const float cy = HMM_AngleDeg(cyaw);
         const HMM_Vec3 cright = HMM_V3(HMM_CosF(cy), 0.0f, -HMM_SinF(cy));
-        const HMM_Vec3 hero = HMM_V3(L->tseats[0].pos.X, 1.0f, L->tseats[0].pos.Y);
+        const HMM_Vec3 base = seat_frame_point(hs, s0, cc->target);
+        const HMM_Vec3 hero = HMM_V3(hs->pos.X, 1.0f, hs->pos.Y);
         float sh = L->creator_shift;
         for (int it = 0; it < 30; it++) {
-            const HMM_Vec3 tg = HMM_AddV3(HMM_AddV3(cc->target, HMM_V3(L->table_x, 0, L->table_z)), HMM_MulV3F(cright, sh));
-            const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cc->pitch_deg, cc->yaw_deg), tg, HMM_V3(0, 1, 0)));
+            const HMM_Vec3 tg = HMM_AddV3(base, HMM_MulV3F(cright, sh));
+            const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cc->pitch_deg, cyaw), tg, HMM_V3(0, 1, 0)));
             const HMM_Vec4 hc = HMM_MulM4V4(vp, HMM_V4V(hero, 1.0f));
             const float hx = (hc.X / hc.W * 0.5f + 0.5f) * w, want = (L->creator_l + w) * 0.5f;
             if (fabsf(hx - want) < 1.0f) {
@@ -1001,10 +1074,17 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
             sh -= (want - hx) * 2.0f * cc->dist * HMM_TanF(HMM_AngleDeg(s->fov_deg) * 0.5f) / h * 0.8f;
         }
         L->creator_shift = sh;
-        const HMM_Vec3 ctg = HMM_AddV3(HMM_AddV3(cc->target, HMM_V3(L->table_x, 0, L->table_z)), HMM_MulV3F(cright, sh));
-        const HMM_Vec3 ceye = orbit_eye(ctg, cc->dist, cc->pitch_deg, cc->yaw_deg);
-        eye_l = HMM_LerpV3(eye, L->creator_t, ceye);
-        target_l = HMM_LerpV3(target, L->creator_t, ctg);
+        const HMM_Vec3 ctg = HMM_AddV3(base, HMM_MulV3F(cright, sh));
+        const float e = L->creator_t, d0 = L->dist * L->cam_zoom;
+        float dyaw = fmodf(cyaw - c->yaw_deg, 360.0f);
+        dyaw = dyaw > 180.0f ? dyaw - 360.0f : dyaw < -180.0f ? dyaw + 360.0f : dyaw;
+        /* the target travels with the distance (the Maps move's rule, §12): w(e) = the distance's integral up to e over its whole, so it
+         * moves slowly while the camera is close (speed is measured in camera distances) */
+        const float r = cc->dist / d0, wt = fabsf(r - 1.0f) > 1e-3f ? (powf(r, e) - 1.0f) / (r - 1.0f) : e;
+        target_l = HMM_LerpV3(target, wt, ctg);
+        eye_l = orbit_eye(target_l, expf(logf(d0) + (logf(cc->dist) - logf(d0)) * e), c->pitch_deg + (cc->pitch_deg - c->pitch_deg) * e,
+                          c->yaw_deg + dyaw * e);
+        L->creator_eye = lib_point(L, orbit_eye(ctg, cc->dist, cc->pitch_deg, cyaw)); /* the Locker camera itself (tests) */
     }
     L->eye = lib_point(L, eye_l);
     L->target = lib_point(L, target_l);
@@ -1136,8 +1216,6 @@ static void fidget_pose(const MenuLibrary *L, const LibFidgetOut *fo, float w, A
     p->hand_l = fo->hand_l, p->hand_r = fo->hand_r;
 }
 
-/* creator_t eases towards 0 and takes ~20 s to underflow: below this the Locker is closed (the hero's loop runs again) */
-#define LOCKER_PAUSE 1e-3f
 #define LIB_TICK (1.0 / 60.0)
 #define LIB_TICKS_MAX 6 /* per frame; a longer stall drops the rest (the room goes on from where it was) */
 
@@ -1151,7 +1229,7 @@ static void table_life(MenuLibrary *L, float dt)
     while (L->life_acc >= LIB_TICK && n < LIB_TICKS_MAX) {
         for (int i = 0; i < LIB_MEMBERS; i++) {
             LibMember *mb = &L->seat[i];
-            if (mb->state != LM_STUDY || (i == 0 && L->creator_t > LOCKER_PAUSE)) {
+            if (mb->state != LM_STUDY || (i == 0 && hero_paused(L))) {
                 continue;
             }
             if (L->debug_turns && i == 0 && !mb->study.turning && !lib_fidget_busy(&mb->fid) && mb->study.t >= 2.5f - s->study.turn_s) {
@@ -1573,7 +1651,15 @@ void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, 
         me = rows[r].me ? r : me;
         host = rows[r].host && !rows[r].me ? &rows[r] : host;
     }
-    const uint32_t lseed = host ? lib_seed_of(host->id) : L->my_seed;
+    uint32_t lseed = host ? lib_seed_of(host->id) : L->my_seed;
+    /* §11: my seed changing under my own table while I am alone at it and it is in view (the first sign-in during onboarding: the
+     * name's seed, then the user id's) re-dresses it once it is out of view (the map's shell closed, a trip) or someone joins, not in
+     * front of me: its things and seat order stay until then */
+    L->hold_seed = !host && n <= 1 && L->table_set && !snap && lseed != L->lobby_seed && L->table_bay == L->my_bay && L->shell_k < 1.0f &&
+                   table_on_screen(L, L->table_bay);
+    if (L->hold_seed) {
+        lseed = L->lobby_seed;
+    }
     if (!L->table_set || snap) { /* my own table: my seed's bay, taken when the menu opens (a sign-in mid-menu only re-dresses it) */
         L->my_bay = L->force_bay >= 0 ? L->force_bay : lib_table_bay(L->my_seed, LIB_BAYS, -1);
     }
@@ -1674,7 +1760,7 @@ static float side_of(const MenuLibrary *L, int b)
 bool menu_library_throw_plane(MenuLibrary *L, const char *to_id)
 {
     LibMember *h = &L->seat[0];
-    if (!L->fid_ok || L->plane.mode != LP_NONE || h->state != LM_STUDY || h->place < 1.0f || L->trav.phase != LT_NONE || L->creator_t > LOCKER_PAUSE) {
+    if (!L->fid_ok || L->plane.mode != LP_NONE || h->state != LM_STUDY || h->place < 1.0f || L->trav.phase != LT_NONE || L->creator_t > 0.0f) {
         return false;
     }
     if (!menu_library_fidget(L, 0, LA_THROW)) {
@@ -1737,6 +1823,11 @@ void menu_library_hero_walk_in(MenuLibrary *L)
     if (L->people) {
         lib_people_walker_start(L->people, 0, mb->pos, HMM_AngleDeg(mb->yaw_deg), mb->at.stand);
     }
+    mb->fade = 0.0f, mb->fading_out = mb->leaving = mb->ghost = mb->has_dest = false;
+    mb->t_join = L->walk_in_t0 = L->clock;
+    L->walk_in_seen = true;
+    L->walk_in_from = mb->pos;
+    mg_log_info("library: the hero walks in through bay %d's door (%.2f, %.2f) to seat %d", mb->bay, (double)mb->pos.X, (double)mb->pos.Y, mb->seat_k);
 }
 
 /* a walker's arrival: at its seat it sits; on its way home it is gone (faded if that happens in view) */
@@ -1882,8 +1973,8 @@ static void member_step(MenuLibrary *L, int i, float dt)
         break;
     case LM_STUDY:
         mb->pos = seat->pos;
-        if (i == 0 && L->creator_t > LOCKER_PAUSE) { /* the Locker: sits up to 0.15 and the loop pauses */
-            mb->study_w = 1.0f - (1.0f - CREATOR_STUDY_W) * L->creator_t;
+        if (i == 0 && hero_paused(L)) { /* the Locker: sits up to 0.15 and the loop pauses */
+            mb->study_w = fminf(approach(mb->study_w, 1.0f, STUDY_IN_RATE, dt), 1.0f - (1.0f - CREATOR_STUDY_W) * L->creator_w);
             break;
         }
         mb->study_w = approach(mb->study_w, 1.0f, STUDY_IN_RATE, dt);
@@ -2103,9 +2194,9 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
         p->hand_l = hl3, p->hand_r = hr3;
     }
     if (i == 0) { /* the Locker: looks at the camera, both hands on the table (avatar.json creator_look) */
-        p->look = L->creator ? 1.0f : 0.0f;
-        p->head_yaw *= 1.0f - L->creator_t, p->head_pitch *= 1.0f - L->creator_t, p->body_yaw *= 1.0f - L->creator_t;
-        p->hands_w *= 1.0f - L->creator_t;
+        p->look = L->creator && L->lock_u > 0.0f ? 1.0f : 0.0f;
+        p->head_yaw *= 1.0f - L->creator_w, p->head_pitch *= 1.0f - L->creator_w, p->body_yaw *= 1.0f - L->creator_w;
+        p->hands_w *= 1.0f - L->creator_w;
     }
 }
 
@@ -2236,7 +2327,7 @@ static void life_pre_tick(MenuLibrary *L)
     for (int i = 0; i < LIB_SEATS; i++) {
         seats[i] = HMM_V3(L->tseats[i].pos.X, L->tseats[i].pos.Y, HMM_AngleDeg(L->tseats[i].yaw_deg));
         const LibMember *mb = &L->seat[i];
-        if (mb->state == LM_STUDY && mb->place >= 1.0f && mb->bay == L->table_bay && !(i == 0 && L->creator_t > LOCKER_PAUSE) && !L->cat_hold) {
+        if (mb->state == LM_STUDY && mb->place >= 1.0f && mb->bay == L->table_bay && !(i == 0 && L->creator_t > 0.0f) && !L->cat_hold) {
             occ |= 1u << i;
         }
     }

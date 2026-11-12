@@ -598,7 +598,17 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   from it). A cutaway (the shell is not drawn in the menu); the camera from `camera.menu`, backed off and re-centred until the table and
   its four seats fit the free rect. `game/lib_study.c` = STUDY (read / page turn, the right hand rides the leaf tip). Seats: walk in
   through the door along the seat's path, sit (`sit_s`, the chair slides), study; leavers stand and walk out; already-listed members
-  are seated on the frame the menu opens. The Locker eases to `camera.creator` and the hero sits up (study blend 0.15).
+  are seated on the frame the menu opens.
+- Onboarding and Locker (step 8, §11): Welcome / Username / Creator show the hall at my table. The first launch only (pref
+  `lib_walked_in`, kept on sign-out; installs from before default to `onboarding_done`) the hero walks in from its bay's
+  `door.outside` (an A* walk carrying book and mug, then sit / settle). My own table keeps its dressing and seat order while it is in
+  view and I am alone (`hold_seed`: the first sign-in changes my seed mid-onboarding); the new seed applies once it is out of view or
+  someone joins. Locker: `camera.creator` moved with seat 0 onto the hero's own seat (framed on it, facing it), the orbit's target,
+  log distance, pitch and yaw blended by a quintic over 0.92 s (= a 5 /s exponential's 1 % settle time; the exponential's first frame
+  is a §15.11 jump), the target travelling with the distance as in the Maps move; the menu camera keeps the opener's fit while the
+  Locker is up, and every refit of the free rect (lobby panel, screen columns) is a quintic too (`FIT_RATE`); the hero's pose (`creator_w`: study blend 0.15, look, hands on the table) follows once no page is in the air, its
+  loop paused until it closes. Reduse: at once under the 300 ms cross-dissolve. `--autotest library` with `--frontend welcome`
+  checks it (`--lib-walked`: a second launch, no walk-in); pictures docs/autotest/library/step8/.
 - People (step 4, `game/lib_people.c`, pure C): the scene's 25 `npcs` (routes, stops, `wait_s` / `face_deg` / `outside` / `book` /
   `leave_cart`, every act of LIB1.md §9 with the prototype's eased weights; seated readers, the sleeper with zees) and the members'
   walks, all `lib_nav` agents (96 % hard rule, also during the ignore-others spell; steering; re-path at 1.2 s; spell at 4 s; stop

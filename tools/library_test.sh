@@ -4,6 +4,7 @@
 # Pictures into docs/autotest/library/. The two-instance join / kick runs in tools/friends2_test.sh.
 # usage: tools/library_test.sh [OUT]
 cd "$(dirname "$0")/.."
+setopt null_glob # a pattern with no file is empty (else zsh aborts the whole rm)
 OUT=${1:-build/library_test}
 mkdir -p "$OUT" docs/autotest/library
 GAME=build/desktop/mobilegame
@@ -16,12 +17,29 @@ run() { # NAME ARGS...
 }
 run library $GAME --autotest library
 run library_reduced $GAME --ui-motion reduced --autotest library
-rm -f "$PREF/libfresh-"* 2>/dev/null
+# §11: a fresh install (the walk-in, Username, the Creator's Locker), then the same profile again (no second walk-in); the first
+# launch on the iPhone presets and the iPad too. Pictures into docs/autotest/library/step8/.
+mkdir -p docs/autotest/library/step8
+onb_pics() { # SUFFIX
+  for f in library_onb_welcome_walk library_onb_welcome library_onb_username library_onb_creator library_onb_closing; do
+    [ -f "$PREF/$f.png" ] && cp "$PREF/$f.png" "docs/autotest/library/step8/$f$1.png"
+  done
+  rm -f "$PREF"/library_onb_*.png
+}
+rm -f "$PREF"/library_onb_*.png "$PREF/libfresh-"* 2>/dev/null
 run library_fresh $GAME --profile libfresh --frontend welcome --autotest library
+onb_pics ""
+run library_fresh_again $GAME --profile libfresh --frontend welcome --lib-walked --autotest library
+rm -f "$PREF"/library_onb_*.png
+for W in iphone iphone-flip ipad; do
+  rm -f "$PREF/libfresh_$W-"* 2>/dev/null
+  run library_fresh_$W env MG_WINDOW=$W $GAME --profile libfresh_$W --frontend welcome --autotest library
+  if [ "$W" = iphone ]; then onb_pics _iphone; else rm -f "$PREF"/library_onb_*.png; fi
+done
 for W in iphone iphone-flip ipad; do
   run lobbylayout_$W env MG_WINDOW=$W $GAME --autotest lobbylayout
 done
-for f in library_menu library_joined library_locker library_welcome_walk library_move_000 library_move_025 library_move_050 library_move_075 library_move_100; do
+for f in library_menu library_joined library_locker library_move_000 library_move_025 library_move_050 library_move_075 library_move_100; do
   [ -f "$PREF/$f.png" ] && cp "$PREF/$f.png" docs/autotest/library/
 done
 mkdir -p docs/autotest/library/step7

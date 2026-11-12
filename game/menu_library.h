@@ -205,6 +205,7 @@ typedef struct MenuLibrary {
     float scale;  /* 1, or lib_scale once the room stands on the island */
     float dist;  /* the menu camera's distance, eased; fitted to the free rect */
     float shift; /* sideways target shift (m) that centres the table in the free rect */
+    float fit_from[2], fit_to[2], fit_u; /* the fit's ease (dist, shift): from, to, progress */
     HMM_Vec3 eye, target;
     float door_angle;
     AvatarAnim hero_anim;
@@ -265,9 +266,22 @@ typedef struct MenuLibrary {
     bool lod_from_rest;        /* the Maps / Back move: LODs from the menu's resting camera (`eye`), so nobody switches mid-move */
     int lod_counts[2];        /* NPCs drawn at LOD0 / LOD1 this frame (perf, tests) */
     bool creator;      /* the Locker is open */
-    float creator_t;   /* 0 the menu .. 1 the Locker: camera and the hero's pose, eased at 5 /s */
+    float creator_t;   /* 0 the menu .. 1 the Locker: the camera (§11: quintic over the 5 /s ease's settle time, creator_ease) */
+    float creator_u;   /* its linear progress */
+    float creator_w;   /* the hero's Locker pose 0 .. 1 (sits up to 0.15, looks at the camera, hands on the table): creator_t once the
+                        * hero studies with no page in the air */
+    float lock_u;      /* creator_w's own progress (it starts once the hero is free) */
+    float creator_dt;  /* the step the ease took this frame (tests judge the camera's speed by it) */
+    bool creator_snap, creator_snap_pose; /* Reduse: the next ease jumps to its end (under the caller's cross-dissolve) */
+    bool creator_dissolve_armed;          /* Reduse: the Locker opens / closes next frame; the caller captures this one */
+    HMM_Vec3 creator_eye; /* world: the Locker camera's eye (tests) */
     float creator_l;   /* pt: the creator panel's right edge */
     float creator_shift;
+    bool walk_in_seen;    /* §11: the onboarding walk-in started (this run) */
+    HMM_Vec2 walk_in_from; /* where it started (hall frame: its bay's door.outside) */
+    double walk_in_t0;     /* library clock */
+    float fit_free[4];     /* the free rect the menu camera last fitted the table into (pt: left, right, top, bottom) */
+    bool hold_seed;        /* my own table keeps its dressing while on screen after my seed changed (a sign-in, §11) */
     float shell_k; /* 0 the cutaway .. 1 the shell closed: nothing inside is drawn or simulated (the map) */
     double clock;  /* seconds the room has been drawn (tests' timestamps) */
     LibMember gone; /* the last walker to leave, for tests (its seat may already be taken again) */
@@ -311,10 +325,11 @@ void menu_library_place(MenuLibrary *L, HMM_Vec3 pos, float yaw_deg);
 /* The menu camera: the JSON's, backed off until the table and its four seats fit in the free rect
  * (pt: left, right, top, bottom), the table centred in it. Fills eye / view / proj of `sp`. */
 void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float free_r, float top, float bottom, GfxSceneParams *sp);
-/* The Locker: the camera eases to camera.creator (the hero centred between creator_l and the right edge),
- * the hero sits up (study blend 0.15), looks at the camera and rests both hands on the table; the page loop
- * pauses. Off: back the same way. */
-void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l);
+/* The Locker (§11): the camera eases to camera.creator moved with seat 0 onto the hero's own seat (the hero centred between
+ * creator_l and the right edge), the hero sits up (study blend 0.15), looks at the camera and rests both hands on the table; its
+ * page loop pauses (a page in the air lands first). Off: back the same way. `at_once` (Reduse): a change only sets
+ * creator_dissolve_armed this call (the caller captures the frame for its cross-dissolve) and happens at once on the next. */
+void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_once);
 /* The lobby's members (rows without `me`, in list order) into seats 1..3 of the lobby's table (§8: the host's seed's bay, mine
  * when I host or am alone). The table changing is a trip for my hero (packs, stands, walks; the camera follows once it is off
  * screen), the new table's members already seated; the ones I leave stay seated until they are off screen. Within a lobby new
