@@ -39,6 +39,10 @@ typedef struct PerfRun {
     float resident_max;
     bool go_pending;
     double next_go;
+    /* the run's validity (a halved window refresh on battery once read as a 79 fps regression): the display's refresh at the
+     * start and end of the recording; desktop runs refuse to start on battery */
+    float hz_start, hz_end;
+    bool refused;
 } PerfRun;
 
 void perf_run_init(PerfRun *p, int argc, char **argv);

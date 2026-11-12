@@ -536,6 +536,11 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).
 - `-DMG_BAKE=ON`: prototype that bakes sun shadow + AO into static vertex colours, cached in the pref path. Off: the
   meshes have too few vertices for it to look right.
+- Mac perf validity: a desktop `--autotest perf` refuses to start on battery power (`MG_PERF_ASSUME_BATTERY=1` tests the
+  path) and writes `"valid": false` over the old result; every run records `display_hz_start` / `_end` (the screen's real
+  maximum: `NSScreen.maximumFramesPerSecond`, SDL's mode otherwise), `fps` and `paced_below_refresh`; a changed refresh makes
+  the run invalid. `tools/perf_gate.py` fails invalid runs and warns on paced ones. This Mac's screen is 60 Hz while the loop
+  presents ~120 times a second (SDL's Metal display sync does not hold it to the screen here), so `fps` above `display_hz` is normal.
 - Late frames (tracked bug, rare Mac stalls): `engine/core/frame_notes.c`. Expensive one-off work calls `frame_note("...")`
   (GPU idle waits, mesh uploads, figure upload, screenshot, MSAA change, level build, map preload step); a frame over 50 ms
   logs `late frame: <ms> at <s>, screen, scene, during it: <notes>` at the start of the next one, and the last 32 go into the

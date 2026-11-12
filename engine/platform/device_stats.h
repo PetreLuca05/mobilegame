@@ -10,5 +10,8 @@ float device_resident_mb(void);
  * which also opts it out of the scheduler's priority decay. Returns the
  * priority actually in force, 0 where nothing was done. */
 int device_boost_render_thread(void);
+/* The highest refresh the window's screen can run at (ProMotion: 120 where SDL's display mode says 60), 0 if unknown.
+ * `native_window`: SDL's NSWindow / UIWindow pointer. */
+float device_screen_max_hz(void *native_window);
 
 #endif

@@ -142,6 +142,24 @@ static void write_stamp(const PerfRun *p)
 }
 
 /* The JSON goes to one buffer: written as a file, then logged line by line. */
+/* The screen's real maximum (ProMotion reports 60 Hz through SDL's display mode while it runs at 120), else SDL's mode. */
+static float display_hz(MgApp *app)
+{
+    if (app->window) {
+        SDL_PropertiesID pr = SDL_GetWindowProperties(app->window);
+        void *nw = SDL_GetPointerProperty(pr, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+        if (!nw) {
+            nw = SDL_GetPointerProperty(pr, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL);
+        }
+        const float hz = device_screen_max_hz(nw);
+        if (hz > 0.0f) {
+            return hz;
+        }
+    }
+    const SDL_DisplayMode *dm = app->window ? SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(app->window)) : NULL;
+    return dm ? dm->refresh_rate : 0.0f;
+}
+
 static void write_report(const PerfRun *p, MgApp *app)
 {
     static char out[32768];
@@ -157,6 +175,20 @@ static void write_report(const PerfRun *p, MgApp *app)
     PUT("{\n\"commit\": \"%s\",\n\"run_id\": \"%s\",\n", MG_BUILD_COMMIT, p->run_id);
     PUT("\"scenario\": \"%s\",\n\"seconds\": %.0f,\n\"backend\": \"%s\",\n\"render\": [%u, %u],\n", p->scenario, p->seconds,
         gs.backend ? gs.backend : "", gs.width_px, gs.height_px);
+    { /* validity: the refresh must not change during the recording; frames well under the refresh mean the OS paced the
+       * window down (battery, occlusion), not that the game got slower */
+        const float hz_end = display_hz(app), hz0 = p->hz_start;
+        const double fps = p->seconds > 0.0 ? (double)fr.frames / p->seconds : 0.0;
+        const bool changed = hz0 > 0.0f && SDL_fabsf(hz_end - hz0) > 0.5f;
+        const bool below = hz0 > 0.0f && fps < 0.9 * (double)SDL_min(hz0, hz_end);
+        PUT("\"valid\": %s,\n\"invalid_why\": \"%s\",\n\"display_hz_start\": %.1f,\n\"display_hz_end\": %.1f,\n\"fps\": %.1f,\n\"paced_below_refresh\": %s,\n",
+            changed ? "false" : "true", changed ? "the display refresh changed during the recording" : "", (double)hz0, (double)hz_end, fps,
+            below ? "true" : "false");
+        if (changed || below) {
+            mg_log_warn("perf: %s: refresh %.0f -> %.0f Hz, %.1f fps%s", p->scenario, (double)hz0, (double)hz_end, fps,
+                        changed ? " (INVALID: the refresh changed)" : " (paced below the refresh: the OS slowed the window, check power and occlusion)");
+        }
+    }
     PUT("\"frames\": %u,\n\"interval_16ms\": %u,\n\"interval_33ms\": %u,\n\"interval_50ms_plus\": %u,\n\"dropped\": %u,\n", fr.frames,
         fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse);
     PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n\"heap_allocs_screenshot\": %u,\n",
@@ -241,6 +273,23 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
         write_stamp(p);
     }
     if (p->start == 0.0) {
+#if !defined(SDL_PLATFORM_IOS) && !defined(SDL_PLATFORM_ANDROID)
+        if (SDL_GetPowerInfo(NULL, NULL) == SDL_POWERSTATE_ON_BATTERY || SDL_getenv("MG_PERF_ASSUME_BATTERY")) { /* desktop: battery slows the loop */
+            char path[640], name[64];
+            SDL_snprintf(name, sizeof(name), "perf_%s.json", p->scenario);
+            output_path(path, sizeof(path), name);
+            SDL_IOStream *io = SDL_IOFromFile(path, "w"); /* an old result must not pass for this run */
+            if (io) {
+                SDL_IOprintf(io, "{\n\"commit\": \"%s\",\n\"run_id\": \"%s\",\n\"scenario\": \"%s\",\n\"valid\": false,\n\"invalid_why\": \"on battery power\"\n}\n",
+                             MG_BUILD_COMMIT, p->run_id, p->scenario);
+                SDL_CloseIO(io);
+            }
+            mg_log_error("perf: %s refused: the Mac is on battery power (plug it in: on battery the Mac slows the game loop, which once read as a 79 fps regression)", p->scenario);
+            p->refused = p->done = true;
+            app->quit_requested = true;
+            return;
+        }
+#endif
         p->start = app->time;
         const Scenario *sc = scenario_of(p);
         p->wp_count = sc->route_len;
@@ -252,6 +301,7 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     if (!p->recording && app->time - p->start >= SETTLE_SECONDS) {
         p->recording = true;
         p->record_start = app->time;
+        p->hz_start = display_hz(app);
         prof_run_reset();
         mg_log_info("perf: recording %s for %.0f s", p->scenario, p->seconds);
     }
