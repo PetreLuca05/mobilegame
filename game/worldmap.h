@@ -101,6 +101,8 @@ typedef struct WorldMap {
     double load_ms; /* all the steps */
     /* LIB-1: the menu's camera move drives the view; no HUD until it is on the map */
     bool cam_override, hud_off;
+    uint32_t gpu_off;     /* --gpu-off parts (game/gpu_off.h; test only) */
+    uint32_t frame_draws; /* draws this map queued since the game last zeroed it (the menu-at-rest check) */
     HMM_Mat4 ov_view, ov_proj;
     HMM_Vec3 ov_eye;
     int count, cur;

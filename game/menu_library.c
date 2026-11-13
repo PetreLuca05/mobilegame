@@ -11,6 +11,7 @@
 #include "gfx/camera.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
+#include "gpu_off.h"
 #include "world_data.h"
 
 static void place_table(MenuLibrary *L, int bay);
@@ -388,6 +389,34 @@ static uint32_t put_soup(GfxVertex *out, uint32_t at, uint32_t cap, const GfxVer
 }
 
 static int bay_row(const MenuLibrary *L, int b) { return L->bay_z[b] < L->sc.mid_wall_z ? 1 : 0; }
+
+/* --gpu-off (test only): bays 2 and 3 (the back row) switched off */
+static bool bay_off(const MenuLibrary *L, int b) { return (L->gpu_off & GPU_OFF_BACKBAYS) && (b == 2 || b == 3); }
+
+/* --gpu-off: every bay of row r switched off */
+static bool row_off(const MenuLibrary *L, int r)
+{
+    bool any = false;
+    for (int b = 0; b < LIB_BAYS; b++) {
+        if (bay_row(L, b) == r) {
+            if (!bay_off(L, b)) {
+                return false;
+            }
+            any = true;
+        }
+    }
+    return any;
+}
+
+/* --gpu-off: the draws up to gpu_skip_end are dropped when `skip` (gfx_set_filter; the CPU work stays). Returns what to restore. */
+static uint32_t gpu_skip(GfxContext *g, bool skip)
+{
+    const uint32_t prev = gfx_set_filter(g, 0u);
+    gfx_set_filter(g, skip ? prev | GFX_FILTER_ALL : prev);
+    return prev;
+}
+
+static void gpu_skip_end(GfxContext *g, uint32_t prev) { gfx_set_filter(g, prev); }
 
 /* §10: every table's lamp drops dust in its cone (lamp_motes[0] around the lamp) */
 static void life_lamps(MenuLibrary *L)
@@ -2261,7 +2290,9 @@ static void plane_draw(MenuLibrary *L, GfxContext *g)
                                            HMM_Rotate_RH(roll, HMM_V3(0, 0, 1))),
                                  HMM_Scale(HMM_V3(sc, sc, sc)));
     const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
-    gfx_draw(g, L->plane_mesh, &m, &toon, 0);
+    if (!bay_off(L, bay_at(L, HMM_V2(p->pos.X, p->pos.Z)))) {
+        gfx_draw(g, L->plane_mesh, &m, &toon, 0);
+    }
 }
 
 static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
@@ -2665,7 +2696,9 @@ static void puff_at(MenuLibrary *L, GfxContext *g, LibPuffKind kind, HMM_Vec3 ha
     }
     const GfxMaterial m = mat_unlit(HMM_V4((float)(rgba >> 24) / 255.0f, (float)((rgba >> 16) & 255u) / 255.0f, (float)((rgba >> 8) & 255u) / 255.0f, 1.0f));
     const HMM_Mat4 pm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(hall), HMM_Scale(HMM_V3(scale, scale, scale))));
-    gfx_draw(g, L->puff, &pm, &m, 0);
+    if (!(L->gpu_off & GPU_OFF_PARTICLES) && !bay_off(L, bay_at(L, HMM_V2(hall.X, hall.Z)))) {
+        gfx_draw(g, L->puff, &pm, &m, 0);
+    }
 }
 
 #define PUFF_WHITE 0xFFFFFFFFu
@@ -2785,7 +2818,8 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
     avatar_animate(m, &n->anim, &p, dt);
     /* a switch: the coarse mesh stays solid underneath (it sits inside the full one's silhouette) and only the full mesh
      * dithers in or out over it, so the crossfade adds the full mesh's dithered batches and nothing else */
-    const float lk = L->npc_lod_k[i];
+    const float lk = (L->gpu_off & GPU_OFF_PEOPLE_LOD1) ? 1.0f : L->npc_lod_k[i]; /* --gpu-off people_lod1: LOD 1, no crossfade */
+    const uint32_t skip = gpu_skip(g, (L->gpu_off & GPU_OFF_PEOPLE) != 0u);
     if (lk > 0.0f) {
         AvatarPose p1 = p;
         p1.lod = 1;
@@ -2799,6 +2833,7 @@ static void npc_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, int i
         p0.hide_small = lk < 0.5f ? p.hide : 1.0f;
         avatar_draw(g, m, &n->look, &p0, &n->anim, NULL);
     }
+    gpu_skip_end(g, skip);
     if (d->seated && !d->sleeper && L->fid_ok) { /* §6: the reader's mug, pencil, phone and the rest */
         draw_seat_things(L, g, m, &n->look, &p, &n->anim, d->seat_pos, d->seat_yaw_deg, &n->fo);
     }
@@ -2946,7 +2981,16 @@ static void lib_sounds(MenuLibrary *L, const AvatarLook *hero)
 void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, const AvatarLook *hero, float dt)
 {
     const int cat = gfx_set_category(g, GFX_CAT_PROP); /* the perf counters: rooms, props (furniture, books, mugs), avatars */
+    uint32_t filter = 0u; /* --gpu-off (test only): the menu's parts, not the building on the island (shell closed) */
+    const bool menu_off = L->gpu_off && L->shell_k < 1.0f;
+    if (menu_off) {
+        filter = gfx_set_filter(g, 0u);
+        gfx_set_filter(g, filter | ((L->gpu_off & GPU_OFF_ALPHA) ? 1u << GFX_MAT_ALPHA : 0u) | ((L->gpu_off & GPU_OFF_FLAT) ? GFX_FILTER_FLAT : 0u));
+    }
     draw_body(L, g, m, hero, dt);
+    if (menu_off) {
+        gfx_set_filter(g, filter);
+    }
     gfx_set_category(g, cat);
     lib_sounds(L, hero);
 }
@@ -2956,7 +3000,7 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
 static void draw_table_extras(MenuLibrary *L, GfxContext *g, int b, float hide)
 {
     const LibScene *s = &L->sc;
-    if (!L->dress_ok || hide >= 0.98f || !((L->visible >> b) & 1u)) {
+    if (!L->dress_ok || hide >= 0.98f || !((L->visible >> b) & 1u) || bay_off(L, b)) {
         return;
     }
     const LibDressing *d = &L->dress[b];
@@ -2988,7 +3032,7 @@ static void draw_dressing_rows(MenuLibrary *L, GfxContext *g, const float *hide)
             h = bay_row(L, b) == r ? mg_maxf(h, hide[b]) : h;
             on = on || (bay_row(L, b) == r && ((L->visible >> b) & 1u));
         }
-        if (!on) {
+        if (!on || row_off(L, r)) {
             continue;
         }
         GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
@@ -3036,13 +3080,13 @@ static void draw_alpha(MenuLibrary *L, GfxContext *g, const float *hide)
                 on = on || ((L->visible >> b) & 1u);
             }
         }
-        if (on && h < 0.98f && L->alpha_row[r] != GFX_MESH_NONE) {
+        if (on && h < 0.98f && L->alpha_row[r] != GFX_MESH_NONE && !row_off(L, r)) {
             const GfxMaterial m = mat_alpha(HMM_V4(1, 1, 1, 1.0f - h));
             gfx_draw(g, L->alpha_row[r], &L->xf, &m, 0);
         }
     }
     for (int b = 0; b < LIB_BAYS; b++) {
-        if (!((L->visible >> b) & 1u) || hide[b] >= 0.98f) {
+        if (!((L->visible >> b) & 1u) || hide[b] >= 0.98f || bay_off(L, b)) {
             continue;
         }
         const float k = 1.0f - hide[b];
@@ -3089,7 +3133,9 @@ static void draw_life(MenuLibrary *L, GfxContext *g, const float *hide)
         const int b = lib_life_bay_of(L->lcfg, in->xf.Columns[3].X, in->xf.Columns[3].Z);
         const GfxMaterial m = life_mat(part, in->rgba, hide[b] > 0.02f ? hide[b] : 0.0f);
         const HMM_Mat4 model = HMM_MulM4(L->xf, in->xf);
-        gfx_draw(g, mesh, &model, &m, 0);
+        if (!bay_off(L, b)) {
+            gfx_draw(g, mesh, &model, &m, 0);
+        }
     }
     if (L->puff != GFX_MESH_NONE) {
         for (int i = 0; i < lf->puffs_n; i++) {
@@ -3097,7 +3143,9 @@ static void draw_life(MenuLibrary *L, GfxContext *g, const float *hide)
             const uint32_t c = p->rgba;
             const GfxMaterial m = mat_unlit(HMM_V4((float)(c >> 24) / 255.0f, (float)((c >> 16) & 255u) / 255.0f, (float)((c >> 8) & 255u) / 255.0f, 1.0f));
             const HMM_Mat4 pm = HMM_MulM4(L->xf, HMM_MulM4(HMM_Translate(p->pos), HMM_Scale(HMM_V3(p->scale, p->scale, p->scale))));
-            gfx_draw(g, L->puff, &pm, &m, 0);
+            if (!(L->gpu_off & GPU_OFF_PARTICLES) && !bay_off(L, bay_at(L, HMM_V2(p->pos.X, p->pos.Z)))) { /* --gpu-off */
+                gfx_draw(g, L->puff, &pm, &m, 0);
+            }
         }
     }
 }
@@ -3184,13 +3232,15 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         rm.hide = hide[b];
         gfx_set_category(g, GFX_CAT_ROOM);
         if (!bay_drawn(L, b)) { /* behind the middle wall: only what reaches through it */
-            if (L->room_near[b] > 0) {
+            if (L->room_near[b] > 0 && !bay_off(L, b)) {
                 gfx_draw_range(g, L->room[b], 0, L->room_near[b], &L->xf, &rm, 0);
             }
             gfx_set_category(g, GFX_CAT_PROP);
             continue;
         }
-        gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
+        if (!bay_off(L, b)) {
+            gfx_draw(g, L->room[b], &L->xf, &rm, 0); /* hide >= 0.98 is dropped by gfx_draw */
+        }
         gfx_set_category(g, GFX_CAT_PROP);
     }
     L->xf_inv = HMM_InvGeneralM4(L->xf);
@@ -3209,13 +3259,15 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         GfxMaterial dm = room;
         dm.hide = hide[b];
         const HMM_Mat4 door = HMM_MulM4(placed(L, L->bay_x[b] + s->door.hinge.X, L->bay_z[b] + s->door.hinge.Y, 0.0f), HMM_Rotate_RH(L->door_open[b], HMM_V3(0, 1, 0)));
-        gfx_draw(g, L->door, &door, &dm, 0);
+        if (!bay_off(L, b)) {
+            gfx_draw(g, L->door, &door, &dm, 0);
+        }
         draw_table_extras(L, g, b, hide[b]);
     }
     draw_dressing_rows(L, g, hide);
     for (int b = 0; b < LIB_BAYS; b++) { /* one instanced draw: every table's four chairs (slid back for whoever gets up or sits), the
                                             * extra chairs */
-        if ((!((L->visible >> b) & 1u) && b != L->table_bay) || hide[b] >= 0.98f) {
+        if ((!((L->visible >> b) & 1u) && b != L->table_bay) || hide[b] >= 0.98f || bay_off(L, b)) {
             continue;
         }
         GfxMaterial cmat = room;
@@ -3234,10 +3286,13 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
     }
     for (int i = 0; i < s->extra_n; i++) {
         const HMM_Mat4 cm = placed(L, s->extra_chairs[i][0], s->extra_chairs[i][1], s->extra_chairs[i][2]);
-        gfx_draw(g, L->chair, &cm, &room, 0);
+        if (!bay_off(L, bay_at(L, HMM_V2(s->extra_chairs[i][0], s->extra_chairs[i][1])))) {
+            gfx_draw(g, L->chair, &cm, &room, 0);
+        }
     }
     for (int i = 0; i < s->npc_n; i++) { /* the readers' chairs and open books (not the sleeper's); the cart; bays on screen */
         const LibNpcDef *d = &s->npcs[i];
+        const uint32_t skip = gpu_skip(g, bay_off(L, bay_at(L, d->seat_pos))); /* --gpu-off backbays */
         if (d->seated && ((L->visible >> bay_at(L, d->seat_pos)) & 1u)) {
             const HMM_Mat4 cm = placed(L, d->seat_pos.X, d->seat_pos.Y, d->seat_yaw_deg);
             gfx_draw(g, L->chair, &cm, &room, 0);
@@ -3246,7 +3301,8 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
                 draw_book(L, g, &at, true, &L->npc[i].study, 1.0f, 8); /* the readers' books: the prototype's b9 */
             }
         }
-        if (d->push_cart && ((L->visible >> bay_at(L, L->npc[i].cart)) & 1u)) {
+        gpu_skip_end(g, skip);
+        if (d->push_cart && ((L->visible >> bay_at(L, L->npc[i].cart)) & 1u) && !bay_off(L, bay_at(L, L->npc[i].cart))) {
             const HMM_Mat4 cart = placed(L, L->npc[i].cart.X, L->npc[i].cart.Y, L->npc[i].cart_yaw_deg);
             gfx_draw(g, L->cart, &cart, &room, 0);
         }
@@ -3260,6 +3316,7 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         if (mb->state == LM_EMPTY) {
             continue; /* §4: empty seats are bare */
         }
+        const uint32_t skip = gpu_skip(g, bay_off(L, mb->bay)); /* --gpu-off backbays: the member and its things */
         const LibSeat *seat = &mb->at;
         const float swap = s->study.items.swap_at;
         const bool on_table = mb->place >= swap && (mb->state == LM_SETTLE || mb->state == LM_STUDY || mb->state == LM_PACK);
@@ -3281,9 +3338,14 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         }
         AvatarPose p;
         member_pose(L, i, &p);
+        if (L->gpu_off & GPU_OFF_PEOPLE_LOD1) {
+            p.lod = 1; /* --gpu-off people_lod1 (the hero too) */
+        }
         const AvatarLook look = i == 0 ? *hero : avatar_look_from_skin(mb->skin);
         avatar_animate(m, &mb->anim, &p, dt);
+        const uint32_t skip_av = gpu_skip(g, (L->gpu_off & GPU_OFF_PEOPLE) != 0u); /* --gpu-off people: the hero too */
         avatar_draw(g, m, &look, &p, &mb->anim, NULL);
+        gpu_skip_end(g, skip_av);
         if (on_table && L->fid_ok) { /* §6 */
             draw_seat_things(L, g, m, &look, &p, &mb->anim, seat->pos, seat->yaw_deg, &mb->fo);
         }
@@ -3301,12 +3363,15 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
             /* (tests) §4: the drawn mug's handle against the drawn hand */
             mb->mug_err = HMM_LenV3(HMM_SubV3(HMM_MulM4V4(mg, HMM_V4V(s->mug_grip, 1.0f)).XYZ, sv.hand[0])) / fmaxf(L->scale, 1e-3f);
         }
+        gpu_skip_end(g, skip);
     }
     plane_step(L, dt); /* §8: after the hero's fidget (the plane in its hand) */
     plane_draw(L, g);
     npc_lods(L, dt);
     for (int i = 0; i < s->npc_n; i++) {
+        const uint32_t skip = gpu_skip(g, bay_off(L, bay_at(L, L->npc[i].pos))); /* --gpu-off backbays */
         npc_draw(L, g, m, i, dt);
+        gpu_skip_end(g, skip);
     }
     if (L->fid_ok) { /* §6: the paper balls flying or resting, in bays on screen */
         for (int k = 0; k < L->balls.n; k++) {
