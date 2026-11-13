@@ -43,7 +43,8 @@ typedef struct PerfRun {
      * start and end of the recording; desktop runs refuse to start on battery */
     float hz_start, hz_end;
     uint32_t asleep_s, occluded_frames, unfocused_frames;
-    int late0; /* frame_late_total() when the recording started */ /* + frames with the window not the active app (macOS does not pace it) */ /* recording seconds with the display asleep / locked, frames with the window hidden */
+    int late0; /* frame_late_total() when the recording started */
+    uint32_t missed; /* frames over 1.5 of the screen's own refresh intervals (differs from dropped above 60 Hz) */ /* + frames with the window not the active app (macOS does not pace it) */ /* recording seconds with the display asleep / locked, frames with the window hidden */
     double next_sleep_check, next_raise;
     bool refused;
 } PerfRun;

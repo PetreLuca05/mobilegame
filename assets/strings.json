@@ -243,6 +243,9 @@
   "ui_tilt": "3D tilt effect",
   "ui_motion_full": "Full",
   "ui_motion_reduced": "Reduced",
+  "frame_rate": "Frame rate",
+  "frame_rate_max": "Maximum",
+  "frame_rate_60": "60 · saves battery",
   "erase_progress": "Erase progress",
   "erase_progress_q": "Erase all your progress?",
   "progress_erased": "Progress erased"

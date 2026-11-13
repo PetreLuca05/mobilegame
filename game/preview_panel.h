@@ -13,6 +13,7 @@
 
 typedef struct PreviewPanel {
     float slide;         /* 0 hidden .. 1 shown */
+    float anim_dt;       /* this frame's time for the head's motion (preview_panel_update) */
     uint16_t shown;      /* slot being shown */
     float crossfade;     /* 1 just switched .. 0 */
     float punch;         /* tap feedback */

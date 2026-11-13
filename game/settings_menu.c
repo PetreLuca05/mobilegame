@@ -145,6 +145,24 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
     }
     cy += 58.0f;
+    if (m->screen_hz > 61.0f) { /* ProMotion / VRR screens: Rată de cadre: Maximă (the screen's rate) / 60 (battery and heat) */
+        ui_label_caps(ui, cx, cy + 4.0f, str("frame_rate"));
+        cy += 22.0f;
+        const float half = (cw - 8.0f) * 0.5f;
+        for (int i = 0; i < 2; i++) {
+            char fl[64], txt[32];
+            if (i == 0) {
+                SDL_snprintf(txt, sizeof(txt), "%s (%.0f)", str("frame_rate_max"), (double)m->screen_hz);
+            } else {
+                SDL_snprintf(txt, sizeof(txt), "%s", str("frame_rate_60"));
+            }
+            SDL_snprintf(fl, sizeof(fl), "%s##fps%d", txt, i);
+            if (ui_button(ui, fl, cx + (float)i * (half + 8.0f), cy, half, 46.0f, s->frame_rate == i)) {
+                s->frame_rate = i;
+            }
+        }
+        cy += 58.0f;
+    }
 #ifdef MG_CAMERA_THIRDPERSON
     ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
     cy += 52.0f;

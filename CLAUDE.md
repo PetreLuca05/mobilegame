@@ -545,7 +545,14 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   (GPU idle waits, mesh uploads, figure upload, screenshot, MSAA change, level build, map preload step); a frame over 50 ms
   logs `late frame: <ms> at <s>, screen, scene, during it: <notes>` at the start of the next one, and the last 32 go into the
   perf JSON (`late_frames`), so device runs bring them to the iPad gate.
-- Thermal state serious or worse: NPC detail radius 22 -> 11 m and MSAA off, logged (`update_thermal` in `game.c`).
+- Thermal state serious or worse: NPC detail radius 22 -> 11 m, MSAA off and, on screens over 60 Hz, the frame rate capped at 60, logged (`update_thermal` in `game.c`).
+- Variable / high refresh screens (ProMotion iPhones and iPads, 120 Hz Macs): the simulation stays a fixed 60 Hz tick and rendering
+  interpolates, so the game draws at the screen's rate (`app->display_hz` = the screen's maximum, re-read every 60 frames). iPhones
+  need `CADisableMinimumFrameDurationOnPhone` (Info.plist) to go above 60; SDL's display link asks for the screen's range. Settings ->
+  Rată de cadre (shown only above 60 Hz): Maximă / 60 (`settings.frame_rate`); a cap (`app->frame_cap_hz`) skips display-link calls on
+  iOS and waits out the interval on desktop. Per-frame motion uses the frame's own time (the preview head used a fixed 1/60).
+  Perf runs record `missed_refresh` (frames over 1.5 of the screen's intervals: differs from dropped above 60 Hz) and `frame_cap_hz`;
+  dropped stays "over 25 ms" on every screen. Desktop tests: `--display-hz N` (pretend screen), `--frame-cap N`.
 
 ## Commit rules
 

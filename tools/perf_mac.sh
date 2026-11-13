@@ -50,7 +50,9 @@ c = j["counters"]; s = {x["name"]: x for x in j["scopes"]}
 print(f"perf_mac: {sys.argv[1]}: {head}, {j['display_hz_start']:.0f} Hz, {j['fps']:.1f} fps, draws {c['draws']['avg']:.1f}/{c['draws']['max']:.0f}, "
       f"tris {c['tris']['avg']/1000:.1f}k/{c['tris']['max']/1000:.1f}k, frame {s['frame']['avg']:.3f} ms, render {s['render']['avg']:.3f} ms, "
       f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, dropped (>25 ms) {j['dropped']}, late (>50 ms) {j.get('late', len(j['late_frames']))}, "
-      f"covered {100.0 * j.get('window_occluded_frames', 0) / max(j['frames'], 1):.2f} %, inactive {100.0 * j.get('window_unfocused_frames', 0) / max(j['frames'], 1):.2f} % (limit 0.5 %)")
+      f"covered {100.0 * j.get('window_occluded_frames', 0) / max(j['frames'], 1):.2f} %, inactive {100.0 * j.get('window_unfocused_frames', 0) / max(j['frames'], 1):.2f} % (limit 0.5 %)"
+      + (f", missed refresh {j.get('missed_refresh', 0)}" if j.get('display_hz_start', 60) > 61 else "")
+      + (f", capped at {j.get('frame_cap_hz', 0):.0f} fps" if j.get('frame_cap_hz', 0) > 0 else ""))
 # the Mac's budgets (the iPad gate is tools/perf_gate.py): 0 allocations; the menu at most 210 MB (user decision 2026-11-13, measured
 # paced; the global 300 MB is the iPad gate's) and 75 k triangles at rest; the Maps move and the trip at most 60 draws in a frame
 sc = j["scenario"]; bad = []
