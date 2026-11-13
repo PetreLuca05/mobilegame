@@ -41,6 +41,8 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
 - **Page sound** (step 10, accepted): band-passed noise sweeping 3.2 -> 1.4 kHz (§13 says "filtered noise").
 - **`--lib-look`** (step 10, accepted): also moves the camera's framing point, so the rooms fade around the spot it looks at (the sound
   test sees the clock with my table in the back row).
+- **Day only** (user decision, 2026-11-13): the library stays day only. A day / night mode (LIB-NIGHT) was an exploration and is not
+  to be built; nothing of it exists in the code, and it is not on the iPad gate list.
 - **Triangles at rest** (user decision, 2026-11-12): **≈ 58 k** for the square hall in place of ≈ 26 k, stop line **75 k**
   (`tools/perf_gate.py`, `menu`). Measured with the wall-aware bay rule (93d2a65): 57.9 k average (61.1 k without it). No doorway
   culling of people and particles. Why: 57.9 k is below the old hospital's `stress200` scene, which passed every iPad budget at 87 k
