@@ -31,4 +31,18 @@ def load(p): return {int(a):b for a,b in re.findall(r"npc-sync: tick (\d+) hash 
 a,b=load(sys.argv[1]),load(sys.argv[2]); both=sorted(set(a)&set(b)); bad=[t for t in both if a[t]!=b[t]]
 print(f"NPC hash: {len(both)} common ticks, {len(bad)} differ", "PASS" if both and not bad else "FAIL", both[:6])
 PY
-exit $((MR+IR))
+python3 - $OUT/ipad.log $OUT/mac.log <<'PY'
+import re,sys
+def h(p):
+    m=re.findall(r"library table hash ([0-9a-f]{8}) \(bay (\d+), (\d+) studying; parts ([0-9a-f ]+)\)", open(p,errors="ignore").read())
+    return m[-1] if m else None
+a,b=h(sys.argv[1]),h(sys.argv[2])
+if not a or not b:
+    print("table hash: FAIL (a side logged none)", a, b); sys.exit(1)
+print(f"table hash: iPad {a[0]} (bay {a[1]}, {a[2]} studying), Mac {b[0]} (bay {b[1]}, {b[2]} studying):", "PASS the same table" if a[0]==b[0] else "FAIL")
+if a[0]!=b[0]:
+    names=["seat order","covers","lamp","clutter","members"]; pa,pb=a[3].split(),b[3].split()
+    print("  differs in:", ", ".join(n for n,x,y in zip(names,pa,pb) if x!=y)); sys.exit(1)
+PY
+TR=$?
+exit $((MR+IR+TR))
