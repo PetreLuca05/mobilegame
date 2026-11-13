@@ -1,0 +1,186 @@
+17:35:21  Acquired tunnel connection to device.
+17:35:21  Enabling developer disk image services.
+17:35:21  Acquired usage assertion.
+Launched application with ro.docvex.mobilegame bundle identifier.
+Waiting for the application to terminate…
+2026-11-13 17:35:22.001 Mobilegame[4632:1372281] render thread priority: 45
+2026-11-13 17:35:22.032 Mobilegame[4632:1372281] gfx: backend metal, shaders msl, color fmt 12, depth fmt 60, msaa 4x
+2026-11-13 17:35:22.056 Mobilegame[4632:1372281] book: no content pack (none embedded): no book content
+2026-11-13 17:35:22.059 Mobilegame[4632:1372281] avatar: library seat top 0.500 m, seat clearance 0.000 m
+2026-11-13 17:35:22.066 Mobilegame[4632:1372281] lib_nav: baked 128x136 cells, 81 obstacles, 12621 free, 0.087 ms
+2026-11-13 17:35:22.076 Mobilegame[4632:1372281] library: loaded (4 seats, 0 extra chairs), 110046 vertices welded to 85361
+2026-11-13 17:35:22.083 Mobilegame[4632:1372281] net: realtime backend ready (kugytvcupelitbaksotg.supabase.co, the platform's TLS)
+2026-11-13 17:35:22.090 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/auth/v1/token
+2026-11-13 17:35:22.109 Mobilegame[4632:1372281] app: 1180x820 pt @ 2.00x, safe insets l0 t0 r0 b25, perm arena 11658 KB used
+2026-11-13 17:35:22.127 Mobilegame[4632:1372281] autotest friends d2h: op 0 (1) 
+2026-11-13 17:35:22.127 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:35:22.127 Mobilegame[4632:1372281] ui: system Reduce Motion off
+2026-11-13 17:35:22.130 Mobilegame[4632:1372281] world: kumar at (0, 0): island 7362 tris, props 17694 tris, road 426 m, 9 hospitals
+2026-11-13 17:35:22.130 Mobilegame[4632:1372281] library: the lobby's seed 88c43df7 -> table in bay 3, seats 2 0 3 1, 4 things on it
+2026-11-13 17:35:22.148 Mobilegame[4632:1372281] gfx: MSAA 2x
+2026-11-13 17:35:22.148 Mobilegame[4632:1372281] gfx: targets 2360x1640: depth, msaa colour
+2026-11-13 17:35:22.149 Mobilegame[4632:1372281] Unbalanced calls to begin/end appearance transitions for <SDL_uikitviewcontroller: 0x103ca6e60>.
+2026-11-13 17:35:22.150 Mobilegame[4632:1372281] Unbalanced calls to begin/end appearance transitions for <SDL_uikitviewcontroller: 0x103ca6e60>.
+2026-11-13 17:35:22.156 Mobilegame[4632:1372281] dropped frame: 26.7 ms at 0.15 s, screen MAIN_MENU, scene library, during it: map preload step, mesh upload x9, MSAA change (pipelines)
+2026-11-13 17:35:22.159 Mobilegame[4632:1372281] world: lawrance at (700, -60): island 6882 tris, props 15462 tris, road 350 m, 7 hospitals
+2026-11-13 17:35:22.166 Mobilegame[4632:1372281] world: 2 islands, ambulance 646 tris, 4 vehicles, loaded in 7.0 ms (3 steps)
+2026-11-13 17:35:22.350 Mobilegame[4632:1372307] auth: signed in as 78117b38... (refreshed)
+2026-11-13 17:35:22.350 Mobilegame[4632:1372307] net: attempt HTTPS GET kugytvcupelitbaksotg.supabase.co/rest/v1/profiles
+2026-11-13 17:35:22.445 Mobilegame[4632:1372307] account: guest 78117b38... "Player3379", 332 sessions
+2026-11-13 17:35:22.471 Mobilegame[4632:1372307] net: attempt WS GET kugytvcupelitbaksotg.supabase.co/realtime/v1/websocket
+2026-11-13 17:35:22.474 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/book_state_set
+2026-11-13 17:35:22.474 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/my_friend_code
+2026-11-13 17:35:22.482 Mobilegame[4632:1372281] WARNING: late frame: 51.0 ms at 0.48 s, screen MAIN_MENU, scene library, during it: nothing noted
+2026-11-13 17:35:22.507 Mobilegame[4632:1372281] dropped frame: 25.3 ms at 0.51 s, screen MAIN_MENU, scene library, during it: nothing noted
+2026-11-13 17:35:22.537 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:22.606 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:35:22.711 Mobilegame[4632:1372281] lobby: room open (open)
+2026-11-13 17:35:22.774 Mobilegame[4632:1372281] dropped frame: 48.6 ms at 0.78 s, screen MAIN_MENU, scene library, during it: nothing noted
+2026-11-13 17:35:22.958 Mobilegame[4632:1372281] friends: user channel joined
+2026-11-13 17:35:22.959 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:22.991 Mobilegame[4632:1372281] autotest friends d2h: op 1 (3) 
+2026-11-13 17:35:23.035 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friend_remove
+2026-11-13 17:35:23.112 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:23.258 Mobilegame[4632:1372281] autotest friends d2h: op 2 (43) 
+2026-11-13 17:35:23.258 Mobilegame[4632:1372281] autotest friends: my code J4NH6Z
+2026-11-13 17:35:23.275 Mobilegame[4632:1372281] autotest friends d2h: op 3 (44) 
+2026-11-13 17:35:23.291 Mobilegame[4632:1372281] autotest friends d2h: op 4 (16) 
+2026-11-13 17:35:26.877 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:27.074 Mobilegame[4632:1372281] autotest friends d2h: op 5 (8) notice_ok
+2026-11-13 17:35:27.174 Mobilegame[4632:1372281] autotest friends: the library runs its 25 declared people
+2026-11-13 17:35:27.177 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friend_respond
+2026-11-13 17:35:27.263 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:27.674 Mobilegame[4632:1372281] autotest friends d2h: op 6 (13) 
+2026-11-13 17:35:27.690 Mobilegame[4632:1372281] autotest friends d2h: op 7 (53) 
+2026-11-13 17:35:27.707 Mobilegame[4632:1372281] autotest friends d2h: op 8 (54) 
+2026-11-13 17:35:27.724 Mobilegame[4632:1372281] autotest friends d2h: op 9 (22) 
+2026-11-13 17:35:31.756 Mobilegame[4632:1372281] autotest friends d2h: op 10 (8) lobby_invite
+2026-11-13 17:35:31.857 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:31.873 Mobilegame[4632:1372281] frontend: FRIENDS
+2026-11-13 17:35:32.373 Mobilegame[4632:1372281] autotest friends d2h: op 11 (13) 
+2026-11-13 17:35:32.390 Mobilegame[4632:1372281] autotest friends d2h: op 12 (22) 
+2026-11-13 17:35:33.423 Mobilegame[4632:1372281] autotest friends d2h: op 13 (9) finvite_%s
+2026-11-13 17:35:33.527 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/lobby_invite
+2026-11-13 17:35:34.023 Mobilegame[4632:1372281] autotest friends d2h: op 14 (22) 
+2026-11-13 17:35:34.512 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:34.557 Mobilegame[4632:1372281] autotest friends d2h: op 15 (8) friends
+2026-11-13 17:35:34.673 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:35:34.674 Mobilegame[4632:1372281] library: a paper plane for 22a4be30-d4a2-4d03-9c6d-995e46873c35 (bay 1, left)
+2026-11-13 17:35:35.157 Mobilegame[4632:1372281] autotest friends d2h: op 16 (41) 
+2026-11-13 17:35:35.173 Mobilegame[4632:1372281] autotest friends d2h: op 17 (55) 
+2026-11-13 17:35:35.190 Mobilegame[4632:1372281] autotest friends d2h: op 18 (22) 
+2026-11-13 17:35:46.223 Mobilegame[4632:1372281] autotest friends d2h: op 19 (8) lobby_invite
+2026-11-13 17:35:46.326 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:46.339 Mobilegame[4632:1372281] frontend: FRIENDS
+2026-11-13 17:35:46.839 Mobilegame[4632:1372281] autotest friends d2h: op 20 (13) 
+2026-11-13 17:35:46.856 Mobilegame[4632:1372281] autotest friends d2h: op 21 (22) 
+2026-11-13 17:35:47.889 Mobilegame[4632:1372281] autotest friends d2h: op 22 (9) finvite_%s
+2026-11-13 17:35:47.993 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/lobby_invite
+2026-11-13 17:35:48.457 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:35:48.505 Mobilegame[4632:1372281] autotest friends d2h: op 23 (22) 
+2026-11-13 17:35:49.039 Mobilegame[4632:1372281] autotest friends d2h: op 24 (8) friends
+2026-11-13 17:35:49.155 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:35:49.155 Mobilegame[4632:1372281] library: a paper plane for 22a4be30-d4a2-4d03-9c6d-995e46873c35 (bay 1, left)
+2026-11-13 17:35:49.555 Mobilegame[4632:1372281] session: 22a4be30 "Player" joined (body 0, skin 1, hair 1 colour 1, suit 3)
+2026-11-13 17:35:49.578 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:35:49.639 Mobilegame[4632:1372281] autotest friends d2h: op 25 (41) 
+2026-11-13 17:35:49.655 Mobilegame[4632:1372281] autotest friends d2h: op 26 (16) 
+2026-11-13 17:35:49.772 Mobilegame[4632:1372281] autotest friends d2h: op 27 (53) 
+2026-11-13 17:35:49.789 Mobilegame[4632:1372281] autotest friends d2h: op 28 (54) 
+2026-11-13 17:35:49.805 Mobilegame[4632:1372281] autotest friends d2h: op 29 (22) 
+2026-11-13 17:35:52.839 Mobilegame[4632:1372281] autotest friends d2h: op 30 (8) lobby_kick1
+2026-11-13 17:35:52.939 Mobilegame[4632:1372281] session: 22a4be30 is not on the member list
+2026-11-13 17:35:52.939 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/lobby_kick
+2026-11-13 17:35:53.039 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:35:53.455 Mobilegame[4632:1372281] autotest friends d2h: op 31 (53) 
+2026-11-13 17:35:53.472 Mobilegame[4632:1372281] autotest friends d2h: op 32 (54) 
+2026-11-13 17:35:53.488 Mobilegame[4632:1372281] autotest friends d2h: op 33 (8) lobby_switch
+2026-11-13 17:35:53.591 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:35:53.605 Mobilegame[4632:1372281] dropped frame: 32.0 ms at 31.61 s, screen MAIN_MENU, scene library, during it: nothing noted
+2026-11-13 17:35:54.088 Mobilegame[4632:1372281] autotest friends d2h: op 34 (26) 
+2026-11-13 17:35:54.105 Mobilegame[4632:1372281] autotest friends d2h: op 35 (22) 
+2026-11-13 17:35:55.655 Mobilegame[4632:1372281] library: Player gone (walking home, out of view), 3.0 m from its table's stand point, 2.7 s after it got up
+2026-11-13 17:36:05.137 Mobilegame[4632:1372281] autotest friends d2h: op 36 (8) lobby_invite
+2026-11-13 17:36:05.239 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:36:05.254 Mobilegame[4632:1372281] frontend: FRIENDS
+2026-11-13 17:36:05.754 Mobilegame[4632:1372281] autotest friends d2h: op 37 (13) 
+2026-11-13 17:36:05.770 Mobilegame[4632:1372281] autotest friends d2h: op 38 (22) 
+2026-11-13 17:36:06.804 Mobilegame[4632:1372281] autotest friends d2h: op 39 (9) finvite_%s
+2026-11-13 17:36:06.906 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/lobby_invite
+2026-11-13 17:36:07.390 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/friends_list
+2026-11-13 17:36:07.421 Mobilegame[4632:1372281] autotest friends d2h: op 40 (22) 
+2026-11-13 17:36:07.537 Mobilegame[4632:1372281] session: 22a4be30 "Player" joined (body 0, skin 1, hair 1 colour 1, suit 3)
+2026-11-13 17:36:07.537 Mobilegame[4632:1372281] session: slot 0 taken by 22a4be30, re-picking
+2026-11-13 17:36:07.555 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:36:07.954 Mobilegame[4632:1372281] autotest friends d2h: op 41 (8) friends
+2026-11-13 17:36:08.070 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:36:08.070 Mobilegame[4632:1372281] library: a paper plane for 22a4be30-d4a2-4d03-9c6d-995e46873c35 (bay 1, left)
+2026-11-13 17:36:08.570 Mobilegame[4632:1372281] autotest friends d2h: op 42 (41) 
+2026-11-13 17:36:08.587 Mobilegame[4632:1372281] autotest friends d2h: op 43 (53) 
+2026-11-13 17:36:08.604 Mobilegame[4632:1372281] autotest friends d2h: op 44 (54) 
+2026-11-13 17:36:08.620 Mobilegame[4632:1372281] autotest friends d2h: op 45 (8) lobby_switch
+2026-11-13 17:36:08.725 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:36:09.237 Mobilegame[4632:1372281] autotest friends d2h: op 46 (26) 
+2026-11-13 17:36:09.253 Mobilegame[4632:1372281] autotest friends d2h: op 47 (22) 
+2026-11-13 17:36:11.287 Mobilegame[4632:1372281] autotest friends d2h: op 48 (58) 
+2026-11-13 17:36:11.287 Mobilegame[4632:1372281] session: 22a4be30 "Player" joined (body 0, skin 1, hair 1 colour 1, suit 3)
+2026-11-13 17:36:11.287 Mobilegame[4632:1372281] session: slot 1 taken by 22a4be30, re-picking
+2026-11-13 17:36:12.304 Mobilegame[4632:1372281] autotest friends: library table hash 8f5714ae (bay 3, 2 studying; parts 3 c2daa554 69212ee0 ff07f0ad 23bebd7c 40b077ea)
+2026-11-13 17:36:12.320 Mobilegame[4632:1372281] autotest friends d2h: op 49 (22) 
+2026-11-13 17:36:17.353 Mobilegame[4632:1372281] autotest friends d2h: op 50 (8) menurow2
+2026-11-13 17:36:17.469 Mobilegame[4632:1372281] frontend: SETTINGS
+2026-11-13 17:36:17.953 Mobilegame[4632:1372281] autotest friends d2h: op 51 (8) tab1
+2026-11-13 17:36:18.569 Mobilegame[4632:1372281] autotest friends d2h: op 52 (8) erase_progress
+2026-11-13 17:36:19.186 Mobilegame[4632:1372281] autotest friends d2h: op 53 (8) erase_yes
+2026-11-13 17:36:19.301 Mobilegame[4632:1372281] settings: progress erased
+2026-11-13 17:36:19.803 Mobilegame[4632:1372281] autotest friends d2h: op 54 (8) menu
+2026-11-13 17:36:19.919 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:36:20.419 Mobilegame[4632:1372281] autotest friends d2h: op 55 (22) 
+2026-11-13 17:36:21.952 Mobilegame[4632:1372281] autotest friends d2h: op 56 (8) menurow4
+2026-11-13 17:36:22.054 Mobilegame[4632:1372281] library: move to the map (books) over 3.0 s
+2026-11-13 17:36:22.438 Mobilegame[4632:1372307] net: attempt HTTPS PATCH kugytvcupelitbaksotg.supabase.co/rest/v1/stats
+2026-11-13 17:36:22.569 Mobilegame[4632:1372281] autotest friends d2h: op 57 (20) 
+2026-11-13 17:36:24.786 Mobilegame[4632:1372281] frontend: MAP
+2026-11-13 17:36:25.069 Mobilegame[4632:1372281] library: move to the map done in 3.02 s
+2026-11-13 17:36:26.607 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/book_state_set
+2026-11-13 17:36:26.614 Mobilegame[4632:1372281] world: join kumar/gastro (scene institute)
+2026-11-13 17:36:26.619 Mobilegame[4632:1372281] frontend: LOADING
+2026-11-13 17:36:26.636 Mobilegame[4632:1372281] level: kumar/gastro -> scene institute
+2026-11-13 17:36:26.638 Mobilegame[4632:1372281] level: arena 64 MB reserved, perm 76 / 96 MB used
+2026-11-13 17:36:26.638 Mobilegame[4632:1372281] imap: 85 rooms, 86 doors, 1124 furniture, 0 book props, 109 slots, 0 NPC points, 3 lifts
+2026-11-13 17:36:26.644 Mobilegame[4632:1372281] gfx: patterns: 10 layers 256x256 R8 + 8 mips (853 KB)
+2026-11-13 17:36:26.671 Mobilegame[4632:1372281] institute: 1988 colliders, 116 wall pieces, 1019 furniture + 0 book props (41341 tris); meshes 69924 tris, vb 3.80 MB, ib 0.80 MB; built in 33 ms
+2026-11-13 17:36:26.671 Mobilegame[4632:1372281] institute: tris site 4853, G 17402, 1 15372, 2 16512, 3 14365, roof 1420
+2026-11-13 17:36:26.689 Mobilegame[4632:1372281] nav: baked 5 grids in 18.0 ms
+2026-11-13 17:36:26.692 Mobilegame[4632:1372281] institute: 71 slots moved out of furniture, 0 without a free spot within 3 m
+2026-11-13 17:36:26.692 Mobilegame[4632:1372281] rooms: 113 rooms, 122 doors, 212 slots, 0 on blocked cells
+2026-11-13 17:36:26.692 Mobilegame[4632:1372281] npc: no ambient roster in institute
+2026-11-13 17:36:26.696 Mobilegame[4632:1372281] level: built institute in 58.5 ms: 49 meshes (4205 KB vertices, 1076 KB indices) over the mark, arena 33993 KB kept, peak 34548 KB of 64 MB, lifts 3, floors 5
+2026-11-13 17:36:26.702 Mobilegame[4632:1372281] WARNING: late frame: 66.7 ms at 64.71 s, screen LOADING, scene -, during it: level build, mesh upload x53, GPU idle wait (settle uploads) x3
+2026-11-13 17:36:26.707 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:36:26.719 Mobilegame[4632:1372281] frontend: PLAY
+2026-11-13 17:36:26.720 Mobilegame[4632:1372281] gfx: targets 1888x1312: depth, msaa colour, scene
+2026-11-13 17:36:26.720 Mobilegame[4632:1372281] gfx: passes: main colour CLEAR/STORE, depth CLEAR/DONT_CARE; UI colour DONT_CARE/STORE, no depth
+2026-11-13 17:36:26.736 Mobilegame[4632:1372281] autotest friends d2h: op 58 (19) 
+2026-11-13 17:36:26.753 Mobilegame[4632:1372281] autotest friends d2h: op 59 (17) 
+2026-11-13 17:36:26.769 Mobilegame[4632:1372281] autotest friends d2h: op 60 (22) 
+2026-11-13 17:36:28.752 Mobilegame[4632:1372281] session: 22a4be30 "Player" joined (body 0, skin 1, hair 1 colour 1, suit 3)
+2026-11-13 17:36:51.800 Mobilegame[4632:1372281] autotest friends d2h: op 61 (8) gear
+2026-11-13 17:36:52.417 Mobilegame[4632:1372281] autotest friends d2h: op 62 (8) p_home
+2026-11-13 17:36:52.526 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/lobby_return_to_menu
+2026-11-13 17:36:52.533 Mobilegame[4632:1372281] frontend: MAIN_MENU
+2026-11-13 17:36:52.599 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:36:53.033 Mobilegame[4632:1372281] autotest friends d2h: op 63 (21) 
+2026-11-13 17:36:53.050 Mobilegame[4632:1372281] autotest friends d2h: op 64 (53) 
+2026-11-13 17:36:53.067 Mobilegame[4632:1372281] autotest friends d2h: op 65 (54) 
+2026-11-13 17:36:53.084 Mobilegame[4632:1372281] autotest friends d2h: op 66 (53) 
+2026-11-13 17:36:55.600 Mobilegame[4632:1372281] session: 22a4be30 "Player" joined (body 0, skin 1, hair 1 colour 1, suit 3)
+2026-11-13 17:36:58.783 Mobilegame[4632:1372281] session: 22a4be30 left
+2026-11-13 17:36:58.802 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_heartbeat
+2026-11-13 17:36:58.816 Mobilegame[4632:1372281] autotest friends d2h: op 67 (54) 
+2026-11-13 17:36:58.833 Mobilegame[4632:1372281] autotest friends d2h: op 68 (22) 
+2026-11-13 17:36:59.866 Mobilegame[4632:1372281] autotest friends d2h: op 69 (0) 
+2026-11-13 17:36:59.866 Mobilegame[4632:1372281] AUTOTEST PASSED
+2026-11-13 17:36:59.901 Mobilegame[4632:1372307] net: attempt HTTPS PATCH kugytvcupelitbaksotg.supabase.co/rest/v1/stats
+2026-11-13 17:36:59.902 Mobilegame[4632:1372307] net: attempt HTTPS POST kugytvcupelitbaksotg.supabase.co/rest/v1/rpc/status_clear
+The app terminated with the exit code 0.
