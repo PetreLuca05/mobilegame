@@ -316,7 +316,7 @@ typedef struct Game {
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
     double fs_t0;
-    uint32_t fs_draws_max, fs_tris_max;
+    uint32_t fs_draws_max, fs_tris_max, fs_ui_max;
     uint64_t fs_light2, fs_fade, fs_fade_binds, fs_map; /* --log-frame-stats: second-light draws, shell fades, map draws */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
@@ -4969,6 +4969,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         gfx_get_stats(app->gfx, &st);
         g->fs_n++, g->fs_draws += st.draws, g->fs_tris += st.tris;
         g->fs_draws_max = SDL_max(g->fs_draws_max, st.draws);
+        g->fs_ui_max = SDL_max(g->fs_ui_max, st.ui_quads);
         g->fs_tris_max = SDL_max(g->fs_tris_max, st.tris);
         for (int b = 0; b < 4; b++) {
             g->fs_vis[b] += (g->lib.visible >> b) & 1u;
@@ -4984,8 +4985,9 @@ static void game_frame_inner(MgApp *app, float alpha)
                         (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible",
                         (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) ? "focused" : "not focused");
             g->fs_t0 = app->time;
-            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0, (int)g->lib.trav.phase);
-            g->fs_draws_max = g->fs_tris_max = 0;
+            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, UI instances max %u, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0,
+                        g->fs_ui_max, (int)g->lib.trav.phase);
+            g->fs_draws_max = g->fs_tris_max = g->fs_ui_max = 0;
             mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
                         g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
                         g->fs_cat[GFX_CAT_AVATAR] / n / 1000.0, g->fs_cat[GFX_CAT_OTHER] / n / 1000.0);

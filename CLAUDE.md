@@ -533,7 +533,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   wall pieces are index ranges of them (`gfx_draw_range`). Keep the `draw_bucket` order (x-ray note above).
 - Triangle soups (mgmb: the library, islands, vehicles, avatar parts) are uploaded through `mesh_upload_welded` (`engine/gfx/weld.c`):
   vertices merge only when all 28 bytes match (position, normal, colour + zone), so every drawn triangle is the soup's (`weld` ctest
-  rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools 5 MB vertices + 2 MB indices.
+  rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools fit what is loaded (user decision 2026-11-13): they grow at load time when an upload does not fit (a new buffer, the used part copied on the GPU, offsets unchanged) and are trimmed to used + 256 KB / 64 KB when uploads settle (`gfx_settle_uploads`), so a hospital does not pay for the institute and the library hall. UI instances per frame: 4096 (the worst screen, book_ui on the iPad window, is about 2000).
 - Avatar LOD: `AvatarPose.lod` 0 full, 1 coarse, 2 body + head; chosen in `crowd_cull_job`, with frustum culling.
 - Frame: main pass + UI pass; the UI pass starts by upscaling the 3D image (`present.frag`). Metal shaders get real
   `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).
