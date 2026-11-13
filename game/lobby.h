@@ -109,6 +109,9 @@ typedef struct Lobby {
     char host_id[NET_ID_LEN];
     /* LIB-1 §8: invites sent (each one is a paper plane in the library; the RPC itself goes out at once) */
     uint32_t invites_sent;
+    uint64_t frame;             /* the game's frame index (set each frame; tests) */
+    uint64_t invite_call_frame; /* (tests §15.9) the frame lobby_invite_send last sent an invite */
+    uint64_t invite_rx_frame;   /* (tests §15.9) the frame the last invite was taken off the network queue */
     char last_invite[NET_ID_LEN];
     double host_seen;
 } Lobby;

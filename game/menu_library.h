@@ -340,6 +340,7 @@ typedef struct MenuLibrary {
     HMM_Mat4 xf_inv;         /* world -> library, this frame */
     LibSound snd;            /* §13 */
     uint32_t items_frames;   /* (tests) frames the members' things were drawn (LibMember.items is this frame's) */
+    char me_id[NET_ID_LEN];  /* my row's id in the last roster (seat 0 has no id of its own): the table hash names me by it */
 } MenuLibrary;
 
 bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch);
@@ -409,5 +410,15 @@ void menu_library_study_pose(const MenuLibrary *L, int i, const LibStudy *st, fl
 void menu_library_fit_box(const MenuLibrary *L, const HMM_Mat4 *vp, float w, float h, float box[4]);
 /* Seat i's chair position in the world (lobby name tags, layout checks). */
 HMM_Vec3 menu_library_seat_world(const MenuLibrary *L, int i);
+
+/* §15.3 (tests): FNV-1a over what bay `bay`'s table shows, the same on every device for the same lobby: its dressing (seat order,
+ * the four covers, the lamp's anchor / position / yaw, every clutter item's kind / position / yaw) and every member studying there
+ * in seat order (its seat, its id's hash, its book's cover, the things it has on the table). Positions are quantised to 1 mm,
+ * yaws to 0.1 deg; nothing per device (who is "me", fidgets, animation phases, the camera). 0 for a bay out of range. */
+enum { LIB_TH_SEATS, LIB_TH_COVERS, LIB_TH_LAMP, LIB_TH_CLUTTER, LIB_TH_MEMBERS, LIB_TH_PARTS };
+uint32_t menu_library_table_hash(const MenuLibrary *L, int bay);
+/* The same with its parts (LIB_TH_*: each its own FNV-1a; the hash is FNV-1a over them) and the number of members hashed; `salt`
+ * (tests only: MG_TEST_TABLE_HASH_SALT) is mixed into the covers as if one device had dressed the table differently. */
+uint32_t menu_library_table_hash_parts(const MenuLibrary *L, int bay, uint32_t salt, uint32_t parts[LIB_TH_PARTS], int *members);
 
 #endif

@@ -156,6 +156,14 @@ typedef struct AutotestProbe {
     int npc_declared, npc_alive; /* the play scene's declared NPC count (hospital roster, institute pack people: 0 without a
                                   * pack; -1 unknown) and how many the sim holds now */
     int lib_declared, lib_live;  /* the library: the scene file's people (25) and the people running */
+    /* LIB-1 §15.3: the lobby's table as drawn (menu_library_table_hash; MG_TEST_TABLE_HASH_SALT mixed in), its parts (LIB_TH_*), its
+     * bay and the members studying at it */
+    uint32_t lib_table_hash, lib_table_parts[5];
+    int lib_table_bay, lib_table_members;
+    /* §15.9 frame indices (0 never): the Invite tap's action, lobby_invite_send, the RPC put on the network queue (+ how many so far),
+     * the paper plane thrown for it; on the invitee: the invite taken off the queue, its panel's first draw, the plane flown in */
+    uint64_t inv_tap_frame, inv_call_frame, inv_rpc_frame, inv_plane_out_frame, inv_rx_frame, inv_panel_frame, inv_plane_in_frame;
+    uint32_t inv_rpcs;
 } AutotestProbe;
 
 /* What a script asks the game to do this frame. */

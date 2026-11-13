@@ -228,6 +228,7 @@ void lobby_invite_send(Lobby *l, const char *guest)
     char body[NET_RPC_BODY];
     SDL_snprintf(body, sizeof(body), "{\"p_guest\":\"%s\"}", guest);
     net_rpc(l->session->net, NET_RPC_INVITE, body);
+    l->invite_call_frame = l->frame;
     l->invites_sent++;
     SDL_snprintf(l->last_invite, sizeof(l->last_invite), "%s", guest);
     LobbySent *m = &l->sent[l->sent_count++];
@@ -511,6 +512,7 @@ static void on_push(Lobby *l, const NetPush *p)
         r->skin = p->skin;
         r->expires = l->now + LOBBY_QUEUED_S;
         r->shown = false;
+        l->invite_rx_frame = l->frame;
         break;
     }
     case NET_PUSH_MEMBER_JOINED: {

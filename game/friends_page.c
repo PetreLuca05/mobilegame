@@ -150,6 +150,7 @@ static float tab_friends(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons
                 } else if (can_invite(f, i)) {
                     SDL_snprintf(id, sizeof(id), "finvite_%s", f->code[i]);
                     if (small_button(ui, str("friend_invite"), id, rx - bw, y + 6.0f, bw, true)) {
+                        p->invite_tap_frame = p->frame;
                         lobby_invite_send(l, f->id[i]);
                     }
                 } else if (!waiting) {
@@ -335,6 +336,7 @@ static float search_results(FriendsPage *p, Ui *ui, Friends *f, HeadIcons *h, Mg
 bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *h, MgApp *app, const char *my_name,
                        const NetSkin *my_skin)
 {
+    p->frame = app->frame_index;
     const float pad = 16.0f, w_pt = app->width_pt, h_pt = app->height_pt;
     const float k = h_pt >= 600.0f ? 1.3f : 1.0f;
     ui_block(ui, 0, 0, w_pt, h_pt);

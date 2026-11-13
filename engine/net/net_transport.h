@@ -292,6 +292,11 @@ void net_send_members(NetTransport *n, const char (*ids)[NET_ID_LEN], int count)
 void net_send_room_cmd(NetTransport *n, NetRoomCmd cmd, int map_id, int32_t npc_seed, double start_tick, uint32_t save_hash);
 /* Broadcasts we have put on a room channel since launch (state and member lists; not Presence). */
 uint32_t net_room_sends(NetTransport *n);
+/* The caller's frame index, stamped on each queued call (tests). */
+void net_set_frame(NetTransport *n, uint64_t frame);
+/* Calls of kind `rpc` net_rpc has put on its queue since launch, and the frame (net_set_frame) of the last one (tests: the frame an
+ * RPC left the game, §15.9). */
+uint32_t net_rpc_queued(NetTransport *n, NetRpc rpc, uint64_t *frame);
 /* JSON string body (no quotes) */
 void net_json_escape(char *out, size_t cap, const char *s);
 
