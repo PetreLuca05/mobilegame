@@ -561,3 +561,41 @@ texture and its 2 MB figure staging buffer, which the JSON did not list then
 - The `npcs` dropped frame of step 11 (32.7 ms at 10.18 s, nothing noted, once in three runs) stays a failure of the tracked
   late-frame kind; the iPad gate runs `npcs` five times and reports dropped frames per run with their notes (if the iPad shows it too,
   it is the first thing to fix).
+
+
+## Combined iPad gate (2026-11-13, iPad Air 4, build b9236bd)
+
+`tools/perf_run.sh --gpu --gate` (Metal System Trace per scenario; the link dropped twice and the run resumed; the remainder ran from a
+worktree at b9236bd after main moved on). Data in `docs/perf/gate_2026-11-13/`. The iOS build of b9236bd: 0 warnings.
+
+| Scenario | fps | Draws avg / max | Triangles avg | CPU tick / render ms | GPU frame / busy / effective (clock) | Memory | Allocs | Dropped / late |
+|---|---|---|---|---|---|---|---|---|
+| yard | 60 | 48.0 / 48 | 34.7k | 0.052 / 0.986 | 5.41 ms / 33 % / **1.76 ms** (Minimum 99 %) | 180 MB | 0 | 0 / 0 |
+| lobby | 60 | 47.5 / 48 | 34.0k | 0.053 / 0.958 | 5.21 ms / 31 % / **1.64 ms** (Minimum 99 %) | 178 MB | 0 | 0 / 0 |
+| corridor_f2 | 60 | 67.1 / 69 | 43.8k | 0.043 / 1.063 | 5.31 ms / 32 % / **1.7 ms** (Minimum 99 %) | 181 MB | 0 | 0 / 0 |
+| stress200 | 60 | 59.8 / 79 | 60.7k | 0.249 / 1.043 | 5.26 ms / 32 % / **1.67 ms** (Minimum 98 %) | 180 MB | 0 | 0 / 0 |
+| npcs | 60 | 62.4 / 82 | 47.1k | 0.139 / 1.028 | 5.11 ms / 31 % / **1.57 ms** (Minimum 98 %) | 180 MB | 0 | 0 / 0 |
+| lift_panel | 60 | 56.0 / 56 | 34.5k | 0.045 / 1.003 | 5.33 ms / 32 % / **1.71 ms** (Minimum 98 %) | 181 MB | 0 | 0 / 0 |
+| interact_npc | 60 | 60.0 / 62 | 48.6k | 0.136 / 1.058 | 5.26 ms / 32 % / **1.67 ms** (Minimum 98 %) | 179 MB | 0 | 0 / 0 |
+| lobby4 | 60 | 64.4 / 69 | 56.9k | 0.272 / 1.100 | 5.19 ms / 31 % / **1.62 ms** (Minimum 97 %) | 179 MB | 0 | 0 / 0 |
+| menu | 60 | 37.0 / 41 | 56.8k | 0.010 / 0.680 | 7.44 ms / 45 % / **3.33 ms** (Minimum 81 %) | 180 MB | 0 | 0 / 0 |
+| menu_to_map | 60 | 32.8 / 57 | 57.5k | 0.011 / 0.625 | 7.61 ms / 46 % / **3.48 ms** (Minimum 65 %) | 186 MB | 0 | 0 / 0 |
+| menu_travel | 60 | 32.3 / 42 | 46.6k | 0.006 / 0.683 | 7.24 ms / 44 % / **3.16 ms** (Minimum 83 %) | 183 MB | 0 | 0 / 0 |
+| ui_juice | 60 | 37.0 / 41 | 56.9k | 0.010 / 0.679 | 7.22 ms / 43 % / **3.14 ms** (Minimum 76 %) | 181 MB | 0 | 0 / 0 |
+| worldmap | 60 | 23.0 / 23 | 63.0k | 0.013 / 0.688 | 5.18 ms / 31 % / **1.61 ms** (Minimum 99 %) | 182 MB | 0 | 0 / 0 |
+| worldmap_travel | 60 | 22.7 / 24 | 51.1k | 0.013 / 0.606 | 7.48 ms / 45 % / **3.36 ms** (Minimum 93 %) | 182 MB | 0 | 0 / 0 |
+| island | 60 | 24.0 / 24 | 50.2k | 0.007 / 0.643 | 7.48 ms / 45 % / **3.37 ms** (Minimum 91 %) | 181 MB | 0 | 0 / 0 |
+| worldmap_voyage | 60 | 24.8 / 28 | 54.1k | 0.013 / 0.624 | 4.23 ms / 25 % / **1.08 ms** (Minimum 99 %) | 184 MB | 0 | 0 / 0 |
+| institute | 60 | 46.1 / 60 | 59.1k | 0.099 / 1.028 | 2.73 ms / 16 % / **0.45 ms** (Minimum 98 %) | 205 MB | 0 | 0 / 0 |
+| book | 60 | 56.5 / 60 | 78.7k | 0.082 / 1.073 | 3.55 ms / 21 % / **0.76 ms** (Minimum 99 %) | 203 MB | 0 | 0 / 0 |
+
+- **`npcs` x5** (the Mac's step 11 frame): 60 fps, 0 dropped, 0 late in all five runs (`npcs_x5/`).
+- **Same table on two devices:** iPad 8f5714ae, Mac 8f5714ae (bay 3, 2 studying): the same (`two_device/`). The NPC-hash line has
+  nothing to compare in the institute (it declares 0 NPCs).
+- **Gate verdict: FAILED** on: memory regressed +20 MB against the reference (3681449) in yard / lobby / corridor_f2 / npcs /
+  lift_panel / interact_npc (158-160 -> 178-181 MB; the mesh pools grew 6 -> 16 MB and the UI atlas / buffers 3.4 MB; the 300 MB
+  budget passes); `menu` CPU tick 0.29 -> 0.42 and GPU 2.30 -> 3.33 ms effective against the reference, which was the old menu with
+  the hospital behind it (not like for like; LIB-1's own estimate is 1.7 ms at rest: 1.96x); `worldmap`, `worldmap_travel` and
+  `island` at 23-24 draws against WORLD-1's 18, and `worldmap_travel` / `island` at 3.36 / 3.37 ms GPU effective against the 1.0
+  estimate (first iPad measurement of these scenarios). Every scenario is inside the 4 ms GPU target and the 300 MB budget.
+- `docs/perf/after/` is not replaced (the gate did not pass).
