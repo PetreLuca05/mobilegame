@@ -91,3 +91,5 @@ const FrameLate *frame_drop_get(int i)
     const int first = N.drop_n - n;
     return &N.drop[(first + i) % FRAME_LATE_KEEP];
 }
+
+int frame_late_total(void) { return N.late_n; }
