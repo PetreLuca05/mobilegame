@@ -21,6 +21,7 @@ void frame_note(const char *what);
 /* At the start of a frame: dt_ms is the frame that just ended. Logs and keeps it when late, then clears the notes. */
 void frame_notes_check(double now_s, double dt_ms, const char *screen, const char *scene);
 int frame_late_count(void);
+int frame_late_total(void); /* every late frame since start (the ring keeps the last FRAME_LATE_KEEP) */
 const FrameLate *frame_late_get(int i);
 /* Dropped frames: longer than FRAME_DROP_FACTOR refresh intervals (25 ms at 60 Hz; set the refresh with frame_notes_set_hz), kept
  * the same way with their notes (the perf JSON's "dropped_frames"); late ones are among them. */

@@ -49,10 +49,20 @@ if not j.get("valid"):
 c = j["counters"]; s = {x["name"]: x for x in j["scopes"]}
 print(f"perf_mac: {sys.argv[1]}: {head}, {j['display_hz_start']:.0f} Hz, {j['fps']:.1f} fps, draws {c['draws']['avg']:.1f}/{c['draws']['max']:.0f}, "
       f"tris {c['tris']['avg']/1000:.1f}k/{c['tris']['max']/1000:.1f}k, frame {s['frame']['avg']:.3f} ms, render {s['render']['avg']:.3f} ms, "
-      f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, {j['dropped']} dropped, {len(j['late_frames'])} late, "
+      f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, dropped (>25 ms) {j['dropped']}, late (>50 ms) {j.get('late', len(j['late_frames']))}, "
       f"covered {100.0 * j.get('window_occluded_frames', 0) / max(j['frames'], 1):.2f} %, inactive {100.0 * j.get('window_unfocused_frames', 0) / max(j['frames'], 1):.2f} % (limit 0.5 %)")
+# the Mac's budgets (the iPad gate is tools/perf_gate.py): 0 allocations; the menu at most 210 MB (user decision 2026-11-13, measured
+# paced; the global 300 MB is the iPad gate's) and 75 k triangles at rest; the Maps move and the trip at most 60 draws in a frame
+sc = j["scenario"]; bad = []
+if j["heap_allocs"] > 0: bad.append(f"{j['heap_allocs']} heap allocations")
+if sc == "menu" and j["resident_mb_max"] > 210: bad.append(f"menu memory {j['resident_mb_max']} MB over 210")
+if sc == "menu" and c["tris"]["avg"] > 75000: bad.append(f"menu {c['tris']['avg']/1000:.1f}k triangles over the 75k stop line")
+if sc in ("menu_to_map", "menu_travel") and c["draws"]["max"] > 60: bad.append(f"{c['draws']['max']:.0f} draws in a frame over 60")
+if j["dropped"] > 0: bad.append(f"{j['dropped']} dropped frames (>25 ms)")
+for b in bad: print(f"perf_mac:   BUDGET FAIL: {b}")
 for d in j.get("dropped_frames", []):
     print(f"perf_mac:   dropped frame at {d['at_s']:.2f} s: {d['ms']:.1f} ms, {d['screen']} / {d['scene']}, during it: {d['notes'] or 'nothing noted'}")
+sys.exit(1 if bad else 0)
 PY
 done
 exit $RC

@@ -548,3 +548,16 @@ reserved, untouched pages), NPC data 0.9 MB; the update staging buffer added 0.1
 those parts; most likely (not measured part by part, the old JSON had no field for them) the removed book pack's resident figure
 texture and its 2 MB figure staging buffer, which the JSON did not list then
 (`memory_mb` now lists `figure`, `figure_staging` and `update_staging`), plus the driver's own share, which moves 1-3 MB run to run.
+
+### Menu memory allowance and the dropped / late wording (user decision, 2026-11-13)
+
+- The menu's 196 MB allowance (step 5's 180 + 16) is retired: measured before the hall became four rooms and in an unpaced run. The
+  menu's Mac allowance is **210 MB**, measured paced, against 201-203 MB at step 11 (`tools/perf_mac.sh` fails above it). The global
+  300 MB budget is unchanged and is the one the iPad gate enforces.
+- **dropped** = a frame over 25 ms (1.5 refresh intervals at 60 Hz); **late** = a frame over 50 ms (a subset of dropped, the tracked
+  late-frame bug). The perf JSON has both (`dropped`, `late`, each dropped frame with its notes in `dropped_frames`); every perf table
+  from now on shows both columns. The JSON's interval buckets keep their old names: `interval_16ms` up to 25 ms, `interval_33ms`
+  25-42 ms, `interval_50ms_plus` over 42 ms.
+- The `npcs` dropped frame of step 11 (32.7 ms at 10.18 s, nothing noted, once in three runs) stays a failure of the tracked
+  late-frame kind; the iPad gate runs `npcs` five times and reports dropped frames per run with their notes (if the iPad shows it too,
+  it is the first thing to fix).

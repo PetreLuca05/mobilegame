@@ -17,7 +17,10 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
   the product owner's prototype; avatars without outlines, cel shading and smooth faces kept.
 - **Erase progress** (user decision): New Game left the main menu; Settings -> Account -> "Erase progress" (destructive, confirmed)
   resets the slot, every island's ambulance and the last island; Maps opens the island overview when no hospital was played.
-- **Memory baseline**: step 5 = 180 MB, step 6 (map preload) = 191 MB; the menu's allowance is +16 MB over step 5.
+- **Memory baseline**: step 5 = 180 MB, step 6 (map preload) = 191 MB; the menu's allowance was +16 MB over step 5 (196 MB).
+  [changed, user decision 2026-11-13: retired. That baseline was measured before the hall became four rooms and in a run the OS left
+  unpaced, so it measured nothing useful any more. The menu's Mac allowance is **210 MB**, measured paced (`tools/perf_mac.sh` fails
+  above it), against 201-203 MB at step 11. The global 300 MB budget is unchanged and is the one the iPad gate enforces.]
 - **Rooms estimate**: 33.3 k triangles (the back rooms show through the open doors), in place of ~18 k.
 - **Locker camera** (step 8, user decision 2026-11-12): a fixed 1.0 s quintic that starts and lands at rest, in place of the literal
   5 /s exponential (which starts at full speed on its first frame: a jump by §15.11). The no-jump rule wins.
