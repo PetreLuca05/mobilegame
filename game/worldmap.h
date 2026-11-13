@@ -41,12 +41,7 @@ typedef struct WmCam {
 } WmCam;
 
 /* One island: its data, meshes and its ambulance. Positions are local unless named world. */
-#define WM_LAND_N 64 /* land cells per side for the sea cull */
-
 typedef struct WmIsland {
-    /* the sea cull: cells of WM_LAND_N x WM_LAND_N over the land bounds, set where every sample is under terrain above the sea */
-    uint8_t *land;   /* WM_LAND_N * WM_LAND_N, 1 = land */
-    HMM_Vec2 land_lo, land_step;
     const WorldBookDef *book;
     int book_number;
     WorldIsland island;
@@ -129,8 +124,6 @@ typedef struct WorldMap {
     int arrivals, voyages, skips;
     /* this frame */
     HMM_Mat4 view_proj;
-    bool sea_drawn;  /* last frame: the sea was in view (the cull below decides) */
-    bool no_sea_cull; /* --no-view-cull: always draw the sea (pixel A/B) */
     HMM_Vec3 eye;
     float card_x, card_y, card_w, card_h;
     float safe_x0, safe_y0, safe_x1, safe_y1; /* this frame's safe rect (pt): a label crossing it is drawn but not tappable */

@@ -57,8 +57,8 @@ print(f"perf_mac: {sys.argv[1]}: {head}, {j['display_hz_start']:.0f} Hz, {j['fps
 # paced; the global 300 MB is the iPad gate's) and 75 k triangles at rest; the Maps move and the trip at most 60 draws in a frame
 sc = j["scenario"]; bad = []
 if j["heap_allocs"] > 0: bad.append(f"{j['heap_allocs']} heap allocations")
-if sc == "menu" and j["resident_mb_max"] > 210: bad.append(f"menu memory {j['resident_mb_max']} MB over 210")
-if sc == "menu" and c["tris"]["avg"] > 75000: bad.append(f"menu {c['tris']['avg']/1000:.1f}k triangles over the 75k stop line")
+if sc in ("menu", "menu_front") and j["resident_mb_max"] > 210: bad.append(f"menu memory {j['resident_mb_max']} MB over 210")
+if sc in ("menu", "menu_front") and c["tris"]["avg"] > 75000: bad.append(f"menu {c['tris']['avg']/1000:.1f}k triangles over the 75k stop line")
 if sc in ("menu_to_map", "menu_travel") and c["draws"]["max"] > 60: bad.append(f"{c['draws']['max']:.0f} draws in a frame over 60")
 if j["dropped"] > 0: bad.append(f"{j['dropped']} dropped frames (>25 ms)")
 for b in bad: print(f"perf_mac:   BUDGET FAIL: {b}")

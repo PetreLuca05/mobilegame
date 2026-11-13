@@ -312,7 +312,7 @@ typedef struct Game {
         HMM_Vec2 hero, cam;
     } rb; /* --autotest rebay */
     bool low_power;         /* iOS Low Power Mode: the 60 fps cap, as when hot */
-    bool no_view_cull;      /* --no-view-cull: the island's library and sea and the hidden back bays drawn anyway (pixel A/B) */
+    bool no_view_cull;      /* --no-view-cull: the island's off-screen library and the hidden back bays drawn anyway (pixel A/B) */
     int lib_open_kind;      /* §11: the next library open is the first after 1 a cold start / 2 a game (0 neither): it may move my table */
     uint32_t lib_rebay_seed;
     uint32_t fs_n;          /* --log-frame-stats */
@@ -392,6 +392,7 @@ static const Interact k_no_interact = {.active = IA_NONE}; /* the panel with not
 static bool perf_wants_npcs(const Game *g)
 {
     return g->perf.active && (SDL_strcmp(g->perf.scenario, "npcs") == 0 || SDL_strcmp(g->perf.scenario, "interact_npc") == 0 || SDL_strcmp(g->perf.scenario, "menu") == 0 ||
+                              SDL_strcmp(g->perf.scenario, "menu_front") == 0 ||
                               SDL_strcmp(g->perf.scenario, "ui_juice") == 0);
 }
 
@@ -1188,8 +1189,11 @@ bool game_init(MgApp *app)
         g->lib_travel_loop = true;
         menu_library_set_table(&g->lib, 0);
     }
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu_front") == 0) { /* the menu scenario with my table in front bay 1 */
+        menu_library_set_table(&g->lib, 1);
+    }
     if (g->perf.active && (SDL_strcmp(g->perf.scenario, "menu") == 0 || SDL_strcmp(g->perf.scenario, "ui_juice") == 0 ||
-                           SDL_strcmp(g->perf.scenario, "menu_to_map") == 0)) {
+                           SDL_strcmp(g->perf.scenario, "menu_front") == 0 || SDL_strcmp(g->perf.scenario, "menu_to_map") == 0)) {
         play_now = false;
         g->fe.state = FE_MAIN_MENU;
         g->demo_lobby = true;
@@ -1403,7 +1407,8 @@ void game_tick(MgApp *app)
     }
     if (!g->playing) {
         if (g->fe.state == FE_MAP) {
-            worldmap_tick(&g->wm, MG_TICK_DT);
+            const char *ms = arg_value(app->argc, app->argv, "--map-still-after"); /* test: the map's clock stops after S s */
+            worldmap_tick(&g->wm, ms && app->time - g->start_time > SDL_atof(ms) ? 0.0f : MG_TICK_DT);
         }
         if (g->menu_world_on && g->npcs_on && !g->settings.freeze_npcs) { /* the people outside the menu */
             npc_step(g, app);
@@ -3302,7 +3307,15 @@ static void map_flow(Game *g, MgApp *app)
         g->prefs.world.rides.forced = RIDE_PLANE; /* back and forth by plane */
         worldmap_voyage(&g->wm, (g->wm.cur + 1) % g->wm.count);
     }
+    const float keep_dt = app->frame_dt;
+    { /* test: --map-still-after S: the map's clock stops after S s (identical frames for pixel A/B of the view culls) */
+        const char *ms = arg_value(app->argc, app->argv, "--map-still-after");
+        if (ms && app->time - g->start_time > SDL_atof(ms)) {
+            app->frame_dt = 0.0f;
+        }
+    }
     const WmAction a = worldmap_frame(&g->wm, &g->ui, app, &sp, g->frame_alpha);
+    app->frame_dt = keep_dt;
     g->last_eye = g->wm.eye;
     if (g->lib_placed) { /* the library stands on the island played last: the closed building */
         g->lib.shell_k = 1.0f;
@@ -3310,7 +3323,7 @@ static void map_flow(Game *g, MgApp *app)
         g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
         const bool off = (g->gpu_off & GPU_OFF_LIBRARY_BUILDING) != 0u; /* --gpu-off library_building */
         const uint32_t filter = off ? gfx_set_filter(app->gfx, GFX_FILTER_ALL) : 0u;
-        if (g->no_view_cull || menu_library_on_screen(&g->lib, &g->view_proj)) { /* off screen: not drawn (its bounds outside the view) */
+        if (g->no_view_cull || menu_library_on_screen(&g->lib, &g->wm.view_proj)) { /* off screen: not drawn (its bounds outside the view) */
             menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
         }
         if (off) {
@@ -5037,7 +5050,6 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->no_view_cull = (g->lib_ab_frame >> 1) & 1u;
         g->lib.no_wall_vis = g->no_view_cull;
     }
-    g->wm.no_sea_cull = g->no_view_cull;
     if (has_flag(app->argc, app->argv, "--lib-wall-ab")) { /* test: the wall rule on for two frames, off for two (pixel compare of
                                                               * frames of the same parity: some dither alternates every frame) */
         g->lib_ab_frame++;
