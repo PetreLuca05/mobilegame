@@ -219,6 +219,8 @@ struct GfxContext {
     /* BOOK-ENGINE: the one resident figure (gfx_set_figure) in the top-left of a texture made at the largest size */
     SDL_GPUTexture *fig_tex;
     SDL_GPUTransferBuffer *fig_staging;
+    SDL_GPUTransferBuffer *upd_tb; /* gfx_mesh_update's staging, sized at load by gfx_mesh_reserve */
+    uint32_t upd_cap;
     int fig_tex_w, fig_tex_h, fig_fmt; /* fig_fmt -1: none reserved / unsupported */
     int fig_w, fig_h;                  /* the resident figure, 0 none */
     uint64_t fig_bytes;
@@ -1143,6 +1145,9 @@ void gfx_shutdown(GfxContext *g)
     if (g->fig_staging) {
         SDL_ReleaseGPUTransferBuffer(g->dev, g->fig_staging);
     }
+    if (g->upd_tb) {
+        SDL_ReleaseGPUTransferBuffer(g->dev, g->upd_tb);
+    }
     release_pipelines(g);
     SDL_ReleaseGPUBuffer(g->dev, g->vb);
     SDL_ReleaseGPUBuffer(g->dev, g->ib);
@@ -1181,6 +1186,15 @@ GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indic
     m->first_index = g->pool.ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = 0; /* nothing to draw until the first update */
     m->vcap = max_verts, m->icap = max_indices;
+    if (vbytes + ibytes > g->upd_cap) { /* load time: one staging buffer for every later gfx_mesh_update, sized to the largest
+                                         * reserve (creating one per update allocated in the frame: 12 per lobby change) */
+        if (g->upd_tb) {
+            SDL_ReleaseGPUTransferBuffer(g->dev, g->upd_tb);
+        }
+        SDL_GPUTransferBufferCreateInfo tci = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, vbytes + ibytes, 0};
+        g->upd_tb = SDL_CreateGPUTransferBuffer(g->dev, &tci);
+        g->upd_cap = g->upd_tb ? vbytes + ibytes : 0;
+    }
     return (GfxMeshId)mesh_pool_take(&g->pool, vbytes, ibytes);
 }
 
@@ -1194,7 +1208,31 @@ bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32
         mg_log_error("gfx: mesh %u update of %u vertices / %u indices over its reserve (%u / %u)", id, vert_count, index_count, m->vcap, m->icap);
         return false;
     }
-    SDL_WaitForGPUIdle(g->dev); /* no frame in flight still reads the old contents */
+    SDL_WaitForGPUIdle(g->dev); /* no frame in flight still reads the old contents (nor the staging buffer's last copy) */
+    const uint32_t vb = vert_count * (uint32_t)sizeof(GfxVertex), ib = index_count * (uint32_t)sizeof(uint32_t);
+    if (vert_count > 0 && g->upd_tb && vb + ib <= g->upd_cap) { /* the reserved staging buffer: no allocation */
+        uint8_t *map = (uint8_t *)SDL_MapGPUTransferBuffer(g->dev, g->upd_tb, false);
+        if (!map) {
+            return false;
+        }
+        memcpy(map, verts, vb);
+        memcpy(map + vb, indices, ib);
+        SDL_UnmapGPUTransferBuffer(g->dev, g->upd_tb);
+        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+        SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+        SDL_GPUTransferBufferLocation sv = {g->upd_tb, 0}, si = {g->upd_tb, vb};
+        SDL_GPUBufferRegion rv = {g->vb, (uint32_t)m->vertex_offset * (uint32_t)sizeof(GfxVertex), vb};
+        SDL_GPUBufferRegion ri = {g->ib, m->first_index * (uint32_t)sizeof(uint32_t), ib};
+        SDL_UploadToGPUBuffer(cp, &sv, &rv, false);
+        SDL_UploadToGPUBuffer(cp, &si, &ri, false);
+        SDL_EndGPUCopyPass(cp);
+        if (!SDL_SubmitGPUCommandBuffer(cmd)) {
+            return false;
+        }
+        SDL_WaitForGPUIdle(g->dev);
+        m->index_count = index_count;
+        return true;
+    }
     if (vert_count > 0 && (!upload_bytes(g, g->vb, (uint32_t)m->vertex_offset * (uint32_t)sizeof(GfxVertex), verts, vert_count * (uint32_t)sizeof(GfxVertex)) ||
                            !upload_bytes(g, g->ib, m->first_index * (uint32_t)sizeof(uint32_t), indices, index_count * (uint32_t)sizeof(uint32_t)))) {
         return false;
@@ -3001,4 +3039,5 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->instance_buffers = GFX_MAX_INSTANCES * (uint64_t)sizeof(GfxInstance) * 2u * GFX_BUFFER_RING;
     o->figure = g->fig_tex ? g->fig_bytes : 0;
     o->figure_staging = g->fig_staging ? GFX_FIG_STAGING_BYTES : 0;
+    o->update_staging = g->upd_cap;
 }
