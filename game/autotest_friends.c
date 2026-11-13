@@ -121,6 +121,7 @@ static const FtOp k_c[] = {
 #define INVITED NOTICE_K(NOTICE_INVITE), {OP_INV_RX, NULL, 0}
 /* §15.3: both devices at the lobby's table, n studying there: the same table hash (s = the other role) */
 #define TABLE_SAME(peer, n) {OP_TABLE_HASH, peer, n}
+#define TABLE_LOG(n) {OP_TABLE_HASH, NULL, n} /* two devices: log the hash only (tools/friends2_two_device.sh compares) */
 #define BACK TAP("friends"), {OP_FE_STATE, NULL, FE_MAIN_MENU}
 static const FtOp k_ma[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_a", 0}, SIG("a_ready"), WAIT("b_req"), WAIT("c_req"), WAIT("d_req"), {OP_BADGE, NULL, 3},
@@ -212,6 +213,7 @@ static const FtOp k_d2h[] = {
     INVITE_ENV, BACK, {OP_INVITE_OVER, NULL, 0}, SLEEP(11.0), /* declined */
     INVITE_ENV, BACK, NOTICE_K(NOTICE_INFO), ROWS(2), SLEEP(3.0), TAP("lobby_kick1"), ROWS(1), TAP("lobby_switch"), {OP_OPEN_IS, NULL, 0}, SLEEP(11.0), /* locked */
     INVITE_ENV, BACK, ROWS(2), TAP("lobby_switch"), {OP_OPEN_IS, NULL, 1}, SLEEP(2.0),
+    TABLE_LOG(2), SLEEP(5.0), /* the same table on both devices (§15.3): the guest logs its hash too */
     NEW_GAME, PLAYERS(2), SLEEP(25.0), BACK_TO_MENU, ROWS(2), ROWS(1), SLEEP(1.0), {OP_END, NULL, 0},
 };
 static const FtOp k_d2g[] = {
@@ -219,7 +221,7 @@ static const FtOp k_d2g[] = {
     TAP("account_chip"), TAP("ftab2"), {OP_SET_CODE, NULL, 0}, TAP("fcode_add"), {OP_FRIENDS, NULL, 1}, BACK, ROWS(1),
     NOTICE_K(NOTICE_INVITE), TAP("notice_no"), {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(2.0),
     NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), LOB(LOBBY_MENU_SOLO), ROWS(1),
-    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, ROWS(2), SLEEP(3.0), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SLEEP(1.0), {OP_END, NULL, 0},
+    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), TABLE_LOG(2), {OP_PLAYING, NULL, 0}, PLAYERS(2), {OP_MENU, NULL, 0}, ROWS(2), SLEEP(3.0), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SLEEP(1.0), {OP_END, NULL, 0},
 };
 static const FtOp k_dcode[] = {{OP_READY, NULL, 0}, {OP_LOG_CODE, NULL, 0}, {OP_END, NULL, 0}};
 static const FtOp k_dhost[] = {
@@ -731,6 +733,10 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
             t->table_sent = true;
             mg_log_info("autotest friends: library table hash %08x (bay %d, %d studying; parts %s)", p->lib_table_hash, p->lib_table_bay,
                         p->lib_table_members, mine + 9);
+        }
+        if (!o->s) { /* two devices (no shared files): the line above is the result, the script compares both logs */
+            done = true;
+            break;
         }
         SDL_snprintf(file, sizeof(file), "table_%s", o->s);
         if (!sync_read(t, file, theirs, sizeof(theirs))) {
