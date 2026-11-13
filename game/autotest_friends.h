@@ -34,6 +34,10 @@ typedef struct FriendsTest {
     double solo_from;
     char saved_uid[NET_ID_LEN];
     double lib_gone_seen; /* LIB-1 §8: the library's last removal already judged */
+    uint32_t table_last;  /* §15.3: the table hash last seen, and since when (it must hold still before it is published) */
+    double table_since;
+    bool table_sent;
+    uint64_t inv_tap_seen, inv_rx_seen, inv_rpc_frame; /* §15.9: the invite already judged, the last one's RPC frame */
     char why[120];
 } FriendsTest;
 

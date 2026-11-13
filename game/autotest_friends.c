@@ -22,7 +22,7 @@ typedef enum FtOpKind {
     OP_ASK_ERR, OP_JOIN_ERR, OP_OPEN_IS, OP_NPC, OP_SKIN, OP_REMEMBER, OP_SKIN_SEEN, OP_DEBUG_PLAYERS, OP_GONE, OP_HEADS, OP_STALE,
     OP_NO_TOGGLE, OP_SET_SEARCH, OP_SEARCH_HAS, OP_CODE_IS, OP_SOLO,
     OP_DRAG_UP, OP_FE_STATE, OP_LINK_STATE, OP_LOG_CODE, OP_PEER_ENV, OP_NOTICE_GONE, OP_UID_SAVE, OP_UID_SAME, OP_UID_DIFF, OP_GUEST, OP_NAME_IS, OP_SEED, OP_STATS_FLUSH,
-    OP_ROWS, OP_AVATARS, OP_INVITE_OVER, OP_LIB_SEATED, OP_LIB_LEFT,
+    OP_ROWS, OP_AVATARS, OP_INVITE_OVER, OP_LIB_SEATED, OP_LIB_LEFT, OP_TABLE_HASH, OP_INV_TX, OP_INV_PLANE, OP_INV_RX,
 } FtOpKind;
 
 typedef struct FtOp {
@@ -115,13 +115,19 @@ static const FtOp k_c[] = {
 #define NOTICE_K(k) {OP_NOTICE, NULL, k}
 #define ROWS(n) {OP_ROWS, NULL, n}, {OP_AVATARS, NULL, n}
 #define LOB(s) {OP_LOBBY, NULL, s}
-#define INVITE(code) TAP("lobby_invite"), {OP_READ_PEER, code, 0}, {OP_FRIENDS, NULL, 3}, SLEEP(1.0), {OP_TAP_P, "finvite_%s", 0}, SLEEP(0.5)
+/* §15.9: the tap, lobby_invite_send and the RPC on the queue in one frame (OP_INV_TX); the invitee's panel on the invite's arrival
+ * frame (OP_INV_RX) */
+#define INVITE(code) TAP("lobby_invite"), {OP_READ_PEER, code, 0}, {OP_FRIENDS, NULL, 3}, SLEEP(1.0), {OP_TAP_P, "finvite_%s", 0}, {OP_INV_TX, NULL, 0}, SLEEP(0.5)
+#define INVITED NOTICE_K(NOTICE_INVITE), {OP_INV_RX, NULL, 0}
+/* §15.3: both devices at the lobby's table, n studying there: the same table hash (s = the other role) */
+#define TABLE_SAME(peer, n) {OP_TABLE_HASH, peer, n}
 #define BACK TAP("friends"), {OP_FE_STATE, NULL, FE_MAIN_MENU}
 static const FtOp k_ma[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_a", 0}, SIG("a_ready"), WAIT("b_req"), WAIT("c_req"), WAIT("d_req"), {OP_BADGE, NULL, 3},
     TAP("account_chip"), TAP("ftab1"), SLEEP(1.0), {OP_ACCEPT_ALL, NULL, 0}, {OP_FRIENDS, NULL, 3}, BACK, SIG("a_accepted"),
     ROWS(1), SLEEP(0.5), SHOT("lobby_solo"), {OP_OPEN_IS, NULL, 1},
-    WAIT("b_menu"), INVITE("code_b"), SHOT("invite_mode"), BACK, NOTICE_K(NOTICE_INFO), SHOT("joined_panel"), ROWS(2), {OP_LIB_SEATED, NULL, 0}, SHOT("library_friend_in"), SIG("a_b_in"), WAIT("b_checked"),
+    WAIT("b_menu"), INVITE("code_b"), SHOT("invite_mode"), BACK, {OP_INV_PLANE, NULL, 0}, NOTICE_K(NOTICE_INFO), SHOT("joined_panel"), ROWS(2), {OP_LIB_SEATED, NULL, 0}, SHOT("library_friend_in"),
+    TABLE_SAME("mb", 2), SIG("a_b_in"), WAIT("b_checked"),
     TAP("lobby_switch"), {OP_OPEN_IS, NULL, 0}, SLEEP(1.5), SIG("a_locked"), WAIT("c_menu"), INVITE("code_c"), BACK, ROWS(3), SIG("a_c_in"), WAIT("c_checked"),
     WAIT("d_refused"), WAIT("d_menu"), INVITE("code_d"), BACK, ROWS(4), SLEEP(0.5), SHOT("lobby_host_4p"), SIG("a_four"), WAIT("b4"), WAIT("c4"), WAIT("d4"),
     TAP("lobby_kick3"), ROWS(3), {OP_LIB_LEFT, NULL, 0}, SIG("a_kicked_d"), WAIT("d_solo"), WAIT("c_left"), ROWS(2),
@@ -132,21 +138,21 @@ static const FtOp k_ma[] = {
 };
 static const FtOp k_mb[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_b", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("b_req"), WAIT("a_accepted"),
-    BACK, ROWS(1), SIG("b_menu"), NOTICE_K(NOTICE_INVITE), SHOT("invite_panel"), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SLEEP(0.5), SHOT("lobby_guest"), SIG("b_checked"),
+    BACK, ROWS(1), SIG("b_menu"), INVITED, SHOT("invite_panel"), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SLEEP(0.5), SHOT("lobby_guest"), TABLE_SAME("ma", 2), SIG("b_checked"),
     WAIT("a_four"), ROWS(4), SIG("b4"), WAIT("a_kicked_d"), ROWS(3), WAIT("c_left"), ROWS(2),
-    WAIT("a_kicked_b"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("b_solo"), NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SIG("b_again"),
+    WAIT("a_kicked_b"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("b_solo"), INVITED, TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(2), SIG("b_again"),
     WAIT("a_started"), {OP_PLAYING, NULL, 0}, PLAYERS(2), SIG("b_in_game"), {OP_NPC, NULL, 0}, SIG("b_played"), {OP_MENU, NULL, 0}, ROWS(2), WAIT("a_back"), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), SIG("b_left"), {OP_END, NULL, 0},
 };
 static const FtOp k_mc[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_c", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("c_req"), WAIT("a_accepted"),
-    BACK, ROWS(1), SIG("c_menu"), NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(3), SIG("c_checked"),
+    BACK, ROWS(1), SIG("c_menu"), INVITED, TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(3), SIG("c_checked"),
     WAIT("a_four"), ROWS(4), SIG("c4"), WAIT("a_kicked_d"), ROWS(3), TAP("lobby_leave"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("c_left"),
-    SLEEP(1.0), SIG("c_idle"), NOTICE_K(NOTICE_INVITE), SIG("c_noticed"), WAIT("a_done"), {OP_END, NULL, 0}, /* the panel runs out by itself */
+    SLEEP(1.0), SIG("c_idle"), INVITED, SIG("c_noticed"), WAIT("a_done"), {OP_END, NULL, 0}, /* the panel runs out by itself */
 };
 static const FtOp k_md[] = {
     {OP_READY, NULL, 0}, {OP_CLEAN, NULL, 0}, {OP_PUB_CODE, "code_d", 0}, WAIT("a_ready"), {OP_READ_PEER, "code_a", 0}, ADD_PEER, SIG("d_req"), WAIT("a_accepted"),
     TAP("ftab0"), {OP_FRIENDS, NULL, 1}, WAIT("a_locked"), ST(NET_FS_LOCKED), ASKS_REFUSED("lobby_locked"), SIG("d_refused"), BACK, ROWS(1), SIG("d_menu"),
-    NOTICE_K(NOTICE_INVITE), TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(4), SLEEP(0.5), SHOT("lobby_guest_4p"), SIG("d4"),
+    INVITED, TAP("notice_ok"), LOB(LOBBY_MENU_GUEST), ROWS(4), SLEEP(0.5), SHOT("lobby_guest_4p"), SIG("d4"),
     WAIT("a_kicked_d"), LOB(LOBBY_MENU_SOLO), ROWS(1), SIG("d_solo"), {OP_END, NULL, 0},
 };
 
@@ -702,6 +708,107 @@ int ft_run(FriendsTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out,
         done = true;
         break;
     }
+    case OP_TABLE_HASH: { /* §15.3: the lobby's table, once its hash held still for 1 s with n studying there, against the other's */
+        static const char *const part_names[LIB_TH_PARTS] = {"seat order", "covers", "lamp", "clutter", "members"};
+        char file[48], mine[128], theirs[128];
+        if (!t->table_sent) {
+            if (p->lib_table_members != (int)o->n || p->lib_table_bay < 0) {
+                t->table_last = 0;
+                break;
+            }
+            if (p->lib_table_hash != t->table_last) {
+                t->table_last = p->lib_table_hash;
+                t->table_since = now;
+                break;
+            }
+            if (now - t->table_since < 1.0) {
+                break;
+            }
+            SDL_snprintf(mine, sizeof(mine), "%08x %d %08x %08x %08x %08x %08x", p->lib_table_hash, p->lib_table_bay, p->lib_table_parts[0],
+                         p->lib_table_parts[1], p->lib_table_parts[2], p->lib_table_parts[3], p->lib_table_parts[4]);
+            SDL_snprintf(file, sizeof(file), "table_%s", t->role);
+            sync_write(t, file, mine);
+            t->table_sent = true;
+            mg_log_info("autotest friends: library table hash %08x (bay %d, %d studying; parts %s)", p->lib_table_hash, p->lib_table_bay,
+                        p->lib_table_members, mine + 9);
+        }
+        SDL_snprintf(file, sizeof(file), "table_%s", o->s);
+        if (!sync_read(t, file, theirs, sizeof(theirs))) {
+            break;
+        }
+        SDL_snprintf(file, sizeof(file), "table_%s", t->role);
+        if (!sync_read(t, file, mine, sizeof(mine))) {
+            break;
+        }
+        unsigned a[7] = {0}, b[7] = {0};
+        int ab = -1, bb = -1;
+        if (SDL_sscanf(mine, "%x %d %x %x %x %x %x", &a[0], &ab, &a[2], &a[3], &a[4], &a[5], &a[6]) != 7 ||
+            SDL_sscanf(theirs, "%x %d %x %x %x %x %x", &b[0], &bb, &b[2], &b[3], &b[4], &b[5], &b[6]) != 7) {
+            break; /* half written */
+        }
+        /* the bay is not compared: each device keeps its own table at its own bay (§11) and a lobby it joins that maps there goes to the
+         * next bay (§5), so the same table may stand in different bays */
+        if (a[0] != b[0]) {
+            char diff[96] = "";
+            size_t at = 0;
+            for (int k = 0; k < LIB_TH_PARTS && at < sizeof(diff); k++) {
+                if (a[2 + k] != b[2 + k]) {
+                    at += (size_t)SDL_snprintf(diff + at, sizeof(diff) - at, "%s%s", at ? ", " : "", part_names[k]);
+                }
+            }
+            mg_log_info("autotest friends: library table hash %s: %s / %s: %s", t->role, mine, o->s, theirs);
+            SDL_snprintf(t->why, sizeof(t->why), "library table hash differs: %08x (%s) vs %08x (%s) in: %s", a[0], t->role, b[0], o->s, diff);
+            return -1;
+        }
+        mg_log_info("autotest friends: library table hash %08x on %s (bay %d) and %s (bay %d): the same table", a[0], t->role, ab, o->s, bb);
+        t->table_sent = false;
+        done = true;
+        break;
+    }
+    case OP_INV_TX: /* §15.9: the Invite tap's action, lobby_invite_send and the RPC on the queue in one frame */
+        if (p->inv_tap_frame == 0 || p->inv_tap_frame == t->inv_tap_seen) {
+            break; /* the tap's action has not fired yet */
+        }
+        t->inv_tap_seen = p->inv_tap_frame;
+        t->inv_rpc_frame = p->inv_rpc_frame;
+        mg_log_info("autotest friends: invite frames: tap %llu, lobby_invite %llu, RPC queued %llu (invites queued %u)",
+                    (unsigned long long)p->inv_tap_frame, (unsigned long long)p->inv_call_frame, (unsigned long long)p->inv_rpc_frame, p->inv_rpcs);
+        if (p->inv_call_frame != p->inv_tap_frame || p->inv_rpc_frame != p->inv_tap_frame) {
+            SDL_snprintf(t->why, sizeof(t->why), "invite: tap frame %llu, lobby_invite frame %llu, RPC frame %llu: not one frame",
+                         (unsigned long long)p->inv_tap_frame, (unsigned long long)p->inv_call_frame, (unsigned long long)p->inv_rpc_frame);
+            return -1;
+        }
+        done = true;
+        break;
+    case OP_INV_PLANE: /* §15.9: the paper plane for that invite flies after the RPC left, never before it */
+        if (p->inv_plane_out_frame == 0 || p->inv_plane_out_frame < t->inv_rpc_frame) {
+            if (now - t->started > 10.0) {
+                return fail_now(t, "invite: no paper plane thrown within 10 s of the menu");
+            }
+            break;
+        }
+        mg_log_info("autotest friends: invite frames: paper plane thrown at frame %llu, %llu frames after the RPC (frame %llu)",
+                    (unsigned long long)p->inv_plane_out_frame, (unsigned long long)(p->inv_plane_out_frame - t->inv_rpc_frame),
+                    (unsigned long long)t->inv_rpc_frame);
+        done = true;
+        break;
+    case OP_INV_RX: /* §15.9: the invite's panel first drawn on the frame the invite came off the network queue */
+        if (p->inv_rx_frame == 0 || p->inv_rx_frame == t->inv_rx_seen || p->inv_panel_frame < p->inv_rx_frame) {
+            break;
+        }
+        t->inv_rx_seen = p->inv_rx_frame;
+        mg_log_info("autotest friends: invite frames: taken off the queue %llu, panel first drawn %llu, paper plane in %llu",
+                    (unsigned long long)p->inv_rx_frame, (unsigned long long)p->inv_panel_frame, (unsigned long long)p->inv_plane_in_frame);
+        if (p->inv_panel_frame != p->inv_rx_frame) {
+            SDL_snprintf(t->why, sizeof(t->why), "invite: taken off the queue at frame %llu, panel first drawn at %llu", (unsigned long long)p->inv_rx_frame,
+                         (unsigned long long)p->inv_panel_frame);
+            return -1;
+        }
+        if (p->inv_plane_in_frame > p->inv_rx_frame) {
+            return fail_now(t, "invite: the paper plane in started after the invite's frame");
+        }
+        done = true;
+        break;
     case OP_INVITE_OVER:
         find_peer(t, f, &i);
         done = !lobby_invite_sent(l, t->peer_id);

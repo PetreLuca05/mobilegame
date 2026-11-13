@@ -175,6 +175,10 @@ typedef struct Game {
     uint32_t plane_inv_seen, plane_req_seen; /* LIB-1 §8: invites / friend requests already turned into paper planes */
     char plane_to[NET_ID_LEN + 8];           /* a throw waiting for the menu (sent from the Friends page) */
     double plane_at;                         /* when it was asked for (0 none) */
+    /* (tests §15.9) frame indices: the last paper plane thrown for an invite / flown in with one, the NOTICE_INVITE panel's first
+     * draw */
+    uint64_t plane_out_frame, plane_in_frame, invite_panel_frame;
+    uint32_t table_hash_salt; /* (tests §15.3) MG_TEST_TABLE_HASH_SALT: one device's table hash made to differ */
     AvatarAnim local_anim;
     AvatarLook local_look;
     NetTransport *net;
@@ -1085,6 +1089,10 @@ bool game_init(MgApp *app)
     }
 #endif
     g->net = net_create(&app->perm, &ncfg);
+    { /* (tests §15.3) one device's table hash made to differ: the check must fail */
+        const char *salt = SDL_getenv("MG_TEST_TABLE_HASH_SALT");
+        g->table_hash_salt = salt ? (uint32_t)SDL_strtoul(salt, NULL, 10) : 0u;
+    }
     session_init(&g->session, g->net);
     friends_init(&g->friends, g->net, profile ? profile : "");
     g->session.listener = on_net_event;
@@ -2114,16 +2122,6 @@ static void lobby_follow(Game *g, MgApp *app)
         frontend_toast(&g->fe, msg == key ? str("invite_err_generic") : msg, app->time);
         l->invite_error[0] = 0;
     }
-    for (int i = 0; i < l->invite_count; i++) {
-        LobbyRequest *r = &l->invites[i];
-        if (!r->shown) {
-            r->shown = true;
-            notice_push(&g->notice, NOTICE_INVITE, r->id, r->name, &r->skin, str("notice_invite"), LOBBY_INVITE_PANEL_S);
-            if (g->menu_world_on) { /* §8: the panel at once, as before; a paper plane flies in as its picture */
-                menu_library_receive_plane(&g->lib, r->id);
-            }
-        }
-    }
     if (l->grant_ready) {
         ui_haptic(HAPTIC_INVITE_ACCEPTED); /* our join was accepted */
     }
@@ -2175,6 +2173,23 @@ static void lobby_follow(Game *g, MgApp *app)
         }
         l->joined_name[0] = 0;
     }
+}
+
+/* The lobby's new invites and join requests as panels, right after the network queue was read (session_update): an invite or a
+ * request that arrived this frame is drawn this frame (§15.9: the panel shows on the arrival frame). */
+static void lobby_notices(Game *g, MgApp *app)
+{
+    Lobby *l = &g->lobby;
+    for (int i = 0; i < l->invite_count; i++) {
+        LobbyRequest *r = &l->invites[i];
+        if (!r->shown) {
+            r->shown = true;
+            notice_push(&g->notice, NOTICE_INVITE, r->id, r->name, &r->skin, str("notice_invite"), LOBBY_INVITE_PANEL_S);
+            if (g->menu_world_on && menu_library_receive_plane(&g->lib, r->id)) { /* §8: the panel at once; a plane flies in as its picture */
+                g->plane_in_frame = app->frame_index;
+            }
+        }
+    }
     for (int i = 0; i < l->request_count; i++) {
         LobbyRequest *r = &l->requests[i];
         if (!r->shown) {
@@ -2198,6 +2213,7 @@ static void draw_notices(Game *g, MgApp *app)
             lobby_request_shown(&g->lobby, g->notice.q[0].id);
         } else if (g->notice.q[0].kind == NOTICE_INVITE) {
             lobby_invite_shown(&g->lobby, g->notice.q[0].id);
+            g->invite_panel_frame = app->frame_index;
         }
         if (g->settings.ui_sounds) {
             audio_cue(g->audio, AUDIO_CUE_TICK); /* two notes */
@@ -2381,6 +2397,7 @@ static void library_planes(Game *g, MgApp *app, bool on_menu)
             g->plane_at = 0.0;
         } else if (on_menu && menu_library_throw_plane(&g->lib, g->plane_to)) {
             g->plane_at = 0.0;
+            g->plane_out_frame = app->frame_index;
         }
     }
 }
@@ -4688,6 +4705,8 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->frame_alpha = alpha;
     GameSettings *s = &g->settings;
     ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
+    g->lobby.frame = app->frame_index; /* (tests §15.9) the frames of an invite's tap, call, queue, arrival and panel */
+    net_set_frame(g->net, app->frame_index);
     if (g->playing) {
         g->lib_open_kind = 2; /* §11: the library's next open is after a game */
         if (g->rb.on) {
@@ -4841,6 +4860,21 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.net_ready = g->net && net_socket_ready(g->net);
     probe.avatar_meshes = &g->avatar_meshes;
     probe.library = &g->lib;
+    if (g->lib.ok) { /* §15.3 */
+        _Static_assert(LIB_TH_PARTS == (int)MG_ARRAY_COUNT(probe.lib_table_parts), "the probe holds every part of the table hash");
+        probe.lib_table_bay = g->lib.table_bay;
+        probe.lib_table_hash = menu_library_table_hash_parts(&g->lib, g->lib.table_bay, g->table_hash_salt, probe.lib_table_parts,
+                                                             &probe.lib_table_members);
+    } else {
+        probe.lib_table_bay = -1;
+    }
+    probe.inv_tap_frame = g->fpage.invite_tap_frame; /* §15.9 */
+    probe.inv_call_frame = g->lobby.invite_call_frame;
+    probe.inv_rpcs = net_rpc_queued(g->net, NET_RPC_INVITE, &probe.inv_rpc_frame);
+    probe.inv_plane_out_frame = g->plane_out_frame;
+    probe.inv_rx_frame = g->lobby.invite_rx_frame;
+    probe.inv_panel_frame = g->invite_panel_frame;
+    probe.inv_plane_in_frame = g->plane_in_frame;
     probe.move_state = g->move_state;
     probe.move_t = g->move.t;
     probe.cam_eye = g->last_eye;
@@ -5057,6 +5091,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         lobby_follow(g, app);
         session_update(&g->session, app->time, app->clock.tick, k->pos, k->vel, g->player.yaw, flags,
                        (uint8_t)(g->playing ? scene_floor_of(g->scene, k->pos) : 0));
+        lobby_notices(g, app);
         for (int li = 0; g->playing && li < lift_count(g); li++) { /* someone riding from our landing: their doors close here too */
             Elevator *el = lift_get(g, li);
             for (int f = 0; f < el->floors; f++) {

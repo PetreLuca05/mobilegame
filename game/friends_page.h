@@ -26,6 +26,8 @@ typedef struct FriendsPage {
     char note[80];
     bool note_bad; /* the note is a refusal: red, shaken */              /* last result of an action */
     double note_until;
+    uint64_t frame;            /* this frame's index (tests) */
+    uint64_t invite_tap_frame; /* (tests §15.9) the frame an Invite button's tap fired */
 } FriendsPage;
 
 void friends_page_open(FriendsPage *p, Friends *f);

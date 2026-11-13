@@ -105,6 +105,9 @@ struct NetTransport {
     SDL_AtomicInt status;
     SDL_AtomicInt socket_ready; /* a channel joined on the live socket (net_socket_ready) */
     SDL_AtomicInt room_sends;
+    uint32_t rpc_queued[NET_RPC_COUNT]; /* under lock: calls put on the queue (or merged into a waiting one), per kind (tests) */
+    uint64_t rpc_frame[NET_RPC_COUNT];  /* under lock: the caller's frame (net_set_frame) of the last one */
+    uint64_t frame;                     /* under lock: the caller's frame index */
     char self_id[NET_ID_LEN]; /* under lock */
 
     NetCmd cmds[CMD_CAPACITY];
@@ -2015,6 +2018,10 @@ void net_rpc(NetTransport *n, NetRpc rpc, const char *json_body)
     if (slot) {
         slot->rpc = rpc;
         snprintf(slot->body, sizeof(slot->body), "%s", json_body);
+        if ((int)rpc >= 0 && rpc < NET_RPC_COUNT) {
+            n->rpc_queued[rpc]++;
+            n->rpc_frame[rpc] = n->frame;
+        }
     }
     SDL_UnlockMutex(n->lock);
 }
@@ -2137,6 +2144,33 @@ void net_send_room_cmd(NetTransport *n, NetRoomCmd cmd, int map_id, int32_t npc_
 }
 
 uint32_t net_room_sends(NetTransport *n) { return n ? (uint32_t)SDL_GetAtomicInt(&n->room_sends) : 0u; }
+
+void net_set_frame(NetTransport *n, uint64_t frame)
+{
+    if (!n) {
+        return;
+    }
+    SDL_LockMutex(n->lock);
+    n->frame = frame;
+    SDL_UnlockMutex(n->lock);
+}
+
+uint32_t net_rpc_queued(NetTransport *n, NetRpc rpc, uint64_t *frame)
+{
+    if (frame) {
+        *frame = 0;
+    }
+    if (!n || (int)rpc < 0 || rpc >= NET_RPC_COUNT) {
+        return 0u;
+    }
+    SDL_LockMutex(n->lock);
+    const uint32_t c = n->rpc_queued[rpc];
+    if (frame) {
+        *frame = n->rpc_frame[rpc];
+    }
+    SDL_UnlockMutex(n->lock);
+    return c;
+}
 
 void net_json_escape(char *out, size_t cap, const char *s) { json_escape(out, cap, s); }
 

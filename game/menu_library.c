@@ -885,6 +885,87 @@ HMM_Vec3 menu_library_seat_world(const MenuLibrary *L, int i)
     return lib_point(L, HMM_V3(s->pos.X, 0.0f, s->pos.Y));
 }
 
+/* ------------------------------------------------------------------ §15.3 the table hash (tests) */
+
+static uint32_t id_hash(const char *id);
+
+static uint32_t fnv_u32(uint32_t h, uint32_t v)
+{
+    for (int k = 0; k < 4; k++) {
+        h = (h ^ ((v >> (8 * k)) & 0xffu)) * 16777619u;
+    }
+    return h;
+}
+static uint32_t fnv_mm(uint32_t h, float m) { return fnv_u32(h, (uint32_t)(int32_t)lroundf(m * 1000.0f)); }
+static uint32_t fnv_ddeg(uint32_t h, float rad) { return fnv_u32(h, (uint32_t)(int32_t)lroundf(rad * (1800.0f / HMM_PI32))); }
+static uint32_t fnv_str(uint32_t h, const char *s)
+{
+    for (; *s; s++) {
+        h = (h ^ (uint8_t)*s) * 16777619u;
+    }
+    return (h ^ 0xffu) * 16777619u; /* the end, so "ab" + "c" differs from "a" + "bc" */
+}
+
+uint32_t menu_library_table_hash_parts(const MenuLibrary *L, int bay, uint32_t salt, uint32_t parts[LIB_TH_PARTS], int *members)
+{
+    for (int k = 0; k < LIB_TH_PARTS; k++) {
+        parts[k] = 2166136261u;
+    }
+    *members = 0;
+    if (bay < 0 || bay >= LIB_BAYS) {
+        return 0;
+    }
+    const LibDressing *d = &L->dress[bay];
+    parts[LIB_TH_SEATS] = fnv_u32(parts[LIB_TH_SEATS], L->dress_ok ? 1u : 0u);
+    if (L->dress_ok) {
+        for (int k = 0; k < 4; k++) {
+            parts[LIB_TH_SEATS] = fnv_u32(parts[LIB_TH_SEATS], (uint32_t)d->seat_order[k]);
+            parts[LIB_TH_COVERS] = fnv_u32(parts[LIB_TH_COVERS], (uint32_t)d->cover[k]);
+        }
+        parts[LIB_TH_LAMP] = fnv_u32(parts[LIB_TH_LAMP], (uint32_t)d->lamp_anchor);
+        parts[LIB_TH_LAMP] = fnv_mm(fnv_mm(parts[LIB_TH_LAMP], d->lamp_x), d->lamp_z);
+        parts[LIB_TH_LAMP] = fnv_ddeg(parts[LIB_TH_LAMP], d->lamp_yaw);
+        parts[LIB_TH_CLUTTER] = fnv_u32(parts[LIB_TH_CLUTTER], (uint32_t)d->item_count);
+        for (int k = 0; k < d->item_count && k < LIB_DRESS_MAX_ITEMS; k++) {
+            const LibDressItem *it = &d->items[k];
+            parts[LIB_TH_CLUTTER] = fnv_str(parts[LIB_TH_CLUTTER], it->name);
+            parts[LIB_TH_CLUTTER] = fnv_mm(fnv_mm(parts[LIB_TH_CLUTTER], it->x), it->z);
+            parts[LIB_TH_CLUTTER] = fnv_ddeg(parts[LIB_TH_CLUTTER], it->yaw);
+        }
+    }
+    if (salt) {
+        parts[LIB_TH_COVERS] = fnv_u32(parts[LIB_TH_COVERS], salt);
+    }
+    /* in seat order (not member slot order: slot 0 is "me" on each device); only someone studying (settled, things down) */
+    for (int k = 0; k < LIB_SEATS; k++) {
+        for (int i = 0; i < LIB_MEMBERS; i++) {
+            const LibMember *mb = &L->seat[i];
+            if (mb->state != LM_STUDY || mb->bay != bay || mb->seat_k != k || mb->ghost || mb->leaving || mb->has_dest) {
+                continue;
+            }
+            const char *id = i == 0 ? L->me_id : mb->id;
+            parts[LIB_TH_MEMBERS] = fnv_u32(parts[LIB_TH_MEMBERS], (uint32_t)k);
+            parts[LIB_TH_MEMBERS] = fnv_u32(parts[LIB_TH_MEMBERS], id_hash(id));
+            parts[LIB_TH_MEMBERS] = fnv_u32(parts[LIB_TH_MEMBERS], (uint32_t)mb->cover);
+            parts[LIB_TH_MEMBERS] = fnv_u32(parts[LIB_TH_MEMBERS], (uint32_t)(mb->items & (LIB_ITEM_BOOK_OPEN | LIB_ITEM_MUG_TABLE | LIB_ITEM_PENCIL)));
+            (*members)++;
+            break;
+        }
+    }
+    uint32_t h = 2166136261u;
+    for (int k = 0; k < LIB_TH_PARTS; k++) {
+        h = fnv_u32(h, parts[k]);
+    }
+    return h;
+}
+
+uint32_t menu_library_table_hash(const MenuLibrary *L, int bay)
+{
+    uint32_t parts[LIB_TH_PARTS];
+    int n = 0;
+    return menu_library_table_hash_parts(L, bay, 0u, parts, &n);
+}
+
 /* Camera orbit in library space: yaw 0 sits on the +z side looking at -z */
 static HMM_Vec3 orbit_eye(HMM_Vec3 target, float dist, float pitch_deg, float yaw_deg)
 {
@@ -1658,6 +1739,9 @@ void menu_library_lobby(MenuLibrary *L, const LobbyRow *rows, int n, bool snap, 
     for (int r = 0; r < n; r++) {
         me = rows[r].me ? r : me;
         host = rows[r].host && !rows[r].me ? &rows[r] : host;
+    }
+    if (n > 0) {
+        SDL_snprintf(L->me_id, sizeof(L->me_id), "%s", rows[me].id); /* the table hash's name for seat 0 */
     }
     uint32_t lseed = host ? lib_seed_of(host->id) : L->my_seed;
     /* §11: my seed changing under my own table while I am alone at it and it is in view (the first sign-in during onboarding: the
