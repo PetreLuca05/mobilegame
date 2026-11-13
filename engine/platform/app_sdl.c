@@ -173,6 +173,26 @@ static void smooth(float *v, float x)
     *v = (*v == 0.0f) ? x : (*v * 0.9f + x * 0.1f);
 }
 
+/* The screen the window is on, at its fastest: device_screen_max_hz (NSScreen / UIScreen maximumFramesPerSecond: 120 on ProMotion),
+ * else SDL's display mode */
+static float screen_hz(const MgApp *app)
+{
+    if (!app->window) {
+        return 0.0f;
+    }
+    SDL_PropertiesID pr = SDL_GetWindowProperties(app->window);
+    void *nw = SDL_GetPointerProperty(pr, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+    if (!nw) {
+        nw = SDL_GetPointerProperty(pr, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL);
+    }
+    const float hz = device_screen_max_hz(nw);
+    if (hz > 0.0f) {
+        return hz;
+    }
+    const SDL_DisplayMode *dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(app->window));
+    return dm ? dm->refresh_rate : 0.0f;
+}
+
 SDL_AppResult app_iterate(void *appstate)
 {
     MgApp *app = (MgApp *)appstate;
@@ -182,6 +202,21 @@ SDL_AppResult app_iterate(void *appstate)
     if (app->background) {
         SDL_Delay(50);
         return SDL_APP_CONTINUE;
+    }
+    if (app->frame_cap_hz > 0.0f && app->time > 0.0 && (app->display_hz <= 0.0f || app->frame_cap_hz < app->display_hz - 1.0f)) {
+        /* a cap under the screen's rate (Settings -> Rată de cadre: 60, or the thermal cap): iOS's display link calls at the screen's
+         * rate, so a call before the interval is due is skipped (every other one at 120 Hz); on desktop the loop waits it out */
+        const double interval = 1.0 / (double)app->frame_cap_hz, since = mg_time_now() - app->time;
+        if (since < interval * 0.9) {
+#if defined(SDL_PLATFORM_IOS)
+            return SDL_APP_CONTINUE;
+#else
+            SDL_DelayPrecise((Uint64)((interval * 0.95 - since) * 1e9));
+#endif
+        }
+    }
+    if (app->frame_index % 60u == 0u) { /* the screen's rate, now and then (the window may move to another screen) */
+        app->display_hz = screen_hz(app);
     }
     double t0 = mg_time_now();
     float dt = (float)(t0 - (app->time > 0.0 ? app->time : t0));

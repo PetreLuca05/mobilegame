@@ -52,6 +52,7 @@ typedef struct SettingsAccount {
 } SettingsAccount;
 
 typedef struct SettingsMenu {
+    float screen_hz; /* set by the game: the screen's fastest rate (the frame-rate row shows only above 60 Hz) */
     bool open;
     bool card;      /* in-game pause card (Resume, Settings, ...) instead of the settings page */
     bool from_card; /* the settings page was opened from the card: its back arrow returns there */

@@ -56,6 +56,7 @@ bool preview_panel_visible(const PreviewPanel *p) { return p->slide > 0.001f && 
 
 void preview_panel_update(PreviewPanel *p, const Interact *ia, float dt, const ui_frame_t *f)
 {
+    p->anim_dt = dt;
     p->t += dt;
     p->punch = mg_maxf(p->punch - dt / 0.15f, 0.0f);
     p->head_tap = mg_maxf(p->head_tap - dt / HEAD_TAP_S, 0.0f);
@@ -124,7 +125,7 @@ void preview_panel_draw_3d(PreviewPanel *p, const Interact *ia, GfxContext *g, c
                 pose.hide = mg_maxf(pose.hide, 0.35f); /* nothing to say: faded */
             }
         }
-        avatar_animate(m, &p->anim, &pose, 1.0f / 60.0f);
+        avatar_animate(m, &p->anim, &pose, p->anim_dt > 0.0f ? p->anim_dt : 1.0f / 60.0f); /* this frame's time (120 Hz screens) */
         avatar_draw(g, m, d->look, &pose, &p->anim, NULL);
     } else if (d->mesh != GFX_MESH_NONE) {
         HMM_Mat4 model = HMM_MulM4(HMM_Translate(HMM_V3(0.0f, d->y_offset, 0.0f)), HMM_Rotate_RH(yaw, HMM_V3(0, 1, 0)));

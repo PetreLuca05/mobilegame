@@ -4575,6 +4575,9 @@ static void update_thermal(Game *g, MgApp *app)
     }
     g->next_thermal_poll = app->time + 1.0;
     int t = g->thermal_force >= 0 ? g->thermal_force : device_thermal_state();
+    if ((t >= 2) != (g->thermal >= 2) && app->display_hz > 61.0f) {
+        mg_log_info("thermal: frame rate %s", t >= 2 ? "capped at 60 (serious or worse)" : "back to the screen's maximum");
+    }
     if ((t >= 2) != (g->thermal >= 2)) {
         mg_log_warn("thermal: state %d: NPC detail radius %s, MSAA %s", t, t >= 2 ? "11 m" : "22 m", t >= 2 ? "off" : "on");
         gfx_set_msaa(app->gfx, t >= 2 ? 1 : g->msaa_samples);
@@ -4707,6 +4710,18 @@ static void game_frame_inner(MgApp *app, float alpha)
     ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
     g->lobby.frame = app->frame_index; /* (tests §15.9) the frames of an invite's tap, call, queue, arrival and panel */
     net_set_frame(g->net, app->frame_index);
+    /* screens over 60 Hz: the game draws at the screen's rate unless Settings -> Rată de cadre says 60 or the device is hot (serious) */
+    app->frame_cap_hz = (g->settings.frame_rate == 1 || g->thermal >= 2) ? 60.0f : 0.0f;
+    { /* desktop tests: --display-hz N pretends the screen runs at N Hz (the Settings row, the cap rules); --frame-cap N forces a cap */
+        const char *dh = arg_value(app->argc, app->argv, "--display-hz"), *fc = arg_value(app->argc, app->argv, "--frame-cap");
+        if (dh) {
+            app->display_hz = (float)SDL_atof(dh);
+        }
+        if (fc) {
+            app->frame_cap_hz = (float)SDL_atof(fc);
+        }
+    }
+    g->menu.screen_hz = app->display_hz;
     if (g->playing) {
         g->lib_open_kind = 2; /* §11: the library's next open is after a game */
         if (g->rb.on) {

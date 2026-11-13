@@ -86,6 +86,7 @@ void prefs_load(Prefs *p, const char *profile)
         }
         g->ui_sounds = flag(s, "ui_sounds", flag(s, "marker_sounds", g->ui_sounds)); /* the old key, migrated */
         g->ui_motion = (int)mg_clampf(num(s, "ui_motion", (float)g->ui_motion), 0.0f, 1.0f);
+        g->frame_rate = (int)mg_clampf(num(s, "frame_rate", (float)g->frame_rate), 0.0f, 1.0f);
         g->ui_tilt = (int)mg_clampf(num(s, "ui_tilt", (float)g->ui_tilt), 0.0f, 2.0f);
         g->test_markers = flag(s, "test_markers", g->test_markers);
         g->test_marker_count = mg_clampf(num(s, "test_marker_count", g->test_marker_count), 1.0f, 16.0f);
@@ -172,6 +173,7 @@ bool prefs_save(const Prefs *p, const char *profile)
     cJSON_AddNumberToObject(s, "haptics", g->haptics);
     cJSON_AddBoolToObject(s, "ui_sounds", g->ui_sounds);
     cJSON_AddNumberToObject(s, "ui_motion", g->ui_motion);
+    cJSON_AddNumberToObject(s, "frame_rate", g->frame_rate);
     cJSON_AddNumberToObject(s, "ui_tilt", g->ui_tilt);
     cJSON_AddBoolToObject(s, "test_markers", g->test_markers);
     cJSON_AddNumberToObject(s, "test_marker_count", g->test_marker_count);

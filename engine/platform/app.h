@@ -51,6 +51,8 @@ struct MgApp {
     float frame_dt;   /* seconds since previous frame */
     float fps;        /* smoothed */
     float frame_ms;   /* smoothed frame interval */
+    float display_hz;   /* the window's screen at its fastest (ProMotion / VRR: 120 where SDL's mode may say 60), 0 unknown */
+    float frame_cap_hz; /* the game's cap (0 none: as fast as the screen goes); iOS skips display-link callbacks, desktop waits */
     float cpu_ms;     /* smoothed CPU time per frame (excludes vsync wait) */
     uint64_t frame_index;
     int ticks_this_frame;

@@ -200,8 +200,9 @@ static void write_report(const PerfRun *p, MgApp *app)
     }
     /* dropped = a frame over 25 ms (1.5 intervals at 60 Hz); late = over 50 ms (FRAME_LATE_MS, a subset of dropped). The interval
      * buckets: interval_16ms up to 25 ms, interval_33ms 25-42 ms, interval_50ms_plus over 42 ms (names kept for old comparisons) */
-    PUT("\"frames\": %u,\n\"interval_16ms\": %u,\n\"interval_33ms\": %u,\n\"interval_50ms_plus\": %u,\n\"dropped\": %u,\n\"late\": %d,\n", fr.frames,
-        fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse, frame_late_total() - p->late0);
+    PUT("\"frames\": %u,\n\"interval_16ms\": %u,\n\"interval_33ms\": %u,\n\"interval_50ms_plus\": %u,\n\"dropped\": %u,\n\"late\": %d,\n"
+        "\"missed_refresh\": %u,\n\"frame_cap_hz\": %.0f,\n", fr.frames, fr.on_time, fr.one_late, fr.worse, fr.one_late + fr.worse, frame_late_total() - p->late0,
+        p->missed, (double)app->frame_cap_hz);
     PUT("\"thermal_worst\": %d,\n\"resident_mb_max\": %.0f,\n\"heap_allocs\": %u,\n\"frames_with_heap_allocs\": %u,\n\"heap_allocs_screenshot\": %u,\n",
         p->thermal_worst, (double)p->resident_max, prof_allocs_run(), prof_alloc_frames_run(), prof_allocs_exempt_run());
     PUT("\"heap_alloc_sites\": [");
@@ -336,8 +337,8 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
         p->recording = true;
         p->record_start = app->time;
         p->hz_start = display_hz(app);
-        frame_notes_set_hz(p->hz_start); /* a dropped frame: over 1.5 refresh intervals */
         p->late0 = frame_late_total();
+        p->missed = 0;
         prof_run_reset();
         mg_log_info("perf: recording %s for %.0f s", p->scenario, p->seconds);
     }
@@ -376,6 +377,9 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
     add(&p->f[PERF_UI_DRAWS], g->ui_draws);
     add(&p->f[PERF_UI_QUADS], g->ui_quads);
     p->samples++;
+    if (p->hz_start > 0.0f && app->frame_dt > 1.5f / p->hz_start) {
+        p->missed++;
+    }
     if (app->window && (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED))) {
         p->occluded_frames++;
     }

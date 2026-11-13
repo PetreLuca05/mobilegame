@@ -14,10 +14,7 @@ static struct {
     int late_n; /* total seen; the ring keeps the last FRAME_LATE_KEEP */
     FrameLate drop[FRAME_LATE_KEEP];
     int drop_n;
-    double drop_ms;
 } N;
-
-void frame_notes_set_hz(double hz) { N.drop_ms = hz > 1.0 ? FRAME_DROP_FACTOR * 1000.0 / hz : 0.0; }
 
 static void keep(FrameLate *l, double now_s, double dt_ms, const char *screen, const char *scene)
 {
@@ -48,8 +45,7 @@ void frame_note(const char *what)
 
 void frame_notes_check(double now_s, double dt_ms, const char *screen, const char *scene)
 {
-    const double drop_ms = N.drop_ms > 0.0 ? N.drop_ms : FRAME_DROP_FACTOR * 1000.0 / 60.0;
-    if (dt_ms > drop_ms) {
+    if (dt_ms > FRAME_DROP_MS) {
         FrameLate *d = &N.drop[N.drop_n % FRAME_LATE_KEEP];
         N.drop_n++;
         keep(d, now_s, dt_ms, screen, scene);

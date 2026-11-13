@@ -23,10 +23,10 @@ void frame_notes_check(double now_s, double dt_ms, const char *screen, const cha
 int frame_late_count(void);
 int frame_late_total(void); /* every late frame since start (the ring keeps the last FRAME_LATE_KEEP) */
 const FrameLate *frame_late_get(int i);
-/* Dropped frames: longer than FRAME_DROP_FACTOR refresh intervals (25 ms at 60 Hz; set the refresh with frame_notes_set_hz), kept
- * the same way with their notes (the perf JSON's "dropped_frames"); late ones are among them. */
-#define FRAME_DROP_FACTOR 1.5
-void frame_notes_set_hz(double hz);
+/* Dropped frames: longer than FRAME_DROP_MS on every screen (the definition: 25 ms; on a 120 Hz screen a frame can miss its refresh
+ * well before that, which the perf run counts apart as missed_refresh), kept the same way with their notes (the perf JSON's
+ * "dropped_frames"); late ones are among them. */
+#define FRAME_DROP_MS 25.0
 int frame_drop_count(void);
 const FrameLate *frame_drop_get(int i);
 
