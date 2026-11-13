@@ -599,3 +599,9 @@ worktree at b9236bd after main moved on). Data in `docs/perf/gate_2026-11-13/`. 
   `island` at 23-24 draws against WORLD-1's 18, and `worldmap_travel` / `island` at 3.36 / 3.37 ms GPU effective against the 1.0
   estimate (first iPad measurement of these scenarios). Every scenario is inside the 4 ms GPU target and the 300 MB budget.
 - `docs/perf/after/` is not replaced (the gate did not pass).
+
+### World map draw figure (user decision, 2026-11-13)
+
+The WORLD-1 design figure of 18 draws (16 world + x-ray + HUD) is replaced by **26**: the iPad gate measured 23-24 in `worldmap`,
+`worldmap_travel` and `island`, after the second island (WORLD-2) and the library on the island (LIB-1) were added. `tools/perf_gate.py`
+`WORLD_MAX_DRAWS = 26`. The voyage keeps its own 38.
