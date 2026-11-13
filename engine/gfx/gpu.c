@@ -34,7 +34,7 @@
 #define GFX_VB_SLACK (256u << 10) /* left free after a trim: a mesh reserve or a small upload needs no copy */
 #define GFX_IB_SLACK (64u << 10)
 #define GFX_POOL_MAX (96u << 20) /* a sanity ceiling for either buffer */
-#define GFX_MAX_UI 2048 /* UI instances per frame (glyphs + shapes + heads): the worst screen measured 984 (book_ui's worst-size items) */
+#define GFX_MAX_UI 4096 /* UI instances per frame (glyphs + shapes + heads): the worst screen measured about 2000 (book_ui's worst-size items, iPad window): 2x */
 #define GFX_MAX_SHADERS 32
 #define GFX_PREVIEW_PX 512
 
