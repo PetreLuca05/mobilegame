@@ -26,9 +26,15 @@
 
 #define GFX_MAX_MESHES 512
 #define GFX_MAX_DRAWS 16384
-#define GFX_VB_BYTES (12u << 20) /* every soup is welded at upload (mesh_upload_welded): menu and game peak, see docs/PERF.md; MAP-2: + the institute (~6 MB) */
-#define GFX_IB_BYTES (4u << 20) /* 0.7 MB in the menu; MAP-2: + the institute (~1.3 MB) */
-#define GFX_MAX_UI 8192 /* UI instances per frame (glyphs + shapes + heads) */
+/* The mesh pools fit what is loaded (user decision 2026-11-13: a hospital must not pay for the institute and the library hall): they
+ * start at these sizes, grow at load time when an upload does not fit (pool_resize: a new buffer, the used part copied on the GPU,
+ * every offset unchanged) and are trimmed to what is used + a slack once a batch of uploads settles (gfx_settle_uploads). */
+#define GFX_VB_BYTES (4u << 20)
+#define GFX_IB_BYTES (1u << 20)
+#define GFX_VB_SLACK (256u << 10) /* left free after a trim: a mesh reserve or a small upload needs no copy */
+#define GFX_IB_SLACK (64u << 10)
+#define GFX_POOL_MAX (96u << 20) /* a sanity ceiling for either buffer */
+#define GFX_MAX_UI 4096 /* UI instances per frame (glyphs + shapes + heads): the worst screen measured about 2000 (book_ui's worst-size items, iPad window): 2x */
 #define GFX_MAX_SHADERS 32
 #define GFX_PREVIEW_PX 512
 
@@ -1173,11 +1179,81 @@ void gfx_shutdown(GfxContext *g)
     g->dev = NULL;
 }
 
+/* Load time only: new vertex / index buffers of these capacities (at least what is used), the used parts copied over on the GPU
+ * (every mesh's offsets stay valid), the old buffers released once the GPU is idle. */
+static bool pool_resize(GfxContext *g, uint32_t vb_cap, uint32_t ib_cap)
+{
+    if (vb_cap < g->pool.vb_used || ib_cap < g->pool.ib_used || vb_cap > GFX_POOL_MAX || ib_cap > GFX_POOL_MAX) {
+        return false;
+    }
+    if (vb_cap == g->pool.vb_cap && ib_cap == g->pool.ib_cap) {
+        return true;
+    }
+    frame_note("mesh pool resize");
+    SDL_GPUBufferCreateInfo vbci = {SDL_GPU_BUFFERUSAGE_VERTEX, vb_cap, 0};
+    SDL_GPUBufferCreateInfo ibci = {SDL_GPU_BUFFERUSAGE_INDEX, ib_cap, 0};
+    SDL_GPUBuffer *nvb = SDL_CreateGPUBuffer(g->dev, &vbci), *nib = SDL_CreateGPUBuffer(g->dev, &ibci);
+    if (!nvb || !nib) {
+        if (nvb) {
+            SDL_ReleaseGPUBuffer(g->dev, nvb);
+        }
+        if (nib) {
+            SDL_ReleaseGPUBuffer(g->dev, nib);
+        }
+        mg_log_error("gfx: mesh pool resize to %u / %u KB failed", vb_cap >> 10, ib_cap >> 10);
+        return false;
+    }
+    SDL_WaitForGPUIdle(g->dev); /* no frame in flight still reads the old buffers */
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(g->dev);
+    SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(cmd);
+    if (g->pool.vb_used > 0) {
+        SDL_GPUBufferLocation src = {g->vb, 0};
+        SDL_GPUBufferLocation dst = {nvb, 0};
+        SDL_CopyGPUBufferToBuffer(cp, &src, &dst, g->pool.vb_used, false);
+    }
+    if (g->pool.ib_used > 0) {
+        SDL_GPUBufferLocation src = {g->ib, 0};
+        SDL_GPUBufferLocation dst = {nib, 0};
+        SDL_CopyGPUBufferToBuffer(cp, &src, &dst, g->pool.ib_used, false);
+    }
+    SDL_EndGPUCopyPass(cp);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_WaitForGPUIdle(g->dev);
+    SDL_ReleaseGPUBuffer(g->dev, g->vb);
+    SDL_ReleaseGPUBuffer(g->dev, g->ib);
+    mg_log_info("gfx: mesh pools %u -> %u KB vertices, %u -> %u KB indices (%u / %u KB used)", g->pool.vb_cap >> 10, vb_cap >> 10,
+                g->pool.ib_cap >> 10, ib_cap >> 10, g->pool.vb_used >> 10, g->pool.ib_used >> 10);
+    g->vb = nvb, g->ib = nib;
+    g->pool.vb_cap = vb_cap, g->pool.ib_cap = ib_cap;
+    return true;
+}
+
+static uint32_t round_up(uint32_t v, uint32_t a) { return (v + a - 1u) / a * a; }
+
+/* room for vbytes / ibytes more: grow by half again (or to the need) when it does not fit */
+static bool pool_ensure(GfxContext *g, uint32_t vbytes, uint32_t ibytes)
+{
+    if (mesh_pool_fits(&g->pool, vbytes, ibytes)) {
+        return true;
+    }
+    if (g->pool.count >= g->pool.max) {
+        return false;
+    }
+    uint32_t vc = g->pool.vb_cap, ic = g->pool.ib_cap;
+    if (g->pool.vb_used + vbytes > vc) {
+        vc = round_up(SDL_max(g->pool.vb_used + vbytes, vc + vc / 2u), 64u << 10);
+    }
+    if (g->pool.ib_used + ibytes > ic) {
+        ic = round_up(SDL_max(g->pool.ib_used + ibytes, ic + ic / 2u), 64u << 10);
+    }
+    return pool_resize(g, vc, ic);
+}
+
 GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indices)
 {
     const uint32_t vbytes = max_verts * (uint32_t)sizeof(GfxVertex), ibytes = max_indices * (uint32_t)sizeof(uint32_t);
-    if (!mesh_pool_fits(&g->pool, vbytes, ibytes) || max_indices == 0) {
-        mg_log_error("gfx: mesh pool full reserving %u vertices (%u/%u vb bytes)", max_verts, g->pool.vb_used, GFX_VB_BYTES);
+    if (max_indices == 0 || !pool_ensure(g, vbytes, ibytes)) {
+        mg_log_error("gfx: mesh pool full reserving %u vertices (%u/%u vb bytes)", max_verts, g->pool.vb_used, g->pool.vb_cap);
         return GFX_MESH_NONE;
     }
     GfxMeshRec *m = &g->meshes[g->pool.count];
@@ -1248,8 +1324,8 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
     frame_note("mesh upload");
     uint32_t vbytes = vert_count * (uint32_t)sizeof(GfxVertex);
     uint32_t ibytes = index_count * (uint32_t)sizeof(uint32_t);
-    if (!mesh_pool_fits(&g->pool, vbytes, ibytes) || index_count == 0) {
-        mg_log_error("gfx: mesh pool full (%u meshes, %u/%u vb bytes)", g->pool.count, g->pool.vb_used, GFX_VB_BYTES);
+    if (index_count == 0 || !pool_ensure(g, vbytes, ibytes)) {
+        mg_log_error("gfx: mesh pool full (%u meshes, %u/%u vb bytes)", g->pool.count, g->pool.vb_used, g->pool.vb_cap);
         return GFX_MESH_NONE;
     }
     if (!upload_bytes(g, g->vb, g->pool.vb_used, verts, vbytes) || !upload_bytes(g, g->ib, g->pool.ib_used, indices, ibytes)) {
@@ -1642,6 +1718,11 @@ void gfx_settle_uploads(GfxContext *g)
 {
     frame_note("GPU idle wait (settle uploads)");
     SDL_WaitForGPUIdle(g->dev);
+    /* a batch of uploads is in: the pools shrink to what is used + a slack (the scene pays for what it loaded, not a peak) */
+    const uint32_t vc = round_up(g->pool.vb_used + GFX_VB_SLACK, 64u << 10), ic = round_up(g->pool.ib_used + GFX_IB_SLACK, 64u << 10);
+    if (g->pool.vb_cap > vc + GFX_VB_SLACK || g->pool.ib_cap > ic + GFX_IB_SLACK) {
+        pool_resize(g, g->pool.vb_cap > vc + GFX_VB_SLACK ? vc : g->pool.vb_cap, g->pool.ib_cap > ic + GFX_IB_SLACK ? ic : g->pool.ib_cap);
+    }
 }
 
 void gfx_allow_fade(GfxContext *g, bool on) { g->fade_allowed = on; }
@@ -3031,8 +3112,8 @@ void gfx_get_memory(const GfxContext *g, GfxMemory *o)
     o->preview = g->preview_color ? (uint64_t)GFX_PREVIEW_PX * GFX_PREVIEW_PX * 4u * (1u + (g->preview_msaa ? samples : 0u)) : 0;
     o->swapchain = (uint64_t)g->swap_w * g->swap_h * 4u * 3u;
     o->ui_atlas = g->ui_atlas_bytes;
-    o->mesh_vb_reserved = GFX_VB_BYTES;
-    o->mesh_ib_reserved = GFX_IB_BYTES;
+    o->mesh_vb_reserved = g->pool.vb_cap;
+    o->mesh_ib_reserved = g->pool.ib_cap;
     o->mesh_vb_used = g->pool.vb_used;
     o->mesh_ib_used = g->pool.ib_used;
     o->ui_buffers = GFX_MAX_UI * sizeof(GfxUiInst) * 2u * GFX_BUFFER_RING;
