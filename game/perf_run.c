@@ -239,10 +239,12 @@ static void write_report(const PerfRun *p, MgApp *app)
         PUT("\"memory_mb\": {\"footprint\": %.1f, \"msaa_color\": %.1f, \"depth\": %.1f, \"scene\": %.1f, \"blur\": %.1f, \"preview\": %.1f, "
             "\"swapchain_est\": %.1f, \"ui_atlas\": %.1f, \"mesh_vb_reserved\": %.1f, \"mesh_ib_reserved\": %.1f, \"mesh_vb_used\": %.1f, "
             "\"mesh_ib_used\": %.1f, \"ui_buffers\": %.1f, \"instance_buffers\": %.1f, \"perm_arena_size\": %.1f, \"perm_arena_used\": %.1f, "
-            "\"perm_arena_peak\": %.1f, \"frame_arena_peak\": %.2f, \"nav\": %.1f, \"npc\": %.1f},\n",
+            "\"perm_arena_peak\": %.1f, \"frame_arena_peak\": %.2f, \"nav\": %.1f, \"npc\": %.1f, \"figure\": %.1f, \"figure_staging\": %.1f, "
+            "\"update_staging\": %.2f},\n",
             (double)p->resident_max, MB(gm.msaa_color), MB(gm.depth), MB(gm.scene), MB(gm.blur), MB(gm.preview), MB(gm.swapchain), MB(gm.ui_atlas),
             MB(gm.mesh_vb_reserved), MB(gm.mesh_ib_reserved), MB(gm.mesh_vb_used), MB(gm.mesh_ib_used), MB(gm.ui_buffers), MB(gm.instance_buffers),
-            MB(app->perm.size), MB(app->perm.used), MB(app->perm.peak), MB(app->frame.peak), MB(p->last.nav_bytes), MB(p->last.npc_bytes));
+            MB(app->perm.size), MB(app->perm.used), MB(app->perm.peak), MB(app->frame.peak), MB(p->last.nav_bytes), MB(p->last.npc_bytes),
+            MB(gm.figure), MB(gm.figure_staging), MB(gm.update_staging));
 #undef MB
     }
     PUT("\"panel_samples\": %u,\n", p->panel_samples);

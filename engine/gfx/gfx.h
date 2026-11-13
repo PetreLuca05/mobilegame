@@ -321,6 +321,7 @@ typedef struct GfxMemory {
     uint64_t mesh_vb_reserved, mesh_ib_reserved, mesh_vb_used, mesh_ib_used;
     uint64_t ui_buffers, instance_buffers;
     uint64_t figure, figure_staging; /* BOOK-ENGINE: the resident figure texture and its staging buffer */
+    uint64_t update_staging;         /* gfx_mesh_update's reserved staging buffer */
 } GfxMemory;
 void gfx_get_memory(const GfxContext *g, GfxMemory *out);
 /* Submit 3D and UI separately with fences to time them (profiler / perf runs). */
