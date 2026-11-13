@@ -240,6 +240,8 @@ GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indic
  * then on, gfx_draw ignores them) and keeps every one below it (UI, avatar, library, world map). False on a stale
  * mark (the pool is already below it). */
 GfxMeshMark gfx_mesh_mark(const GfxContext *g);
+/* A mesh's bounds in its own space (gfx_mesh_upload computes them); false for none / a reserved mesh never filled. */
+bool gfx_mesh_bounds(const GfxContext *g, GfxMeshId id, HMM_Vec3 *lo, HMM_Vec3 *hi);
 bool gfx_mesh_reset_to(GfxContext *g, GfxMeshMark mark);
 void gfx_mesh_usage(const GfxContext *g, uint32_t *meshes, uint32_t *vb_bytes, uint32_t *ib_bytes);
 bool gfx_mesh_update(GfxContext *g, GfxMeshId id, const GfxVertex *verts, uint32_t vert_count, const uint32_t *indices, uint32_t index_count);

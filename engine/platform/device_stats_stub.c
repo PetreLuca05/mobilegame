@@ -5,3 +5,4 @@ float device_resident_mb(void) { return 0.0f; }
 int device_boost_render_thread(void) { return 0; }
 float device_screen_max_hz(void *native_window) { (void)native_window; return 0.0f; }
 int device_display_asleep(void) { return 0; }
+int device_low_power(void) { return 0; }

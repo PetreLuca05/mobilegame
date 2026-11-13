@@ -11,7 +11,7 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu menu_to_map menu_travel ui_juice worldmap worldmap_travel island worldmap_voyage institute book); SECONDS_OVERRIDE=0; RESUME=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu menu_front menu_to_map menu_travel ui_juice worldmap worldmap_travel island worldmap_voyage institute book); SECONDS_OVERRIDE=0; RESUME=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0; NOSMOKE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;
@@ -19,6 +19,7 @@ while (( $# )); do
     --seconds) SECONDS_OVERRIDE=$2; shift 2 ;;
     --gpu) GPU=1; shift ;;
     --gate) GATE=1; shift ;;
+    --no-smoke) NOSMOKE=1; shift ;; # a breakdown session's later runs: the session's first run took the smoke trace (not with --gate)
     --no-json) JSON=0; shift ;;
     --tag) TAG=_$2; shift 2 ;;
     --extra) EXTRA=(${=2}); shift 2 ;;
@@ -124,7 +125,7 @@ smoke_trace() { # dev: a 60 s Metal System Trace before the gate; no gate withou
 }
 for dev in $DEVICES; do
   name=$(device_name $dev)
-  (( GPU )) && { wait_device $dev; smoke_trace $dev }
+  (( GPU )) && { wait_device $dev; (( NOSMOKE && ! GATE )) || smoke_trace $dev }
   for s in $SCEN; do
     secs=60; [[ $s == stress200 ]] && secs=180; (( SECONDS_OVERRIDE > 0 )) && secs=$SECONDS_OVERRIDE
     wait_device $dev

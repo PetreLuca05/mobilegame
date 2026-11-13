@@ -1351,6 +1351,15 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
 
 GfxMeshMark gfx_mesh_mark(const GfxContext *g) { return mesh_pool_mark(&g->pool); }
 
+bool gfx_mesh_bounds(const GfxContext *g, GfxMeshId id, HMM_Vec3 *lo, HMM_Vec3 *hi)
+{
+    if (id == GFX_MESH_NONE || id >= g->pool.count || g->meshes[id].bmin.X > g->meshes[id].bmax.X) {
+        return false;
+    }
+    *lo = g->meshes[id].bmin, *hi = g->meshes[id].bmax;
+    return true;
+}
+
 bool gfx_mesh_reset_to(GfxContext *g, GfxMeshMark mark)
 {
     if (mark.meshes == g->pool.count) {

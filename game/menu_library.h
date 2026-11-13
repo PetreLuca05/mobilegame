@@ -249,6 +249,8 @@ typedef struct MenuLibrary {
      * none); rebay_to, where a cold-start or from-a-game open may put my table (-1: this open may not move it); rebay_applied: the
      * last open put it there with me at my own table */
     int stored_bay, rebay_to;
+    HMM_Vec3 shell_lo, shell_hi; /* the closed building (shell + rooms) in library space: menu_library_on_screen */
+    bool shell_bounds;
     bool rebay_applied, rebay_cold;
     int rebay_moves; /* how many times an open moved my table (tests) */
     bool table_set;              /* the lobby's table has been placed once */
@@ -363,6 +365,8 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
  * creator_l and the right edge), the hero sits up (study blend 0.15), looks at the camera and rests both hands on the table; its
  * page loop pauses (a page in the air lands first). Off: back the same way. `at_once` (Reduse): a change only sets
  * creator_dissolve_armed this call (the caller captures the frame for its cross-dissolve) and happens at once on the next. */
+/* The closed building (on the island) is in the view (conservative: its bounds against the frustum). */
+bool menu_library_on_screen(const MenuLibrary *L, const HMM_Mat4 *view_proj);
 void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_once);
 /* The lobby's members (rows without `me`, in list order) into seats 1..3 of the lobby's table (§8: the host's seed's bay, mine
  * when I host or am alone). The table changing is a trip for my hero (packs, stands, walks; the camera follows once it is off

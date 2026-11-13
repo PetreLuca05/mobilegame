@@ -610,6 +610,16 @@ bool menu_library_init(MenuLibrary *L, GfxContext *g, Arena *scratch)
         rooms = rooms && L->room[b] != GFX_MESH_NONE;
     }
     L->shell = upload(L, g, scratch, &mb, "shell");
+    { /* the closed building's bounds (shell + rooms + doors inside them): the island view skips it when it is off screen */
+        HMM_Vec3 lo, hi;
+        L->shell_bounds = gfx_mesh_bounds(g, L->shell, &L->shell_lo, &L->shell_hi);
+        for (int b = 0; b < LIB_BAYS && L->shell_bounds; b++) {
+            if (gfx_mesh_bounds(g, L->room[b], &lo, &hi)) {
+                L->shell_lo = HMM_V3(mg_minf(L->shell_lo.X, lo.X), mg_minf(L->shell_lo.Y, lo.Y), mg_minf(L->shell_lo.Z, lo.Z));
+                L->shell_hi = HMM_V3(mg_maxf(L->shell_hi.X, hi.X), mg_maxf(L->shell_hi.Y, hi.Y), mg_maxf(L->shell_hi.Z, hi.Z));
+            }
+        }
+    }
     L->chair = upload(L, g, scratch, &mb, "chair");
     L->door = upload(L, g, scratch, &mb, "door");
     L->cart = upload(L, g, scratch, &mb, "cart");
@@ -1037,6 +1047,21 @@ static void project_box(const HMM_Mat4 *vp, const HMM_Vec3 *pts, int n, float w,
  * the §15.11 rule by 0.002 on the iPhone preset's larger relative move, now and then with frame jitter: its early speeds go as 1 / T^3) */
 #define LOCKER_S 1.0f
 #define FIT_RATE 6.0f         /* the menu camera's fit: a quintic over an exponential's 1 % settle time at this rate (/s) */
+
+bool menu_library_on_screen(const MenuLibrary *L, const HMM_Mat4 *view_proj)
+{
+    if (!L->shell_bounds) {
+        return true;
+    }
+    const HMM_Mat4 m = HMM_MulM4(*view_proj, L->xf);
+    int out[5] = {0, 0, 0, 0, 0}; /* corners beyond -x, +x, -y, +y, behind: all 8 beyond one plane = off screen */
+    for (int k = 0; k < 8; k++) {
+        const HMM_Vec4 c = HMM_MulM4V4(m, HMM_V4(k & 1 ? L->shell_hi.X : L->shell_lo.X, k & 2 ? L->shell_hi.Y : L->shell_lo.Y,
+                                                k & 4 ? L->shell_hi.Z : L->shell_lo.Z, 1.0f));
+        out[0] += c.X < -c.W, out[1] += c.X > c.W, out[2] += c.Y < -c.W, out[3] += c.Y > c.W, out[4] += c.W <= 0.0f;
+    }
+    return out[0] < 8 && out[1] < 8 && out[2] < 8 && out[3] < 8 && out[4] < 8;
+}
 
 void menu_library_set_creator(MenuLibrary *L, bool on, float creator_l, bool at_once)
 {
@@ -2397,7 +2422,9 @@ static uint32_t bays_occluded(const MenuLibrary *L)
         if (px0 < x0 || px1 > x1) {
             continue; /* past the wall's ends */
         }
-        if (py1 > s->room.Y - 0.02f) { /* the part over the top: off screen? (all four corners beyond one clip plane) */
+        /* the part over the top (only an eye above the wall top can see over it: from below, every ray to a point no higher than the
+         * top crosses the wall under it): off screen? (all four corners beyond one clip plane) */
+        if (e.Y >= s->room.Y && py1 > s->room.Y - 0.02f) {
             const float top = s->room.Y - 0.02f;
             int out[5] = {0, 0, 0, 0, 0};
             for (int k = 0; k < 4; k++) {

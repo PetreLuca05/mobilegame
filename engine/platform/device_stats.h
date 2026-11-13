@@ -15,5 +15,7 @@ int device_boost_render_thread(void);
 float device_screen_max_hz(void *native_window);
 /* macOS: the main display is asleep or the session is locked (no screen refresh paces the window then); 0 elsewhere. */
 int device_display_asleep(void);
+/* iOS Low Power Mode is on (NSProcessInfo.lowPowerModeEnabled); 0 elsewhere. */
+int device_low_power(void);
 
 #endif

@@ -71,3 +71,12 @@ int device_display_asleep(void)
     return 0;
 #endif
 }
+
+int device_low_power(void)
+{
+#if TARGET_OS_IOS
+    return NSProcessInfo.processInfo.lowPowerModeEnabled ? 1 : 0;
+#else
+    return 0;
+#endif
+}
