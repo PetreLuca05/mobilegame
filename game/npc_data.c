@@ -7,6 +7,7 @@
 #include "core/assets.h"
 #include "core/log.h"
 #include "rooms.h"
+#include "ui/text_check.h"
 
 static cJSON *parse_asset(const char *path)
 {
@@ -156,6 +157,7 @@ static int load_names(const cJSON *root, const char *key, const char **out, Aren
             if (copy) {
                 memcpy(copy, it->valuestring, len);
                 out[n++] = copy;
+                text_check_data(copy); /* names data (assets/npc_names.json) */
             }
         }
     }
@@ -244,6 +246,7 @@ bool npc_data_load(NpcData *d, Arena *perm)
                 if (copy) {
                     memcpy(copy, it->valuestring, len);
                     d->greetings[i][d->n_greetings[i]++] = copy;
+                    text_check_data(copy); /* greetings data (assets/npc_names.json, Romanian) */
                 }
             }
         }

@@ -1,6 +1,7 @@
 #include "ui_widgets.h"
 
 #include "haptics.h"
+#include "text_check.h"
 
 #include <math.h>
 #include <string.h>
@@ -124,6 +125,8 @@ void ui_label_caps(Ui *ui, float x, float y, const char *s)
 {
     char caps[128];
     to_caps(s, caps, sizeof(caps));
+    text_check_scan(caps, (size_t)-1); /* checked whole: the glyphs below are drawn one by one */
+    text_check_exempt_push();
     const float size = k_ui.t_label, track = k_ui.label_tracking_em * size;
     const char *p = caps;
     while (*p) { /* glyph by glyph, with the tracking between */
@@ -135,6 +138,7 @@ void ui_label_caps(Ui *ui, float x, float y, const char *s)
         x += ui_text(ui, TEXT_FACE_BOLD, x, y, size, C(k_ui.teal_text), one) + track;
         p += len;
     }
+    text_check_exempt_pop();
 }
 
 void ui_depth(Ui *ui, int level, uint32_t key, int flags)

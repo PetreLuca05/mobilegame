@@ -7,6 +7,7 @@
 
 #include "core/assets.h"
 #include "core/log.h"
+#include "ui/text_check.h"
 
 static cJSON *parse_asset(const char *path)
 {
@@ -51,6 +52,7 @@ bool world_books_load(WorldBooks *b)
         WorldBookDef *d = &b->books[b->count++];
         copy_str(d->id, sizeof(d->id), book, "id");
         copy_str(d->name, sizeof(d->name), book, "name");
+        text_check_data(d->name); /* names data: drawn on the map and the menu as they are */
         copy_str(d->island, sizeof(d->island), book, "island");
         copy_str(d->mesh, sizeof(d->mesh), book, "mesh");
         const cJSON *lv;
@@ -62,6 +64,7 @@ bool world_books_load(WorldBooks *b)
             WorldLevelDef *l = &d->levels[d->level_count++];
             copy_str(l->id, sizeof(l->id), lv, "id");
             copy_str(l->name, sizeof(l->name), lv, "name");
+            text_check_data(l->name);
             copy_str(l->map_id, sizeof(l->map_id), lv, "map_id"); /* null -> "" */
             copy_str(l->scene, sizeof(l->scene), lv, "scene");
             if (!l->scene[0]) {

@@ -252,6 +252,7 @@ add_library(mg_engine STATIC
   engine/gfx/weld.c
   engine/gfx/floorfade.c
   engine/ui/text.c
+  engine/ui/text_check.c
   engine/ui/text_layout.c
   engine/ui/ui_textarea.c
   engine/ui/widgets.c

@@ -5,6 +5,7 @@
 #include "cJSON.h"
 #include "core/assets.h"
 #include "core/log.h"
+#include "ui/text_check.h"
 
 #define MAX_STRINGS 1024 /* both tables together (Romanian first, then English) */
 
@@ -111,4 +112,14 @@ int strings_missing(const char **last)
         *last = t->last_missing;
     }
     return t->missing;
+}
+
+void strings_feed_text_check(void)
+{
+    const StringTable *t = g_strings_table();
+    for (int i = 0; i < t->count; i++) {
+        if (!t->e[i].fallback) { /* Romanian only: an English word on screen is what the check is for */
+            text_check_vocab(t->e[i].value);
+        }
+    }
 }

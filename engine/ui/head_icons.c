@@ -1,4 +1,5 @@
 #include "head_icons.h"
+#include "text_check.h"
 #include "ui_style.h"
 
 #include <string.h>
@@ -86,6 +87,7 @@ HeadUv head_icon_get(HeadIcons *h, const NetSkin *skin)
 void head_icon_draw(HeadIcons *h, GfxContext *g, const TextFont *f, const NetSkin *skin, const char *name, float cx, float cy,
                     float size, bool faded)
 {
+    text_check_data(name); /* names data: the person this head is (the name is drawn beside it) */
     const HeadUv uv = head_icon_get(h, skin);
     const float r = size * 0.5f;
     const uint8_t alpha = faded ? 128 : 255;

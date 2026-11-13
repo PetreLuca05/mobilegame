@@ -11,6 +11,7 @@
 #include "scene.h"
 #include "core/assets.h"
 #include "core/log.h"
+#include "strings.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
 
@@ -403,19 +404,20 @@ typedef struct Suit {
 } Suit;
 
 static const Suit k_suits[AVATAR_SUITS] = {
-    {"Scrubs green", 0x5BB98C, 0xFFFFFF, 0x2F7D5B, OUTFIT_SCRUBS, DECAL_POCKET},
-    {"Scrubs blue", 0x4A7FC9, 0xFFFFFF, 0x2D558F, OUTFIT_SCRUBS, DECAL_POCKET},
-    {"Surgeon teal", 0x3FA7A0, 0xE8F4F2, 0x2A746F, OUTFIT_SCRUBS, DECAL_BADGE},
-    {"White coat", 0xF5F7FA, 0xE5403A, 0x1F2A44, OUTFIT_COAT, DECAL_CROSS},
-    {"Paramedic", 0xD83A34, 0xFFD23F, 0x8F201C, OUTFIT_PLAIN, DECAL_BADGE},
-    {"Nurse", 0xF7F7FA, 0xF2A0B8, 0xF2A0B8, OUTFIT_SCRUBS, DECAL_CROSS},
-    {"Night shift", 0x2A3A6B, 0x7FB2FF, 0x182447, OUTFIT_SCRUBS, DECAL_BADGE},
-    {"Lab coat", 0xF2F2F2, 0x8A929C, 0x5E6670, OUTFIT_COAT, DECAL_POCKET},
+    {"suit_scrubs_green", 0x5BB98C, 0xFFFFFF, 0x2F7D5B, OUTFIT_SCRUBS, DECAL_POCKET},
+    {"suit_scrubs_blue", 0x4A7FC9, 0xFFFFFF, 0x2D558F, OUTFIT_SCRUBS, DECAL_POCKET},
+    {"suit_surgeon_teal", 0x3FA7A0, 0xE8F4F2, 0x2A746F, OUTFIT_SCRUBS, DECAL_BADGE},
+    {"suit_white_coat", 0xF5F7FA, 0xE5403A, 0x1F2A44, OUTFIT_COAT, DECAL_CROSS},
+    {"suit_paramedic", 0xD83A34, 0xFFD23F, 0x8F201C, OUTFIT_PLAIN, DECAL_BADGE},
+    {"suit_nurse", 0xF7F7FA, 0xF2A0B8, 0xF2A0B8, OUTFIT_SCRUBS, DECAL_CROSS},
+    {"suit_night_shift", 0x2A3A6B, 0x7FB2FF, 0x182447, OUTFIT_SCRUBS, DECAL_BADGE},
+    {"suit_lab_coat", 0xF2F2F2, 0x8A929C, 0x5E6670, OUTFIT_COAT, DECAL_POCKET},
 };
 
-static const char *const k_hair_names[AVATAR_HAIRS] = {"None", "Short", "Bob", "Bun", "Spiky", "Curly"};
-static const char *const k_accessory_names[AVATAR_ACCESSORIES] = {"None", "Sunglasses", "Cat ears", "Mask",
-                                                                  "Stethoscope"};
+/* string-table keys (the Creator shows them) */
+static const char *const k_hair_names[AVATAR_HAIRS] = {"hair_none", "hair_short", "hair_bob", "hair_bun", "hair_spiky", "hair_curly"};
+static const char *const k_accessory_names[AVATAR_ACCESSORIES] = {"acc_none", "acc_sunglasses", "acc_cat_ears", "acc_mask",
+                                                                  "acc_stethoscope"};
 
 static uint8_t clampu(uint8_t v, int n) { return v < n ? v : 0; }
 
@@ -459,11 +461,11 @@ void avatar_suit_colors(int suit, uint32_t *outfit, uint32_t *accent)
     *accent = s->accent;
 }
 
-const char *avatar_suit_name(int suit) { return suit >= 0 && suit < AVATAR_SUITS ? k_suits[suit].name : ""; }
+const char *avatar_suit_name(int suit) { return suit >= 0 && suit < AVATAR_SUITS ? str(k_suits[suit].name) : ""; }
 
 const char *avatar_palette_name(int i) { return i >= 0 && i < AVATAR_PALETTES ? k_palettes[i].name : ""; }
-const char *avatar_hair_name(int i) { return i >= 0 && i < AVATAR_HAIRS ? k_hair_names[i] : ""; }
-const char *avatar_accessory_name(int i) { return i >= 0 && i < AVATAR_ACCESSORIES ? k_accessory_names[i] : ""; }
+const char *avatar_hair_name(int i) { return i >= 0 && i < AVATAR_HAIRS ? str(k_hair_names[i]) : ""; }
+const char *avatar_accessory_name(int i) { return i >= 0 && i < AVATAR_ACCESSORIES ? str(k_accessory_names[i]) : ""; }
 
 static float approach(float v, float target, float rate, float dt)
 {

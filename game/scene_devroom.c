@@ -3,6 +3,7 @@
 #include "scene_impl.h"
 
 #include "devroom.h"
+#include "strings.h"
 
 typedef struct DevroomScene {
     Scene base;
@@ -156,7 +157,7 @@ int scene_devroom_floor_count(const Scene *s)
 const char *scene_devroom_floor_name(const Scene *s, int floor)
 {
     (void)s, (void)floor;
-    return "Dev room";
+    return str("devroom_floor");
 }
 
 HMM_Vec3 scene_devroom_floor_lobby(const Scene *s, int floor)

@@ -5,6 +5,7 @@
 
 #include "core/log.h"
 #include "scene.h"
+#include "strings.h"
 
 #define STALE_AFTER 3.5      /* s without packets -> drop (keepalive is 1 Hz): gone within 5 s */
 #define SLOT_SETTLE 0.6      /* s after joining before we pick a slot */
@@ -17,8 +18,8 @@ void session_init(NetSession *s, NetTransport *net)
     s->net = net;
     s->slot = 0;
     s->rtt_ms = -1;
-    SDL_snprintf(s->status_text, sizeof(s->status_text), "offline");
-    SDL_snprintf(s->my_name, sizeof(s->my_name), "Player");
+    SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str("net_offline"));
+    SDL_snprintf(s->my_name, sizeof(s->my_name), "%s", str("guest_name"));
     s->my_skin = AVATAR_DEFAULT_SKIN;
 }
 
@@ -60,7 +61,7 @@ static void join_topic(NetSession *s)
     s->slot_announced = false;
     fill_meta(s);
     net_join(s->net, s->topic, &s->me, SESSION_MAX_PLAYERS);
-    SDL_snprintf(s->status_text, sizeof(s->status_text), "joining %s", s->topic);
+    SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str("net_joining"));
 }
 
 void session_start_lobby(NetSession *s, const char *token, const char *host)
@@ -172,7 +173,7 @@ void session_stop(NetSession *s)
     s->slot = 0;
     s->topic[0] = 0;
     s->rtt_ms = -1;
-    SDL_snprintf(s->status_text, sizeof(s->status_text), "offline");
+    SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str("net_offline"));
 }
 
 static RemotePlayer *find_remote(NetSession *s, const char *id, bool create)
@@ -243,18 +244,42 @@ static void check_slot_conflict(NetSession *s)
     }
 }
 
+/* What the player reads for a connection state (Settings, the hosting banner, the stats block). */
+static const char *status_key(NetStatus st)
+{
+    switch (st) {
+    case NET_SIGNING_IN:
+        return "signing_in";
+    case NET_CONNECTING:
+        return "net_connecting";
+    case NET_JOINING:
+        return "net_joining";
+    case NET_JOINED:
+        return "net_joined";
+    case NET_RECONNECTING:
+        return "net_reconnecting";
+    case NET_FAILED:
+        return "net_failed";
+    default:
+        return "net_offline";
+    }
+}
+
 static void handle_event(NetSession *s, const NetEvent *e, double now)
 {
     switch (e->type) {
     case NET_EV_STATUS:
         s->status = (NetStatus)e->value;
-        SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", e->text);
+        SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str(status_key(s->status)));
+        if (s->status == NET_FAILED) {
+            mg_log_info("session: connection failed: %s", e->text); /* the transport's detail: for the log, not the screen */
+        }
         break;
     case NET_EV_JOINED:
         SDL_snprintf(s->self_id, sizeof(s->self_id), "%s", e->peer);
         s->joined_at = now;
         s->slot_announced = false;
-        SDL_snprintf(s->status_text, sizeof(s->status_text), "in %s", s->topic);
+        SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str("net_joined"));
         s->rooms_joined += s->menu_only ? 0 : 1; /* a game, not the lobby in the menu */
         break;
     case NET_EV_PROFILE:
@@ -262,7 +287,8 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         s->profile_new = true;
         break;
     case NET_EV_ACCOUNT_ERROR:
-        SDL_snprintf(s->account_error, sizeof(s->account_error), "%s", e->text);
+        mg_log_info("session: account error: %s", e->text);
+        SDL_snprintf(s->account_error, sizeof(s->account_error), "%s", str("account_sync_failed"));
         break;
     case NET_EV_MEMBERS:
         if (!s->host_id[0] || strcmp(e->text, s->host_id) != 0) {
@@ -333,7 +359,7 @@ static void handle_event(NetSession *s, const NetEvent *e, double now)
         s->rtt_ms = e->value;
         break;
     case NET_EV_ROOM_FULL:
-        SDL_snprintf(s->status_text, sizeof(s->status_text), "the room is full");
+        SDL_snprintf(s->status_text, sizeof(s->status_text), "%s", str("net_room_full"));
         s->mode = MODE_OFFLINE;
         s->slot = 0;
         clear_remotes(s);
@@ -405,10 +431,10 @@ const char *session_mode_label(const NetSession *s, char *buf, size_t cap)
 {
     switch (s->mode) {
     case MODE_LOBBY:
-        SDL_snprintf(buf, cap, "lobby");
+        SDL_snprintf(buf, cap, "%s", str("lobby_row"));
         break;
     default:
-        SDL_snprintf(buf, cap, "offline");
+        SDL_snprintf(buf, cap, "%s", str("lobby_offline"));
         break;
     }
     return buf;

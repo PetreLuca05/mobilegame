@@ -6,6 +6,7 @@
 #include "frontend.h"
 #include "strings.h"
 #include "player.h"
+#include "ui/text_check.h"
 
 enum { AUTOTEST_NONE, AUTOTEST_TOUCH, AUTOTEST_ONBOARDING, AUTOTEST_SAVE, AUTOTEST_CONTINUE, AUTOTEST_STICKDIR,
        AUTOTEST_SCREENSHOT, AUTOTEST_AUTONAV, AUTOTEST_MARKERS,
@@ -41,6 +42,40 @@ void autotest_init(Autotest *t, int argc, char **argv)
         }
     }
 }
+
+/* The runs that check every drawn word against the string table (ui/text_check.h): the menus, the library, the map,
+ * the Settings / pause screens, the HUD. Book runs show pack text and the other runs debug overlays: not checked. */
+bool autotest_checks_text(int argc, char **argv)
+{
+    static const char *const names[] = {"ui", "onboarding", "layout", "library", "worldmap", "text", "offline"};
+    for (int i = 1; i + 1 < argc; i++) {
+        for (int k = 0; k < (int)MG_ARRAY_COUNT(names) && SDL_strcmp(argv[i], "--autotest") == 0; k++) {
+            if (SDL_strcmp(argv[i + 1], names[k]) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool autotest_text_ok(void)
+{
+    const int n = text_check_count();
+    if (n == 0) {
+        if (text_check_enabled()) {
+            mg_log_info("autotest text check: every drawn word is in the string table or names data (ok)");
+        }
+        return true;
+    }
+    const char *text, *word, *screen;
+    for (int i = 0; text_check_get(i, &text, &word, &screen); i++) {
+        mg_log_error("autotest text check: hard-coded text on %s: \"%s\" (word \"%s\")", screen, text, word);
+    }
+    mg_log_error("autotest text check: FAILED: %d drawn texts hold words that are in no Romanian string", n);
+    return false;
+}
+
+static void log_passed(void) { mg_log_info("AUTOTEST %s", autotest_text_ok() ? "PASSED" : "FAILED"); }
 
 bool autotest_starts_in_game(int argc, char **argv)
 {
@@ -299,7 +334,7 @@ static bool run_institute(Autotest *t, const AutotestProbe *p, AutotestOut *out,
         if (p->rides < 4) {
             return fail(t, "institute", "fewer than 4 lift rides");
         }
-        mg_log_info("AUTOTEST PASSED");
+        log_passed();
         t->passed = true;
         return true;
     }
@@ -693,7 +728,7 @@ static bool run_offline(Autotest *t, MgApp *app, const AutotestProbe *p, double 
     default:
         if (el - t->step_start >= 120.0) {
             mg_log_info("autotest offline: 120 s played");
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = true;
             return true;
         }
@@ -711,7 +746,7 @@ static bool run_onboarding(Autotest *t, MgApp *app, const AutotestProbe *p)
         return app->time - t->step_start > 5.0 ? fail(t, "onboarding", "not on the main menu after Done") : false;
     }
     mg_log_info("autotest onboarding: on the main menu, %d look changes", t->skin_changes);
-    mg_log_info("AUTOTEST PASSED");
+    log_passed();
     t->passed = true;
     return true;
 }
@@ -760,7 +795,7 @@ static bool run_save(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
     if (t->stage == 4 ? p->floor == 2 && p->nav_state == 4 /* ARRIVED */ : p->floor == 2 && !p->riding && p->route_step > 8) {
         mg_log_info("autotest save: on floor 2 at (%.2f, %.2f, %.2f), killing the app", p->player_pos.X,
                     p->player_pos.Y, p->player_pos.Z);
-        mg_log_info("AUTOTEST PASSED");
+        log_passed();
         t->passed = true;
         out->kill = true;
         return true;
@@ -826,7 +861,7 @@ static bool run_hud_clamp(Autotest *t, const AutotestProbe *p, AutotestOut *out,
             if (t->clamp_frames < 120 || t->clamp_edge < 4 || p->hud_res_count < 4) {
                 return fail(t, "hudclamp", "too little was on screen to prove anything");
             }
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = true;
             return true;
         }
@@ -1162,7 +1197,7 @@ static bool run_interact(Autotest *t, MgApp *app, const AutotestProbe *p, Autote
             if (p->ia_enter_lag > SCAN_LAG_MAX || p->ia_exit_lag > SCAN_LAG_MAX) {
                 return fail(t, "interact", "the scan lags behind the player");
             }
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = true;
             return true;
         }
@@ -1210,7 +1245,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "bookpeople", t->bt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1221,7 +1256,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "missions", t->mt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1231,7 +1266,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "book_ui", t->bu.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1250,7 +1285,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         }
         finished = r > 0;
         if (finished) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
         }
         break;
     }
@@ -1262,7 +1297,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "worldmap2", t->wt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1272,7 +1307,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "worldmap", t->wt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1306,7 +1341,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
                 t->soak.next_drop = t->soak.dropped_at + 30.0;
                 if (t->soak.cycles >= 20) {
                     mg_log_info("autotest netsoak: 20 cycles in %.0f s; reconnect worst %d ms, mean %d ms", el, t->soak.worst_ms, t->soak.total_ms / 20);
-                    mg_log_info("AUTOTEST PASSED");
+                    log_passed();
                     t->passed = finished = true;
                 }
             } else if (app->time - t->soak.dropped_at > 10.0) {
@@ -1324,7 +1359,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "tilt", t->tt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1334,7 +1369,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "library", t->lt.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1344,7 +1379,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "avatar", t->at.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1354,7 +1389,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "haptics", t->ht.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1364,7 +1399,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         if (r < 0) {
             finished = fail(t, "stick", t->st.why);
         } else if (r > 0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1382,7 +1417,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
             finished = fail(t, "ui", why);
         } else if (r > 0) {
             mg_log_info("autotest ui: 0 raw keys, 0 English-only strings on every screen opened");
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1404,7 +1439,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
                 mg_log_info("autotest text: label capitals on the face centre: %.2f / %.2f / %.2f pt off (54 pt, 54 pt small, 44 pt small; max 1)",
                             (double)p->text_center_each[0], (double)p->text_center_each[1], (double)p->text_center_each[2]);
                 mg_log_info("autotest text: all ten letters have glyphs, cedilla forms map to the comma ones (ok)");
-                mg_log_info("AUTOTEST PASSED");
+                log_passed();
                 t->passed = finished = true;
             }
         }
@@ -1415,7 +1450,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
             t->stage = 1;
         }
         if (t->stage == 1 && el > 4.0) {
-            mg_log_info("AUTOTEST PASSED");
+            log_passed();
             t->passed = finished = true;
         }
         break;
@@ -1426,6 +1461,7 @@ bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *p, AutotestOu
         break;
     }
     if (finished) {
+        t->passed = t->passed && text_check_count() == 0; /* log_passed said FAILED */
         t->done = true;
         app->quit_requested = !out->kill;
     }

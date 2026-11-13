@@ -7,9 +7,19 @@
 
 #include "avatar.h"
 #include "strings.h"
+#include "ui/text_check.h"
 #include "ui/ui_widgets.h"
 
 #define NAME_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-."
+
+/* A widget label: the text of a string-table key + "##id" (the id stays put whatever the text says), in the
+ * function's `lb`: every widget call reads its label before the next L(). */
+static const char *label_of(char *buf, size_t cap, const char *key, const char *id)
+{
+    SDL_snprintf(buf, cap, "%s##%s", str(key), id);
+    return buf;
+}
+#define L(key, id) label_of(lb, sizeof(lb), (key), (id))
 
 
 /* ------------------------------------------------------------------ game */
@@ -18,6 +28,7 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 {
     const float y_top = y;
     const float step = 52.0f;
+    char lb[128];
     bool wide = w > 560.0f;
     float cw = wide ? (w - 24.0f) * 0.5f : w;
     float x2 = x + cw + 24.0f;
@@ -25,12 +36,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     /* Day / night: drag to pick an hour (stops following the clock) */
     int hh = (int)s->time_of_day, mm = (int)((s->time_of_day - (float)hh) * 60.0f);
     char tod[64];
-    SDL_snprintf(tod, sizeof(tod), "Day / night  %02d:%02d##tod", hh, mm);
+    SDL_snprintf(tod, sizeof(tod), "%s  %02d:%02d##tod", str("set_day_night"), hh, mm);
     if (ui_slider(ui, tod, x, y, w, &s->time_of_day, 0.0f, 23.99f, "")) {
         *action = MENU_TIME;
     }
     y += 56.0f;
-    ui_toggle(ui, "Follow device clock", x, y, cw, &s->follow_clock);
+    ui_toggle(ui, L("set_follow_clock", "clock"), x, y, cw, &s->follow_clock);
     static const float speeds[3] = {1.0f, 60.0f, 600.0f};
     static const char *const speed_labels[3] = {"x1##spd", "x60##spd", "x600##spd"};
     float sx = wide ? x2 : x, sy = wide ? y : y + 44.0f;
@@ -71,9 +82,9 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
     }
     cy += 52.0f;
-    ui_toggle(ui, "Show my name tag", cx, cy, cw, &s->show_own_name);
+    ui_toggle(ui, L("set_show_own_name", "own_name"), cx, cy, cw, &s->show_own_name);
     cy += 52.0f;
-    ui_toggle(ui, "Show players through walls", cx, cy, cw, &s->show_xray);
+    ui_toggle(ui, L("set_show_xray", "xray"), cx, cy, cw, &s->show_xray);
     cy += 52.0f;
     if (ui_haptic_supported()) { /* HAPTIC-1 Vibrații: hidden without a Taptic Engine */
         ui_label_caps(ui, cx, cy + 4.0f, str("haptics"));
@@ -106,11 +117,11 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         cy += 56.0f;
     }
 #else
-    ui_slider(ui, "Camera yaw sens##s1", cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
+    ui_slider(ui, L("set_cam_yaw_sens", "s1"), cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
-    ui_slider(ui, "Camera pitch sens##s2", cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
+    ui_slider(ui, L("set_cam_pitch_sens", "s2"), cx, cy, cw, &s->pitch_deg_per_pt, 0.05f, 0.5f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
-    if (ui_slider(ui, "Camera pitch##s4", cx, cy, cw, &s->cam_pitch_deg, -60.0f, 30.0f, "%.0f" TEXT_DEGREE)) {
+    if (ui_slider(ui, L("set_cam_pitch", "s4"), cx, cy, cw, &s->cam_pitch_deg, -60.0f, 30.0f, "%.0f" TEXT_DEGREE)) {
         *action = MENU_CAMERA_PITCH;
     }
     cy += step;
@@ -121,12 +132,12 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         cy = sliders_top;
     }
 #ifdef MG_CAMERA_THIRDPERSON
-    ui_slider(ui, "Field of view##s5", cx, cy, cw, &s->fov_deg, 45.0f, 75.0f, "%.0f" TEXT_DEGREE);
+    ui_slider(ui, L("set_fov", "s5"), cx, cy, cw, &s->fov_deg, 45.0f, 75.0f, "%.0f" TEXT_DEGREE);
     cy += step;
 #endif
-    ui_slider(ui, "Stick dead zone##s6", cx, cy, cw, &s->dead_zone_pt, 0.0f, 50.0f, "%.0f pt");
+    ui_slider(ui, L("set_dead_zone", "s6"), cx, cy, cw, &s->dead_zone_pt, 0.0f, 50.0f, "%.0f pt");
     cy += step + 4.0f;
-    ui_toggle(ui, "Sound", cx, cy, cw, &s->sound_on);
+    ui_toggle(ui, L("set_sound", "sound"), cx, cy, cw, &s->sound_on);
     cy += 52.0f;
     /* the interface rows sit in the second column (the first is full on a phone: the last row reached the home indicator) */
     ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
@@ -164,96 +175,98 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         cy += 58.0f;
     }
 #ifdef MG_CAMERA_THIRDPERSON
-    ui_toggle(ui, "Invert Y", cx, cy, cw, &s->invert_y);
+    ui_toggle(ui, L("set_invert_y", "invert_y"), cx, cy, cw, &s->invert_y);
     cy += 52.0f;
 #endif
     y = mg_maxf(cy, left_end) + 6.0f;
 
 
-    if (ui_button(ui, m->dev_open ? "Developer -##dev" : "Developer +##dev", x, y, cw, 44.0f, m->dev_open)) {
+    char dev[64];
+    SDL_snprintf(dev, sizeof(dev), "%s %s##dev", str("set_developer"), m->dev_open ? "-" : "+");
+    if (ui_button(ui, dev, x, y, cw, 44.0f, m->dev_open)) {
         m->dev_open = !m->dev_open;
     }
     y += 56.0f;
     if (m->dev_open) {
 #ifndef NDEBUG
-        if (ui_button(ui, "Haptic lab##hlab", x, y, cw, k_ui.target_min, false)) {
+        if (ui_button(ui, L("set_haptic_lab", "hlab"), x, y, cw, k_ui.target_min, false)) {
             m->lab_open = true;
         }
         y += 56.0f;
 #endif
-        ui_toggle(ui, "Show colliders", x, y, cw, &s->show_colliders);
-        ui_toggle(ui, "Show triggers", wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->show_triggers);
+        ui_toggle(ui, L("dev_colliders", "colliders"), x, y, cw, &s->show_colliders);
+        ui_toggle(ui, L("dev_triggers", "triggers"), wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->show_triggers);
         y += wide ? 52.0f : 104.0f;
-        ui_toggle(ui, "Nav grid", x, y + (wide ? 52.0f : 104.0f), cw, &s->show_nav);
-        ui_toggle(ui, "Storey colours", x, y, cw, &s->show_storeys);
-        ui_toggle(ui, "X-ray always", wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->xray_always);
+        ui_toggle(ui, L("dev_nav_grid", "nav"), x, y + (wide ? 52.0f : 104.0f), cw, &s->show_nav);
+        ui_toggle(ui, L("dev_storeys", "storeys"), x, y, cw, &s->show_storeys);
+        ui_toggle(ui, L("dev_xray_always", "xray_always"), wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->xray_always);
         y += (wide ? 52.0f : 104.0f) + 52.0f;
 #ifndef NDEBUG
-        ui_toggle(ui, "Tilt debug", x, y, cw, &s->show_tilt_debug); /* TILT-1: gravity, mapping, arrows */
+        ui_toggle(ui, L("dev_tilt_debug", "tilt_debug"), x, y, cw, &s->show_tilt_debug); /* TILT-1: gravity, mapping, arrows */
         y += 52.0f;
 #endif
 #ifdef MG_RENDER_FULL
-        ui_toggle(ui, "Light gizmos", x, y, cw, &s->show_lights);
+        ui_toggle(ui, L("dev_light_gizmos", "gizmos"), x, y, cw, &s->show_lights);
         y += 52.0f;
         /* Lighting */
-        static const char *const tiers[3] = {"Auto##tier", "Low##tier", "High##tier"};
+        static const char *const tiers[3] = {"dev_tier_auto", "dev_tier_low", "dev_tier_high"};
         float tb = (cw - 16.0f) / 3.0f;
         for (int i = 0; i < 3; i++) {
-            if (ui_button(ui, tiers[i], x + (float)i * (tb + 8.0f), y, tb, k_ui.target_min, s->tier_override == i)) {
+            if (ui_button(ui, L(tiers[i], tiers[i]), x + (float)i * (tb + 8.0f), y, tb, k_ui.target_min, s->tier_override == i)) {
                 s->tier_override = i;
             }
         }
         y += 52.0f;
-        ui_toggle(ui, "Shadows", x, y, cw, &s->shadows_on);
+        ui_toggle(ui, L("dev_shadows", "shadows"), x, y, cw, &s->shadows_on);
         y += 52.0f;
-        ui_toggle(ui, "Cascade colours", x, y, cw, &s->show_cascades);
+        ui_toggle(ui, L("dev_cascades", "cascades"), x, y, cw, &s->show_cascades);
         y += 52.0f;
-        ui_toggle(ui, "Freeze shadows", x, y, cw, &s->freeze_shadows);
+        ui_toggle(ui, L("dev_freeze_shadows", "freeze_shadows"), x, y, cw, &s->freeze_shadows);
         y += 52.0f;
 #endif
-        ui_toggle(ui, "Performance stats##dev_perf", x, y, cw, &s->show_stats);
+        ui_toggle(ui, L("dev_perf", "dev_perf"), x, y, cw, &s->show_stats);
         y += 52.0f;
-        ui_toggle(ui, "Force elevator panel", x, y, cw, &s->force_lift_panel);
+        ui_toggle(ui, L("dev_force_lift", "force_lift"), x, y, cw, &s->force_lift_panel);
         y += 52.0f;
-        ui_toggle(ui, "Show ranges", x, y, cw, &s->show_ia_ranges);
+        ui_toggle(ui, L("dev_ranges", "ranges"), x, y, cw, &s->show_ia_ranges);
         y += 52.0f;
-        ui_toggle(ui, "Show active id", x, y, cw, &s->show_ia_active);
+        ui_toggle(ui, L("dev_active_id", "active_id"), x, y, cw, &s->show_ia_active);
         y += 52.0f;
-        ui_toggle(ui, "Preview any mesh", x, y, cw, &s->preview_any);
+        ui_toggle(ui, L("dev_preview_any", "preview_any"), x, y, cw, &s->preview_any);
         y += 52.0f;
-        ui_toggle(ui, "Show safe rect", x, y, cw, &s->show_safe_rect);
+        ui_toggle(ui, L("dev_safe_rect", "safe_rect"), x, y, cw, &s->show_safe_rect);
         y += 52.0f;
-        ui_toggle(ui, "Profiler", x, y, cw, &s->show_profiler);
+        ui_toggle(ui, L("dev_profiler", "profiler"), x, y, cw, &s->show_profiler);
         y += 52.0f;
-        ui_toggle(ui, "Show slots", x, y, cw, &s->show_slots);
+        ui_toggle(ui, L("dev_slots", "slots"), x, y, cw, &s->show_slots);
         y += 52.0f;
-        ui_toggle(ui, "Show NPC packages", x, y, cw, &s->show_packages);
+        ui_toggle(ui, L("dev_npc_packages", "packages"), x, y, cw, &s->show_packages);
         y += 52.0f;
-        ui_toggle(ui, "Show NPC paths", x, y, cw, &s->show_npc_paths);
+        ui_toggle(ui, L("dev_npc_paths", "npc_paths"), x, y, cw, &s->show_npc_paths);
         y += 52.0f;
-        ui_toggle(ui, "Freeze NPCs", x, y, cw, &s->freeze_npcs);
+        ui_toggle(ui, L("dev_freeze_npcs", "freeze_npcs"), x, y, cw, &s->freeze_npcs);
         y += 52.0f;
-        if (ui_button(ui, "Respawn NPCs##npc", x, y, cw, k_ui.target_min, false)) {
+        if (ui_button(ui, L("dev_respawn_npcs", "npc"), x, y, cw, k_ui.target_min, false)) {
             s->respawn_npcs = true;
         }
         y += 52.0f;
-        ui_label_caps(ui, x, y + 4.0f, "Stress");
+        ui_label_caps(ui, x, y + 4.0f, str("dev_stress"));
         y += 22.0f;
-        ui_slider(ui, "Dummy avatars##stress", x, y, cw, &s->stress_count, 0.0f, 400.0f, "%.0f");
+        ui_slider(ui, L("dev_dummies", "stress"), x, y, cw, &s->stress_count, 0.0f, 400.0f, "%.0f");
         y += step;
-        ui_label_caps(ui, x, y + 4.0f, "Markers");
+        ui_label_caps(ui, x, y + 4.0f, str("dev_markers"));
         y += 22.0f;
-        ui_toggle(ui, "Test markers", x, y, cw, &s->test_markers);
+        ui_toggle(ui, L("dev_test_markers", "test_markers"), x, y, cw, &s->test_markers);
         y += 52.0f;
-        ui_slider(ui, "Marker count##mkc", x, y, cw, &s->test_marker_count, 1.0f, 16.0f, "%.0f");
+        ui_slider(ui, L("dev_marker_count", "mkc"), x, y, cw, &s->test_marker_count, 1.0f, 16.0f, "%.0f");
         y += step;
-        ui_toggle(ui, "Show paths for all markers", x, y, cw, &s->show_all_paths);
+        ui_toggle(ui, L("dev_all_paths", "all_paths"), x, y, cw, &s->show_all_paths);
         y += 52.0f;
-        if (ui_button(ui, "Respawn all##mkr", x, y, cw, k_ui.target_min, false)) {
+        if (ui_button(ui, L("dev_respawn_markers", "mkr"), x, y, cw, k_ui.target_min, false)) {
             *action = MENU_RESPAWN_MARKERS;
         }
         y += 52.0f;
-        ui_label_caps(ui, x, y + 4.0f, "Teleport to floor");
+        ui_label_caps(ui, x, y + 4.0f, str("dev_teleport"));
         y += 22.0f;
         const int nf = m->tp_floors < 1 ? 1 : (m->tp_floors > 8 ? 8 : m->tp_floors);
         float tw = (cw - 8.0f * (float)(nf - 1)) / (float)nf;
@@ -276,7 +289,9 @@ static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, floa
 {
     const float y_start = y;
     float cw = mg_minf(w, 420.0f);
+    char lb[128];
     m->preview_visible = false;
+    text_check_data(acct->name); /* names data: the account's display name (the line under the button) */
     ui_label_caps(ui, x, y, str("username_title"));
     int ed = ui_text_field(ui, "name", x, y + 18.0f, cw, 44.0f, m->name, (int)sizeof(m->name), &m->editing_name,
                            NAME_CHARS);
@@ -312,7 +327,7 @@ static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, floa
     y += 56.0f;
     if (acct->guest) {
         if (acct->busy) {
-            ui_button(ui, "...##google", x, y, cw, 44.0f, false);
+            ui_button(ui, "…##google", x, y, cw, 44.0f, false);
         } else {
             float bw = acct->apple_ready ? (cw - 8.0f) * 0.5f : cw;
             if (acct->google_ready) {
@@ -328,7 +343,7 @@ static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, floa
                 }
             }
         }
-    } else if (ui_button(ui, "Sign out", x, y, cw, 44.0f, false)) {
+    } else if (ui_button(ui, L("sign_out", "sign_out"), x, y, cw, 44.0f, false)) {
         *action = MENU_SIGN_OUT;
     }
     y += 52.0f;
@@ -506,6 +521,7 @@ static void haptic_lab(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
     const float w = mg_minf(w_pt - 40.0f, 620.0f), h = h_pt - 40.0f;
     float x, y;
     ui_modal(ui, "hlab", w, h, &x, &y);
+    text_check_exempt_push(); /* debug builds only (NDEBUG): haptic table names and numbers, never in a release */
     ui_text(ui, TEXT_FACE_DISPLAY, x + 20.0f, y + 14.0f, 22.0f, ui_rgba(k_ui.ink), "Haptic lab");
     if (ui_icon_button(ui, "hlab_close", UI_ICON_CLOSE, x + w - 64.0f, y + 10.0f, k_ui.icon_button, UI_V_SECONDARY)) {
         m->lab_open = false;
@@ -532,6 +548,7 @@ static void haptic_lab(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
         ui_text(ui, TEXT_FACE_BODY, x + w - 200.0f, ry + 15.0f, k_ui.t_small, ui_rgba(k_ui.ink_soft), info);
     }
     ui_scroll_end(ui, &m->lab_scroll, view, (float)count * (row + 6.0f));
+    text_check_exempt_pop();
     ui_modal_end(ui);
 }
 #endif
@@ -568,6 +585,7 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
     }
 
+    text_check_set_screen(m->card ? "PAUSE" : "SETTINGS"); /* the frame's screen was set before a tap opened this */
     if (m->card) {
         return pause_card(m, ui, s, w_pt, h_pt, safe_t, safe_b);
     }
@@ -590,9 +608,9 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         }
     }
     (void)held;
-    ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), "Settings");
+    ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), str("settings"));
     float y = y0 + 74.0f;
-    static const char *const tab_names[2] = {"Game", "Account"};
+    const char *const tab_names[2] = {str("set_tab_game"), str("set_tab_account")};
     ui_tabs(ui, "tab", tab_names, 2, &m->tab, x0, y, lw, 50.0f);
     y += 66.0f;
     if (status && status[0]) {

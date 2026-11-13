@@ -27,6 +27,7 @@
 #include "platform/device_stats.h"
 #include "stress.h"
 #include "ui/layout.h"
+#include "ui/text_check.h"
 #include "ui/prof_hud.h"
 #include "avatar.h"
 #include "avatar_gallery.h"
@@ -906,6 +907,10 @@ bool game_init(MgApp *app)
     if (!strings_init(&app->perm) || !frontend_init(&g->fe, app->gfx, &app->perm)) {
         return false;
     }
+    if (autotest_checks_text(app->argc, app->argv)) { /* every drawn word from the string table or names data (ui/text_check.h) */
+        text_check_enable(true);
+        strings_feed_text_check();
+    }
     kinematic_default_params(&g->kparams);
     prefs_load(&g->prefs, g->profile_name);
     g->settings = g->prefs.settings; /* per device */
@@ -1088,7 +1093,7 @@ bool game_init(MgApp *app)
                                      .hair_color = (uint8_t)v[3], .suit = (uint8_t)v[4], .accessory = (uint8_t)v[5]};
         g->profile.skin = g->override_skin;
     }
-    SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "Player");
+    SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", str("guest_name"));
     if (g->prefs.has_profile_cache && !g->skin_override) { /* offline launch: last known account */
         SDL_snprintf(g->profile.display_name, sizeof(g->profile.display_name), "%s", g->prefs.cache_name);
         g->profile.skin = g->prefs.cache_skin;
@@ -1225,7 +1230,7 @@ bool game_init(MgApp *app)
         g->playing = true;
         g->fe.state = FE_PLAY;
     }
-    SDL_snprintf(g->status, sizeof(g->status), "offline");
+    SDL_snprintf(g->status, sizeof(g->status), "%s", str("net_offline"));
     autotest_init(&g->autotest, app->argc, app->argv);
     const char *msaa_arg = arg_value(app->argc, app->argv, "--msaa");
     const char *gpu_off = arg_value(app->argc, app->argv, "--gpu-off");
@@ -1702,7 +1707,7 @@ static bool open_map(Game *g, MgApp *app, WmState state)
     const double t0 = (double)SDL_GetTicksNS() * 1e-6;
     finish_map_preload(g, app);
     if (!g->wm.loaded) {
-        frontend_toast(&g->fe, "Could not load the map", app->time);
+        frontend_toast(&g->fe, str("err_load_map"), app->time);
         return false;
     }
     g->wm.rides = &g->prefs.world.rides;
@@ -1809,7 +1814,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
             g->fe.depth = 0;
             g->fe.state = FE_WELCOME;
         }
-        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "Signed out - playing as a new guest");
+        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s", str("signed_out_guest"));
         break;
     case MENU_LOBBY_TOGGLE:
         g->prefs.lobby_open = g->lobby.open;
@@ -2040,7 +2045,10 @@ static void poll_sign_in(Game *g, MgApp *app)
     } else if (gs == GOOGLE_FAILED) {
         g->google_busy = false;
         bool cancelled = SDL_strcmp(err, "cancelled") == 0;
-        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s", cancelled ? str("cancelled") : err);
+        if (!cancelled) {
+            mg_log_info("account: sign-in failed: %s", err); /* the platform's own words go to the log, the player reads ours */
+        }
+        SDL_snprintf(g->account_msg, sizeof(g->account_msg), "%s", cancelled ? str("cancelled") : str("link_failed"));
         frontend_toast(&g->fe, cancelled ? str("cancelled") : str("no_connection"), app->time);
     }
     if (g->session.account_error[0] && g->google_busy && !account_link_active(&g->link)) {
@@ -2114,7 +2122,7 @@ static void account_loaded(Game *g, MgApp *app)
             }
             g->fe.name[n] = 0;
             if (n < 2) {
-                SDL_snprintf(g->fe.name, sizeof(g->fe.name), "Player%04d", (int)SDL_rand(10000));
+                SDL_snprintf(g->fe.name, sizeof(g->fe.name), "%s%04d", str("name_prefix"), (int)SDL_rand(10000));
             }
             frontend_go(&g->fe, FE_USERNAME);
         }
@@ -2146,6 +2154,7 @@ static void lobby_follow(Game *g, MgApp *app)
     }
     if (l->declined_name[0]) {
         char msg[96];
+        text_check_data(l->declined_name); /* names data: a friend's name in the toast */
         SDL_snprintf(msg, sizeof(msg), "%s %s", l->declined_name, str("invite_declined"));
         ui_haptic(HAPTIC_INVITE_DECLINED);
         frontend_toast(&g->fe, msg, app->time);
@@ -2201,6 +2210,7 @@ static void lobby_follow(Game *g, MgApp *app)
     }
     if (l->joined_name[0]) {
         char msg[96];
+        text_check_data(l->joined_name);
         SDL_snprintf(msg, sizeof(msg), "%s %s", l->joined_name, str("lobby_entered"));
         if (l->joined_invited || !LOBBY_JOIN_APPROVAL) {
             notice_push(&g->notice, NOTICE_INFO, l->joined_name, l->joined_name, &l->joined_skin, str("lobby_entered"), NOTICE_INFO_S);
@@ -2284,7 +2294,7 @@ static void load_step(Game *g, MgApp *app)
         const SceneKind kind = level_scene_kind(g, g->play_book, g->play_level);
         mg_log_info("level: %s/%s -> scene %s", cur_book(g)->id, cur_book(g)->levels[g->play_level].id, scene_kind_id(kind));
         if (!ensure_world(g, app, kind)) {
-            frontend_toast(&g->fe, "Could not load the hospital", app->time);
+            frontend_toast(&g->fe, str("err_load_hospital"), app->time);
             g->fe.state = FE_MAIN_MENU;
         }
         gfx_settle_uploads(app->gfx); /* the hospital's meshes are in */
@@ -3589,7 +3599,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         if (SDL_strcmp(g->profile.display_name, "Player") != 0) {
             SDL_snprintf(f->name, sizeof(f->name), "%s", g->profile.display_name);
         } else {
-            SDL_snprintf(f->name, sizeof(f->name), "Player%04d", (int)SDL_rand(10000));
+            SDL_snprintf(f->name, sizeof(f->name), "%s%04d", str("name_prefix"), (int)SDL_rand(10000));
         }
         frontend_go(f, FE_USERNAME);
         break;
@@ -4255,7 +4265,9 @@ static void draw_ia_debug(Game *g, MgApp *app, int floor)
             SDL_snprintf(line, sizeof(line), "interact: #%u %s ref %u%s", (unsigned)ia->active, ia->cold[ia->active].label ? ia->cold[ia->active].label : "-",
                          (unsigned)h->ref, (h->flags & IA_DISABLED) ? " (grey)" : "");
         }
+        text_check_exempt_push(); /* Developer -> Show active id: a diagnostic of interactable ids (code labels) */
         text_draw(app->gfx, &app->font, app->safe_left + 12.0f, app->height_pt - app->safe_bottom - 30.0f, 14.0f, ui_rgba(0xFFE680FF), line);
+        text_check_exempt_pop();
     }
 }
 
@@ -4640,6 +4652,7 @@ static void tilt_debug_draw(Game *g, MgApp *app)
     GfxContext *gfx = app->gfx;
     const float x0 = app->safe_left + 200.0f, y0 = app->safe_top + 110.0f;
     char line[160];
+    text_check_exempt_push(); /* debug builds only (NDEBUG): the sensor's numbers */
     gfx_ui_depth(gfx, 0.0f, 0);
     ui_round_rect(gfx, &app->font, x0 - 10.0f, y0 - 10.0f, 360.0f, 104.0f, 12.0f, ui_rgba(0x101318D0));
     if (g->tilt_have) {
@@ -4656,6 +4669,7 @@ static void tilt_debug_draw(Game *g, MgApp *app)
                  (double)g->tilt.tx, (double)g->tilt.ty, (double)g->tilt_s, (double)k_ui.tilt_sign_x, (double)k_ui.tilt_sign_y);
     text_draw(gfx, &app->font, x0, y0 + 44.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
     text_draw(gfx, &app->font, x0, y0 + 66.0f, 12.0f, ui_rgba(0xFFD166FF), "yellow: the layers shift   teal: the lip swings   white: tilt");
+    text_check_exempt_pop();
     /* the test card: a real card + button through the same pipeline */
     const float cx = x0 + 450.0f, cy = y0 + 50.0f;
     ui_depth(&g->ui, 1, 0, 0);
@@ -4749,6 +4763,10 @@ static void game_frame_inner(MgApp *app, float alpha)
     g->frame_alpha = alpha;
     g->lib.gpu_off = g->wm.gpu_off = g->gpu_off; /* --gpu-off (0 without it) */
     GameSettings *s = &g->settings;
+    { /* what a hard-coded text is reported on (--autotest ui and the others that check text) */
+        static const char *const screens[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU", "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
+        text_check_set_screen(g->menu.open ? (g->menu.card ? "PAUSE" : "SETTINGS") : screens[(int)g->fe.state % 9]);
+    }
     ui_haptics_frame(app->frame_index, app->time); /* the recorder's frame and the limiter's clock */
     g->lobby.frame = app->frame_index; /* (tests §15.9) the frames of an invite's tap, call, queue, arrival and panel */
     net_set_frame(g->net, app->frame_index);
@@ -5709,6 +5727,12 @@ static void game_frame_inner(MgApp *app, float alpha)
     hud.players = session_player_count(&g->session);
     hud.mode = session_mode_label(&g->session, mode_buf, sizeof(mode_buf));
     hud.net = g->session.mode == MODE_OFFLINE ? "" : g->session.status_text;
+    hud.l_pos = str("hud_pos");
+    hud.l_air = str("hud_air");
+    hud.l_ping = str("hud_ping");
+    hud.l_players = str("hud_players");
+    hud.l_draws = str("hud_draws");
+    hud.l_main = str("hud_main");
     GfxStats gs;
     gfx_get_stats(app->gfx, &gs);
     hud.draws = gs.draws;
@@ -5727,7 +5751,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         ui_rect(app->gfx, &app->font, ui_safe_right(&lf) - 1.0f, ui_safe_top(&lf), 1.0f, ui_safe_h(&lf), c);
         char insets[64];
         SDL_snprintf(insets, sizeof(insets), "insets l%.0f t%.0f r%.0f b%.0f", (double)lf.inset_l, (double)lf.inset_t, (double)lf.inset_r, (double)lf.inset_b);
+        text_check_exempt_push(); /* Developer -> Show safe rect: the insets in pt */
         text_draw_shadow(app->gfx, &app->font, ui_safe_left(&lf) + 10.0f, ui_safe_bottom(&lf) - 20.0f, 13.0f, c, insets);
+        text_check_exempt_pop();
     }
     layout_autotest(g, app);
     gfx_ui_depth(app->gfx, 0.0f, 0);
@@ -5760,6 +5786,7 @@ static void game_frame_inner(MgApp *app, float alpha)
             mg_log_info("autotest text: a %u-byte placeholder text for the text area", (unsigned)n);
         }
         const float bt = 12.0f, bh = ty - 12.0f - bt;
+        text_check_exempt_push(); /* --autotest text only: invented syllables and the "HHH" centring probes, not words */
         ui_round_rect(app->gfx, &app->font, tx, bt, tw, bh, 14.0f, ui_rgba(0x101218F0));
         text_draw_centered(app->gfx, &app->font, tx + tw * 0.5f, bt + 16.0f, 18.0f, ui_rgba(0xFFD166FF), str("autotest_text_book"));
         if (g->book_text) {
@@ -5794,6 +5821,7 @@ static void game_frame_inner(MgApp *app, float alpha)
             g->text_center_err = mg_maxf(g->text_center_err, err);
             g->text_center_each[b] = err;
         }
+        text_check_exempt_pop();
     }
     if (g->greet_t > 0.0f) { /* bottom right, beside the preview card */
         g->greet_t = mg_maxf(g->greet_t - mg_minf(app->frame_dt, 0.1f), 0.0f);
@@ -5827,7 +5855,9 @@ static void game_frame_inner(MgApp *app, float alpha)
         ProfHudInfo ph = {gs.draws, gs.tris, gs.instances, gs.pipe_binds, gs.tex_binds, gs.uniform_bytes, gs.passes,
                           (uint32_t)g->crowd.pool.count + 1, g->rendered_last, gs.gpu_main_ms, gs.gpu_ui_ms,
                           device_thermal_state(), device_resident_mb()};
+        text_check_exempt_push(); /* Developer -> Profiler: engine counters and code scope names (what reports quote) */
         prof_hud_draw(app->gfx, &app->font, app->width_pt - app->safe_right - 330.0f, app->safe_top + 56.0f, &ph);
+        text_check_exempt_pop();
     }
 #ifdef MG_RENDER_FULL
     if (s->show_lights) {
@@ -5835,8 +5865,10 @@ static void game_frame_inner(MgApp *app, float alpha)
         SDL_snprintf(line, sizeof(line), "%s tier  lights %u (shadowed %d)  shadow %.2f ms / %u views  main %.2f ms (CPU)",
                      g->tier == 2 ? "high" : "low", gs.lights, gs.shadowed_lights, (double)gs.shadow_cpu_ms,
                      gs.shadow_views, (double)gs.main_cpu_ms);
+        text_check_exempt_push(); /* MG_RENDER_FULL (reference build, not shipped): light counters */
         text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 150.0f, 14.0f,
                          ui_rgba(0xFFFFFFFF), line);
+        text_check_exempt_pop();
     }
 #endif
     draw_net_badge(g, app);
@@ -6179,7 +6211,9 @@ static void markers_hud(Game *g, MgApp *app, int view_floor, HMM_Vec3 feet)
         } else {
             SDL_snprintf(line, sizeof(line), "markers %d " TEXT_BULLET " bake %.1f ms", alive, (double)nav_bake_ms(g->nav));
         }
+        text_check_exempt_push(); /* Developer -> Test markers + Nav grid: marker ids and path timings */
         text_draw_shadow(app->gfx, &app->font, app->safe_left + 10.0f, app->safe_top + 96.0f, 13.0f, ui_rgba(0xFFFFFFFF), line);
+        text_check_exempt_pop();
     }
 }
 
@@ -6416,6 +6450,8 @@ static void layout_autotest(Game *g, MgApp *app)
     }
     mg_log_info("autotest layout: %.0f x %.0f, insets l%.0f t%.0f r%.0f b%.0f, gaps l%.0f t%.0f r%.0f b%.0f", (double)f.w, (double)f.h, (double)f.inset_l, (double)f.inset_t, (double)f.inset_r, (double)f.inset_b,
                 (double)left, (double)top, (double)right, (double)bottom);
+    ok = autotest_text_ok() && ok;
+    ok = autotest_text_ok() && ok;
     mg_log_info("AUTOTEST %s", ok ? "PASSED" : "FAILED");
     app->quit_requested = true;
 }
@@ -6463,6 +6499,7 @@ static void name_tag(Game *g, MgApp *app, HMM_Vec3 head, const char *name)
     if (c.W <= 0.01f || !name[0]) {
         return;
     }
+    text_check_data(name); /* names data: a player's name over their head */
     float x = (c.X / c.W * 0.5f + 0.5f) * app->width_pt;
     float y = (0.5f - c.Y / c.W * 0.5f) * app->height_pt;
     const UiColor ol = {0, 0, 0, 150};

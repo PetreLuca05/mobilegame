@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "core/log.h"
+#include "strings.h"
 
 #define MAX_NEIGHBOURS 24
 #define STEER_BATCH 16
@@ -71,13 +72,13 @@ static void make_name(NpcWorld *w, npc_cold_t *c, const NpcArchetype *a, uint32_
     if (c->age == AGE_CHILD) {
         SDL_snprintf(c->name, sizeof(c->name), "%s", pick(d->first_child, d->n_child, rng));
     } else if (SDL_strcmp(a->name, "doctor") == 0) {
-        SDL_snprintf(c->name, sizeof(c->name), "Dr. %s", sur);
+        SDL_snprintf(c->name, sizeof(c->name), str("npc_doctor"), sur);
     } else if (SDL_strcmp(a->name, "nurse") == 0) {
-        SDL_snprintf(c->name, sizeof(c->name), "Nurse %s", first);
+        SDL_snprintf(c->name, sizeof(c->name), str("npc_nurse"), first);
     } else if (SDL_strcmp(a->name, "security") == 0) {
-        SDL_snprintf(c->name, sizeof(c->name), "Security");
+        SDL_snprintf(c->name, sizeof(c->name), "%s", str("npc_security"));
     } else if (c->age == AGE_ELDER) {
-        SDL_snprintf(c->name, sizeof(c->name), "%s %s", npc_rand(rng) & 1u ? "Dl." : "Dna.", sur);
+        SDL_snprintf(c->name, sizeof(c->name), "%s %s", str(npc_rand(rng) & 1u ? "npc_mr" : "npc_mrs"), sur);
     } else {
         SDL_snprintf(c->name, sizeof(c->name), "%s", first);
     }
