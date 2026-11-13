@@ -696,6 +696,10 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   docs/autotest/library/step7/); the camera's speed on a trip is judged by the trip's own clock (`LibTravel.cam_clock`). Desktop
   `--lib-demo-id ID` gives `--lib-demo-join`'s friend another id (so another own table).
 
+- Status (step 12, 2026-11-13): LIB-1 parity steps 4-12 are done on the Mac. Mac perf for every scenario (+ `menu_travel`, the memory
+  history by step): `docs/perf/lib1_step11/`, docs/PERF.md "LIB-1 step 11". Deferred to the combined iPad gate: iPad CPU / memory and
+  GPU traces of the menu at rest, the Maps move and the institute (docs/PERF_RULES.md), and the same-table hash on the iPad.
+
 ## Book content (BOOK-1)
 
 - **No book content lives in this repository or in its builds** (user decision, 2026-11-12: the Gastro missions, quests,
