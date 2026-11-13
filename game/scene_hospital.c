@@ -6,9 +6,9 @@
 
 #include "elevator.h"
 #include "hospital.h"
+#include "strings.h"
 
-static const char *const k_floor_names[HOSP_FLOORS] = {"G " "\x02" " Reception", "1 " "\x02" " Wards",
-                                                       "2 " "\x02" " Surgery"};
+static const char *const k_floor_keys[HOSP_FLOORS] = {"hosp_floor_0", "hosp_floor_1", "hosp_floor_2"}; /* "G • Recepție" ... */
 
 typedef struct HospitalScene {
     Scene base;
@@ -156,7 +156,7 @@ int scene_hospital_floor_count(const Scene *s)
 const char *scene_hospital_floor_name(const Scene *s, int floor)
 {
     (void)s;
-    return floor >= 0 && floor < HOSP_FLOORS ? k_floor_names[floor] : "";
+    return floor >= 0 && floor < HOSP_FLOORS ? str(k_floor_keys[floor]) : "";
 }
 
 HMM_Vec3 scene_hospital_floor_lobby(const Scene *s, int floor)

@@ -6,6 +6,7 @@
 
 #include "core/assets.h"
 #include "core/log.h"
+#include "text_check.h"
 
 /* little-endian readers for the .mgf atlas (see tools/gen_font_atlas.py) */
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
@@ -113,6 +114,7 @@ float text_draw(GfxContext *g, const TextFont *f, float x, float y, float size_p
 
 float text_draw_n(GfxContext *g, const TextFont *f, float x, float y, float size_pt, UiColor c, const char *s, size_t len)
 {
+    text_check_scan(s, len); /* autotests: hard-coded text fails them (off otherwise) */
     float scale = size_pt / f->em_px;
     float pen = x;
     float baseline = y + f->ascent_px * scale;
@@ -131,6 +133,7 @@ float text_draw_n(GfxContext *g, const TextFont *f, float x, float y, float size
 
 void text_mesh(MeshBuilder *mb, const TextFont *f, HMM_Mat4 xform, float height_m, HMM_Vec4 color, const char *s)
 {
+    text_check_scan(s, (size_t)-1); /* signs and labels in the world too */
     float scale = height_m / f->em_px;
     float pen = -text_width(f, s, height_m) * 0.5f;
     float top = (f->ascent_px - f->cap_px * 0.5f) * scale; /* the capitals' middle on y = 0, like text_draw_centered */

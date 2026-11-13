@@ -7,14 +7,14 @@
               "Serban", "Moldovan", "Lazar", "Dinu", "Ene", "Tudor", "Nistor", "Barbu", "Sandu", "Florea", "Dobre", "Cretu", "Voicu",
               "Oprea", "Mihai", "Ilie", "Marin", "Nagy", "Pop", "Toma", "Petre", "Costea", "Neagu", "Vasile", "Avram", "Bucur", "Enache", "Zamfir"],
   "greetings": {
-    "receptionist": ["Bună ziua! Cu ce vă pot ajuta?", "Numele dumneavoastră, vă rog?", "Luați loc, vă chemăm imediat.", "Sala de așteptare e în dreapta.", "Good morning, how can I help?", "Please take a seat."],
-    "doctor": ["Cum vă simțiți azi?", "Rezultatele arată bine.", "Mai avem o consultație și vin.", "Aveți grijă de dumneavoastră.", "How are we feeling today?", "The results look good."],
-    "nurse": ["Vă aduc imediat ce aveți nevoie.", "Doctorul vine îndată.", "Odihniți-vă, vă rog.", "Totul e sub control.", "I'll be right with you.", "Do you need anything?"],
-    "outpatient": ["Aștept de ceva vreme...", "Sper să nu dureze mult.", "Știți unde e farmacia?", "Bună ziua!", "Long queue today.", "Excuse me, is this the line?"],
-    "inpatient": ["Mulțumesc că ați trecut.", "Mă simt mai bine azi.", "Mâncarea nu e rea.", "Abia aștept să ajung acasă.", "Thank you for stopping by.", "Feeling a bit better today."],
-    "visitor": ["Am venit în vizită.", "Știți cum ajung la salon?", "Frumos spital.", "Bună!", "Just visiting family.", "Lovely day, isn't it?"],
-    "cafe_visitor": ["Cafeaua e bună aici.", "O pauză scurtă.", "Bună ziua!", "Ați încercat prăjitura?", "Good coffee here.", "Just a quick break."],
-    "pedestrian": ["Frumoasă zi!", "Bună ziua!", "Plimbare scurtă.", "Aer curat, în sfârșit.", "Nice weather today.", "Hello there!"],
-    "parent": ["Așteptăm la rând.", "E cuminte azi.", "Bună ziua!", "Durează puțin.", "We're next, I think.", "Hello!"]
+    "receptionist": ["Bună ziua! Cu ce vă pot ajuta?", "Numele dumneavoastră, vă rog?", "Luați loc, vă chemăm imediat.", "Sala de așteptare e în dreapta.", "Bună dimineața, cu ce vă ajut?", "Vă rog, luați loc."],
+    "doctor": ["Cum vă simțiți azi?", "Rezultatele arată bine.", "Mai avem o consultație și vin.", "Aveți grijă de dumneavoastră.", "Cum ne simțim astăzi?", "Analizele ies bine."],
+    "nurse": ["Vă aduc imediat ce aveți nevoie.", "Doctorul vine îndată.", "Odihniți-vă, vă rog.", "Totul e sub control.", "Vin imediat la dumneavoastră.", "Aveți nevoie de ceva?"],
+    "outpatient": ["Aștept de ceva vreme...", "Sper să nu dureze mult.", "Știți unde e farmacia?", "Bună ziua!", "E coadă lungă azi.", "Scuzați, aici e rândul?"],
+    "inpatient": ["Mulțumesc că ați trecut.", "Mă simt mai bine azi.", "Mâncarea nu e rea.", "Abia aștept să ajung acasă.", "Vă mulțumesc că ați venit.", "Azi mă simt ceva mai bine."],
+    "visitor": ["Am venit în vizită.", "Știți cum ajung la salon?", "Frumos spital.", "Bună!", "Sunt în vizită la familie.", "Ce zi frumoasă, nu?"],
+    "cafe_visitor": ["Cafeaua e bună aici.", "O pauză scurtă.", "Bună ziua!", "Ați încercat prăjitura?", "Cafea bună aici.", "Doar o pauză scurtă."],
+    "pedestrian": ["Frumoasă zi!", "Bună ziua!", "Plimbare scurtă.", "Aer curat, în sfârșit.", "E vreme frumoasă azi.", "Salutare!"],
+    "parent": ["Așteptăm la rând.", "E cuminte azi.", "Bună ziua!", "Durează puțin.", "Cred că urmăm noi.", "Salut!"]
   }
 }

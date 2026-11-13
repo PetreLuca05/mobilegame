@@ -9,6 +9,7 @@
 #include "strings.h"
 #include "ui/ui_anim.h"
 #include "ui/ui_style.h"
+#include "ui/text_check.h"
 #include "ui/ui_widgets.h"
 
 #define UT_FINGER 91
@@ -40,6 +41,7 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
     if (!t->screen) {
         return;
     }
+    text_check_exempt_push(); /* the test's own widget sheet (Primary, Unu ...): only --autotest ui draws it */
     t->frame++;
     t->seen_from = ui->seen_count;
     for (int i = 0; i < MG_MAX_TOUCHES; i++) {
@@ -117,6 +119,7 @@ void ui_test_draw(UiTest *t, Ui *ui, MgApp *app)
         ui_fx_tier(ui->fx, tier, app->width_pt * 0.5f, app->height_pt * 0.5f, true);
         t->cmd_tier = 0;
     }
+    text_check_exempt_pop();
 }
 
 /* ------------------------------------------------------------------ the script */

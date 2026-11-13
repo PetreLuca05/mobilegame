@@ -74,6 +74,7 @@ void ia_set_flags(Interact *ia, uint16_t slot, unsigned flags);
 void ia_tick(Interact *ia, Arena *scratch, uint32_t tick, HMM_Vec3 player, int storey, float yaw);
 /* Use the active one, once. False if there is none or it is disabled. */
 bool ia_use_active(Interact *ia);
+/* The string-table key of the interact chip's verb (str() it to draw). */
 const char *ia_chip_text(ia_kind_t kind);
 /* What the scan should pick, by brute force (tests). */
 uint16_t ia_best_brute(const Interact *ia, HMM_Vec3 player, int storey, float yaw);

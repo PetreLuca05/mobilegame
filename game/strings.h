@@ -12,5 +12,7 @@ const char *str(const char *key);
  * `last` gets the latest such key. --autotest ui fails on either (Romanian is the game's only language). */
 int strings_untranslated(const char **last);
 int strings_missing(const char **last);
+/* The Romanian values' words become the text check's vocabulary (ui/text_check.h: autotests that check drawn text). */
+void strings_feed_text_check(void);
 
 #endif

@@ -13,6 +13,8 @@
 #include "gfx/material.h"
 #include "inst_patterns.h"
 #include "rooms.h"
+#include "strings.h"
+#include "ui/text_check.h"
 
 /* COL of the JS page (the ones the shell and the site use) */
 #define C_WALL 0xf3ead8u
@@ -286,6 +288,7 @@ static void room_label(IBuild *b, const ImRoom *r)
         return;
     }
     const char *name = imap_str(&b->in->map, r->name);
+    text_check_data(name); /* names data: the map's room names (assets/world/institute) */
     float w = r->x1 - r->x0, th = 0.42f;
     float tw = text_width(b->font, name, th);
     if (tw > w - 1.0f && tw > 0.0f) {
@@ -431,7 +434,7 @@ static void build_room(IBuild *b, int ri)
         jbox(st, 0, y + 5.05f, bz + 1.8f, 3.4f, 1.2f, .6f, C_RED, F_ALL);
         jbox(st, 0, y + 5.05f, bz + 1.8f, 1.2f, 3.4f, .6f, C_RED, F_ALL);
         if (b->font) { /* the institute's name on the blue sign, facing the forecourt */
-            const char *name = "INSTITUTUL DE GASTROENTEROLOGIE";
+            const char *name = str("inst_sign");
             float th = 0.42f, tw = text_width(b->font, name, th);
             if (tw > 9.8f) {
                 th *= 9.8f / tw;

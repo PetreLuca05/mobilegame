@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "core/log.h"
+#include "ui/text_check.h"
 #include "gfx/floorfade.h"
 #include "institute.h"
 #include "nav_check.h"
@@ -155,7 +156,9 @@ const char *scene_institute_floor_name(const Scene *s, int floor)
     const IMap *m = &CIS(s)->in.map;
     for (int i = 0; i < m->floor_count; i++) {
         if (m->floors[i].storey == floor) {
-            return imap_str(m, m->floors[i].name);
+            const char *name = imap_str(m, m->floors[i].name);
+            text_check_data(name); /* names data: the map's floor names */
+            return name;
         }
     }
     return "";

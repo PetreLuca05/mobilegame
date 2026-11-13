@@ -5,6 +5,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "text_check.h"
 #include "ui_widgets.h"
 
 /* UI-1: the old theme names on the token table (surfaces are white now: text on them is ink) */
@@ -401,6 +402,7 @@ void ui_scroll_end(Ui *ui, UiScroll *s, float viewport, float content)
 int ui_text_field(Ui *ui, const char *id, float x, float y, float w, float h, char *buf, int cap, bool *editing,
                   const char *allowed)
 {
+    text_check_data(buf); /* what the player typed (their name, a search): their words, not ours */
     int result = UI_EDIT_NONE;
     bool held;
     ui->hclass = *editing ? HC_NONE : HC_FIELD; /* focus on touch down; typing gets nothing */

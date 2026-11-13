@@ -6,6 +6,7 @@
 
 #include "gfx/material.h"
 #include "gfx/mesh.h"
+#include "strings.h"
 
 #define PANEL_PT 136.0f
 #define SLIDE_IN_S 0.18f
@@ -166,5 +167,5 @@ void preview_panel_draw_ui(const PreviewPanel *p, const Interact *ia, GfxContext
     const float cx = x + (s - chip_w) * 0.5f, cy = y + s - 28.0f;
     ui_round_rect(g, f, cx, cy + 3.0f, chip_w, chip_h, 10.0f, ui_rgba(disabled ? k_ui.disabled_lip : k_ui.accent_lip));
     ui_round_rect(g, f, cx, cy, chip_w, chip_h, 10.0f, ui_rgba(disabled ? k_ui.disabled : k_ui.accent));
-    text_draw_centered(g, f, x + s * 0.5f, cy + 10.0f, 12.0f, ui_rgba(disabled ? k_ui.disabled_text : k_ui.surface), ia_chip_text((ia_kind_t)h->kind));
+    text_draw_centered(g, f, x + s * 0.5f, cy + 10.0f, 12.0f, ui_rgba(disabled ? k_ui.disabled_text : k_ui.surface), str(ia_chip_text((ia_kind_t)h->kind)));
 }

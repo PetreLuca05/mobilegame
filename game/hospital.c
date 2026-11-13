@@ -14,6 +14,7 @@
 #include "gfx/material.h"
 #include "core/log.h"
 #include "gfx/mesh.h"
+#include "strings.h"
 
 /* palette */
 #define C_GRASS 0x3DA83A
@@ -43,8 +44,7 @@
 enum { F_PX = 1, F_NX = 2, F_PY = 4, F_NY = 8, F_PZ = 16, F_NZ = 32, F_ALL = 63 };
 
 static const uint32_t k_slot_disc[HOSP_SPAWNS] = {0xFF5A5A, 0x4A8BFF, 0x45C46B, 0xFFC93C};
-static const char *const k_floor_names[HOSP_FLOORS] = {"G " "\x02" " Reception", "1 " "\x02" " Wards",
-                                                       "2 " "\x02" " Surgery"};
+static const char *const k_floor_keys[HOSP_FLOORS] = {"hosp_floor_0", "hosp_floor_1", "hosp_floor_2"}; /* "G • Recepție" ... */
 
 typedef struct Build {
     MeshBuilder mb[HM_COUNT];
@@ -313,11 +313,11 @@ static void sign(Build *b, int board_grp, int text_grp, HMM_Vec3 p, int facing, 
 }
 
 /* sign above a door in a corridor wall; facing tells which side */
-static void door_sign(Build *b, int f, float x, float wall_z, int facing, const char *text)
+static void door_sign(Build *b, int f, float x, float wall_z, int facing, const char *text, bool floor_label)
 {
     float face = wall_z + (facing == FACE_PZ ? WALL_T * 0.5f : -WALL_T * 0.5f);
     sign(b, HM_INT0 + f, HM_TEXT0 + f, HMM_V3(x, (float)f * HOSP_STOREY + 2.42f, face), facing, text, 0.2f, 0);
-    if (strncmp(text, "Stairs", 6) != 0) { /* floor-painted label in the room: readable from above */
+    if (floor_label) { /* floor-painted label in the room: readable from above (none at the closed stairs) */
         float z = wall_z + (facing == FACE_PZ ? -2.2f : 2.2f);
         HMM_Mat4 m = HMM_MulM4(HMM_Translate(HMM_V3(x, (float)f * HOSP_STOREY + 0.012f, z)),
                                HMM_Rotate_RH(-HMM_PI32 * 0.5f, HMM_V3(1, 0, 0)));
@@ -484,7 +484,7 @@ static void build_yard(Build *b, Hospital *h)
     }
 
     /* name board beside the gate, readable from both sides */
-    const char *name = "Hillside Hospital";
+    const char *name = str("hosp_name");
     for (int s = 0; s < 2; s++) {
         float x = s == 0 ? -6.3f : -3.1f;
         box(b, HM_YARD, x - 0.07f, 0.0f, hz - 0.45f, x + 0.07f, 2.2f, hz - 0.31f, C_FENCE, F_ALL, true);
@@ -590,7 +590,7 @@ static void build_shell(Build *b)
         box(b, HM_SHELL, (float)s * 2.8f - 0.08f, 0.0f, HOSP_Z1 + 1.95f, (float)s * 2.8f + 0.08f, 2.9f,
             HOSP_Z1 + 2.11f, C_BAND, F_ALL, true);
     }
-    sign(b, HM_SHELL, HM_TEXT_OUT, HMM_V3(0.0f, 3.42f, HOSP_Z1 + 2.2f - 0.1f), FACE_PZ, "Hillside Hospital", 0.3f, 1);
+    sign(b, HM_SHELL, HM_TEXT_OUT, HMM_V3(0.0f, 3.42f, HOSP_Z1 + 2.2f - 0.1f), FACE_PZ, str("hosp_name"), 0.3f, 1);
 }
 
 /* ------------------------------------------------------------------ interior */
@@ -639,7 +639,7 @@ static void build_elevator(Build *b, Hospital *h, int f)
         colworld_add_box(b->world, HMM_V3(x, y + HOSP_CAR_H * 0.5f, HOSP_DOOR_Z), HMM_V3(0.5f, HOSP_CAR_H * 0.5f, 0.03f),
                          0.0f);
     }
-    sign(b, g, HM_TEXT0 + f, HMM_V3(0.0f, y + 2.95f, -12.5f), FACE_PZ, k_floor_names[f], 0.22f, 0);
+    sign(b, g, HM_TEXT0 + f, HMM_V3(0.0f, y + 2.95f, -12.5f), FACE_PZ, str(k_floor_keys[f]), 0.22f, 0);
 }
 
 static void build_stairs(Build *b, int f)
@@ -677,11 +677,11 @@ static void build_floor_g(Build *b)
     inner_wall(b, f, false, SB0, SB1, -6.0f, NULL, 0);
     inner_wall(b, f, false, SB0, SB1, 6.0f, NULL, 0);
 
-    door_sign(b, f, -10.0f, CORR_N, FACE_PZ, "Exam 1");
-    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, "Stairs - closed");
-    door_sign(b, f, 10.0f, CORR_N, FACE_PZ, "Exam 2");
-    door_sign(b, f, -10.4f, CORR_S, FACE_NZ, "Pharmacy");
-    door_sign(b, f, 10.4f, CORR_S, FACE_NZ, "Triage");
+    door_sign(b, f, -10.0f, CORR_N, FACE_PZ, str("hosp_exam_1"), true);
+    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, str("hosp_stairs"), false);
+    door_sign(b, f, 10.0f, CORR_N, FACE_PZ, str("hosp_exam_2"), true);
+    door_sign(b, f, -10.4f, CORR_S, FACE_NZ, str("hosp_pharmacy"), true);
+    door_sign(b, f, 10.4f, CORR_S, FACE_NZ, str("hosp_triage"), true);
 
     int g = HM_INT0 + f;
     /* reception desk (L) with a hanging sign */
@@ -691,7 +691,7 @@ static void build_floor_g(Build *b)
     box(b, g, -5.05f, 1.05f, -5.65f, -4.35f, 1.1f, -4.0f, C_WALL, 0, false);
     box(b, g, -3.8f, 1.1f, -3.75f, -3.3f, 1.45f, -3.7f, C_DARK, 0, false);
     box(b, g, -3.6f, 2.85f, -3.7f, -3.58f, 3.7f, -3.68f, C_DARK, 0, false);
-    sign(b, g, HM_TEXT0 + f, HMM_V3(-3.5f, 2.7f, -3.7f), FACE_PZ, "Reception", 0.24f, 0);
+    sign(b, g, HM_TEXT0 + f, HMM_V3(-3.5f, 2.7f, -3.7f), FACE_PZ, str("hosp_reception"), 0.24f, 0);
     chair(b, f, -3.5f, -4.6f, 0, C_TEAL);
     /* waiting area: 8 chairs facing the desk (west) */
     for (int col = 0; col < 2; col++) {
@@ -745,18 +745,18 @@ static void build_floor_1(Build *b)
         bed(b, f, sx[i], SB1, -1.0f, blankets[i]);
         table(b, f, sx[i] + 1.0f, 0.2f, 0.25f, 0.25f, C_WOOD);
         chair(b, f, sx[i] - 1.2f, -0.4f, 2, C_TEAL); /* visitor */
-        snprintf(label, sizeof(label), "Room 10%d", i + 1);
-        door_sign(b, f, sx[i], CORR_S, FACE_NZ, label);
+        snprintf(label, sizeof(label), str("hosp_room"), 101 + i);
+        door_sign(b, f, sx[i], CORR_S, FACE_NZ, label, true);
     }
     for (int s = 0; s < 2; s++) {
         float cx = s == 0 ? -10.0f : 10.0f;
         bed(b, f, cx, NB0, 1.0f, blankets[4 + s]);
         table(b, f, cx + 1.0f, -16.2f, 0.25f, 0.25f, C_WOOD);
         chair(b, f, cx - 1.2f, -15.15f, 2, C_TEAL); /* visitor */
-        snprintf(label, sizeof(label), "Room 10%d", 5 + s);
-        door_sign(b, f, cx, CORR_N, FACE_PZ, label);
+        snprintf(label, sizeof(label), str("hosp_room"), 105 + s);
+        door_sign(b, f, cx, CORR_N, FACE_PZ, label, true);
     }
-    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, "Stairs - closed");
+    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, str("hosp_stairs"), false);
     /* nurses' station, open to the corridor */
     int g = HM_INT0 + f;
     float y = HOSP_STOREY;
@@ -764,7 +764,7 @@ static void build_floor_1(Build *b)
     box(b, g, 2.95f, y + 1.05f, -12.05f, 5.55f, y + 1.1f, -11.45f, C_WALL, 0, false);
     table(b, f, 4.25f, -15.0f, 1.0f, 0.45f, C_WALL);
     chair(b, f, 4.25f, -14.2f, 1, C_TEAL);
-    sign(b, g, HM_TEXT0 + f, HMM_V3(4.25f, y + 2.95f, CORR_N + WALL_T * 0.5f), FACE_PZ, "Nurses", 0.22f, 0);
+    sign(b, g, HM_TEXT0 + f, HMM_V3(4.25f, y + 2.95f, CORR_N + WALL_T * 0.5f), FACE_PZ, str("hosp_nurses"), 0.22f, 0);
     plant(b, f, 13.8f, -9.4f);
 }
 
@@ -782,12 +782,12 @@ static void build_floor_2(Build *b)
     }
     inner_wall(b, f, false, SB0, SB1, -6.0f, NULL, 0);
     inner_wall(b, f, false, SB0, SB1, 6.0f, NULL, 0);
-    door_sign(b, f, -10.4f, CORR_S, FACE_NZ, "OR 1");
-    door_sign(b, f, 10.4f, CORR_S, FACE_NZ, "OR 2");
-    door_sign(b, f, -10.0f, CORR_N, FACE_PZ, "Office 1");
-    door_sign(b, f, 10.0f, CORR_N, FACE_PZ, "Office 2");
-    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, "Stairs - closed");
-    door_sign(b, f, 0.0f, CORR_S, FACE_NZ, "Cafeteria");
+    door_sign(b, f, -10.4f, CORR_S, FACE_NZ, str("hosp_or_1"), true);
+    door_sign(b, f, 10.4f, CORR_S, FACE_NZ, str("hosp_or_2"), true);
+    door_sign(b, f, -10.0f, CORR_N, FACE_PZ, str("hosp_office_1"), true);
+    door_sign(b, f, 10.0f, CORR_N, FACE_PZ, str("hosp_office_2"), true);
+    door_sign(b, f, -4.25f, CORR_N, FACE_PZ, str("hosp_stairs"), false);
+    door_sign(b, f, 0.0f, CORR_S, FACE_NZ, str("hosp_cafeteria"), true);
 
     int g = HM_INT0 + f, gl = HM_GLOSS0 + f;
     float y = 2.0f * HOSP_STOREY;

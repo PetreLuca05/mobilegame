@@ -256,6 +256,10 @@ void autotest_init(Autotest *t, int argc, char **argv);
 bool autotest_update(Autotest *t, MgApp *app, const AutotestProbe *probe, AutotestOut *out);
 /* --autotest touch|route start in the hospital; the menu scripts do not. */
 bool autotest_starts_in_game(int argc, char **argv);
+/* --autotest ui, onboarding, layout, library, worldmap, text, offline: every drawn word must come from the string table. */
+bool autotest_checks_text(int argc, char **argv);
+/* No hard-coded text was drawn (else logs each one): what a run's PASSED needs on top of its own checks. */
+bool autotest_text_ok(void);
 void autotest_tap_interact(MgApp *app, const AutotestProbe *p);
 void autotest_tap_interact_up(MgApp *app, const AutotestProbe *p);
 
