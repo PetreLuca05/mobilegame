@@ -51,6 +51,8 @@ print(f"perf_mac: {sys.argv[1]}: {head}, {j['display_hz_start']:.0f} Hz, {j['fps
       f"tris {c['tris']['avg']/1000:.1f}k/{c['tris']['max']/1000:.1f}k, frame {s['frame']['avg']:.3f} ms, render {s['render']['avg']:.3f} ms, "
       f"{j['resident_mb_max']} MB, {j['heap_allocs']} allocs, {j['dropped']} dropped, {len(j['late_frames'])} late, "
       f"covered {100.0 * j.get('window_occluded_frames', 0) / max(j['frames'], 1):.2f} %, inactive {100.0 * j.get('window_unfocused_frames', 0) / max(j['frames'], 1):.2f} % (limit 0.5 %)")
+for d in j.get("dropped_frames", []):
+    print(f"perf_mac:   dropped frame at {d['at_s']:.2f} s: {d['ms']:.1f} ms, {d['screen']} / {d['scene']}, during it: {d['notes'] or 'nothing noted'}")
 PY
 done
 exit $RC

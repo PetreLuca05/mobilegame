@@ -22,5 +22,11 @@ void frame_note(const char *what);
 void frame_notes_check(double now_s, double dt_ms, const char *screen, const char *scene);
 int frame_late_count(void);
 const FrameLate *frame_late_get(int i);
+/* Dropped frames: longer than FRAME_DROP_FACTOR refresh intervals (25 ms at 60 Hz; set the refresh with frame_notes_set_hz), kept
+ * the same way with their notes (the perf JSON's "dropped_frames"); late ones are among them. */
+#define FRAME_DROP_FACTOR 1.5
+void frame_notes_set_hz(double hz);
+int frame_drop_count(void);
+const FrameLate *frame_drop_get(int i);
 
 #endif
