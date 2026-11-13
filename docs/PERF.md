@@ -481,3 +481,70 @@ on the move's busier frames): the prewarm now fills 6 uniform blocks per pooled 
 - The combined iPad gate's GPU traces include the **menu at rest** and the **Maps move** (`menu_to_map`); they decide whether the
   menu needs more work.
 
+
+
+## LIB-1 step 11: Mac perf audit (2026-11-13)
+
+Release desktop build, `tools/perf_mac.sh` (the binary's embedded commit = HEAD on a clean tree; the game window in front; every run
+below is valid: on power, paced by the 60 Hz screen, the window covered or inactive 0.00 % of the frames). Data in
+`docs/perf/lib1_step11/`. The iPad numbers and GPU traces are deferred to the combined gate (docs/PERF_RULES.md lists what it traces).
+
+| Run | Commit | Hz / fps | Covered / inactive | Draws avg / max | Triangles avg / max | Frame / render ms | Memory | Allocs | Dropped (late) |
+|---|---|---|---|---|---|---|---|---|---|
+| menu_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.198 / 0.210 | 202 MB | 0 | 0 (0) |
+| menu_2 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.192 / 0.209 | 202 MB | 0 | 0 (0) |
+| menu_3 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.195 / 0.207 | 201 MB | 0 | 0 (0) |
+| menu_4 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.194 / 0.206 | 203 MB | 0 | 0 (0) |
+| menu_5 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.193 / 0.210 | 201 MB | 0 | 0 (0) |
+| menu_final_1 | d4e0c3a | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.202 / 0.207 | 201 MB | 0 | 0 (0) |
+| menu_final_2 | d4e0c3a | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.7k / 56.7k | 0.200 / 0.208 | 203 MB | 0 | 0 (0) |
+| menu_to_map_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 32.5 / 56 | 58.7k / 84.8k | 0.127 / 0.195 | 205 MB | 0 | 0 (0) |
+| menu_to_map_final | d4e0c3a | 60 / 60.0 | 0.00 % / 0.00 % | 32.5 / 56 | 58.7k / 84.8k | 0.131 / 0.189 | 205 MB | 0 | 0 (0) |
+| menu_travel_1 | d4e0c3a | 60 / 60.0 | 0.00 % / 0.00 % | 35.8 / 43 | 59.6k / 70.4k | 0.214 / 0.220 | 203 MB | 0 | 0 (0) |
+| menu_travel_2 | d4e0c3a | 60 / 60.0 | 0.00 % / 0.00 % | 35.8 / 43 | 59.6k / 70.4k | 0.208 / 0.215 | 204 MB | 0 | 0 (0) |
+| ui_juice_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 36.1 / 41 | 54.9k / 56.8k | 0.200 / 0.207 | 202 MB | 0 | 0 (0) |
+| yard_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 51.0 / 51 | 34.8k / 34.8k | 0.084 / 0.184 | 208 MB | 0 | 0 (0) |
+| lobby_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 50.5 / 51 | 34.2k / 34.2k | 0.089 / 0.187 | 208 MB | 0 | 0 (0) |
+| corridor_f2_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 70.1 / 73 | 44.0k / 44.0k | 0.093 / 0.206 | 208 MB | 0 | 0 (0) |
+| stress200_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 62.0 / 83 | 67.1k / 112.2k | 0.169 / 0.233 | 208 MB | 0 | 0 (0) |
+| npcs_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 65.1 / 83 | 48.0k / 63.4k | 0.114 / 0.211 | 211 MB | 0 | 1 (0) |
+| lift_panel_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 59.0 / 59 | 34.7k / 34.7k | 0.091 / 0.199 | 208 MB | 0 | 0 (0) |
+| interact_npc_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 63.8 / 65 | 50.1k / 52.1k | 0.112 / 0.218 | 208 MB | 0 | 0 (0) |
+| lobby4_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 66.2 / 69 | 65.1k / 75.9k | 0.178 / 0.233 | 208 MB | 0 | 0 (0) |
+| worldmap_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 23.0 / 23 | 63.0k / 63.0k | 0.143 / 0.219 | 199 MB | 0 | 0 (0) |
+| worldmap_travel_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 22.9 / 24 | 53.0k / 55.2k | 0.115 / 0.186 | 198 MB | 0 | 0 (0) |
+| island_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 24.0 / 24 | 53.5k / 53.5k | 0.116 / 0.186 | 198 MB | 0 | 0 (0) |
+| worldmap_voyage_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 28.9 / 33 | 61.6k / 68.9k | 0.090 / 0.194 | 199 MB | 0 | 0 (0) |
+| institute_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 49.1 / 63 | 59.3k / 78.9k | 0.111 / 0.212 | 232 MB | 0 | 0 (0) |
+| book_1 | 416cbf6 | 60 / 60.0 | 0.00 % / 0.00 % | 59.5 / 63 | 78.9k / 78.9k | 0.115 / 0.222 | 235 MB | 0 | 0 (0) |
+
+Re-runs of `npcs` on d4e0c3a: 0 dropped both times (`mac_npcs_rerun_*.json`).
+
+**Budgets on the Mac:** 0 heap allocations per frame in every run after the fix below; the menu at rest 36.1 / 41 draws (≤ 46) and
+54.7 k triangles (≈ 58 k, stop line 75 k); the Maps move at most 56 draws (limit 60); the §8 trip (`menu_travel`) at most 43 draws
+(limit 60; the staged worst case `--lib-worst-trip` 45). Dropped frames: 0 in every run but one: `npcs` (416cbf6) dropped one 32.7 ms
+frame at 10.18 s in the hospital with nothing noted during it (the frame notes list every expensive one-off); it did not recur in two
+re-runs. It stays on the tracked late-frame bug.
+
+**Fixed in this step:** `menu_travel` counted 48 heap allocations (12 on each of 4 frames): `gfx_mesh_update` created a GPU transfer
+buffer per call, and the dressing is re-built on each join and leave. One staging buffer is now reserved at load (0.14 MB):
+0 allocations (d4e0c3a). Every dropped frame (over 1.5 refresh intervals) is now recorded with its notes in `dropped_frames`.
+
+**The memory gap (5 MB over step 6's 197 MB): not a growth.** The 197 MB run was one the OS left unpaced (about 120 fps, the window
+behind the editor: not comparable). Measured the same way today, `menu` on each step's merge commit (`memory_history/`):
+
+| Commit | Step | Footprint |
+|---|---|---|
+| c578fc3 | 6 | 209 / 206 MB (two runs) |
+| 6d4def4 | 7 | 202 MB |
+| 58e0b41 | 8 | 201 MB |
+| 45a8329 | 9 | 202 MB |
+| 1ae4217 | 10 | 201 MB |
+| 416cbf6 / d4e0c3a | 11 | 201-203 MB (seven runs) |
+
+Per part, every tracked allocation is identical from step 6 to now: MSAA colour 10.0, depth 10.0, swapchain (estimate) 15.1, UI atlas
+2.0, UI buffers 7.0, instance buffers 3.0, mesh pool used 3.6 + 0.7 (reserved 12 + 4), the permanent arena 13.4 used / 15.7 peak (96
+reserved, untouched pages), NPC data 0.9 MB; the update staging buffer added 0.14 MB. The step 6 -> 7 drop of about 4-7 MB is outside
+those parts; most likely (not measured part by part, the old JSON had no field for them) the removed book pack's resident figure
+texture and its 2 MB figure staging buffer, which the JSON did not list then
+(`memory_mb` now lists `figure`, `figure_staging` and `update_staging`), plus the driver's own share, which moves 1-3 MB run to run.
