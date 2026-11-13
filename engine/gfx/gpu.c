@@ -186,6 +186,8 @@ struct GfxContext {
     int inset_count, current_inset; /* current: index + 1, 0 none */
     int current_cat; /* GFX_CAT_* for the next draws */
     bool fade_allowed, fade_logged; /* gfx_allow_fade; the one log line */
+    uint32_t filter; /* gfx_set_filter (--gpu-off, test only); 0 = every draw as asked */
+    uint32_t fade_binds_frame; /* binds of the whole-object fade pipelines (GfxStats.fade_binds) */
     uint32_t fade_draws_frame, fade_violations_frame; /* counted at gfx_draw, handed to the stats at the frame's end */
     int msaa_wanted;     /* gfx_set_msaa, applied at the next frame end; -1 none */
 
@@ -1687,6 +1689,9 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
         g->meshes[mesh].index_count == 0) {
         return; /* fully faded draws (and an empty reserved mesh) cost nothing */
     }
+    if (g->filter && ((g->filter & GFX_FILTER_ALL) || ((g->filter >> mat->kind) & 1u))) {
+        return; /* --gpu-off: this part's GPU work is switched off */
+    }
     if (mat->kind == GFX_MAT_DEPTH || mat->kind == GFX_MAT_TOON_FADE) { /* the blended pipeline: the Maps move's shell only */
         if (!g->fade_allowed) {
             g->fade_violations_frame++;
@@ -1709,6 +1714,9 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->cat = (uint8_t)g->current_cat;
     d->mesh = mesh;
     d->kind = (uint8_t)mat->kind;
+    if ((g->filter & GFX_FILTER_FLAT) && g->current_cat != GFX_CAT_AVATAR && (mat->kind == GFX_MAT_TOON || mat->kind == GFX_MAT_PATTERN)) {
+        d->kind = GFX_MAT_UNLIT; /* --gpu-off flat: vertex colour x tint, no light */
+    }
     d->flags = (uint8_t)flags;
     HMM_Vec3 pos = model->Columns[3].XYZ;
     d->sort = HMM_LenSqrV3(HMM_SubV3(pos, g->scene.eye));
@@ -1726,6 +1734,15 @@ void gfx_settle_uploads(GfxContext *g)
 }
 
 void gfx_allow_fade(GfxContext *g, bool on) { g->fade_allowed = on; }
+
+uint32_t gfx_set_filter(GfxContext *g, uint32_t filter)
+{
+    const uint32_t prev = g->filter;
+    g->filter = filter;
+    return prev;
+}
+
+uint32_t gfx_queued_draws(const GfxContext *g) { return g->draw_count; }
 
 int gfx_set_category(GfxContext *g, int cat)
 {
@@ -2085,6 +2102,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
                 SDL_BindGPUGraphicsPipeline(pass, ip);
                 bound_pipe = ip;
                 g->stats.pipe_binds++;
+                g->fade_binds_frame += d->kind == GFX_MAT_DEPTH || d->kind == GFX_MAT_TOON_FADE;
                 if (d->kind == GFX_MAT_PATTERN) { /* the patterns ride on the pipeline change: no extra draw */
                     SDL_GPUTextureSamplerBinding tsb = {g->pattern_tex ? g->pattern_tex : g->dummy_tex,
                                                         g->pattern_sampler ? g->pattern_sampler : g->linear_clamp};
@@ -2129,6 +2147,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             SDL_BindGPUGraphicsPipeline(pass, pipe);
             bound_pipe = pipe;
             g->stats.pipe_binds++;
+            g->fade_binds_frame += d->kind == GFX_MAT_DEPTH || d->kind == GFX_MAT_TOON_FADE;
         }
         if (bound != d->kind) {
             bound = d->kind;
@@ -2979,6 +2998,9 @@ static void frame_end(GfxContext *g)
 #endif
         g->stats.draws = head_draws + pre_world + draw_list(g, pass, TARGET_MAIN, false, 0);
         g->stats.draws += draw_insets(g, pass, false);
+        g->stats.light2_draws = g->scene.light_mix > 0.0f ? g->stats.draws - head_draws : 0u; /* lit with both light sets */
+        g->stats.fade_binds = g->fade_binds_frame;
+        g->fade_binds_frame = 0;
     }
 
     if (scaled) {

@@ -519,6 +519,9 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu] [--resume]` (waits up to 10 min for a dropped device, retries; `--resume` continues a run) (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.
+  `--gpu-off PART[,PART...]` (GPU breakdowns, never saved; `game/gpu_off.h`): one part's GPU work dropped at its draw sites
+  (`gfx_set_filter`), CPU work unchanged. Menu: `msaa alpha particles people people_lod1 backbays flat`; island: `props terrain_flat
+  library_building sea`. `--log-frame-stats` also logs second-light draws, shell fade draws / binds and world-map draws per frame.
 - Jobs: `app->jobs`, `jobs_run(js, fn, ctx, count, batch)` + `jobs_wait`; workers never touch render state.
   `--autotest determinism` runs 400 NPCs on 1 and N threads and compares every position.
 - NPC data: `game/npc.h` (`npc_hot_t` one cache line, double-buffered; `npc_cold_t`). `game/stress.c` = dummy crowd,
