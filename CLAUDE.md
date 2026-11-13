@@ -519,6 +519,9 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   Documents on iOS, the pref path on desktop; `--autotest stress200 [S]` is the same scenario. Measure with
   `CONFIG=Release tools/run_ios.sh`, then `tools/perf_run.sh OUTDIR [--gpu] [--resume]` (waits up to 10 min for a dropped device, retries; `--resume` continues a run) (fails hard on stale output: run id, commit,
   mtime) and `tools/perf_gate.py OUTDIR` (budgets + 10 % regression against `docs/perf/after`): Debug is `-O0`. `--msaa N` / `--no-msaa` (default 2x, see PERF.md), `--no-instancing`, `--no-lod`, `--force-thermal N` for tests.
+  `--gpu-off PART[,PART...]` (GPU breakdowns, never saved; `game/gpu_off.h`): one part's GPU work dropped at its draw sites
+  (`gfx_set_filter`), CPU work unchanged. Menu: `msaa alpha particles people people_lod1 backbays flat`; island: `props terrain_flat
+  library_building sea`. `--log-frame-stats` also logs second-light draws, shell fade draws / binds and world-map draws per frame.
 - Jobs: `app->jobs`, `jobs_run(js, fn, ctx, count, batch)` + `jobs_wait`; workers never touch render state.
   `--autotest determinism` runs 400 NPCs on 1 and N threads and compares every position.
 - NPC data: `game/npc.h` (`npc_hot_t` one cache line, double-buffered; `npc_cold_t`). `game/stress.c` = dummy crowd,
@@ -530,7 +533,7 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   wall pieces are index ranges of them (`gfx_draw_range`). Keep the `draw_bucket` order (x-ray note above).
 - Triangle soups (mgmb: the library, islands, vehicles, avatar parts) are uploaded through `mesh_upload_welded` (`engine/gfx/weld.c`):
   vertices merge only when all 28 bytes match (position, normal, colour + zone), so every drawn triangle is the soup's (`weld` ctest
-  rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools 5 MB vertices + 2 MB indices.
+  rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools fit what is loaded (user decision 2026-11-13): they grow at load time when an upload does not fit (a new buffer, the used part copied on the GPU, offsets unchanged) and are trimmed to used + 256 KB / 64 KB when uploads settle (`gfx_settle_uploads`), so a hospital does not pay for the institute and the library hall. UI instances per frame: 4096 (the worst screen, book_ui on the iPad window, is about 2000).
 - Avatar LOD: `AvatarPose.lod` 0 full, 1 coarse, 2 body + head; chosen in `crowd_cull_job`, with frustum culling.
 - Frame: main pass + UI pass; the UI pass starts by upscaling the 3D image (`present.frag`). Metal shaders get real
   `half` from `min16float` (`tools/build_shaders.sh` compiles MSL with `--hlsl-enable-16bit-types`; SPIR-V stays 32-bit).

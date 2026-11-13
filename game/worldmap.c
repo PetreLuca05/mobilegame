@@ -1,4 +1,5 @@
 #include "worldmap.h"
+#include "gpu_off.h"
 #include "ui/haptics.h"
 
 #include <math.h>
@@ -910,7 +911,8 @@ static void draw_island(WorldMap *m, WmIsland *is, GfxContext *g, float alpha, b
     const WorldIsland *w = &is->island;
     const GfxMaterial toon = mat_toon(HMM_V4(1, 1, 1, 1), 0.0f);
     const HMM_Mat4 at = HMM_Translate(is->off);
-    gfx_draw(g, is->island_mesh, &at, &toon, GFX_DRAW_NO_SHADOW);
+    const GfxMaterial terrain = (m->gpu_off & GPU_OFF_TERRAIN_FLAT) ? mat_unlit(HMM_V4(1, 1, 1, 1)) : toon; /* --gpu-off terrain_flat */
+    gfx_draw(g, is->island_mesh, &at, &terrain, GFX_DRAW_NO_SHADOW);
     gfx_draw(g, is->road_mesh, &at, &toon, GFX_DRAW_NO_SHADOW);
     bool vis[WM_CELLS];
     for (int c = 0; c < WM_CELLS; c++) {
@@ -919,6 +921,7 @@ static void draw_island(WorldMap *m, WmIsland *is, GfxContext *g, float alpha, b
         vis[c] = box_visible(m, lo, HMM_AddV3(lo, HMM_V3(is->grid_cell.X, is->prop_top + 2.0f, is->grid_cell.Y)));
         m->visible_cells += vis[c];
     }
+    const uint32_t filter = (m->gpu_off & GPU_OFF_PROPS) ? gfx_set_filter(g, GFX_FILTER_ALL) : 0u; /* --gpu-off props */
     for (int p = 0; p < w->prop_count; p++) {
         if (is->prop_mesh[p] == GFX_MESH_NONE) {
             continue;
@@ -928,6 +931,9 @@ static void draw_island(WorldMap *m, WmIsland *is, GfxContext *g, float alpha, b
                 gfx_draw(g, is->prop_mesh[p], &is->prop_xf[p][i], &toon, GFX_DRAW_NO_SHADOW);
             }
         }
+    }
+    if (m->gpu_off & GPU_OFF_PROPS) {
+        gfx_set_filter(g, filter);
     }
     const float pulse = 1.0f + 0.06f * sinf((float)m->time * 2.0f * HMM_PI32 * 0.5f);
     for (int i = 0; i < is->book->level_count; i++) {
@@ -996,7 +1002,9 @@ static void draw_world(WorldMap *m, GfxContext *g, float alpha)
 {
     const GfxMaterial sea = mat_unlit(HMM_V4(1, 1, 1, 1));
     const HMM_Mat4 sea_m = HMM_Translate(HMM_V3(0, WM_SEA_Y, 0));
-    gfx_draw(g, m->sea_mesh, &sea_m, &sea, GFX_DRAW_NO_SHADOW);
+    if (!(m->gpu_off & GPU_OFF_SEA)) { /* --gpu-off sea */
+        gfx_draw(g, m->sea_mesh, &sea_m, &sea, GFX_DRAW_NO_SHADOW);
+    }
     m->visible_cells = 0;
     m->islands_drawn = 0;
     for (int i = 0; i < m->count; i++) {
@@ -1274,7 +1282,9 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
     sp->sun_disc.W = 0.0f;
     m->view_proj = HMM_MulM4(sp->proj, sp->view);
     gfx_set_scene(g, sp);
+    const uint32_t queued = gfx_queued_draws(g);
     draw_world(m, g, alpha);
+    m->frame_draws += gfx_queued_draws(g) - queued;
     if (m->hud_off) {
         return WM_NONE;
     }

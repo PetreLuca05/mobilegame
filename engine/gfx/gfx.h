@@ -185,6 +185,8 @@ typedef struct GfxStats {
     uint32_t tris, instances, pipe_binds, tex_binds, uniform_bytes, passes;
     uint32_t tris_cat[GFX_CATS]; /* tris by GFX_CAT_* (the main pass; the UI counts as other) */
     uint32_t fade_draws, fade_violations; /* whole-object fade draws taken / refused (outside gfx_allow_fade) */
+    uint32_t fade_binds;   /* binds of the whole-object fade pipelines (GFX_MAT_DEPTH / GFX_MAT_TOON_FADE) in the main pass */
+    uint32_t light2_draws; /* main-pass draws with the second light set on (GfxSceneParams.light_mix > 0: u_sun2_dir.w > 0) */
     /* Approximate GPU time, submit -> fence on a helper thread (SDL GPU has no
      * timestamps; includes queueing). 0 until gfx_set_gpu_timing. */
     float gpu_main_ms, gpu_ui_ms;
@@ -219,6 +221,13 @@ int gfx_set_category(GfxContext *g, int cat);
  * Maps move. Anything else is opaque: such a draw is dropped, logged once and counted (GfxStats.fade_violations; the
  * perf gate fails on it). */
 void gfx_allow_fade(GfxContext *g, bool on);
+/* Test only (--gpu-off, GPU breakdowns): a filter on what gfx_draw queues; the caller's CPU work is unchanged. Bit k (k <
+ * GFX_MAT_COUNT) drops draws of GfxMaterialKind k, GFX_FILTER_ALL drops every draw, GFX_FILTER_FLAT queues toon and pattern
+ * draws outside GFX_CAT_AVATAR as GFX_MAT_UNLIT (vertex colour x tint). 0 = off. Returns the previous filter. */
+enum { GFX_FILTER_FLAT = 1u << 30, GFX_FILTER_ALL = 1u << 31 };
+uint32_t gfx_set_filter(GfxContext *g, uint32_t filter);
+/* draws queued so far this frame (counting one system's draws: the difference around them) */
+uint32_t gfx_queued_draws(const GfxContext *g);
 /* Once after a batch of mesh uploads (the library at start, the map's preload, the hospital's build): waits for the GPU
  * (0.2-0.8 ms on the Mac) so the uploads' staging buffers are freed now. Otherwise Metal keeps them as reclaimable
  * driver memory that still counts in the footprint for a while: 5-12 MB, run to run. */

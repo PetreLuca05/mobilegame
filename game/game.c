@@ -33,6 +33,7 @@
 #include "avatar_gallery.h"
 #include "menu_library.h"
 #include "lib_move.h"
+#include "gpu_off.h"
 #include "camera_td.h"
 #include "gfx/floorfade.h"
 #include "camera_tp.h"
@@ -233,6 +234,7 @@ typedef struct Game {
     float frame_alpha;
     bool ia_check;           /* --autotest interact: brute force against the scan */
     bool no_panels;          /* --no-panels: A/B for the perf audit */
+    uint32_t gpu_off;        /* --gpu-off PART[,PART...] (game/gpu_off.h): GPU breakdowns, test only, never saved */
     bool text_test, hud_clamp_test; /* --autotest text, hudclamp */
     float text_center_err, text_center_each[3]; /* --autotest text: label capitals vs face centre, pt */
     float hud_res[40];       /* what the marker icons stay out of: x, y, w, h (10 rects) */
@@ -315,7 +317,8 @@ typedef struct Game {
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
     double fs_t0;
-    uint32_t fs_draws_max, fs_tris_max;
+    uint32_t fs_draws_max, fs_tris_max, fs_ui_max;
+    uint64_t fs_light2, fs_fade, fs_fade_binds, fs_map; /* --log-frame-stats: second-light draws, shell fades, map draws */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -408,6 +411,37 @@ static const char *arg_value(int argc, char **argv, const char *flag)
         }
     }
     return NULL;
+}
+
+/* --gpu-off PART[,PART...]: the parts of game/gpu_off.h by name; an unknown name is logged and ignored */
+static uint32_t parse_gpu_off(const char *arg)
+{
+    static const struct { const char *name; uint32_t bit; } k[] = {
+        {"msaa", GPU_OFF_MSAA}, {"alpha", GPU_OFF_ALPHA}, {"particles", GPU_OFF_PARTICLES}, {"people", GPU_OFF_PEOPLE},
+        {"people_lod1", GPU_OFF_PEOPLE_LOD1}, {"backbays", GPU_OFF_BACKBAYS}, {"flat", GPU_OFF_FLAT}, {"props", GPU_OFF_PROPS},
+        {"terrain_flat", GPU_OFF_TERRAIN_FLAT}, {"library_building", GPU_OFF_LIBRARY_BUILDING}, {"sea", GPU_OFF_SEA},
+    };
+    uint32_t bits = 0u;
+    char names[256] = {0};
+    for (const char *a = arg; a && *a;) {
+        const char *e = SDL_strchr(a, ',');
+        const size_t n = e ? (size_t)(e - a) : SDL_strlen(a);
+        bool known = false;
+        for (size_t i = 0; i < MG_ARRAY_COUNT(k); i++) {
+            if (SDL_strlen(k[i].name) == n && SDL_strncmp(a, k[i].name, n) == 0) {
+                bits |= k[i].bit, known = true;
+                SDL_strlcat(names, names[0] ? "," : "", sizeof(names));
+                SDL_strlcat(names, k[i].name, sizeof(names));
+            }
+        }
+        if (!known && n > 0) {
+            mg_log_error("gpu-off: unknown part '%.*s' (msaa alpha particles people people_lod1 backbays flat props terrain_flat "
+                         "library_building sea)", (int)n, a);
+        }
+        a = e ? e + 1 : NULL;
+    }
+    mg_log_info("gpu-off: %s", bits ? names : "(none)");
+    return bits;
 }
 
 static bool parse_cam_arg(int argc, char **argv, FlyCamera *c)
@@ -1199,7 +1233,9 @@ bool game_init(MgApp *app)
     SDL_snprintf(g->status, sizeof(g->status), "%s", str("net_offline"));
     autotest_init(&g->autotest, app->argc, app->argv);
     const char *msaa_arg = arg_value(app->argc, app->argv, "--msaa");
-    g->msaa_samples = has_flag(app->argc, app->argv, "--no-msaa") ? 1 : (msaa_arg ? SDL_atoi(msaa_arg) : GFX_DEFAULT_MSAA);
+    const char *gpu_off = arg_value(app->argc, app->argv, "--gpu-off");
+    g->gpu_off = gpu_off ? parse_gpu_off(gpu_off) : 0u;
+    g->msaa_samples = has_flag(app->argc, app->argv, "--no-msaa") || (g->gpu_off & GPU_OFF_MSAA) ? 1 : (msaa_arg ? SDL_atoi(msaa_arg) : GFX_DEFAULT_MSAA);
     gfx_set_msaa(app->gfx, g->msaa_samples);
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
     g->no_lod = has_flag(app->argc, app->argv, "--no-lod");
@@ -3268,8 +3304,13 @@ static void map_flow(Game *g, MgApp *app)
     if (g->lib_placed) { /* the library stands on the island played last: the closed building */
         g->lib.shell_k = 1.0f;
         g->lib.view_eye = g->last_eye;
-    g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
+        g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
+        const bool off = (g->gpu_off & GPU_OFF_LIBRARY_BUILDING) != 0u; /* --gpu-off library_building */
+        const uint32_t filter = off ? gfx_set_filter(app->gfx, GFX_FILTER_ALL) : 0u;
         menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, NULL, 0.0f);
+        if (off) {
+            gfx_set_filter(app->gfx, filter);
+        }
     }
     if (g->prefs.world.rides.unsynced) { /* a trip drew a vehicle: the account's copy follows */
         g->prefs.world.rides.updated_ms = wall_clock_ms();
@@ -4720,6 +4761,7 @@ static void game_frame_inner(MgApp *app, float alpha)
 {
     Game *g = (Game *)app->game;
     g->frame_alpha = alpha;
+    g->lib.gpu_off = g->wm.gpu_off = g->gpu_off; /* --gpu-off (0 without it) */
     GameSettings *s = &g->settings;
     { /* what a hard-coded text is reported on (--autotest ui and the others that check text) */
         static const char *const screens[] = {"WELCOME", "USERNAME", "CREATOR", "MAIN_MENU", "SETTINGS", "FRIENDS", "LOADING", "PLAY", "MAP"};
@@ -4945,6 +4987,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         gfx_get_stats(app->gfx, &st);
         g->fs_n++, g->fs_draws += st.draws, g->fs_tris += st.tris;
         g->fs_draws_max = SDL_max(g->fs_draws_max, st.draws);
+        g->fs_ui_max = SDL_max(g->fs_ui_max, st.ui_quads);
         g->fs_tris_max = SDL_max(g->fs_tris_max, st.tris);
         for (int b = 0; b < 4; b++) {
             g->fs_vis[b] += (g->lib.visible >> b) & 1u;
@@ -4952,19 +4995,26 @@ static void game_frame_inner(MgApp *app, float alpha)
         for (int c = 0; c < GFX_CATS; c++) {
             g->fs_cat[c] += st.tris_cat[c];
         }
+        g->fs_light2 += st.light2_draws, g->fs_fade += st.fade_draws, g->fs_fade_binds += st.fade_binds, g->fs_map += g->wm.frame_draws;
+        g->wm.frame_draws = 0;
         if (g->fs_n == 120) {
             const double n = 120.0;
             mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s, %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
                         (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible",
                         (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) ? "focused" : "not focused");
             g->fs_t0 = app->time;
-            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0, (int)g->lib.trav.phase);
-            g->fs_draws_max = g->fs_tris_max = 0;
+            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, UI instances max %u, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0,
+                        g->fs_ui_max, (int)g->lib.trav.phase);
+            g->fs_draws_max = g->fs_tris_max = g->fs_ui_max = 0;
             mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
                         g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
                         g->fs_cat[GFX_CAT_AVATAR] / n / 1000.0, g->fs_cat[GFX_CAT_OTHER] / n / 1000.0);
             mg_log_info("frame stats: bays visible %u %u %u %u of 120 frames (wall rule %s)", g->fs_vis[0], g->fs_vis[1], g->fs_vis[2], g->fs_vis[3],
                         g->lib.no_wall_vis ? "off" : "on");
+            mg_log_info("frame stats: per frame: second-light draws %.1f, shell fade draws %.1f, fade pipeline binds %.1f, "
+                        "world-map draws %.1f (screen %d)", g->fs_light2 / n, g->fs_fade / n, g->fs_fade_binds / n, g->fs_map / n,
+                        (int)g->fe.state);
+            g->fs_light2 = g->fs_fade = g->fs_fade_binds = g->fs_map = 0;
             SDL_memset(g->fs_vis, 0, sizeof(g->fs_vis));
             g->fs_n = 0, g->fs_draws = g->fs_tris = 0;
             SDL_memset(g->fs_cat, 0, sizeof(g->fs_cat));

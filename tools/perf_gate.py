@@ -22,7 +22,7 @@ WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_ti
                 "worldmap_travel": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
                 "island": {"gpu_effective_ms": 1.0, "render_ms": 0.15, "cpu_tick_ms": 0.05},
                 "worldmap_voyage": {"gpu_effective_ms": 2.5, "render_ms": 0.25, "cpu_tick_ms": 0.05}}
-WORLD_MAX_DRAWS = 18
+WORLD_MAX_DRAWS = 26  # user decision 2026-11-13: 23-24 measured (the second island and the library came after WORLD-1's 18)
 WORLD_MAX_DRAWS_VOYAGE = 38  # WORLD-2: both islands for part of a voyage (32) + vehicle 4 + effects 1 + HUD 1
 # UI-1 estimates (fail over 2x), every scenario: tween + effect update, UI submit (instance upload); the UI is one draw
 UI_LIMITS = {"ui_update_ms": 0.05, "ui_submit_ms": 0.15}
