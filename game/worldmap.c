@@ -227,6 +227,60 @@ static bool load_island(WmIsland *is, const WorldBookDef *book, GfxContext *g, A
             }
         }
     }
+    { /* the sea cull's land grid: samples at 4 per cell (+1), each inside a terrain triangle and under none that dips to the sea */
+        const int SN = WM_LAND_N * 4 + 1;
+        is->land = ARENA_PUSH(perm, uint8_t, (size_t)WM_LAND_N * WM_LAND_N);
+        const size_t samples_mark = arena_mark(perm); /* the samples go once the cells are known */
+        uint8_t *cov = ARENA_PUSH(perm, uint8_t, (size_t)SN * SN), *low = ARENA_PUSH(perm, uint8_t, (size_t)SN * SN);
+        is->land_lo = HMM_V2(is->land_min.X, is->land_min.Z);
+        is->land_step = HMM_V2((is->land_max.X - is->land_min.X) / (float)WM_LAND_N, (is->land_max.Z - is->land_min.Z) / (float)WM_LAND_N);
+        if (cov && low && is->land && is->land_step.X > 0.0f && is->land_step.Y > 0.0f) {
+            SDL_memset(cov, 0, (size_t)SN * SN), SDL_memset(low, 0, (size_t)SN * SN);
+            const float sx = is->land_step.X / 4.0f, sz = is->land_step.Y / 4.0f, sea = WM_SEA_Y + 0.05f;
+            for (uint32_t t = 0; t + 2 < terrain->vert_count; t += 3) {
+                const GfxVertex *a = &terrain->verts[t], *b = &terrain->verts[t + 1], *c = &terrain->verts[t + 2];
+                const bool dips = a->py <= sea || b->py <= sea || c->py <= sea;
+                const float x0 = mg_minf(a->px, mg_minf(b->px, c->px)), x1 = mg_maxf(a->px, mg_maxf(b->px, c->px));
+                const float z0 = mg_minf(a->pz, mg_minf(b->pz, c->pz)), z1 = mg_maxf(a->pz, mg_maxf(b->pz, c->pz));
+                const int i0 = SDL_max(0, (int)SDL_floorf((x0 - is->land_lo.X) / sx)), i1 = SDL_min(SN - 1, (int)SDL_ceilf((x1 - is->land_lo.X) / sx));
+                const int j0 = SDL_max(0, (int)SDL_floorf((z0 - is->land_lo.Y) / sz)), j1 = SDL_min(SN - 1, (int)SDL_ceilf((z1 - is->land_lo.Y) / sz));
+                const float d = (b->pz - c->pz) * (a->px - c->px) + (c->px - b->px) * (a->pz - c->pz);
+                if (SDL_fabsf(d) < 1e-9f) {
+                    continue;
+                }
+                for (int jj = j0; jj <= j1; jj++) {
+                    for (int ii = i0; ii <= i1; ii++) {
+                        const float px = is->land_lo.X + (float)ii * sx, pz = is->land_lo.Y + (float)jj * sz;
+                        const float l1 = ((b->pz - c->pz) * (px - c->px) + (c->px - b->px) * (pz - c->pz)) / d;
+                        const float l2 = ((c->pz - a->pz) * (px - c->px) + (a->px - c->px) * (pz - c->pz)) / d;
+                        const float l3 = 1.0f - l1 - l2;
+                        if (l1 < -1e-4f || l2 < -1e-4f || l3 < -1e-4f) {
+                            continue;
+                        }
+                        cov[jj * SN + ii] = 1;
+                        low[jj * SN + ii] |= dips ? 1 : 0;
+                    }
+                }
+            }
+            int n_land = 0;
+            for (int cj = 0; cj < WM_LAND_N; cj++) {
+                for (int ci = 0; ci < WM_LAND_N; ci++) {
+                    bool all = true;
+                    for (int jj = cj * 4; jj <= cj * 4 + 4 && all; jj++) {
+                        for (int ii = ci * 4; ii <= ci * 4 + 4 && all; ii++) {
+                            all = cov[jj * SN + ii] && !low[jj * SN + ii];
+                        }
+                    }
+                    is->land[cj * WM_LAND_N + ci] = all ? 1 : 0;
+                    n_land += all;
+                }
+            }
+            mg_log_info("world: %s: %d of %d land cells for the sea cull", book->island, n_land, WM_LAND_N * WM_LAND_N);
+        } else {
+            is->land = NULL;
+        }
+        arena_reset_to(perm, samples_mark);
+    }
     const GfxVertex *parts[2] = {terrain->verts, scenery->verts};
     const uint32_t counts[2] = {terrain->vert_count, scenery->vert_count};
     is->island_mesh = upload_soup(g, perm, parts, counts, 2);
@@ -998,11 +1052,67 @@ static void draw_vehicle(WorldMap *m, GfxContext *g, float alpha)
     }
 }
 
+/* The sea plane is hidden in this view: the frustum's section of the plane y = WM_SEA_Y (its vertices are where the 12 frustum
+ * edges cross it) lies, by its bounding box, on land cells of one island, so every ray to a sea point there meets terrain above
+ * the sea first. A frustum edge that does not reach the plane only counts if the plane is not between its ends. */
+static bool sea_hidden(const WorldMap *m)
+{
+    const HMM_Mat4 inv = HMM_InvGeneralM4(m->view_proj);
+    HMM_Vec3 c[8];
+    for (int k = 0; k < 8; k++) {
+        const HMM_Vec4 p = HMM_MulM4V4(inv, HMM_V4(k & 1 ? 1.0f : -1.0f, k & 2 ? 1.0f : -1.0f, k & 4 ? 1.0f : 0.0f, 1.0f));
+        if (SDL_fabsf(p.W) < 1e-9f) {
+            return false;
+        }
+        c[k] = HMM_V3(p.X / p.W, p.Y / p.W, p.Z / p.W);
+    }
+    static const int e[12][2] = {{0, 1}, {2, 3}, {0, 2}, {1, 3}, {4, 5}, {6, 7}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+    float x0 = 1e30f, x1 = -1e30f, z0 = 1e30f, z1 = -1e30f;
+    int hits = 0;
+    for (int k = 0; k < 12; k++) {
+        const HMM_Vec3 a = c[e[k][0]], b = c[e[k][1]];
+        const float da = a.Y - WM_SEA_Y, db = b.Y - WM_SEA_Y;
+        if ((da > 0.0f) == (db > 0.0f)) {
+            continue;
+        }
+        const float t = da / (da - db);
+        const float x = a.X + (b.X - a.X) * t, z = a.Z + (b.Z - a.Z) * t;
+        x0 = mg_minf(x0, x), x1 = mg_maxf(x1, x), z0 = mg_minf(z0, z), z1 = mg_maxf(z1, z);
+        hits++;
+    }
+    if (hits == 0) {
+        return c[0].Y > WM_SEA_Y && c[4].Y > WM_SEA_Y ? true : false; /* the whole frustum above the sea: none of it in view */
+    }
+    for (int i = 0; i < m->count; i++) {
+        const WmIsland *is = &m->isles[i];
+        if (!is->land) {
+            continue;
+        }
+        const float lx0 = x0 - is->off.X, lx1 = x1 - is->off.X, lz0 = z0 - is->off.Z, lz1 = z1 - is->off.Z;
+        const int i0 = (int)SDL_floorf((lx0 - is->land_lo.X) / is->land_step.X), i1 = (int)SDL_floorf((lx1 - is->land_lo.X) / is->land_step.X);
+        const int j0 = (int)SDL_floorf((lz0 - is->land_lo.Y) / is->land_step.Y), j1 = (int)SDL_floorf((lz1 - is->land_lo.Y) / is->land_step.Y);
+        if (i0 < 0 || j0 < 0 || i1 >= WM_LAND_N || j1 >= WM_LAND_N) {
+            continue;
+        }
+        bool all = true;
+        for (int j = j0; j <= j1 && all; j++) {
+            for (int ii = i0; ii <= i1 && all; ii++) {
+                all = is->land[j * WM_LAND_N + ii] != 0;
+            }
+        }
+        if (all) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void draw_world(WorldMap *m, GfxContext *g, float alpha)
 {
     const GfxMaterial sea = mat_unlit(HMM_V4(1, 1, 1, 1));
     const HMM_Mat4 sea_m = HMM_Translate(HMM_V3(0, WM_SEA_Y, 0));
-    if (!(m->gpu_off & GPU_OFF_SEA)) { /* --gpu-off sea */
+    m->sea_drawn = m->no_sea_cull || !sea_hidden(m);
+    if (!(m->gpu_off & GPU_OFF_SEA) && m->sea_drawn) { /* --gpu-off sea; hidden by land in this view: not drawn */
         gfx_draw(g, m->sea_mesh, &sea_m, &sea, GFX_DRAW_NO_SHADOW);
     }
     m->visible_cells = 0;
