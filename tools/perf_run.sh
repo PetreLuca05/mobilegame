@@ -11,7 +11,7 @@
 set -u
 cd "$(dirname "$0")/.."
 OUT=$1; shift
-DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu menu_to_map ui_juice worldmap worldmap_travel island worldmap_voyage institute book); SECONDS_OVERRIDE=0; RESUME=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0
+DEVICES=(ipad); SCEN=(yard lobby corridor_f2 stress200 npcs lift_panel interact_npc lobby4 menu menu_to_map menu_travel ui_juice worldmap worldmap_travel island worldmap_voyage institute book); SECONDS_OVERRIDE=0; RESUME=0; GPU=0; JSON=1; TAG=""; EXTRA=(); GATE=0; NOCONSOLE=0
 while (( $# )); do
   case $1 in
     --devices) DEVICES=(${=2}); shift 2 ;;
