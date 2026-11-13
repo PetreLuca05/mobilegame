@@ -34,6 +34,10 @@ edited in and marked `[changed: ...]`; the list below says what each is and why.
 - **"Ends clean" for Reduce Motion mid-move** (step 9, accepted): Reduce Motion switched on during a Maps / Back move ends the move at once
   under the 300 ms cross-dissolve.
 - **Maps move draws** (user decision, 2026-11-12): at most **60** in any frame of the move (`tools/perf_gate.py`, `menu_to_map`).
+- **Stamp sound** (step 10, accepted): sounds only while the librarian is in view (§13 says "visible clocks only" for the tick).
+- **Page sound** (step 10, accepted): band-passed noise sweeping 3.2 -> 1.4 kHz (§13 says "filtered noise").
+- **`--lib-look`** (step 10, accepted): also moves the camera's framing point, so the rooms fade around the spot it looks at (the sound
+  test sees the clock with my table in the back row).
 - **Triangles at rest** (user decision, 2026-11-12): **≈ 58 k** for the square hall in place of ≈ 26 k, stop line **75 k**
   (`tools/perf_gate.py`, `menu`). Measured with the wall-aware bay rule (93d2a65): 57.9 k average (61.1 k without it). No doorway
   culling of people and particles. Why: 57.9 k is below the old hospital's `stress200` scene, which passed every iPad budget at 87 k

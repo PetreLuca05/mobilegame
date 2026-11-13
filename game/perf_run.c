@@ -36,6 +36,7 @@ static const Scenario k_scenarios[] = {
     {"lobby4", 0.0f, 0.1f, -3.0f, 200, 1.0f / 3.0f, {{-3.0f, -3.0f, 0}, {3.0f, -3.0f, 0}}, 2}, /* 3 guests, join panel up, 200 NPCs */
     {"menu", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the main menu: the library, 4 players seated, 6 NPCs */
     {"menu_to_map", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* LIB-1: the Maps camera move looped, forward and back */
+    {"menu_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* LIB-1 §8: my trip to a host across the diagonal and back, looped */
     {"ui_juice", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},       /* UI-1: menu + lobby panel, a toast and a T3 reward every 2 s */
     {"worldmap", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},        /* WORLD-1: the island's overview, labels */
     {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */
@@ -217,6 +218,19 @@ static void write_report(const PerfRun *p, MgApp *app)
             l->notes);
     }
     PUT("],\n");
+    PUT("\"dropped_frames\": ["); /* every frame over 1.5 refresh intervals during the recording, with what it noted */
+    {
+        int k = 0;
+        for (int i = 0; i < frame_drop_count(); i++) {
+            const FrameLate *d = frame_drop_get(i);
+            if (d->at_s < p->record_start) {
+                continue;
+            }
+            PUT("%s{\"at_s\": %.2f, \"ms\": %.1f, \"screen\": \"%s\", \"scene\": \"%s\", \"notes\": \"%s\"}", k++ ? ", " : "", d->at_s - p->record_start,
+                d->ms, d->screen, d->scene, d->notes);
+        }
+    }
+    PUT("],\n");
     PUT("\"entities_sim_max\": %u,\n\"entities_rendered_max\": %u,\n\"route_failures\": %d,\n", p->sim_max, p->rendered_max, p->failed);
     {
         GfxMemory gm;
@@ -318,6 +332,7 @@ void perf_run_update(PerfRun *p, MgApp *app, const AutotestProbe *probe, Autotes
         p->recording = true;
         p->record_start = app->time;
         p->hz_start = display_hz(app);
+        frame_notes_set_hz(p->hz_start); /* a dropped frame: over 1.5 refresh intervals */
         prof_run_reset();
         mg_log_info("perf: recording %s for %.0f s", p->scenario, p->seconds);
     }

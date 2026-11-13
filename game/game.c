@@ -159,7 +159,10 @@ typedef struct Game {
     MenuLibrary lib;       /* LIB-1: the menu's backdrop */
     float lib_free[2];     /* the menu camera's free rect (pt, left right) before the Locker opened (§11) */
     bool lib_demo_join;    /* --lib-demo-join: a friend joins at 1 s and leaves at 10 s (no network) */
-    bool lib_worst_trip;   /* --lib-worst-trip: the §8 trip's worst case for draws (see lib_worst_trip) */
+    bool lib_worst_trip;
+    bool lib_travel_loop;  /* perf menu_travel: join a host across the diagonal, sit 2 s, leave, sit 2 s at home, again */
+    int lib_tl_state;
+    double lib_tl_t;   /* --lib-worst-trip: the §8 trip's worst case for draws (see lib_worst_trip) */
     double lib_wt_t0;
     bool lib_wt_plane;
     double lib_wt_pan_t;
@@ -1128,6 +1131,12 @@ bool game_init(MgApp *app)
         g->fe.state = FE_MAIN_MENU;
         const char *sc = g->perf.scenario;
         open_map(g, app, SDL_strcmp(sc, "worldmap") == 0 ? WM_OVERVIEW : SDL_strcmp(sc, "worldmap_voyage") == 0 ? WM_BOOKS : WM_ARRIVED); /* travel starts parked, then drives on */
+    }
+    if (g->perf.active && SDL_strcmp(g->perf.scenario, "menu_travel") == 0) { /* §8: the trip there and back, looped (lib_travel_loop) */
+        play_now = false;
+        g->fe.state = FE_MAIN_MENU;
+        g->lib_travel_loop = true;
+        menu_library_set_table(&g->lib, 0);
     }
     if (g->perf.active && (SDL_strcmp(g->perf.scenario, "menu") == 0 || SDL_strcmp(g->perf.scenario, "ui_juice") == 0 ||
                            SDL_strcmp(g->perf.scenario, "menu_to_map") == 0)) {
@@ -3164,6 +3173,55 @@ static void lib_worst_trip(Game *g, MgApp *app)
     }
 }
 
+/* perf menu_travel (§8): my table is bay 0; a host whose own table is the diagonal bay 3, with two friends seated there, takes me
+ * in: the trip (pack, walk off screen, the pan across two bays, arrive, sit); 2 s seated; Ieşi: the trip home; 2 s; again. */
+static void lib_travel_loop(Game *g, MgApp *app)
+{
+    static char ids[3][16];
+    if (!ids[0][0]) {
+        const int want[3] = {3, 1, 2};
+        for (int k = 0; k < 3; k++) {
+            for (int n = 0; n < 1000 && !ids[k][0]; n++) {
+                char id[16];
+                SDL_snprintf(id, sizeof(id), "tl%d", n);
+                if (menu_library_home_bay(&g->lib, id) == want[k]) {
+                    SDL_snprintf(ids[k], sizeof(ids[k]), "%s", id);
+                }
+            }
+        }
+    }
+    const LibMember *h = &g->lib.seat[0];
+    const bool settled = g->lib.trav.phase == LT_NONE && h->state == LM_STUDY;
+    if (g->lib_tl_state == 0 || g->lib_tl_state == 2) { /* seated: home (0) or at the host's (2) */
+        if (!settled) {
+            g->lib_tl_t = app->time;
+        } else if (app->time - g->lib_tl_t > 2.0) {
+            g->lib_tl_state = (g->lib_tl_state + 1) % 4;
+        }
+    } else { /* 1: joining, 3: leaving: wait for the trip to start */
+        if (!settled) {
+            g->lib_tl_state = (g->lib_tl_state + 1) % 4;
+            g->lib_tl_t = app->time;
+        }
+    }
+    const bool away = g->lib_tl_state == 1 || g->lib_tl_state == 2;
+    static const char *const names[4] = {"Mihai", "Petre", "Ana", "Ioana"};
+    const char *row_ids[4] = {away ? ids[0] : "me", "me", ids[1], ids[2]};
+    const int n = away ? 4 : 1;
+    g->lobby_visible = true;
+    g->menu_row_count = n;
+    for (int i = 0; i < n; i++) {
+        LobbyRow *r = &g->menu_rows[i];
+        SDL_zerop(r);
+        SDL_snprintf(r->id, sizeof(r->id), "%s", row_ids[i]);
+        SDL_snprintf(r->name, sizeof(r->name), "%s", n == 1 ? "Petre" : names[i]);
+        r->skin = AVATAR_DEFAULT_SKIN;
+        r->skin.suit = (uint8_t)(i * 3), r->skin.hair = (uint8_t)(1 + i), r->skin.accessory = (uint8_t)(i % 3);
+        r->me = SDL_strcmp(r->id, "me") == 0;
+        r->host = i == 0;
+    }
+}
+
 static void map_flow(Game *g, MgApp *app)
 {
     (void)menu_world(g, app); /* off: the hospital's crowd stops */
@@ -3343,6 +3401,8 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
             r->me = SDL_strcmp(id, "me") == 0;
             r->host = sc == 2 ? i == 0 : r->me;
         }
+    } else if (g->lib_travel_loop && f->state == FE_MAIN_MENU) { /* perf menu_travel */
+        lib_travel_loop(g, app);
     } else if (g->lib_worst_trip && f->state == FE_MAIN_MENU) { /* the trip's worst case for draws (perf, desktop) */
         lib_worst_trip(g, app);
     } else if (g->lib_demo_join && f->state == FE_MAIN_MENU) { /* LIB-1 tests: a friend walks in, studies, walks out */
