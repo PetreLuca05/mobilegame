@@ -337,16 +337,15 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
                        const NetSkin *my_skin)
 {
     p->frame = app->frame_index;
-    const float pad = 16.0f, w_pt = app->width_pt, h_pt = app->height_pt;
+    const float w_pt = app->width_pt, h_pt = app->height_pt;
     const float k = h_pt >= 600.0f ? 1.3f : 1.0f;
     ui_block(ui, 0, 0, w_pt, h_pt);
     ui->modal = true;
     ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, w_pt, h_pt, ui_rgba(k_ui.surface_tint)); /* flat, no blur */
-    const float x0 = app->safe_left + pad, y0 = mg_maxf(app->safe_top, 8.0f) + 8.0f;
-    const float inner_w = w_pt - app->safe_left - app->safe_right - 2.0f * pad;
-    const float bottom = h_pt - mg_maxf(app->safe_bottom, 12.0f);
-    /* as wide as the name needs, up to the middle of the screen */
-    const float lw = mg_clampf(102.0f + text_width(ui->font, my_name, 20.0f) + 8.0f, 160.0f, w_pt * 0.5f - pad - x0);
+    /* the shared side-tab page: the column as wide as the name needs, up to the middle of the screen */
+    const UiSideLayout side = ui_side_layout(app->safe_left, app->safe_top, app->safe_right, app->safe_bottom, w_pt, h_pt,
+                                             102.0f + text_width(ui->font, my_name, 20.0f) + 8.0f);
+    const float x0 = side.x0, y0 = side.y0, bottom = side.bottom, lw = side.col_w;
     bool held, closed = false;
     if (ui_icon_button(ui, "back##friends", UI_ICON_BACK, x0, y0, k_ui.icon_button, UI_V_SECONDARY)) {
         closed = true;
@@ -357,27 +356,18 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
     ui_text(ui, TEXT_FACE_DISPLAY, x0 + 110.0f, y0 + 24.0f - name_size * 0.62f, name_size, ui_rgba(k_ui.ink), my_name);
     float y = y0 + 64.0f;
     static const char *const tabs[3] = {"friends_tab_friends", "friends_tab_requests", "friends_tab_add"};
-    for (int t = 0; t < 3; t++) {
-        char label[64];
-        SDL_snprintf(label, sizeof(label), "%s##ftab%d", str(tabs[t]), t);
-        if (ui_button(ui, label, x0, y, lw, 50.0f, p->tab == t)) {
-            p->tab = t;
-            search_clear(p, f);
-        }
-        if (t == 1 && f->incoming > 0) {
-            char n[8];
-            SDL_snprintf(n, sizeof(n), "%d", f->incoming);
-            ui_circle(ui->gfx, ui->font, x0 + lw - 22.0f, y + 22.0f, 12.0f, ui_rgba(k_ui.bad));
-            text_draw_centered(ui->gfx, ui->font, x0 + lw - 22.0f, y + 22.0f, 13.0f, ui_rgba(k_ui.white), n);
-        }
-        y += 58.0f;
+    const char *const tab_names[3] = {str(tabs[0]), str(tabs[1]), str(tabs[2])};
+    const int badges[3] = {0, f->incoming, 0};
+    const int tab_was = p->tab;
+    y = ui_side_tabs(ui, &side, "ftab", tab_names, badges, 3, &p->tab, y);
+    if (p->tab != tab_was) {
+        search_clear(p, f);
     }
     if (f->stale) {
         ui_label(ui, x0, y + 6.0f, 13.0f, k_ui_theme.text_dim, str("friends_offline_note"));
     }
 
-    ui_rect(ui->gfx, ui->font, x0 + lw + pad, y0, 2.0f, bottom - y0, ui_rgba(k_ui.lip_mint)); /* account and tabs | content */
-    const float x = x0 + lw + 2.0f * pad, w = x0 + inner_w - x;
+    const float x = side.content_x, w = side.content_w;
     y = y0 + 4.0f;
     ui_text(ui, TEXT_FACE_DISPLAY, x, y, 28.0f, ui_rgba(k_ui.ink), str(tabs[p->tab]));
     if (p->invite_mode) { /* how much room is left */

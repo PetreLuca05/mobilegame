@@ -95,6 +95,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
         cy += 56.0f;
     }
+    ui_toggle(ui, L("set_sound", "sound"), cx, cy, cw, &s->sound_on);
+    cy += 52.0f;
+    ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
+    cy += 52.0f;
 #else
     ui_slider(ui, L("set_cam_yaw_sens", "s1"), cx, cy, cw, &s->yaw_deg_per_pt, 0.05f, 0.6f, "%.2f" TEXT_DEGREE "/pt");
     cy += step;
@@ -116,11 +120,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 #endif
     ui_slider(ui, L("set_dead_zone", "s6"), cx, cy, cw, &s->dead_zone_pt, 0.0f, 50.0f, "%.0f pt");
     cy += step + 4.0f;
-    ui_toggle(ui, L("set_sound", "sound"), cx, cy, cw, &s->sound_on);
-    cy += 52.0f;
-    /* the interface rows sit in the second column (the first is full on a phone: the last row reached the home indicator) */
-    ui_toggle(ui, str("ui_sounds"), cx, cy, cw, &s->ui_sounds);
-    cy += 52.0f;
     ui_label_caps(ui, cx, cy + 4.0f, str("ui_motion")); /* UI-1: Animații interfață: Complete / Reduse */
     cy += 22.0f;
     {
@@ -604,15 +603,15 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         return pause_card(m, ui, s, w_pt, h_pt, safe_t, safe_b);
     }
 
-    /* full screen, two columns: back + title + tabs left (35 %), content right (65 %) */
-    const float pad = 16.0f;
+    /* full screen, the shared side-tab page: back + title + tabs left (as wide as the header needs), divider, content right */
     ui_block(ui, 0, 0, w_pt, h_pt); /* modal: nothing reaches the game */
     ui->modal = true;
     ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, w_pt, h_pt, ui_rgba(k_ui.surface_tint)); /* flat, no blur */
-    float x0 = safe_l + pad, y0 = mg_maxf(safe_t, 8.0f) + 8.0f;
-    float inner_w = w_pt - safe_l - safe_r - 2.0f * pad;
-    float bottom = h_pt - mg_maxf(safe_b, 12.0f);
-    float lw = inner_w * 0.35f - pad;
+    static const char *const tab_keys[2] = {"set_tab_game", "set_tab_account"};
+    const char *const tab_names[2] = {str(tab_keys[0]), str(tab_keys[1])};
+    const UiSideLayout side = ui_side_layout(safe_l, safe_t, safe_r, safe_b, w_pt, h_pt,
+                                             k_ui.icon_button + 12.0f + ui_text_w(ui, TEXT_FACE_DISPLAY, str("settings"), k_ui.t_title) + 8.0f);
+    const float x0 = side.x0, y0 = side.y0, bottom = side.bottom, lw = side.col_w;
     if (ui_icon_button(ui, "back##menu", UI_ICON_BACK, x0, y0, k_ui.icon_button, UI_V_SECONDARY)) {
         if (m->from_card) {
             m->card = true;
@@ -624,21 +623,12 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     (void)held;
     ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), str("settings"));
     float y = y0 + 74.0f;
-    static const char *const tab_keys[2] = {"set_tab_game", "set_tab_account"};
-    for (int t = 0; t < 2; t++) { /* stacked buttons, as the Friends page's Prieteni / Cereri / Adaugă */
-        char tl[64];
-        SDL_snprintf(tl, sizeof(tl), "%s##tab%d", str(tab_keys[t]), t);
-        if (ui_button(ui, tl, x0, y, lw, 50.0f, m->tab == t)) {
-            m->tab = t;
-        }
-        y += 58.0f;
-    }
-    y += 8.0f;
+    y = ui_side_tabs(ui, &side, "tab", tab_names, NULL, 2, &m->tab, y) + 8.0f;
     if (status && status[0]) {
         ui_text(ui, TEXT_FACE_BODY, x0, y, k_ui.t_small, ui_rgba(k_ui.ink_soft), status);
     }
 
-    float x = x0 + inner_w * 0.35f + pad, w = inner_w * 0.65f - pad;
+    float x = side.content_x, w = side.content_w;
     y = y0 + 4.0f;
     float h = bottom - y;
     if (m->tab == 0) {

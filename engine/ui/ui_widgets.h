@@ -50,6 +50,14 @@ bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v);
 /* The switch alone (76 x 44) at (x, y); returns true when it flipped. */
 bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value);
+/* A side-tab page (Settings, Friends, later screens): a left column of stacked tab buttons, a divider, the content on
+ * the right. ui_side_layout: the column is as wide as its header needs (header_w: back button + title / name), at least
+ * 160 pt and at most up to the middle of the screen; content_x / content_w = what is right of the divider. */
+typedef struct UiSideLayout { float x0, y0, bottom, col_w, content_x, content_w; } UiSideLayout;
+UiSideLayout ui_side_layout(float safe_l, float safe_t, float safe_r, float safe_b, float w_pt, float h_pt, float header_w);
+/* The stacked tab buttons ("label##<id><i>", 50 pt tall, 58 pt apart; badges[i] > 0 draws a count on tab i, NULL = none)
+ * and the divider from the page's top to its bottom. Returns the y below the last tab; *sel changes on a tap. */
+float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *badges, int n, int *sel, float y);
 /* A tab bar; *sel changes on a tap (T1 tick); returns true then. */
 bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel, float x, float y, float w, float h);
 /* A pill with a number that bumps when it changes (and follows a reward flight into it). */

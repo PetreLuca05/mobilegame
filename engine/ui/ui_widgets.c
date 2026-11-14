@@ -311,6 +311,40 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
     return clicked;
 }
 
+UiSideLayout ui_side_layout(float safe_l, float safe_t, float safe_r, float safe_b, float w_pt, float h_pt, float header_w)
+{
+    const float pad = 16.0f;
+    UiSideLayout L;
+    L.x0 = safe_l + pad;
+    L.y0 = mg_maxf(safe_t, 8.0f) + 8.0f;
+    L.bottom = h_pt - mg_maxf(safe_b, 12.0f);
+    const float inner_w = w_pt - safe_l - safe_r - 2.0f * pad;
+    L.col_w = mg_clampf(header_w, 160.0f, w_pt * 0.5f - pad - L.x0);
+    L.content_x = L.x0 + L.col_w + 2.0f * pad;
+    L.content_w = L.x0 + inner_w - L.content_x;
+    return L;
+}
+
+float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *badges, int n, int *sel, float y)
+{
+    for (int t = 0; t < n; t++) {
+        char label[96];
+        SDL_snprintf(label, sizeof(label), "%s##%s%d", labels[t], id, t);
+        if (ui_button_v(ui, label, L->x0, y, L->col_w, 50.0f, *sel == t ? UI_V_PRIMARY : UI_V_SECONDARY, 0)) {
+            *sel = t;
+        }
+        if (badges && badges[t] > 0) {
+            char num[8];
+            SDL_snprintf(num, sizeof(num), "%d", badges[t]);
+            ui_circle(ui->gfx, ui->font, L->x0 + L->col_w - 22.0f, y + 22.0f, 12.0f, C(k_ui.bad));
+            text_draw_centered(ui->gfx, ui->font, L->x0 + L->col_w - 22.0f, y + 22.0f, 13.0f, C(k_ui.white), num);
+        }
+        y += 58.0f;
+    }
+    ui_rect(ui->gfx, ui->font, L->x0 + L->col_w + 16.0f, L->y0, 2.0f, L->bottom - L->y0, C(k_ui.lip_mint)); /* column | content */
+    return y;
+}
+
 bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float h, UiBrand brand, bool enabled)
 {
     const bool g = brand == UI_BRAND_GOOGLE;

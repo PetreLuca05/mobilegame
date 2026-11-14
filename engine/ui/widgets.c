@@ -310,7 +310,12 @@ bool ui_toggle(Ui *ui, const char *label, float x, float y, float w, bool *value
     char vis[64];
     visible(label, vis, sizeof(vis));
     const float h = k_ui.toggle_h;
-    ui_text(ui, TEXT_FACE_BOLD, x, y + h * 0.5f - k_ui.t_body * 0.62f, k_ui.t_body, k_ui_theme.text, vis);
+    float size = k_ui.t_body; /* shrink a long label to the room left of the switch */
+    const float room = w - k_ui.toggle_w - 12.0f, tw = ui_text_w(ui, TEXT_FACE_BOLD, vis, size);
+    if (tw > room && tw > 0.0f && room > 0.0f) {
+        size *= mg_maxf(room / tw, 0.7f);
+    }
+    ui_text(ui, TEXT_FACE_BOLD, x, y + h * 0.5f - size * 0.62f, size, k_ui_theme.text, vis);
     const char *hash = strstr(label, "##");
     return ui_switch(ui, hash ? hash + 2 : label, x + w - k_ui.toggle_w, y, value);
 }
