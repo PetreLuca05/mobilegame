@@ -323,7 +323,7 @@ typedef struct Game {
     uint64_t fs_draws, fs_tris, fs_cat[GFX_CATS];
     uint32_t fs_vis[4];
     double fs_t0;
-    uint32_t fs_draws_max, fs_tris_max, fs_ui_max;
+    uint32_t fs_draws_max, fs_tris_max, fs_ui_max, fs_allocs;
     uint64_t fs_light2, fs_fade, fs_fade_binds, fs_map, fs_toon[3]; /* --log-frame-stats: second-light draws, shell fades, map draws */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
@@ -5138,14 +5138,16 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->fs_toon[0] += st.toon_draws[0], g->fs_toon[1] += st.toon_draws[1], g->fs_toon[2] += st.toon_draws[2];
         g->fs_light2 += st.light2_draws, g->fs_fade += st.fade_draws, g->fs_fade_binds += st.fade_binds, g->fs_map += g->wm.frame_draws;
         g->wm.frame_draws = 0;
+        g->fs_allocs += prof_allocs_last_frame(); /* heap allocations in the frame loop (MG_PROF builds; 0 without) */
         if (g->fs_n == 120) {
             const double n = 120.0;
             mg_log_info("frame stats: %.1f fps over the last 120 frames (window %s, %s)", g->fs_t0 > 0.0 ? 120.0 / (app->time - g->fs_t0) : 0.0,
                         (SDL_GetWindowFlags(app->window) & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) ? "occluded" : "visible",
                         (SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS) ? "focused" : "not focused");
             g->fs_t0 = app->time;
-            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, UI instances max %u, trip %d", g->fs_draws_max, g->fs_tris_max / 1000.0,
-                        g->fs_ui_max, (int)g->lib.trav.phase);
+            mg_log_info("frame stats (120 frames): draws max %u, tris max %.1fk, UI instances max %u, trip %d, frame allocations %u, resident %.0f MB",
+                        g->fs_draws_max, g->fs_tris_max / 1000.0, g->fs_ui_max, (int)g->lib.trav.phase, g->fs_allocs, (double)device_resident_mb());
+            g->fs_allocs = 0;
             g->fs_draws_max = g->fs_tris_max = g->fs_ui_max = 0;
             mg_log_info("frame stats (120 frames): draws %.1f tris %.1fk (room %.1fk prop %.1fk avatar %.1fk other %.1fk)", g->fs_draws / n,
                         g->fs_tris / n / 1000.0, g->fs_cat[GFX_CAT_ROOM] / n / 1000.0, g->fs_cat[GFX_CAT_PROP] / n / 1000.0,
