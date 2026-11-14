@@ -38,6 +38,7 @@ typedef struct Locker {
     float drag_y0, drag_pos0, drag_move;
     float last_dy_rate;
     int shown_sel;            /* the item the middle slot showed last frame (detent haptic + apply) */
+    bool pending;             /* the skin changed while the wheel moved: reported (saved, sent) once it rests */
     /* the hero */
     float yaw;                /* the dragged turn, radians */
     float yaw_vel;

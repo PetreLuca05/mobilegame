@@ -200,8 +200,8 @@ static void wheel_input(Locker *k, Ui *ui, MgApp *app, const LockerLayout *l, Ne
         }
         k->shown_sel = sel;
         if ((k->drag || k->vel != 0.0f) && field_c(skin, tab) != sel) { /* passing through: the selection follows the middle */
-            *field(skin, tab) = (uint8_t)sel;
-            *changed = true;
+            *field(skin, tab) = (uint8_t)sel; /* the hero wears it at once (the skin is edited in place) */
+            k->pending = true;                /* saved and sent once the wheel settles (locker_ui): not on every detent */
         }
     }
     /* tests and taps by id: every slot on screen, absolute (cr<tab>_0_<i>) and relative to the middle (crslot+1 ..) */
@@ -330,6 +330,10 @@ bool locker_ui(Locker *k, Ui *ui, MgApp *app, NetSkin *skin, bool show_back, boo
         const float nx = l.stage_x + (l.stage_w - nw) * 0.5f, ny = l.bottom - nh - 10.0f;
         ui_surface(ui, nx, ny, nw, nh - 4.0f, -1.0f, 4.0f, ui_rgba(k_ui.surface_tint), ui_rgba(k_ui.secondary_lip), 0.0f, ui_rgba(0));
         ui_text_c(ui, TEXT_FACE_BOLD, nx + nw * 0.5f, ny + (nh - 4.0f) * 0.5f, k_ui.t_body, ui_rgba(k_ui.ink), name);
+    }
+    if (k->pending && ((!k->drag && k->vel == 0.0f) || *done || *back)) { /* the wheel came to rest (or the screen closes) */
+        k->pending = false;
+        changed = true;
     }
     hero_input(k, app, &l);
     return changed;
