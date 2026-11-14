@@ -605,3 +605,32 @@ worktree at b9236bd after main moved on). Data in `docs/perf/gate_2026-11-13/`. 
 The WORLD-1 design figure of 18 draws (16 world + x-ray + HUD) is replaced by **26**: the iPad gate measured 23-24 in `worldmap`,
 `worldmap_travel` and `island`, after the second island (WORLD-2) and the library on the island (LIB-1) were added. `tools/perf_gate.py`
 `WORLD_MAX_DRAWS = 26`. The voyage keeps its own 38.
+
+## Reference gate (2026-11-14, iPad Air 4, build fed52aa) = docs/perf/after
+
+The optimization work closed here (user decision): the budgets that count are PERF-1's (60 fps, 0 dropped / late, 0 frame
+allocations, draws <= 150, GPU effective <= 8 ms, CPU tick <= 5 ms, memory <= 300 MB). Every scenario meets them; this run replaced
+the FRIENDS-2 reference in `docs/perf/after` (the iPhone files there were dropped: the iPhone is no longer tested). Later gates
+compare against it with the usual margin (`tools/perf_gate.py`: 10 % and an absolute noise floor per metric). The iPad gate runs
+only at the end of a milestone. Files and the full gate output: `docs/perf/gate_2026-11-14/`. `book` is parked with the missions.
+
+| scenario | fps | dropped | late | GPU eff ms | CPU tick ms | draws (avg) | memory MB | allocs |
+|---|---|---|---|---|---|---|---|---|
+| yard | 60 | 0 | 0 | 1.69 | 0.24 | 48.0 | 166 | 0 |
+| lobby | 60 | 0 | 0 | 0.83 | 0.23 | 47.5 | 165 | 0 |
+| corridor_f2 | 60 | 0 | 0 | 1.02 | 0.25 | 67.1 | 166 | 0 |
+| stress200 | 60 | 0 | 0 | 0.86 | 0.57 | 59.8 | 166 | 0 |
+| npcs | 60 | 0 | 0 | 1.12 | 0.39 | 61.9 | 164 | 0 |
+| lift_panel | 60 | 0 | 0 | 1.04 | 0.23 | 56.0 | 166 | 0 |
+| interact_npc | 60 | 0 | 0 | 0.95 | 0.39 | 59.7 | 165 | 0 |
+| lobby4 | 60 | 0 | 0 | 0.95 | 0.60 | 64.4 | 164 | 0 |
+| menu | 60 | 0 | 0 | 2.37 | 0.42 | 37.0 | 166 | 0 |
+| menu_front | 60 | 0 | 0 | 2.40 | 0.48 | 36.8 | 166 | 0 |
+| menu_to_map | 60 | 0 | 0 | 3.27 | 0.24 | 32.8 | 172 | 0 |
+| menu_travel | 60 | 0 | 0 | 2.19 | 0.40 | 32.3 | 166 | 0 |
+| ui_juice | 60 | 0 | 0 | 2.23 | 0.46 | 37.0 | 166 | 0 |
+| worldmap | 60 | 0 | 0 | 0.70 | 0.28 | 23.0 | 167 | 0 |
+| worldmap_travel | 60 | 0 | 0 | 1.34 | 0.20 | 17.4 | 166 | 0 |
+| island | 60 | 0 | 0 | 1.75 | 0.23 | 24.0 | 167 | 0 |
+| worldmap_voyage | 60 | 0 | 0 | 0.35 | 0.13 | 19.3 | 167 | 0 |
+| institute | 60 | 0 | 0 | 0.45 | 0.31 | 46.1 | 193 | 0 |

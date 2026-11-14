@@ -1,0 +1,218 @@
+PASS ipad   yard         cpu_tick_ms             0.24 budget 5.0
+PASS ipad   yard         render_ms               1.05 budget 2.0
+PASS ipad   yard         gpu_effective_ms        1.69 budget 8.0
+PASS ipad   yard         draws                  48.00 budget 150
+PASS ipad   yard         heap_allocs             0.00 budget 0
+PASS ipad   yard         memory_mb             166.00 budget 300
+PASS ipad   yard         dropped                 0.00 budget 0
+PASS ipad   yard         ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   yard         ui_submit_ms           0.099 estimate 0.15 (fails over 2x)
+INFO ipad   yard         passes max 2
+INFO ipad   yard         refresh 60 Hz, 60.0 fps
+PASS ipad   lobby        cpu_tick_ms             0.23 budget 5.0
+PASS ipad   lobby        render_ms               0.98 budget 2.0
+PASS ipad   lobby        gpu_effective_ms        0.83 budget 8.0
+PASS ipad   lobby        draws                  47.48 budget 150
+PASS ipad   lobby        heap_allocs             0.00 budget 0
+PASS ipad   lobby        memory_mb             165.00 budget 300
+PASS ipad   lobby        dropped                 0.00 budget 0
+PASS ipad   lobby        ui_update_ms           0.005 estimate 0.05 (fails over 2x)
+PASS ipad   lobby        ui_submit_ms           0.092 estimate 0.15 (fails over 2x)
+INFO ipad   lobby        passes max 2
+INFO ipad   lobby        refresh 60 Hz, 60.0 fps
+PASS ipad   corridor_f2  cpu_tick_ms             0.25 budget 5.0
+PASS ipad   corridor_f2  render_ms               1.09 budget 2.0
+PASS ipad   corridor_f2  gpu_effective_ms        1.02 budget 8.0
+PASS ipad   corridor_f2  draws                  67.09 budget 150
+PASS ipad   corridor_f2  heap_allocs             0.00 budget 0
+PASS ipad   corridor_f2  memory_mb             166.00 budget 300
+PASS ipad   corridor_f2  dropped                 0.00 budget 0
+PASS ipad   corridor_f2  ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   corridor_f2  ui_submit_ms           0.099 estimate 0.15 (fails over 2x)
+INFO ipad   corridor_f2  passes max 2
+INFO ipad   corridor_f2  refresh 60 Hz, 60.0 fps
+PASS ipad   stress200    cpu_tick_ms             0.57 budget 5.0
+PASS ipad   stress200    npc_ms                  0.21 budget 2.0
+PASS ipad   stress200    render_ms               1.12 budget 2.0
+PASS ipad   stress200    gpu_effective_ms        0.86 budget 8.0
+PASS ipad   stress200    draws                  59.84 budget 150
+PASS ipad   stress200    heap_allocs             0.00 budget 0
+PASS ipad   stress200    memory_mb             166.00 budget 300
+PASS ipad   stress200    dropped                 0.00 budget 0
+PASS ipad   stress200    ui_update_ms           0.008 estimate 0.05 (fails over 2x)
+PASS ipad   stress200    ui_submit_ms           0.109 estimate 0.15 (fails over 2x)
+INFO ipad   stress200    passes max 2
+INFO ipad   stress200    refresh 60 Hz, 60.0 fps
+PASS ipad   npcs         cpu_tick_ms             0.39 budget 5.0
+PASS ipad   npcs         render_ms               1.12 budget 2.0
+PASS ipad   npcs         gpu_effective_ms        1.12 budget 8.0
+PASS ipad   npcs         draws                  61.85 budget 150
+PASS ipad   npcs         heap_allocs             0.00 budget 0
+PASS ipad   npcs         memory_mb             164.00 budget 300
+PASS ipad   npcs         dropped                 0.00 budget 0
+PASS ipad   npcs         ui_update_ms           0.007 estimate 0.05 (fails over 2x)
+PASS ipad   npcs         ui_submit_ms           0.107 estimate 0.15 (fails over 2x)
+INFO ipad   npcs         passes max 2
+INFO ipad   npcs         refresh 60 Hz, 60.0 fps
+PASS ipad   lift_panel   cpu_tick_ms             0.23 budget 5.0
+PASS ipad   lift_panel   render_ms               1.07 budget 2.0
+PASS ipad   lift_panel   gpu_effective_ms        1.04 budget 8.0
+PASS ipad   lift_panel   draws                  56.00 budget 150
+PASS ipad   lift_panel   heap_allocs             0.00 budget 0
+PASS ipad   lift_panel   memory_mb             166.00 budget 300
+PASS ipad   lift_panel   dropped                 0.00 budget 0
+PASS ipad   lift_panel   ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   lift_panel   ui_submit_ms           0.093 estimate 0.15 (fails over 2x)
+INFO ipad   lift_panel   passes max 2
+INFO ipad   lift_panel   refresh 60 Hz, 60.0 fps
+PASS ipad   interact_npc cpu_tick_ms             0.39 budget 5.0
+PASS ipad   interact_npc render_ms               1.14 budget 2.0
+PASS ipad   interact_npc gpu_effective_ms        0.95 budget 8.0
+PASS ipad   interact_npc draws                  59.73 budget 150
+PASS ipad   interact_npc heap_allocs             0.00 budget 0
+PASS ipad   interact_npc memory_mb             165.00 budget 300
+PASS ipad   interact_npc dropped                 0.00 budget 0
+PASS ipad   interact_npc ui_update_ms           0.007 estimate 0.05 (fails over 2x)
+PASS ipad   interact_npc ui_submit_ms           0.111 estimate 0.15 (fails over 2x)
+INFO ipad   interact_npc passes max 2
+INFO ipad   interact_npc refresh 60 Hz, 60.0 fps
+PASS ipad   lobby4       cpu_tick_ms             0.60 budget 5.0
+PASS ipad   lobby4       render_ms               1.11 budget 2.0
+PASS ipad   lobby4       gpu_effective_ms        0.95 budget 8.0
+PASS ipad   lobby4       draws                  64.37 budget 150
+PASS ipad   lobby4       heap_allocs             0.00 budget 0
+PASS ipad   lobby4       memory_mb             164.00 budget 300
+PASS ipad   lobby4       dropped                 0.00 budget 0
+PASS ipad   lobby4       ui_update_ms           0.007 estimate 0.05 (fails over 2x)
+PASS ipad   lobby4       ui_submit_ms           0.104 estimate 0.15 (fails over 2x)
+INFO ipad   lobby4       passes max 2
+INFO ipad   lobby4       refresh 60 Hz, 60.0 fps
+PASS ipad   menu         cpu_tick_ms             0.42 budget 5.0
+PASS ipad   menu         render_ms               0.70 budget 2.0
+PASS ipad   menu         gpu_effective_ms        2.37 budget 8.0
+PASS ipad   menu         draws                  37.01 budget 150
+PASS ipad   menu         heap_allocs             0.00 budget 0
+PASS ipad   menu         memory_mb             166.00 budget 300
+PASS ipad   menu         dropped                 0.00 budget 0
+PASS ipad   menu         ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   menu         ui_submit_ms           0.096 estimate 0.15 (fails over 2x)
+PASS ipad   menu         tris_k                  56.8 estimate 58 (stop line 75.0)
+INFO ipad   menu         passes max 1
+INFO ipad   menu         refresh 60 Hz, 60.0 fps
+PASS ipad   menu_front   cpu_tick_ms             0.48 budget 5.0
+PASS ipad   menu_front   render_ms               0.72 budget 2.0
+PASS ipad   menu_front   gpu_effective_ms        2.40 budget 8.0
+PASS ipad   menu_front   draws                  36.84 budget 150
+PASS ipad   menu_front   heap_allocs             0.00 budget 0
+PASS ipad   menu_front   memory_mb             166.00 budget 300
+PASS ipad   menu_front   dropped                 0.00 budget 0
+PASS ipad   menu_front   ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   menu_front   ui_submit_ms           0.095 estimate 0.15 (fails over 2x)
+PASS ipad   menu_front   tris_k                  62.8 estimate 58 (stop line 75.0)
+INFO ipad   menu_front   passes max 1
+INFO ipad   menu_front   refresh 60 Hz, 60.0 fps
+PASS ipad   menu_to_map  cpu_tick_ms             0.24 budget 5.0
+PASS ipad   menu_to_map  render_ms               0.60 budget 2.0
+PASS ipad   menu_to_map  gpu_effective_ms        3.27 budget 8.0
+PASS ipad   menu_to_map  draws                  32.78 budget 150
+PASS ipad   menu_to_map  heap_allocs             0.00 budget 0
+PASS ipad   menu_to_map  memory_mb             172.00 budget 300
+PASS ipad   menu_to_map  dropped                 0.00 budget 0
+PASS ipad   menu_to_map  ui_update_ms           0.005 estimate 0.05 (fails over 2x)
+PASS ipad   menu_to_map  ui_submit_ms           0.020 estimate 0.15 (fails over 2x)
+PASS ipad   menu_to_map  draws_max                 57 limit 60
+INFO ipad   menu_to_map  passes max 1
+INFO ipad   menu_to_map  refresh 60 Hz, 60.0 fps
+PASS ipad   menu_travel  cpu_tick_ms             0.40 budget 5.0
+PASS ipad   menu_travel  render_ms               0.69 budget 2.0
+PASS ipad   menu_travel  gpu_effective_ms        2.19 budget 8.0
+PASS ipad   menu_travel  draws                  32.27 budget 150
+PASS ipad   menu_travel  heap_allocs             0.00 budget 0
+PASS ipad   menu_travel  memory_mb             166.00 budget 300
+PASS ipad   menu_travel  dropped                 0.00 budget 0
+PASS ipad   menu_travel  ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   menu_travel  ui_submit_ms           0.096 estimate 0.15 (fails over 2x)
+PASS ipad   menu_travel  draws_max                 42 limit 60
+INFO ipad   menu_travel  passes max 1
+INFO ipad   menu_travel  refresh 60 Hz, 60.0 fps
+PASS ipad   ui_juice     cpu_tick_ms             0.46 budget 5.0
+PASS ipad   ui_juice     render_ms               0.71 budget 2.0
+PASS ipad   ui_juice     gpu_effective_ms        2.23 budget 8.0
+PASS ipad   ui_juice     draws                  37.02 budget 150
+PASS ipad   ui_juice     heap_allocs             0.00 budget 0
+PASS ipad   ui_juice     memory_mb             166.00 budget 300
+PASS ipad   ui_juice     dropped                 0.00 budget 0
+PASS ipad   ui_juice     ui_update_ms           0.014 estimate 0.05 (fails over 2x)
+PASS ipad   ui_juice     ui_submit_ms           0.097 estimate 0.15 (fails over 2x)
+INFO ipad   ui_juice     passes max 1
+INFO ipad   ui_juice     refresh 60 Hz, 60.0 fps
+PASS ipad   worldmap     cpu_tick_ms             0.28 budget 5.0
+PASS ipad   worldmap     render_ms               0.68 budget 2.0
+PASS ipad   worldmap     gpu_effective_ms        0.70 budget 8.0
+PASS ipad   worldmap     draws                  23.00 budget 150
+PASS ipad   worldmap     heap_allocs             0.00 budget 0
+PASS ipad   worldmap     memory_mb             167.00 budget 300
+PASS ipad   worldmap     dropped                 0.00 budget 0
+PASS ipad   worldmap     gpu_effective_ms        0.70 estimate 1.5 (fails over 2x)
+PASS ipad   worldmap     render_ms               0.15 estimate 0.15 (fails over 2x)
+PASS ipad   worldmap     cpu_tick_ms             0.01 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap     ui_update_ms           0.005 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap     ui_submit_ms           0.098 estimate 0.15 (fails over 2x)
+INFO ipad   worldmap     passes max 1
+INFO ipad   worldmap     refresh 60 Hz, 60.0 fps
+PASS ipad   worldmap_travel cpu_tick_ms             0.20 budget 5.0
+PASS ipad   worldmap_travel render_ms               0.58 budget 2.0
+PASS ipad   worldmap_travel gpu_effective_ms        1.34 budget 8.0
+PASS ipad   worldmap_travel draws                  17.36 budget 150
+PASS ipad   worldmap_travel heap_allocs             0.00 budget 0
+PASS ipad   worldmap_travel memory_mb             166.00 budget 300
+PASS ipad   worldmap_travel dropped                 0.00 budget 0
+PASS ipad   worldmap_travel gpu_effective_ms        1.34 estimate 1.0 (fails over 2x)
+PASS ipad   worldmap_travel render_ms               0.10 estimate 0.15 (fails over 2x)
+PASS ipad   worldmap_travel cpu_tick_ms             0.01 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap_travel ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap_travel ui_submit_ms           0.094 estimate 0.15 (fails over 2x)
+INFO ipad   worldmap_travel passes max 1
+INFO ipad   worldmap_travel refresh 60 Hz, 60.0 fps
+PASS ipad   island       cpu_tick_ms             0.23 budget 5.0
+PASS ipad   island       render_ms               0.63 budget 2.0
+PASS ipad   island       gpu_effective_ms        1.75 budget 8.0
+PASS ipad   island       draws                  24.00 budget 150
+PASS ipad   island       heap_allocs             0.00 budget 0
+PASS ipad   island       memory_mb             167.00 budget 300
+PASS ipad   island       dropped                 0.00 budget 0
+PASS ipad   island       gpu_effective_ms        1.75 estimate 1.0 (fails over 2x)
+PASS ipad   island       render_ms               0.12 estimate 0.15 (fails over 2x)
+PASS ipad   island       cpu_tick_ms             0.01 estimate 0.05 (fails over 2x)
+PASS ipad   island       ui_update_ms           0.007 estimate 0.05 (fails over 2x)
+PASS ipad   island       ui_submit_ms           0.105 estimate 0.15 (fails over 2x)
+INFO ipad   island       passes max 1
+INFO ipad   island       refresh 60 Hz, 60.0 fps
+PASS ipad   worldmap_voyage cpu_tick_ms             0.13 budget 5.0
+PASS ipad   worldmap_voyage render_ms               0.57 budget 2.0
+PASS ipad   worldmap_voyage gpu_effective_ms        0.35 budget 8.0
+PASS ipad   worldmap_voyage draws                  19.30 budget 150
+PASS ipad   worldmap_voyage heap_allocs             0.00 budget 0
+PASS ipad   worldmap_voyage memory_mb             167.00 budget 300
+PASS ipad   worldmap_voyage dropped                 0.00 budget 0
+PASS ipad   worldmap_voyage gpu_effective_ms        0.35 estimate 2.5 (fails over 2x)
+PASS ipad   worldmap_voyage render_ms               0.11 estimate 0.25 (fails over 2x)
+PASS ipad   worldmap_voyage cpu_tick_ms             0.01 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap_voyage ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   worldmap_voyage ui_submit_ms           0.093 estimate 0.15 (fails over 2x)
+INFO ipad   worldmap_voyage passes max 1
+INFO ipad   worldmap_voyage refresh 60 Hz, 60.0 fps
+PASS ipad   institute    cpu_tick_ms             0.31 budget 5.0
+PASS ipad   institute    render_ms               1.00 budget 2.0
+PASS ipad   institute    gpu_effective_ms        0.45 budget 8.0
+PASS ipad   institute    draws                  46.07 budget 150
+PASS ipad   institute    heap_allocs             0.00 budget 0
+PASS ipad   institute    memory_mb             193.00 budget 300
+PASS ipad   institute    dropped                 0.00 budget 0
+PASS ipad   institute    ui_update_ms           0.006 estimate 0.05 (fails over 2x)
+PASS ipad   institute    ui_submit_ms           0.097 estimate 0.15 (fails over 2x)
+INFO ipad   institute    passes max 2
+INFO ipad   institute    refresh 60 Hz, 60.0 fps
+FAIL ipad lobby4: cpu_tick_ms regressed 0.50 -> 0.60
+FAIL ipad menu: cpu_tick_ms regressed 0.29 -> 0.42
+PERF GATE FAILED

@@ -1,1 +1,1 @@
-{"device": "ipad", "scenario": "interact_npc", "commit": "3681449", "fps": 60, "gpu_frame_ms": 5.87, "busy_pct": 35, "effective_ms": 2.07, "clock": "Minimum", "clock_share_pct": 97}
+{"device": "ipad", "scenario": "interact_npc", "commit": "fed52aa", "fps": 60, "gpu_frame_ms": 3.98, "busy_pct": 24, "effective_ms": 0.95, "clock": "Minimum", "clock_share_pct": 99}
