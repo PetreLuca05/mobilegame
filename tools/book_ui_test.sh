@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# PARKED (user decision 2026-11-14): the missions and question panels are parked, this script is in no suite and not run.
 # BOOK-ENGINE S8: --autotest book_ui (the script player, every item type answered wrong then right) on the default window
 # and the iPhone, iPhone-flipped and iPad presets, on the synthetic test fixture (generated into the build folder: no book
 # content in the repository); pictures stay in the build folder (they show the fixture's placeholder text). macOS desktop.

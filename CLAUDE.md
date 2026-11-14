@@ -1,8 +1,8 @@
 # Mobilegame — engine, hospital, lighting, onboarding (M1-M4), world map (WORLD-1), library menu (LIB-1)
 
 C11 engine for iOS / Android phones and iPad on SDL3 + SDL3 GPU, with a desktop
-target for fast iteration. Current focus: desktop + iOS (Android code still
-builds in CI but is not verified). **Landscape only**: LandscapeLeft +
+target for fast iteration. Platforms: desktop + iOS. Android was dropped (user decision): no Play builds, no CI build;
+the platform code below is still in the tree, unbuilt. **Landscape only**: LandscapeLeft +
 LandscapeRight everywhere (SDL hint + Info.plist), never portrait; lay out
 for a short, wide screen and respect `app->safe_*` on both sides (notch /
 Dynamic Island flips sides with the rotation, home indicator at the bottom) on Settings, Friends and overlays; the in-game HUD (`hud_frame`), the pause button, marker edge icons, the main menu and onboarding respect them on phones (`ui_hud_frame` in `engine/ui/layout.h`: a screen under 600 pt tall gets the real insets + 12 pt, 8 pt at the top) and ignore them on the iPad (12 pt from the screen edge). Multiplayer over Supabase Realtime;
@@ -49,19 +49,15 @@ MG_IOS_TEAM_ID=<team id> tools/run_ios.sh         # build, install, launch on th
 MG_IOS_TEAM_ID=<team id> tools/run_ios.sh --open  # just generate build/ios/mobilegame.xcodeproj and open Xcode
 ```
 
-Android is not built locally for now (the `android` GitHub workflow still
-builds `platform/android`; see git history for the local commands).
+Android is not built (dropped; `tools/build_aab.sh` and the `android` workflow were removed 2026-11-14, see git history).
 
-Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [--apk]`
-(Play internal testing; needs `platform/android/keystore.properties`), and the
-`android` GitHub workflow publishes `android-latest` on every push to main.
+Releases: `tools/archive_ios.sh [--upload]` (TestFlight; no content pack required while the missions are parked).
 Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
-Store builds: CMake `MG_STORE` (default OFF) marks an App Store / Play production build: Settings has no
+Store builds: CMake `MG_STORE` (default OFF) marks an App Store production build: Settings has no
 Developer section (no Dezvoltator button, rows, haptic lab), every debug overlay starts off and the desktop dev keys
 (F1 free camera, F2 colliders, T + mouse tilt) do nothing. The code stays compiled; `settings_dev_allowed()`
-(`game/settings_menu.h`) is the one gate. Debug, TestFlight (`archive_ios.sh [--upload]`) and internal Play
-(`build_aab.sh [--apk]`) builds keep it OFF; `tools/archive_ios.sh --store [--upload]` (own cache in
-`build/ios_store`) and `tools/build_aab.sh --store [--apk]` (`-PmgStore=ON`) make the store builds. Desktop
+(`game/settings_menu.h`) is the one gate. Debug and TestFlight (`archive_ios.sh [--upload]`) builds keep it OFF;
+`tools/archive_ios.sh --store [--upload]` (own cache in `build/ios_store`) makes the store build. Desktop
 `--store-config` applies exactly the same rule at run time; `--autotest ui` checks it on Settings (scrolled to the
 end: with the rule no Developer widget id and none of the `set_developer` / `set_haptic_lab` / `dev_*` texts drawn,
 "PASS store rule"; without it the button is there, "PASS developer section present"). `tools/store_check.sh [OUT]`

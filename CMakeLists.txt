@@ -12,10 +12,10 @@ set(MG_IOS_TEAM_ID "" CACHE STRING "Apple development team ID for code signing")
 option(MG_GPU_DEBUG "Enable SDL GPU debug/validation layers" OFF)
 option(MG_BAKE "Prototype: bake sun shadow and AO into the static world's vertex colours" OFF)
 option(MG_PROF "CPU profiler, GPU fence timing, heap counter (off for store builds)" ON)
-# App Store / Play production build: Settings has no Developer section and nothing behind it is reachable
-# (settings_dev_allowed). TestFlight archives and internal Play testing keep it OFF; tools/archive_ios.sh --store and
-# tools/build_aab.sh --store turn it on. Desktop --store-config applies the same rule at run time (tests).
-option(MG_STORE "App Store / Play production build: no Developer section in Settings" OFF)
+# App Store production build: Settings has no Developer section and nothing behind it is reachable
+# (settings_dev_allowed). TestFlight archives keep it OFF; tools/archive_ios.sh --store turns it on.
+# Desktop --store-config applies the same rule at run time (tests).
+option(MG_STORE "App Store production build: no Developer section in Settings" OFF)
 # Needs the "Sign In with Apple" capability on the App ID (see CLAUDE.md);
 # without it the provisioning profile rejects the entitlement.
 option(MG_TEST_AUTH "--autotest link: email + password stand in for the ID-token grant (Debug test builds only)" OFF)
