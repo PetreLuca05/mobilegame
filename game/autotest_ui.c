@@ -180,6 +180,51 @@ static int check_targets(UiTest *t, MgApp *app, const AutotestProbe *p, const ch
     return checked > 0 ? 0 : failf(t, "%s: no tappable widget seen", screen);
 }
 
+/* The store rule (MG_STORE builds, --store-config): Settings registers no Developer widget and draws none of its text
+ * (set_developer, set_haptic_lab, dev_*); without it the Developer button and its text are there. */
+static void dev_watch(void)
+{
+    if (text_check_watch_count() == 0) {
+        strings_watch_prefix("set_developer");
+        strings_watch_prefix("set_haptic_lab");
+        strings_watch_prefix("dev_");
+    }
+}
+
+static int check_developer(UiTest *t, const AutotestProbe *p)
+{
+    static const char *const ids[] = {"dev", "hlab", "colliders", "triggers", "nav", "storeys", "xray_always", "tilt_debug", "dev_perf",
+                                      "force_lift", "ranges", "active_id", "preview_any", "safe_rect", "profiler", "slots", "packages",
+                                      "npc_paths", "freeze_npcs", "npc", "stress", "test_markers", "mkc", "all_paths", "mkr"};
+    if (!text_check_enabled() || text_check_watch_count() < 3) {
+        return failf(t, "developer check: the text check is off or watches nothing (%d)", text_check_watch_count());
+    }
+    const char *first = NULL;
+    const int hits = text_check_watch_hits(&first);
+    float x, y;
+    if (p->dev_allowed) {
+        if (!ui_find(p->ui, "dev", &x, &y)) {
+            return failf(t, "ui_settings: no Developer button (id dev) without the store rule");
+        }
+        if (hits == 0) {
+            return failf(t, "ui_settings: the Developer button's text (\"%s\") was never drawn", str("set_developer"));
+        }
+        mg_log_info("autotest ui: PASS developer section present (dev allowed): button id dev, its text drawn %d times", hits);
+        return 0;
+    }
+    for (int i = 0; i < (int)MG_ARRAY_COUNT(ids); i++) {
+        if (ui_find(p->ui, ids[i], &x, &y)) {
+            return failf(t, "ui_settings: store rule, but the Developer widget id %s is registered", ids[i]);
+        }
+    }
+    if (hits > 0) {
+        return failf(t, "ui_settings: store rule, but Developer text \"%s\" was drawn (%d draws)", first ? first : "?", hits);
+    }
+    mg_log_info("autotest ui: PASS store rule: no Developer widget (%d ids checked), none of %d Developer texts drawn",
+                (int)MG_ARRAY_COUNT(ids), text_check_watch_count());
+    return 0;
+}
+
 enum { S_START, S_PRESS, S_TEN, S_DRAG, S_TOGGLE, S_TAB, S_REWARD, S_WRONG, S_SHOTS, S_SCREENS, S_DONE };
 
 int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, double now)
@@ -545,6 +590,7 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
                 }
                 autotest_finger(app, SDL_EVENT_FINGER_DOWN, UT_FINGER, x, y);
                 t->cx = x, t->cy = y;
+                dev_watch(); /* the Developer texts: Settings' check counts their draws */
                 t->sub = 2, t->at = now; /* the up a few frames later */
                 return 0;
             }
@@ -570,6 +616,23 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
             }
             SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", screens[i].name);
             t->skip = 4;
+            if (screens[i].state == FE_SETTINGS && p->settings_scroll) { /* then the Developer check at the page's end */
+                t->sub = 3, t->at = now;
+                return 0;
+            }
+            t->screen_i++;
+            t->sub = 0, t->at = now;
+        } else if (t->sub == 3) { /* the picture is taken: scroll the game tab to its end (clamped), watch from here */
+            if (now - t->at > 0.2) {
+                p->settings_scroll->offset = 1e6f;
+                text_check_watch_reset();
+                t->sub = 4, t->at = now;
+            }
+        } else if (t->sub == 4 && now - t->at > 0.5) {
+            if (check_developer(t, p) < 0) {
+                return -1;
+            }
+            p->settings_scroll->offset = 0.0f;
             t->screen_i++;
             t->sub = 0, t->at = now;
         }

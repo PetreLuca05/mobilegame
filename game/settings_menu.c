@@ -21,6 +21,24 @@ static const char *label_of(char *buf, size_t cap, const char *key, const char *
 }
 #define L(key, id) label_of(lb, sizeof(lb), (key), (id))
 
+/* ------------------------------------------------------------------ developer gate */
+
+bool settings_dev_allowed(const SettingsMenu *m) { return !m->store; }
+
+void settings_dev_clear(GameSettings *s)
+{
+    s->show_colliders = s->show_triggers = s->show_nav = s->show_storeys = s->xray_always = false;
+    s->show_tilt_debug = s->force_lift_panel = s->show_ia_ranges = s->show_ia_active = s->preview_any = false;
+    s->show_safe_rect = s->show_profiler = s->show_slots = s->show_packages = s->show_npc_paths = false;
+    s->freeze_npcs = s->respawn_npcs = s->test_markers = s->show_all_paths = false;
+    s->stress_count = 0.0f;
+#ifdef MG_RENDER_FULL
+    s->show_lights = s->show_cascades = s->freeze_shadows = false;
+    s->tier_override = 0;
+#endif
+    /* show_stats stays: Settings -> "Arată statisticile de performanță" is the player's (Developer only mirrors it) */
+}
+
 
 /* ------------------------------------------------------------------ game */
 
@@ -181,6 +199,10 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
     y = mg_maxf(cy, left_end) + 6.0f;
 
 
+    if (!settings_dev_allowed(m)) { /* App Store / Play (MG_STORE): no Developer section */
+        m->dev_open = m->lab_open = false;
+        return y - y_top;
+    }
     char dev[64];
     SDL_snprintf(dev, sizeof(dev), "%s %s##dev", str("set_developer"), m->dev_open ? "-" : "+");
     if (ui_button(ui, dev, x, y, cw, 44.0f, m->dev_open)) {

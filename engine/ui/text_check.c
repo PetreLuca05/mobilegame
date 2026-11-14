@@ -10,6 +10,7 @@
 #define TC_MAX_BAD 32
 #define TC_TEXT 96
 #define TC_WORD 32
+#define TC_MAX_WATCH 64
 
 typedef struct TcBad {
     uint64_t hash; /* of the whole text: one entry per distinct text */
@@ -27,6 +28,9 @@ typedef struct TextCheck {
     uint64_t slot[TC_SLOTS]; /* word hashes, 0 = empty */
     TcBad bad[TC_MAX_BAD];
     int bad_count, bad_dropped;
+    const char *watch[TC_MAX_WATCH];
+    int watch_count, watch_hits;
+    const char *watch_first;
 } TextCheck;
 
 static TextCheck *tc(void)
@@ -201,10 +205,57 @@ static void scan_word(const Word *w, void *ctx)
     }
 }
 
+void text_check_watch(const char *s)
+{
+    TextCheck *t = tc();
+    if (s && s[0] && t->watch_count < TC_MAX_WATCH) {
+        t->watch[t->watch_count++] = s;
+    }
+}
+
+void text_check_watch_reset(void)
+{
+    tc()->watch_hits = 0;
+    tc()->watch_first = NULL;
+}
+
+int text_check_watch_count(void) { return tc()->watch_count; }
+
+int text_check_watch_hits(const char **first)
+{
+    if (first) {
+        *first = tc()->watch_first;
+    }
+    return tc()->watch_hits;
+}
+
+static void watch_scan(TextCheck *t, const char *s, size_t len)
+{
+    size_t n = 0;
+    while ((len == (size_t)-1 || n < len) && s[n]) {
+        n++;
+    }
+    for (int i = 0; i < t->watch_count; i++) {
+        const size_t wn = strlen(t->watch[i]);
+        if (n >= wn && memcmp(s, t->watch[i], wn) == 0 && (n == wn || s[wn] == ' ')) {
+            if (t->watch_hits++ == 0) {
+                t->watch_first = t->watch[i];
+            }
+            return;
+        }
+    }
+}
+
 void text_check_scan(const char *s, size_t len)
 {
     TextCheck *t = tc();
-    if (!t->on || t->exempt > 0 || !s) {
+    if (!t->on || !s) {
+        return;
+    }
+    if (t->watch_count > 0) {
+        watch_scan(t, s, len);
+    }
+    if (t->exempt > 0) {
         return;
     }
     ScanCtx c = {0};

@@ -29,6 +29,15 @@ void text_check_exempt_pop(void);
 void text_check_set_screen(const char *name);
 /* Checks the first len bytes of s (or up to a NUL with len = (size_t)-1). */
 void text_check_scan(const char *s, size_t len);
+/* Watched texts (autotests: "this screen draws none of these"): a draw whose text is one of them, or starts with one
+ * followed by a space ("Dezvoltator +"), is a hit, exempt or not. Up to 64, kept by pointer (string-table values).
+ * Only while the check is on. text_check_watch_reset clears the hits, not the list. */
+void text_check_watch(const char *s);
+void text_check_watch_reset(void);
+int text_check_watch_count(void);
+/* Hits since the last reset; `first` gets the first hit's watched text. */
+int text_check_watch_hits(const char **first);
+
 /* Distinct offending draws so far (by text); fills the i-th one's text, its first bad word and its screen. */
 int text_check_count(void);
 bool text_check_get(int i, const char **text, const char **word, const char **screen);

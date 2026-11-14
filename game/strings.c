@@ -123,3 +123,27 @@ void strings_feed_text_check(void)
         }
     }
 }
+
+int strings_watch_prefix(const char *prefix)
+{
+    const StringTable *t = g_strings_table();
+    const size_t pn = strlen(prefix);
+    int n = 0;
+    for (int i = 0; i < t->count; i++) {
+        if (strncmp(t->e[i].key, prefix, pn) != 0) {
+            continue;
+        }
+        int first = i; /* what str() returns: the first entry with this key (Romanian before English) */
+        for (int k = 0; k < i; k++) {
+            if (strcmp(t->e[k].key, t->e[i].key) == 0) {
+                first = k;
+                break;
+            }
+        }
+        if (first == i) {
+            text_check_watch(t->e[i].value);
+            n++;
+        }
+    }
+    return n;
+}

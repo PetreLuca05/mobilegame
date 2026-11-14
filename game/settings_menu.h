@@ -67,6 +67,7 @@ typedef struct SettingsMenu {
     char tp_label[8][8]; /* "G##tp", "1##tp" .. "R##tp" */
     UiScroll players_scroll, card_scroll;
     int tab; /* 0 game, 1 skin */
+    bool store;     /* set by the game: the store rule (MG_STORE builds, desktop --store-config): no Developer section */
     bool dev_open;
     bool lab_open;  /* HAPTIC-1 Haptic lab (debug builds): every table entry, tap to play */
     int lab_tab;
@@ -79,6 +80,13 @@ typedef struct SettingsMenu {
     bool preview_visible;
     float preview_x, preview_y, preview_size;
 } SettingsMenu;
+
+/* The store rule: App Store / Play builds (MG_STORE) and desktop --store-config have no Developer section in Settings
+ * (no button, no rows, no haptic lab) and the game turns off every debug overlay and desktop dev key. Debug and
+ * TestFlight / internal builds keep it. The section's code stays compiled in every build; this is its only gate. */
+bool settings_dev_allowed(const SettingsMenu *m);
+/* The store rule at start: every Developer row's value back to off (a pref or a test flag may have set one). */
+void settings_dev_clear(GameSettings *s);
 
 /* Draw the gear button (always) and the panel (when open). */
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
