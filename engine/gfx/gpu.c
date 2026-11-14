@@ -44,6 +44,7 @@ typedef struct GfxMeshRec {
     int32_t vertex_offset;
     HMM_Vec3 bmin, bmax; /* model-space bounds, for light selection */
     uint32_t vcap, icap; /* gfx_mesh_reserve: the room it may be updated into (0 = an ordinary mesh) */
+    bool flat;           /* every triangle's three normals identical (flat shaded): the toon "flat" variant may draw it */
 } GfxMeshRec;
 
 #define GFX_LIGHTS_PER_DRAW 8
@@ -120,6 +121,7 @@ typedef struct FrameFSUniforms {
     HMM_Vec4 sun2_dir; /* w: the mix towards the second light set */
     HMM_Vec4 sun2_color;
     HMM_Vec4 ambient2; /* w: its two-band ramp */
+    HMM_Vec4 shade_off; /* x: GFX_SHADE_OFF_* (--shade-off), 0 normally */
 } FrameFSUniforms;
 
 typedef struct SkyFSUniforms {
@@ -181,6 +183,7 @@ struct GfxContext {
     SDL_GPUTextureFormat refl_fmt;
     SDL_GPUSampleCount msaa;
     bool no_instancing;
+    uint32_t shade_off; /* --shade-off: GFX_SHADE_OFF_* */
     uint64_t ui_atlas_bytes;
     GfxInset insets[GFX_MAX_INSETS];
     int inset_count, current_inset; /* current: index + 1, 0 none */
@@ -302,6 +305,10 @@ struct GfxContext {
     SDL_GPUTransferBuffer *inst_tb[GFX_BUFFER_RING];
     uint32_t ring;
     SDL_GPUGraphicsPipeline *inst_pipe[GFX_MAT_COUNT][2]; /* opaque, dithered; NULL = per-draw path */
+    /* GFX_MAT_TOON's other fragment shaders [variant - 1][dithered] (toon_variant): 1 rest = one light set; 2 flat = one light set,
+     * no rim, highlight or fwidth, for flat-shaded meshes with neither. The full shader only while two light sets mix. */
+    SDL_GPUGraphicsPipeline *toon_var[2][2];
+    int toon_mode; /* 0 the variants; --toon-full 1: every toon draw on the full shader; --toon-rest-only 2: no flat variant (A/B) */
     SDL_GPUGraphicsPipeline *inst_xray_always[2];         /* rim, fill: "X-ray always" (depth test ALWAYS) */
     SDL_GPUGraphicsPipeline *floor_dither;
     uint32_t draw_count;
@@ -561,6 +568,19 @@ static bool create_pipelines(GfxContext *g)
                     d.fs = load_shader(g, k_inst[k].dither, 2, k_inst[k].samplers);
                     g->inst_pipe[k_inst[k].kind][1] = make_pipeline(g, &d);
                 }
+                if (k_inst[k].kind == GFX_MAT_TOON) { /* the rest and flat variants, compiled at load like the others */
+                    static const char *const vf[2][2] = {{"toon_inst_rest.frag", "toon_inst_rest_dither.frag"},
+                                                         {"toon_inst_flat.frag", "toon_inst_flat_dither.frag"}};
+                    for (int v = 0; v < 2; v++) {
+                        for (int h = 0; h < 2; h++) {
+                            d.fs = load_shader(g, vf[v][h], 2, 0);
+                            g->toon_var[v][h] = make_pipeline(g, &d);
+                            if (!g->toon_var[v][h]) {
+                                return false;
+                            }
+                        }
+                    }
+                }
             }
             /* x-ray: always dithered, so only the second slot; the one thing that scaled with the player count */
             for (int x = 0; x < 2; x++) {
@@ -747,6 +767,10 @@ static void release_pipelines(GfxContext *g)
         }
         RELEASE_PIPE(g->inst_pipe[k][0]);
         RELEASE_PIPE(g->inst_pipe[k][1]);
+        if (k < 2) {
+            RELEASE_PIPE(g->toon_var[k][0]);
+            RELEASE_PIPE(g->toon_var[k][1]);
+        }
     }
     RELEASE_PIPE(g->floor_dither);
     RELEASE_PIPE(g->present_pipe);
@@ -761,6 +785,8 @@ static void release_pipelines(GfxContext *g)
 
 void gfx_set_msaa(GfxContext *g, int samples) { g->msaa_wanted = samples; }
 void gfx_set_instancing(GfxContext *g, bool on) { g->no_instancing = !on; }
+void gfx_set_shade_off(GfxContext *g, uint32_t bits) { g->shade_off = bits; }
+void gfx_set_toon_mode(GfxContext *g, int mode) { g->toon_mode = mode; }
 
 /* Between frames' GPU work: pipelines and targets depend on the sample count. */
 /* The head-icon targets, made outside the frame loop (at init and after an MSAA change): a portrait asked for in a
@@ -1264,6 +1290,7 @@ GfxMeshId gfx_mesh_reserve(GfxContext *g, uint32_t max_verts, uint32_t max_indic
     m->first_index = g->pool.ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = 0; /* nothing to draw until the first update */
     m->vcap = max_verts, m->icap = max_indices;
+    m->flat = false; /* updated at run time (avatars, texts): never the flat variant */
     if (vbytes + ibytes > g->upd_cap) { /* load time: one staging buffer for every later gfx_mesh_update, sized to the largest
                                          * reserve (creating one per update allocated in the frame: 12 per lobby change) */
         if (g->upd_tb) {
@@ -1346,6 +1373,12 @@ GfxMeshId gfx_mesh_upload(GfxContext *g, const GfxVertex *verts, uint32_t vert_c
     m->vertex_offset = (int32_t)(g->pool.vb_used / sizeof(GfxVertex));
     m->first_index = g->pool.ib_used / (uint32_t)sizeof(uint32_t);
     m->index_count = index_count;
+    m->vcap = m->icap = 0;
+    m->flat = true;
+    for (uint32_t t = 0; t + 2 < index_count && m->flat; t += 3) {
+        const GfxVertex *a = &verts[indices[t]], *b = &verts[indices[t + 1]], *c = &verts[indices[t + 2]];
+        m->flat = a->nx == b->nx && a->ny == b->ny && a->nz == b->nz && a->nx == c->nx && a->ny == c->ny && a->nz == c->nz;
+    }
     return (GfxMeshId)mesh_pool_take(&g->pool, vbytes, ibytes);
 }
 
@@ -1907,6 +1940,22 @@ static bool instanceable(const GfxContext *g, const DrawItem *d)
     return g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0] != NULL;
 }
 
+/* GFX_MAT_TOON's fragment shader for a draw: 0 full (two light sets mixing, --toon-full), 1 rest, 2 flat (a flat-shaded mesh with
+ * no rim and no gloss: the same pixels without the work they skip, see shaders/toon_inst_flat.frag.hlsl) */
+static int toon_variant(const GfxContext *g, const DrawItem *d)
+{
+    if (d->kind != GFX_MAT_TOON || g->toon_mode == 1 || g->scene.light_mix > 0.0f || !g->toon_var[0][0]) {
+        return 0;
+    }
+    return g->toon_mode != 2 && g->meshes[d->mesh].flat && d->params.X == 0.0f && d->params.W == 0.0f ? 2 : 1;
+}
+
+static SDL_GPUGraphicsPipeline *inst_pipeline(const GfxContext *g, const DrawItem *d)
+{
+    const int h = d->hide > 0.0f ? 1 : 0, v = toon_variant(g, d);
+    return v ? g->toon_var[v - 1][h] : g->inst_pipe[d->kind][h];
+}
+
 /* bucket | kind | x-ray-always | two 16-bit fields | position:
  *   opaque: mesh, solid / dithered, then depth (front to back), so one mesh's instances on one pipeline are neighbours
  *   blended: depth (back to front) then mesh; ground sprites all sort as "farthest"; GFX_MAT_ALPHA: mesh, then back to front */
@@ -1924,10 +1973,9 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
         b = d->mesh;
     } else { /* the mesh, then its pipeline (solid / dithered), then depth: one mesh's solid instances are one run and its dithered
               * ones another however they interleave in depth (people fading in or out, LOD crossfades: a body mesh in 7 runs was 2) */
-        a = ((uint64_t)d->mesh << 1) | (d->hide > 0.0f ? 1u : 0u); /* GFX_MAX_MESHES 512: 10 bits */
+        a = ((uint64_t)d->mesh << 3) | ((uint64_t)toon_variant(g, d) << 1) | (d->hide > 0.0f ? 1u : 0u); /* GFX_MAX_MESHES 512: 10 bits */
         b = near_first >> 1; /* 15 bits: 1/128 m */
     }
-    (void)g;
     const uint64_t always = (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f;
     /* bucket 3 bits | kind 4 | always 1 | a 16 | b 15 | index 25 */
     return ((uint64_t)draw_bucket(d) << 61) | ((uint64_t)d->kind << 57) | (always << 56) | (a << 40) | ((b & 0x7FFFu) << 25) | (uint64_t)index;
@@ -1986,7 +2034,7 @@ static void build_instances(GfxContext *g)
             const DrawItem *e = &g->draws[g->order[j]];
             if (e->kind != d->kind || e->mesh != d->mesh || (e->hide > 0.0f) != dither || !instanceable(g, e) ||
                 draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count ||
-                xray_always(e) != xray_always(d)) {
+                xray_always(e) != xray_always(d) || toon_variant(g, e) != toon_variant(g, d)) {
                 break;
             }
             if (g->inst_count >= GFX_MAX_INSTANCES) {
@@ -2041,6 +2089,7 @@ static void push_frame_uniforms(GfxContext *g, const HMM_Mat4 *view_proj, HMM_Ve
     f.sun2_dir = HMM_V4V(g->scene.sun2_dir, mg_clampf(g->scene.light_mix, 0.0f, 1.0f));
     f.sun2_color = HMM_V4V(g->scene.sun2_color, 0.0f);
     f.ambient2 = HMM_V4V(g->scene.ambient2, mg_clampf(g->scene.two_band2, 0.0f, 1.0f));
+    f.shade_off = HMM_V4((float)g->shade_off, 0.0f, 0.0f, 0.0f);
     SDL_PushGPUFragmentUniformData(g->cmd, 1, &f, sizeof(f));
 #ifndef MG_RENDER_FULL
     (void)reflection;
@@ -2106,7 +2155,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             continue;
         }
         if (can_instance && g->run_len[i] > 0) {
-            SDL_GPUGraphicsPipeline *ip = xray_always(d) ? g->inst_xray_always[d->kind == GFX_MAT_XRAY] : g->inst_pipe[d->kind][d->hide > 0.0f ? 1 : 0];
+            SDL_GPUGraphicsPipeline *ip = xray_always(d) ? g->inst_xray_always[d->kind == GFX_MAT_XRAY] : inst_pipeline(g, d);
             if (ip != bound_pipe) {
                 SDL_BindGPUGraphicsPipeline(pass, ip);
                 bound_pipe = ip;
@@ -2122,6 +2171,9 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
             }
             const GfxMeshRec *im = &g->meshes[d->mesh];
             const uint32_t runs = g->run_len[i];
+            if (d->kind == GFX_MAT_TOON && !xray_always(d)) {
+                g->stats.toon_draws[toon_variant(g, d)]++;
+            }
             const uint32_t ic = d->range_count ? d->range_count : im->index_count;
             SDL_DrawGPUIndexedPrimitives(pass, ic, runs, im->first_index + d->range_first, im->vertex_offset, g->run_first[i]);
             count++;
@@ -2864,6 +2916,7 @@ static void frame_end(GfxContext *g)
     g->stats.ui_quads = g->ui_count;
     g->stats.tris = g->stats.instances = g->stats.pipe_binds = g->stats.tex_binds = g->stats.uniform_bytes = g->stats.passes = 0;
     SDL_zeroa(g->stats.tris_cat);
+    SDL_zeroa(g->stats.toon_draws);
     g->stats.fade_draws = g->fade_draws_frame, g->stats.fade_violations = g->fade_violations_frame; /* this frame's draw calls */
     g->fade_draws_frame = g->fade_violations_frame = 0;
     g->stats.gpu_main_ms = (float)SDL_GetAtomicInt(&g->gpu_main_us) * 0.001f;

@@ -537,6 +537,17 @@ Devices: test on this Mac and the iPad Air 4 only; the iPhone is no longer teste
   and a dithered one used only when 0 < hide < 0.98; hide >= 0.98 is dropped in `gfx_draw`. The draw list is radix-sorted
   on a u64 key (bucket | kind | mesh or depth | position). Static hospital meshes are merged per storey and material;
   wall pieces are index ranges of them (`gfx_draw_range`). Keep the `draw_bucket` order (x-ray note above).
+- Toon fragment variants (lit path, 2026-11-14; `gpu.c` `toon_variant`): while the light mix is 0 (always outside a Maps / Back
+  move) a flat-shaded mesh (`GfxMeshRec.flat`: every triangle's three normals identical, set at upload) with rim 0 and gloss 0
+  draws with `toon_inst_flat` (the light ramp alone, hard steps, no rim / highlight / second set: library walls and furniture,
+  the island), everything else with `toon_inst_rest` (no second-light code); the full `toon_inst` only while two sets mix. All
+  compiled at load; the variant is in the sort key, so draws are unchanged. Pixel-identical (0 changed pixels: menu, menu_front,
+  island, hospital, a Maps move held at t 0). iPad effective ms, full -> variants: menu 3.46 -> 2.35, menu_front 3.50 -> 2.31,
+  island 3.11 -> 1.75. Test flags: `--toon-full`, `--toon-rest-only`, `--toon-ab` (variants off two frames, on two),
+  `--shade-off PART[,PART]` / `--shade-ab PART` (aa ramp sunny rim spec light light2, only on rim- and gloss-free surfaces),
+  `--lib-move-hold T` (a Maps / Back move held at t, people still), `--log-frame-stats` logs toon draws per variant.
+- Pixel checks (standard for every cull or shader change): frames two apart in one run with the change toggled every 2 frames,
+  the scene frozen (`--lib-still`, `--map-still-after S`) and UI motion frozen (`--ui-still-after S`), 0 changed pixels unmasked.
 - Triangle soups (mgmb: the library, islands, vehicles, avatar parts) are uploaded through `mesh_upload_welded` (`engine/gfx/weld.c`):
   vertices merge only when all 28 bytes match (position, normal, colour + zone), so every drawn triangle is the soup's (`weld` ctest
   rebuilds each one; `MG_NO_WELD=1` uploads the plain soup for comparisons). Mesh pools fit what is loaded (user decision 2026-11-13): they grow at load time when an upload does not fit (a new buffer, the used part copied on the GPU, offsets unchanged) and are trimmed to used + 256 KB / 64 KB when uploads settle (`gfx_settle_uploads`), so a hospital does not pay for the institute and the library hall. UI instances per frame: 4096 (the worst screen, book_ui on the iPad window, is about 2000).

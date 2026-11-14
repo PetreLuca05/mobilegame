@@ -1,0 +1,246 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+struct FrameFS
+{
+    float4 u_sun_dir;
+    float4 u_sun_color;
+    float4 u_ambient;
+    float4 u_eye;
+    float4 u_misc;
+    float4 u_fog;
+    float4 u_sun2_dir;
+    float4 u_sun2_color;
+    float4 u_ambient2;
+    float4 u_shade_off;
+};
+
+constant spvUnsafeArray<float, 16> _120 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+
+struct PSMain_out
+{
+    float4 _entryPointOutput [[color(0)]];
+};
+
+struct PSMain_in
+{
+    float3 i_wpos [[user(locn0)]];
+    float3 i_nrm [[user(locn1)]];
+    half4 i_col [[user(locn2)]];
+    half4 i_tint [[user(locn3), flat]];
+    half4 i_params [[user(locn4), flat]];
+};
+
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant FrameFS& _245 [[buffer(1)]], float4 gl_FragCoord [[position]])
+{
+    PSMain_out out = {};
+    uint2 _701 = uint2(gl_FragCoord.xy) & uint2(3u);
+    if ((((_120[(_701.y * 4u) + _701.x] + 0.5) * 0.0625) - float(in.i_params.w)) < 0.0)
+    {
+        discard_fragment();
+    }
+    half4 _1499;
+    do
+    {
+        half3 _758 = in.i_col.xyz * in.i_tint.xyz;
+        if (float(in.i_params.z) < 0.0)
+        {
+            _1499 = half4(_758, half(1.0));
+            break;
+        }
+        uint _783 = ((float(in.i_params.x) == 0.0) && (float(in.i_params.y) == 0.0)) ? uint(_245.u_shade_off.x) : 0u;
+        float3 _786 = fast::normalize(in.i_nrm);
+        float3 _727 = _786;
+        float3 _793 = fast::normalize(_245.u_eye.xyz - in.i_wpos);
+        float _800 = fast::clamp(float(in.i_col.w * in.i_tint.w), 0.0, 1.0);
+        float _926 = dot(_786, _245.u_sun_dir.xyz);
+        float _1481;
+        do
+        {
+            if ((_783 & 2u) != 0u)
+            {
+                _1481 = (0.550000011920928955078125 * step(0.0, _926)) + (0.449999988079071044921875 * step(0.449999988079071044921875, _926));
+                break;
+            }
+            float _1478;
+            do
+            {
+                if ((_783 & 1u) != 0u)
+                {
+                    _1478 = step(0.0, _926);
+                    break;
+                }
+                float _1003 = fast::max(fwidth(_926), 9.9999997473787516355514526367188e-05);
+                _1478 = smoothstep(-_1003, _1003, _926);
+                break;
+            } while(false);
+            float _1480;
+            do
+            {
+                if ((_783 & 1u) != 0u)
+                {
+                    _1480 = step(0.449999988079071044921875, _926);
+                    break;
+                }
+                float _1035 = fast::max(fwidth(_926), 9.9999997473787516355514526367188e-05);
+                _1480 = smoothstep(0.449999988079071044921875 - _1035, 0.449999988079071044921875 + _1035, _926);
+                break;
+            } while(false);
+            _1481 = (0.550000011920928955078125 * _1478) + (0.449999988079071044921875 * _1480);
+            break;
+        } while(false);
+        float _1484;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1484 = step(0.0, _926);
+                break;
+            }
+            float _1073 = fast::max(fwidth(_926), 9.9999997473787516355514526367188e-05);
+            _1484 = smoothstep(-_1073, _1073, _926);
+            break;
+        } while(false);
+        float _939 = mix(_1481, 0.4099999964237213134765625 + (0.589999973773956298828125 * (((_783 & 2u) != 0u) ? step(0.0, _926) : _1484)), fast::clamp(_245.u_ambient.w, 0.0, 1.0));
+        float3 _1097 = _786;
+        float _1120 = dot(_786, _245.u_sun_dir.xyz);
+        float _1486;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1486 = step(0.0, _1120);
+                break;
+            }
+            float _1146 = fast::max(fwidth(_1120), 9.9999997473787516355514526367188e-05);
+            _1486 = smoothstep(-_1146, _1146, _1120);
+            break;
+        } while(false);
+        float _1488;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1488 = step(-0.20000000298023223876953125, _1097.y);
+                break;
+            }
+            float _1178 = fast::max(fwidth(_1097.y), 9.9999997473787516355514526367188e-05);
+            _1488 = smoothstep((-0.20000000298023223876953125) - _1178, (-0.20000000298023223876953125) + _1178, _1097.y);
+            break;
+        } while(false);
+        float _814 = float(in.i_params.y);
+        float _826 = 1.0 - fast::clamp(dot(_786, _793), 0.0, 1.0);
+        float _1490;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1490 = step(0.62000000476837158203125, _826);
+                break;
+            }
+            float _1216 = fast::max(fwidth(_826), 9.9999997473787516355514526367188e-05);
+            _1490 = smoothstep(0.62000000476837158203125 - _1216, 0.62000000476837158203125 + _1216, _826);
+            break;
+        } while(false);
+        float3 _1240 = _786;
+        float _1278 = dot(_786, _245.u_sun_dir.xyz);
+        float _1492;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1492 = step(0.0, _1278);
+                break;
+            }
+            float _1304 = fast::max(fwidth(_1278), 9.9999997473787516355514526367188e-05);
+            _1492 = smoothstep(-_1304, _1304, _1278);
+            break;
+        } while(false);
+        float _1494;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1494 = step(-0.20000000298023223876953125, _1240.y);
+                break;
+            }
+            float _1336 = fast::max(fwidth(_1240.y), 9.9999997473787516355514526367188e-05);
+            _1494 = smoothstep((-0.20000000298023223876953125) - _1336, (-0.20000000298023223876953125) + _1336, _1240.y);
+            break;
+        } while(false);
+        float _1365 = dot(_786, fast::normalize(_245.u_sun_dir.xyz + _793));
+        float _1496;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1496 = step(0.949999988079071044921875, _1365);
+                break;
+            }
+            float _1390 = fast::max(fwidth(_1365), 9.9999997473787516355514526367188e-05);
+            _1496 = smoothstep(0.949999988079071044921875 - _1390, 0.949999988079071044921875 + _1390, _1365);
+            break;
+        } while(false);
+        float _1498;
+        do
+        {
+            if ((_783 & 1u) != 0u)
+            {
+                _1498 = step(0.9900000095367431640625, _1365);
+                break;
+            }
+            float _1422 = fast::max(fwidth(_1365), 9.9999997473787516355514526367188e-05);
+            _1498 = smoothstep(0.9900000095367431640625 - _1422, 0.9900000095367431640625 + _1422, _1365);
+            break;
+        } while(false);
+        float3 _867 = ((float3(_758) * select(mix(float3(0.62000000476837158203125, 0.62000000476837158203125, 0.64999997615814208984375) + (float3(0.20000000298023223876953125, 0.189999997615814208984375, 0.17000000178813934326171875) * _939), _245.u_ambient.xyz + (_245.u_sun_color.xyz * _939), float3(_800)), float3(1.0), bool3((_783 & 32u) != 0u))) + float3(((((_783 & 8u) != 0u) ? 0.0 : ((((_1490 * fast::clamp(1.0 - (abs(_727.y) * 1.39999997615814208984375), 0.0, 1.0)) * float(in.i_params.x)) * (0.60000002384185791015625 + (0.800000011920928955078125 * _814))) * (0.3499999940395355224609375 + (0.64999997615814208984375 * (((_783 & 4u) != 0u) ? 1.0 : ((_1486 * _800) + ((1.0 - _800) * _1488))))))) * 0.449999988079071044921875) + ((((_783 & 16u) != 0u) ? 0.0 : (_814 * (((_1492 * _800) + ((1.0 - _800) * _1494)) * (0.5 * (_1496 + _1498))))) * 0.89999997615814208984375))) + float3(_758 * in.i_params.z);
+        _1499 = half4(half3(_867), half(1.0));
+        break;
+    } while(false);
+    out._entryPointOutput = float4(_1499);
+    return out;
+}
+

@@ -18,8 +18,8 @@ struct PSMain_in
 fragment PSMain_out PSMain(PSMain_in in [[stage_in]])
 {
     PSMain_out out = {};
-    float _123 = fast::clamp(float(in.i_tint.w) * float(in.i_col.w), 0.0, 1.0);
-    out._entryPointOutput = float4(float3(in.i_col.xyz * in.i_tint.xyz) * _123, (float(in.i_params.x) > 0.5) ? 0.0 : _123);
+    float _125 = fast::clamp(float(in.i_tint.w) * float(in.i_col.w), 0.0, 1.0);
+    out._entryPointOutput = float4(float3(in.i_col.xyz * in.i_tint.xyz) * _125, (float(in.i_params.x) > 0.5) ? 0.0 : _125);
     return out;
 }
 

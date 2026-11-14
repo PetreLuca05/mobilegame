@@ -31,15 +31,15 @@ struct VSMain_in
     float4 i_params [[attribute(7)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _134 [[buffer(1)]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _136 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float4 _289 = float4(in.i_pos, 1.0);
-    float _293 = dot(in.i_row0, _289);
-    float _297 = dot(in.i_row1, _289);
-    float _301 = dot(in.i_row2, _289);
-    out.gl_Position = _134.u_view_proj * float4(_293, _297, _301, 1.0);
-    out._entryPointOutput_wpos = float3(_293, _297, _301);
+    float4 _291 = float4(in.i_pos, 1.0);
+    float _295 = dot(in.i_row0, _291);
+    float _299 = dot(in.i_row1, _291);
+    float _303 = dot(in.i_row2, _291);
+    out.gl_Position = _136.u_view_proj * float4(_295, _299, _303, 1.0);
+    out._entryPointOutput_wpos = float3(_295, _299, _303);
     out._entryPointOutput_nrm = float3(dot(cross(in.i_row1.xyz, in.i_row2.xyz), in.i_nrm), dot(cross(in.i_row2.xyz, in.i_row0.xyz), in.i_nrm), dot(cross(in.i_row0.xyz, in.i_row1.xyz), in.i_nrm));
     out._entryPointOutput_col = in.i_col;
     out._entryPointOutput_lpos = in.i_pos;

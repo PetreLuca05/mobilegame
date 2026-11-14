@@ -1266,7 +1266,9 @@ WmAction worldmap_frame(WorldMap *m, Ui *ui, MgApp *app, GfxSceneParams *sp, flo
         m->cam_snap = false;
     }
     WmCam c = m->cam;
-    c.target = HMM_LerpV3(m->cam_prev.target, alpha, m->cam.target);
+    /* a + (b - a) t, as pitch and dist: exactly the target when the camera rests (HMM_LerpV3's (1 - t) a + t b rounds differently
+     * for each frame's alpha, so a still map moved by a rounding error and edge pixels flipped) */
+    c.target = HMM_AddV3(m->cam_prev.target, HMM_MulV3F(HMM_SubV3(m->cam.target, m->cam_prev.target), alpha));
     c.pitch_deg = mg_lerpf(m->cam_prev.pitch_deg, m->cam.pitch_deg, alpha);
     c.dist = mg_lerpf(m->cam_prev.dist, m->cam.dist, alpha);
     HMM_Vec3 eye;

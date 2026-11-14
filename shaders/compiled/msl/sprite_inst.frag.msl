@@ -17,8 +17,8 @@ struct PSMain_in
 fragment PSMain_out PSMain(PSMain_in in [[stage_in]])
 {
     PSMain_out out = {};
-    half _117 = half(1.0 - smoothstep(0.3499999940395355224609375, 1.0, length(in.i_nrm.xy))) * in.i_tint.w;
-    out._entryPointOutput = float4(half4(in.i_tint.xyz * _117, _117));
+    half _120 = half(1.0 - smoothstep(0.3499999940395355224609375, 1.0, length(in.i_nrm.xy))) * in.i_tint.w;
+    out._entryPointOutput = float4(half4(in.i_tint.xyz * _120, _120));
     return out;
 }
 

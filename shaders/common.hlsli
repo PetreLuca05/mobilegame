@@ -46,7 +46,12 @@ cbuffer FrameFS : register(b1, space3)
     float4 u_sun2_dir;
     float4 u_sun2_color;
     float4 u_ambient2;   // rgb, w: the second set's two-band ramp
+    float4 u_shade_off;  // x: --shade-off bits (engine/gfx/gfx.h GFX_SHADE_OFF_*), 0 normally
 };
+
+// --shade-off applies only where toon_shade sets this: surfaces with no rim and no gloss (architecture, terrain, scenery)
+static uint g_shade_off = 0u;
+bool shade_off(uint bit) { return (g_shade_off & bit) != 0u; }
 
 // Zone-coded meshes (LIB-1 avatar suits). extra = outfit, trim, accent as 0xRRGGBB, w = zone mask (bit z) |
 // 256 body type 1; all 0 = an ordinary mesh. Vertex alpha = 255 - zone. Zones outside the mask collapse to a

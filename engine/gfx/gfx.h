@@ -186,6 +186,7 @@ typedef struct GfxStats {
     uint32_t tris_cat[GFX_CATS]; /* tris by GFX_CAT_* (the main pass; the UI counts as other) */
     uint32_t fade_draws, fade_violations; /* whole-object fade draws taken / refused (outside gfx_allow_fade) */
     uint32_t fade_binds;   /* binds of the whole-object fade pipelines (GFX_MAT_DEPTH / GFX_MAT_TOON_FADE) in the main pass */
+    uint32_t toon_draws[3]; /* main-pass instanced toon draws per fragment shader: full, rest, flat (gpu.c toon_variant) */
     uint32_t light2_draws; /* main-pass draws with the second light set on (GfxSceneParams.light_mix > 0: u_sun2_dir.w > 0) */
     /* Approximate GPU time, submit -> fence on a helper thread (SDL GPU has no
      * timestamps; includes queueing). 0 until gfx_set_gpu_timing. */
@@ -341,5 +342,19 @@ void gfx_set_gpu_timing(GfxContext *g, bool on);
 void gfx_set_msaa(GfxContext *g, int samples);
 /* Default on; off draws every mesh separately (--no-instancing, to measure the saving). */
 void gfx_set_instancing(GfxContext *g, bool on);
+/* --shade-off (test only, never saved): parts of the lit shader skipped, GFX_SHADE_OFF_* (shaders/common.hlsli u_shade_off) */
+enum {
+    GFX_SHADE_OFF_AA = 1u << 0,     /* every band step a hard step(): no fwidth */
+    GFX_SHADE_OFF_RAMP = 1u << 1,   /* the light ramp's steps hard */
+    GFX_SHADE_OFF_SUNNY = 1u << 2,  /* the rim's sunny factor = 1 */
+    GFX_SHADE_OFF_RIM = 1u << 3,    /* no rim term */
+    GFX_SHADE_OFF_SPEC = 1u << 4,   /* no highlight term */
+    GFX_SHADE_OFF_LIGHT = 1u << 5,  /* no light set: base colour x 1 */
+    GFX_SHADE_OFF_LIGHT2 = 1u << 6, /* the second light set's code skipped even while mixing */
+};
+void gfx_set_shade_off(GfxContext *g, uint32_t bits);
+/* Test only (pixel and GPU A/B): 0 the toon variants (default), 1 --toon-full: every toon draw on the full fragment shader,
+ * 2 --toon-rest-only: the rest variant but never the flat one */
+void gfx_set_toon_mode(GfxContext *g, int mode);
 
 #endif

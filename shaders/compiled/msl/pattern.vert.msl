@@ -33,13 +33,13 @@ struct VSMain_in
     float4 i_col [[attribute(2)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant DrawVS& _33 [[buffer(0)]], constant FrameVS& _82 [[buffer(1)]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant DrawVS& _37 [[buffer(0)]], constant FrameVS& _86 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float4 _180 = _33.u_model * float4(in.i_pos, 1.0);
-    out.gl_Position = _82.u_view_proj * _180;
-    out._entryPointOutput_wpos = _180.xyz;
-    out._entryPointOutput_nrm = in.i_nrm * float3x3(float4(_33.u_normal[0][0], _33.u_normal[1][0], _33.u_normal[2][0], _33.u_normal[3][0]).xyz, float4(_33.u_normal[0][1], _33.u_normal[1][1], _33.u_normal[2][1], _33.u_normal[3][1]).xyz, float4(_33.u_normal[0][2], _33.u_normal[1][2], _33.u_normal[2][2], _33.u_normal[3][2]).xyz);
+    float4 _183 = _37.u_model * float4(in.i_pos, 1.0);
+    out.gl_Position = _86.u_view_proj * _183;
+    out._entryPointOutput_wpos = _183.xyz;
+    out._entryPointOutput_nrm = in.i_nrm * float3x3(float4(_37.u_normal[0][0], _37.u_normal[1][0], _37.u_normal[2][0], _37.u_normal[3][0]).xyz, float4(_37.u_normal[0][1], _37.u_normal[1][1], _37.u_normal[2][1], _37.u_normal[3][1]).xyz, float4(_37.u_normal[0][2], _37.u_normal[1][2], _37.u_normal[2][2], _37.u_normal[3][2]).xyz);
     out._entryPointOutput_col = in.i_col;
     out._entryPointOutput_lpos = in.i_pos;
     out._entryPointOutput_tint = half4(half(1.0), half(1.0), half(1.0), half(1.0));

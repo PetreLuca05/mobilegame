@@ -31,45 +31,45 @@ struct VSMain_in
     float4 i_extra [[attribute(8)]];
 };
 
-vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _277 [[buffer(1)]])
+vertex VSMain_out VSMain(VSMain_in in [[stage_in]], constant FrameVS& _279 [[buffer(1)]])
 {
     VSMain_out out = {};
-    float3 _357 = in.i_pos;
-    float4 _358 = in.i_col;
+    float3 _359 = in.i_pos;
+    float4 _360 = in.i_col;
     do
     {
-        uint _417 = uint(in.i_extra.w);
-        if (_417 == 0u)
+        uint _419 = uint(in.i_extra.w);
+        if (_419 == 0u)
         {
             break;
         }
-        uint _427 = 255u - uint((_358.w * 255.0) + 0.5);
-        if ((_417 & 256u) != 0u)
+        uint _429 = 255u - uint((_360.w * 255.0) + 0.5);
+        if ((_419 & 256u) != 0u)
         {
-            float _433 = _357.y;
-            float3 _438 = _357;
-            float2 _440 = _438.xz * mix(0.920000016689300537109375, 1.059999942779541015625, fast::clamp((_433 - 0.1599999964237213134765625) * 2.5, 0.0, 1.0));
-            _357.x = _440.x;
-            _357.z = _440.y;
+            float _435 = _359.y;
+            float3 _440 = _359;
+            float2 _442 = _440.xz * mix(0.920000016689300537109375, 1.059999942779541015625, fast::clamp((_435 - 0.1599999964237213134765625) * 2.5, 0.0, 1.0));
+            _359.x = _442.x;
+            _359.z = _442.y;
         }
-        if ((_427 != 0u) && (((_417 >> _427) & 1u) == 0u))
+        if ((_429 != 0u) && (((_419 >> _429) & 1u) == 0u))
         {
-            _357 = float3(0.0);
+            _359 = float3(0.0);
         }
-        uint _496 = uint(in.i_extra.y);
-        uint _515 = uint(in.i_extra.z);
-        uint _534 = uint(in.i_extra.x);
-        _358 = float4(_358.xyz * select(select(select(float3(float((_534 >> uint(16)) & 255u), float((_534 >> uint(8)) & 255u), float(_534 & 255u)) * float3(0.0039215688593685626983642578125), float3(1.0), bool3((_427 == 3u) || (_427 == 7u))), float3(float((_515 >> uint(16)) & 255u), float((_515 >> uint(8)) & 255u), float(_515 & 255u)) * float3(0.0039215688593685626983642578125), bool3((_427 == 4u) || (_427 == 6u))), float3(float((_496 >> uint(16)) & 255u), float((_496 >> uint(8)) & 255u), float(_496 & 255u)) * float3(0.0039215688593685626983642578125), bool3(_427 == 1u)), 1.0);
+        uint _498 = uint(in.i_extra.y);
+        uint _517 = uint(in.i_extra.z);
+        uint _536 = uint(in.i_extra.x);
+        _360 = float4(_360.xyz * select(select(select(float3(float((_536 >> uint(16)) & 255u), float((_536 >> uint(8)) & 255u), float(_536 & 255u)) * float3(0.0039215688593685626983642578125), float3(1.0), bool3((_429 == 3u) || (_429 == 7u))), float3(float((_517 >> uint(16)) & 255u), float((_517 >> uint(8)) & 255u), float(_517 & 255u)) * float3(0.0039215688593685626983642578125), bool3((_429 == 4u) || (_429 == 6u))), float3(float((_498 >> uint(16)) & 255u), float((_498 >> uint(8)) & 255u), float(_498 & 255u)) * float3(0.0039215688593685626983642578125), bool3(_429 == 1u)), 1.0);
         break;
     } while(false);
-    float4 _557 = float4(_357, 1.0);
-    float _561 = dot(in.i_row0, _557);
-    float _565 = dot(in.i_row1, _557);
-    float _569 = dot(in.i_row2, _557);
-    out.gl_Position = _277.u_view_proj * float4(_561, _565, _569, 1.0);
-    out._entryPointOutput_wpos = float3(_561, _565, _569);
+    float4 _559 = float4(_359, 1.0);
+    float _563 = dot(in.i_row0, _559);
+    float _567 = dot(in.i_row1, _559);
+    float _571 = dot(in.i_row2, _559);
+    out.gl_Position = _279.u_view_proj * float4(_563, _567, _571, 1.0);
+    out._entryPointOutput_wpos = float3(_563, _567, _571);
     out._entryPointOutput_nrm = float3(dot(cross(in.i_row1.xyz, in.i_row2.xyz), in.i_nrm), dot(cross(in.i_row2.xyz, in.i_row0.xyz), in.i_nrm), dot(cross(in.i_row0.xyz, in.i_row1.xyz), in.i_nrm));
-    out._entryPointOutput_col = half4(_358);
+    out._entryPointOutput_col = half4(_360);
     out._entryPointOutput_tint = half4(in.i_tint);
     out._entryPointOutput_params = half4(in.i_params);
     return out;

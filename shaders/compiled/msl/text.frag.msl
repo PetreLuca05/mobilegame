@@ -52,7 +52,7 @@ struct DrawFS
     float4 u_draw_misc;
 };
 
-constant spvUnsafeArray<float, 16> _65 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+constant spvUnsafeArray<float, 16> _67 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
 
 struct PSMain_out
 {
@@ -65,27 +65,27 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _25 [[buffer(0)]], texture2d<float> u_atlas [[texture(0)]], sampler u_atlas_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _28 [[buffer(0)]], texture2d<float> u_atlas [[texture(0)]], sampler u_atlas_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
     do
     {
-        if (_25.u_draw_misc.x <= 0.0)
+        if (_28.u_draw_misc.x <= 0.0)
         {
             break;
         }
-        uint2 _236 = uint2(gl_FragCoord.xy) & uint2(3u);
-        if ((((_65[(_236.y * 4u) + _236.x] + 0.5) * 0.0625) - _25.u_draw_misc.x) < 0.0)
+        uint2 _238 = uint2(gl_FragCoord.xy) & uint2(3u);
+        if ((((_67[(_238.y * 4u) + _238.x] + 0.5) * 0.0625) - _28.u_draw_misc.x) < 0.0)
         {
             discard_fragment();
         }
         break;
     } while(false);
-    float4 _203 = u_atlas.sample(u_atlas_sampler, in.i_nrm.xy);
-    float _204 = _203.x;
-    float _208 = fast::max(fwidth(_204), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
-    float _220 = (smoothstep(0.5 - _208, 0.5 + _208, _204) * in.i_col.w) * _25.u_tint.w;
-    out._entryPointOutput = float4((in.i_col.xyz * _25.u_tint.xyz) * _220, _220);
+    float4 _205 = u_atlas.sample(u_atlas_sampler, in.i_nrm.xy);
+    float _206 = _205.x;
+    float _210 = fast::max(fwidth(_206), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+    float _222 = (smoothstep(0.5 - _210, 0.5 + _210, _206) * in.i_col.w) * _28.u_tint.w;
+    out._entryPointOutput = float4((in.i_col.xyz * _28.u_tint.xyz) * _222, _222);
     return out;
 }
 

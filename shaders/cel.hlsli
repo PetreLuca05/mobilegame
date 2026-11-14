@@ -3,6 +3,13 @@
 // Hard step at `edge`, anti-aliased over one pixel.
 float cel_step(float x, float edge)
 {
+#ifdef CEL_HARD
+    // toon_inst_flat: a flat face's n.l is the same at every pixel, so fwidth is 0 and the smoothstep above is this step
+    // except within 1e-4 of the edge (pixel A/B: 0 changed pixels)
+    return step(edge, x);
+#endif
+    if (shade_off(1u)) // --shade-off aa
+        return step(edge, x);
     float w = max(fwidth(x), 1e-4);
     return smoothstep(edge - w, edge + w, x);
 }
@@ -10,6 +17,8 @@ float cel_step(float x, float edge)
 // Sun term quantised to three flat bands: shade, half-lit, lit.
 float cel_lit(float ndl)
 {
+    if (shade_off(2u)) // --shade-off ramp
+        return 0.55 * step(0.0, ndl) + 0.45 * step(0.45, ndl);
     return 0.55 * cel_step(ndl, 0.0) + 0.45 * cel_step(ndl, 0.45);
 }
 
@@ -39,7 +48,7 @@ float3 cel_light_set(float3 n, float outdoor, float3 sun_dir, float3 sun_color, 
 {
     float ndl = dot(n, sun_dir);
     // two_band 0..1: towards the library prototype's ramp (three.js MeshToonMaterial, gradient 105 / 255): two bands
-    float lit = lerp(cel_lit(ndl), 0.41 + 0.59 * cel_step(ndl, 0.0), saturate(two_band));
+    float lit = lerp(cel_lit(ndl), 0.41 + 0.59 * (shade_off(2u) ? step(0.0, ndl) : cel_step(ndl, 0.0)), saturate(two_band));
     float3 sun = ambient + sun_color * lit;
     float3 inside = float3(0.62, 0.62, 0.65) + float3(0.20, 0.19, 0.17) * lit;
     return lerp(inside, sun, outdoor);
@@ -49,7 +58,10 @@ float3 cel_light_set(float3 n, float outdoor, float3 sun_dir, float3 sun_color, 
 float3 cel_light_day(float3 n, float outdoor)
 {
     float3 a = cel_light_set(n, outdoor, u_sun_dir.xyz, u_sun_color.rgb, u_ambient.rgb, u_ambient.w);
-    if (u_sun2_dir.w <= 0.0)
+#ifdef CEL_ONE_SET
+    return a; // the rest / flat variants: drawn only while the mix is 0
+#endif
+    if (u_sun2_dir.w <= 0.0 || shade_off(64u))
         return a;
     float3 b = cel_light_set(n, outdoor, u_sun2_dir.xyz, u_sun2_color.rgb, u_ambient2.rgb, u_ambient2.w);
     return lerp(a, b, saturate(u_sun2_dir.w));
@@ -64,6 +76,9 @@ float cel_sunny_dir(float3 n, float outdoor, float3 sun_dir)
 float cel_sunny(float3 n, float outdoor)
 {
     float a = cel_sunny_dir(n, outdoor, u_sun_dir.xyz);
+#ifdef CEL_ONE_SET
+    return a;
+#endif
     return u_sun2_dir.w <= 0.0 ? a : lerp(a, cel_sunny_dir(n, outdoor, u_sun2_dir.xyz), saturate(u_sun2_dir.w));
 }
 
@@ -76,6 +91,9 @@ float cel_spec_dir(float3 n, float3 v, float3 sun_dir, float sunny_k)
 float cel_spec(float3 n, float3 v, float outdoor)
 {
     float a = cel_spec_dir(n, v, u_sun_dir.xyz, cel_sunny_dir(n, outdoor, u_sun_dir.xyz));
+#ifdef CEL_ONE_SET
+    return a;
+#endif
     if (u_sun2_dir.w <= 0.0)
         return a;
     float b = cel_spec_dir(n, v, u_sun2_dir.xyz, cel_sunny_dir(n, outdoor, u_sun2_dir.xyz));

@@ -304,6 +304,8 @@ typedef struct Game {
     float last_cam_dist;   /* the move's camera distance to its target (tests) */
     bool inst_fill_1;      /* --debug inst-fill-1: the institute's fill lowered so sun + fill = 1.0 on an up face (not saved) */
     uint32_t lib_ab_frame; /* --lib-wall-ab */
+    double ui_now;         /* the UI's clock this frame (app->time, or held by --ui-still-after) */
+    uint32_t shade_ab;     /* --shade-ab PART[,PART]: those lit-shader parts off two frames, on two (pixel A/B, test only) */
     struct RebayTest {
         bool on, watch_walk;
         int stage, first_bay, seed_bay, keep, lobby, rows, watch_bay, moves0;
@@ -320,7 +322,7 @@ typedef struct Game {
     uint32_t fs_vis[4];
     double fs_t0;
     uint32_t fs_draws_max, fs_tris_max, fs_ui_max;
-    uint64_t fs_light2, fs_fade, fs_fade_binds, fs_map; /* --log-frame-stats: second-light draws, shell fades, map draws */
+    uint64_t fs_light2, fs_fade, fs_fade_binds, fs_map, fs_toon[3]; /* --log-frame-stats: second-light draws, shell fades, map draws */
     bool lib_still;        /* --lib-still: the library at dt 0 (people stand where they start; comparison pictures)  */
     bool stale_eye_armed;  /* library test canary: one Back frame reports last frame's camera (the jump rule must catch it) */
     double stale_eye_until; /* the canary's stale camera holds until then */
@@ -414,6 +416,32 @@ static const char *arg_value(int argc, char **argv, const char *flag)
         }
     }
     return NULL;
+}
+
+/* --shade-off PART[,PART...]: parts of the lit shader skipped (GFX_SHADE_OFF_*), test only, never saved */
+static uint32_t parse_shade_off(const char *arg)
+{
+    static const struct { const char *name; uint32_t bit; } k[] = {
+        {"aa", GFX_SHADE_OFF_AA}, {"ramp", GFX_SHADE_OFF_RAMP}, {"sunny", GFX_SHADE_OFF_SUNNY}, {"rim", GFX_SHADE_OFF_RIM},
+        {"spec", GFX_SHADE_OFF_SPEC}, {"light", GFX_SHADE_OFF_LIGHT}, {"light2", GFX_SHADE_OFF_LIGHT2},
+    };
+    uint32_t bits = 0u;
+    for (const char *a = arg; a && *a;) {
+        const char *e = SDL_strchr(a, ',');
+        const size_t n = e ? (size_t)(e - a) : SDL_strlen(a);
+        bool known = false;
+        for (size_t i = 0; i < MG_ARRAY_COUNT(k); i++) {
+            if (SDL_strlen(k[i].name) == n && SDL_strncmp(a, k[i].name, n) == 0) {
+                bits |= k[i].bit, known = true;
+            }
+        }
+        if (!known && n > 0) {
+            mg_log_error("shade-off: unknown part '%.*s' (aa ramp sunny rim spec light light2)", (int)n, a);
+        }
+        a = e ? e + 1 : NULL;
+    }
+    mg_log_info("shade-off: 0x%x", bits);
+    return bits;
 }
 
 /* --gpu-off PART[,PART...]: the parts of game/gpu_off.h by name; an unknown name is logged and ignored */
@@ -1253,6 +1281,11 @@ bool game_init(MgApp *app)
     const char *msaa_arg = arg_value(app->argc, app->argv, "--msaa");
     const char *gpu_off = arg_value(app->argc, app->argv, "--gpu-off");
     g->gpu_off = gpu_off ? parse_gpu_off(gpu_off) : 0u;
+    const char *shade_off_arg = arg_value(app->argc, app->argv, "--shade-off");
+    gfx_set_shade_off(app->gfx, shade_off_arg ? parse_shade_off(shade_off_arg) : 0u);
+    gfx_set_toon_mode(app->gfx, has_flag(app->argc, app->argv, "--toon-full") ? 1 : has_flag(app->argc, app->argv, "--toon-rest-only") ? 2 : 0);
+    const char *shade_ab_arg = arg_value(app->argc, app->argv, "--shade-ab");
+    g->shade_ab = shade_ab_arg ? parse_shade_off(shade_ab_arg) : 0u;
     g->msaa_samples = has_flag(app->argc, app->argv, "--no-msaa") || (g->gpu_off & GPU_OFF_MSAA) ? 1 : (msaa_arg ? SDL_atoi(msaa_arg) : GFX_DEFAULT_MSAA);
     gfx_set_msaa(app->gfx, g->msaa_samples);
     gfx_set_instancing(app->gfx, !has_flag(app->argc, app->argv, "--no-instancing"));
@@ -3095,7 +3128,11 @@ static void move_frame(Game *g, MgApp *app)
         g->dissolve_t0 = app->time;
         g->move.t = 1.0f;
     }
-    const bool done = lib_move_step(&g->move, dt);
+    const char *hold = arg_value(app->argc, app->argv, "--lib-move-hold"); /* test: the move held at t (pixel A/B of a move frame) */
+    if (hold && g->move.active) {
+        g->move.t = SDL_atof(hold);
+    }
+    const bool done = lib_move_step(&g->move, hold && g->move.active ? 0.0f : dt);
     const float e = done ? (g->move_state == 1 ? 1.0f : 0.0f) : lib_move_e(&g->move);
     const LibCamPose c = lib_move_pose(&g->move, e);
     HMM_Mat4 view, proj;
@@ -3138,7 +3175,7 @@ static void move_frame(Game *g, MgApp *app)
     g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
     g->lib.lod_from_rest = true; /* the move: the people keep the menu's LODs (no switch while the camera flies) */
     gfx_allow_fade(app->gfx, true); /* the shell's true fade: the move only */
-    menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, dt);
+    menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, hold ? 0.0f : dt); /* --lib-move-hold: the people stand still too */
     gfx_allow_fade(app->gfx, false);
     g->lib.lod_from_rest = false;
     if (g->back_loop.want > 0 && g->move_state == 2) { /* --lib-back-loop: the camera per frame of the move's own clock */
@@ -5034,6 +5071,7 @@ static void game_frame_inner(MgApp *app, float alpha)
         for (int c = 0; c < GFX_CATS; c++) {
             g->fs_cat[c] += st.tris_cat[c];
         }
+        g->fs_toon[0] += st.toon_draws[0], g->fs_toon[1] += st.toon_draws[1], g->fs_toon[2] += st.toon_draws[2];
         g->fs_light2 += st.light2_draws, g->fs_fade += st.fade_draws, g->fs_fade_binds += st.fade_binds, g->fs_map += g->wm.frame_draws;
         g->wm.frame_draws = 0;
         if (g->fs_n == 120) {
@@ -5053,6 +5091,8 @@ static void game_frame_inner(MgApp *app, float alpha)
             mg_log_info("frame stats: per frame: second-light draws %.1f, shell fade draws %.1f, fade pipeline binds %.1f, "
                         "world-map draws %.1f (screen %d)", g->fs_light2 / n, g->fs_fade / n, g->fs_fade_binds / n, g->fs_map / n,
                         (int)g->fe.state);
+            mg_log_info("frame stats: toon draws per frame: full %.1f, rest %.1f, flat %.1f", g->fs_toon[0] / n, g->fs_toon[1] / n, g->fs_toon[2] / n);
+            SDL_memset(g->fs_toon, 0, sizeof(g->fs_toon));
             g->fs_light2 = g->fs_fade = g->fs_fade_binds = g->fs_map = 0;
             SDL_memset(g->fs_vis, 0, sizeof(g->fs_vis));
             g->fs_n = 0, g->fs_draws = g->fs_tris = 0;
@@ -5063,6 +5103,14 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->lib_ab_frame++;
         g->no_view_cull = (g->lib_ab_frame >> 1) & 1u;
         g->lib.no_wall_vis = g->no_view_cull;
+    }
+    if (has_flag(app->argc, app->argv, "--toon-ab")) { /* test: the toon rest / flat variants off two frames, on two (pixel A/B) */
+        g->lib_ab_frame++;
+        gfx_set_toon_mode(app->gfx, (int)((g->lib_ab_frame >> 1) & 1u));
+    }
+    if (g->shade_ab) { /* --shade-ab: the parts off for two frames, on for two (same-parity pixel A/B) */
+        g->lib_ab_frame++;
+        gfx_set_shade_off(app->gfx, ((g->lib_ab_frame >> 1) & 1u) ? g->shade_ab : 0u);
     }
     if (has_flag(app->argc, app->argv, "--lib-wall-ab")) { /* test: the wall rule on for two frames, off for two (pixel compare of
                                                               * frames of the same parity: some dither alternates every frame) */
@@ -5338,17 +5386,23 @@ static void game_frame_inner(MgApp *app, float alpha)
             g->sys_reduce_motion = sys_reduce, g->sys_reduce_logged = true;
             mg_log_info("ui: system Reduce Motion %s", sys_reduce ? "on" : "off");
         }
-        ui_anim_begin(&g->ui_anim, app->time, s->ui_motion == 1 || sys_reduce || g->uitest.reduced || g->force_reduced);
+        double ui_now = app->time; /* --ui-still-after S (test): the UI's clock stops S s after start (pixel checks with UI motion frozen) */
+        const char *uis = arg_value(app->argc, app->argv, "--ui-still-after");
+        if (uis && g->start_time > 0.0) {
+            ui_now = SDL_min(ui_now, g->start_time + SDL_atof(uis));
+        }
+        g->ui_now = ui_now;
+        ui_anim_begin(&g->ui_anim, ui_now, s->ui_motion == 1 || sys_reduce || g->uitest.reduced || g->force_reduced);
     }
     g->ui_fx.sounds = s->sound_on && s->ui_sounds;
     { /* screen changes enter; the UI shake moves UI only, never the camera */
         const int key = !g->playing ? 100 + (int)g->fe.state : g->fpage.open ? 3 : g->menu.open && !g->menu.card ? 2 : 0;
         if (key != g->ui_screen_key) {
             g->ui_screen_key = key;
-            g->ui_screen_t0 = app->time;
+            g->ui_screen_t0 = g->ui_now;
             tilt_snap(&g->tilt); /* TILT-1 A1: a screen opens at rest */
         }
-        ui_screen_enter(&g->ui, (float)(app->time - g->ui_screen_t0), ui_fx_shake_x(&g->ui_fx));
+        ui_screen_enter(&g->ui, (float)(g->ui_now - g->ui_screen_t0), ui_fx_shake_x(&g->ui_fx));
     }
     bool back = app->input.key_pressed[SDL_SCANCODE_AC_BACK] || app->input.key_pressed[SDL_SCANCODE_ESCAPE];
     if (!g->playing) {

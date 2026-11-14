@@ -52,7 +52,7 @@ struct DrawFS
     float4 u_draw_misc;
 };
 
-constant spvUnsafeArray<float, 16> _65 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
+constant spvUnsafeArray<float, 16> _67 = spvUnsafeArray<float, 16>({ 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 });
 
 struct PSMain_out
 {
@@ -64,23 +64,23 @@ struct PSMain_in
     float4 i_col [[user(locn2)]];
 };
 
-fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _25 [[buffer(0)]], float4 gl_FragCoord [[position]])
+fragment PSMain_out PSMain(PSMain_in in [[stage_in]], constant DrawFS& _28 [[buffer(0)]], float4 gl_FragCoord [[position]])
 {
     PSMain_out out = {};
     do
     {
-        if (_25.u_draw_misc.x <= 0.0)
+        if (_28.u_draw_misc.x <= 0.0)
         {
             break;
         }
-        uint2 _167 = uint2(gl_FragCoord.xy) & uint2(3u);
-        if ((((_65[(_167.y * 4u) + _167.x] + 0.5) * 0.0625) - _25.u_draw_misc.x) < 0.0)
+        uint2 _169 = uint2(gl_FragCoord.xy) & uint2(3u);
+        if ((((_67[(_169.y * 4u) + _169.x] + 0.5) * 0.0625) - _28.u_draw_misc.x) < 0.0)
         {
             discard_fragment();
         }
         break;
     } while(false);
-    out._entryPointOutput = float4(in.i_col.xyz * _25.u_tint.xyz, 1.0);
+    out._entryPointOutput = float4(in.i_col.xyz * _28.u_tint.xyz, 1.0);
     return out;
 }
 
