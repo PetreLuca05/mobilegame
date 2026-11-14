@@ -119,6 +119,8 @@ typedef struct AutotestProbe {
     struct WorldRides *world_rides; /* WORLD-2: the game's shuffle (prefs) */
     int play_level;            /* the level being played (book 0) */
     UiTest *uitest;            /* --autotest ui: the test screen's state */
+    bool dev_allowed;          /* settings_dev_allowed: false in MG_STORE builds and with --store-config */
+    UiScroll *settings_scroll; /* --autotest ui: Settings' game tab, scrolled to its end for the Developer check */
     const struct StickView *stick; /* --autotest stick */
     const TouchControls *touch;
     float stick_r, stick_rest_x, stick_rest_y;

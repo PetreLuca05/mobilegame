@@ -11,7 +11,9 @@
  *   8 every tappable widget on every screen >= 44 pt; inside the safe rect (not on the menu and onboarding,
  *     which keep 12 pt from the edges by design)
  *   9 screenshots of every screen at rest (ui_<screen>) and one mid-burst frame per tier (ui_tier_<t>)
- *  10 no frame has more than one pass (no blur; screenshot frames excepted) */
+ *  10 no frame has more than one pass (no blur; screenshot frames excepted)
+ *  11 Settings scrolled to its end: with the store rule (MG_STORE, --store-config) no Developer widget id is registered
+ *     and none of its texts (set_developer, set_haptic_lab, dev_*) is drawn; without it the Developer button is there */
 #ifndef MG_AUTOTEST_UI_H
 #define MG_AUTOTEST_UI_H
 

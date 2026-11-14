@@ -997,6 +997,17 @@ bool game_init(MgApp *app)
     g->settings.tier_override = tier_arg ? (SDL_strcmp(tier_arg, "low") == 0 ? 1 : 2) : 0;
     g->settings.shadows_on = !has_flag(app->argc, app->argv, "--no-shadows");
 #endif
+#ifdef MG_STORE
+    g->menu.store = true; /* App Store / Play build */
+#else
+    g->menu.store = has_flag(app->argc, app->argv, "--store-config"); /* desktop tests: exactly the store rule */
+#endif
+    if (!settings_dev_allowed(&g->menu)) { /* no Developer section: no overlay a pref or a flag turned on, no dev keys */
+        settings_dev_clear(&g->settings);
+        g->fly_mode = false;
+        g->tilt_debug = false;
+        mg_log_info("settings: store configuration: no Developer section");
+    }
     g->menu.open = has_flag(app->argc, app->argv, "--menu");
     const char *menu_tab = arg_value(app->argc, app->argv, "--menu");
     g->menu.tab = menu_tab && SDL_strcmp(menu_tab, "skin") == 0 ? 1 : 0;
@@ -1316,8 +1327,9 @@ static void tilt_step(Game *g, MgApp *app)
     }
     g->tilt_have = have;
     /* desktop and tests: --debug tilt, or the mouse while T is held */
-    g->tilt.forced = g->tilt_debug || app->input.key_down[SDL_SCANCODE_T];
-    if (app->input.key_down[SDL_SCANCODE_T] && app->input.mouse_seen) {
+    const bool tilt_key = app->input.key_down[SDL_SCANCODE_T] && settings_dev_allowed(&g->menu); /* the store rule: no T + mouse */
+    g->tilt.forced = g->tilt_debug || tilt_key;
+    if (tilt_key && app->input.mouse_seen) {
         g->tilt.target_x = mg_clampf((app->input.mouse_x - app->width_pt * 0.5f) / (app->width_pt * 0.5f), -1.0f, 1.0f);
         g->tilt.target_y = mg_clampf((app->input.mouse_y - app->height_pt * 0.5f) / (app->height_pt * 0.5f), -1.0f, 1.0f);
     } else if (g->tilt_debug) {
@@ -4903,6 +4915,8 @@ static void game_frame_inner(MgApp *app, float alpha)
     probe.lib_declared = g->lib.ok ? g->lib.sc.npc_n : -1;
     probe.lib_live = g->lib.ok && g->lib.people ? g->lib.pcfg->n : 0;
     probe.show_stats = s->show_stats;
+    probe.dev_allowed = settings_dev_allowed(&g->menu);
+    probe.settings_scroll = &g->menu.game_scroll;
     probe.scene_kind = g->scene ? (int)scene_kind(g->scene) : -1;
     probe.lift_count = lift_count(g);
     probe.floor_count = g->scene ? scene_floor_count(g->scene) : 0;
@@ -5291,13 +5305,14 @@ static void game_frame_inner(MgApp *app, float alpha)
         g->local_look = session_my_look(&g->session);
         SDL_snprintf(g->status, sizeof(g->status), "%s", g->session.status_text);
     }
-    if (app->input.key_pressed[SDL_SCANCODE_F1]) {
+    const bool dev_keys = settings_dev_allowed(&g->menu); /* the store rule: no free camera, no collider key */
+    if (dev_keys && app->input.key_pressed[SDL_SCANCODE_F1]) {
         g->fly_mode = !g->fly_mode;
     }
     if (app->input.key_pressed[SDL_SCANCODE_E] && g->ia_ok && g->playing && !g->menu.open) {
         interact_tap(g, app);
     }
-    if (app->input.key_pressed[SDL_SCANCODE_F2]) {
+    if (dev_keys && app->input.key_pressed[SDL_SCANCODE_F2]) {
         s->show_colliders = !s->show_colliders;
     }
 

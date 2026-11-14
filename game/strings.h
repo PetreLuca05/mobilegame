@@ -14,5 +14,7 @@ int strings_untranslated(const char **last);
 int strings_missing(const char **last);
 /* The Romanian values' words become the text check's vocabulary (ui/text_check.h: autotests that check drawn text). */
 void strings_feed_text_check(void);
+/* The text check watches what str() gives for every key starting with `prefix` (ui/text_check.h); returns how many. */
+int strings_watch_prefix(const char *prefix);
 
 #endif

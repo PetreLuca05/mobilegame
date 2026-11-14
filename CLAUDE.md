@@ -56,13 +56,23 @@ Releases: `tools/archive_ios.sh [--upload]` (TestFlight), `tools/build_aab.sh [-
 (Play internal testing; needs `platform/android/keystore.properties`), and the
 `android` GitHub workflow publishes `android-latest` on every push to main.
 Player-facing install guide: `docs/PLAY_ON_YOUR_PHONE.md`.
+Store builds: CMake `MG_STORE` (default OFF) marks an App Store / Play production build: Settings has no
+Developer section (no Dezvoltator button, rows, haptic lab), every debug overlay starts off and the desktop dev keys
+(F1 free camera, F2 colliders, T + mouse tilt) do nothing. The code stays compiled; `settings_dev_allowed()`
+(`game/settings_menu.h`) is the one gate. Debug, TestFlight (`archive_ios.sh [--upload]`) and internal Play
+(`build_aab.sh [--apk]`) builds keep it OFF; `tools/archive_ios.sh --store [--upload]` (own cache in
+`build/ios_store`) and `tools/build_aab.sh --store [--apk]` (`-PmgStore=ON`) make the store builds. Desktop
+`--store-config` applies exactly the same rule at run time; `--autotest ui` checks it on Settings (scrolled to the
+end: with the rule no Developer widget id and none of the `set_developer` / `set_haptic_lab` / `dev_*` texts drawn,
+"PASS store rule"; without it the button is there, "PASS developer section present"). `tools/store_check.sh [OUT]`
+configures + builds `build/desktop_store` with `-DMG_STORE=ON` (fails on a warning) and runs that check without the flag.
 
 Desktop test flags: `--offline`, `--profile NAME`,
 `--spawn x,y,z`, `--cam x,y,z,yaw,pitch` (free camera), `--colliders`, `--menu [skin]`,
 `--demo-walk`, `--window-pos x,y`, `--quit-after S`, `--log-events`,
 `--autotest touch|route|onboarding|save|continue|stickdir|stick|haptics|tilt|nav|autonav|markers|interact|text|hudclamp|offline|worldmap|worldmap2|ui|levelswitch|institute|screenshot NAME`, `--scene hospital|institute|devroom` (every level load),
 `--orientation left|right` (iOS: rotates the window without turning the device), `--menu pause`, `--markers N` and `--marker x,z,storey` (not saved), `--log-remote`,
-`--screenshot-at S:NAME[,S:NAME...]`, `--skin P,H,A`
+`--screenshot-at S:NAME[,S:NAME...]`, `--store-config` (the MG_STORE rule: no Developer section), `--skin P,H,A`
 (local only, not saved), `--metal-capture [S]` (Apple: one frame at S s, default 6,
 to `frame.gputrace` in Documents / the pref path; macOS needs `MTL_CAPTURE_ENABLED=1`).
 Args also work on a phone: `xcrun devicectl device process launch --console
