@@ -10,7 +10,7 @@
 
 typedef enum UiVariant { UI_V_PRIMARY, UI_V_SECONDARY, UI_V_ACCENT, UI_V_DESTRUCTIVE, UI_V_OK, UI_V_DISABLED } UiVariant;
 typedef enum UiIcon { UI_ICON_NONE, UI_ICON_BACK, UI_ICON_CLOSE, UI_ICON_CHECK, UI_ICON_PLUS, UI_ICON_MINUS, UI_ICON_PAUSE, UI_ICON_MENU,
-                      UI_ICON_NEXT, UI_ICON_PREV, UI_ICON_CROWN, UI_ICON_COPY } UiIcon;
+                      UI_ICON_NEXT, UI_ICON_PREV, UI_ICON_CROWN, UI_ICON_COPY, UI_ICON_DICE } UiIcon;
 typedef enum UiAnswer { UI_ANS_DEFAULT, UI_ANS_OK, UI_ANS_BAD, UI_ANS_REVEAL, UI_ANS_DIM } UiAnswer;
 /* flags; MAIN / CONFIRM / STEPPER / RANDOMISE also pick the haptic class (haptic_table.h) */
 enum { UI_F_BREATHE = 1, UI_F_SMALL = 2, UI_F_QUIET = 4, UI_F_MAIN = 8, UI_F_CONFIRM = 16, UI_F_STEPPER = 32, UI_F_RANDOMISE = 64, UI_F_LINK = 128 };
@@ -48,6 +48,8 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
 typedef enum UiBrand { UI_BRAND_GOOGLE, UI_BRAND_APPLE } UiBrand;
 bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float h, UiBrand brand, bool enabled);
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v);
+/* The same with button flags for its haptic class (UI_F_RANDOMISE: the dice); 0 = ui_icon_button's secondary row. */
+bool ui_icon_button_f(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v, int flags);
 /* The switch alone (76 x 44) at (x, y); returns true when it flipped. */
 bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value);
 /* A side-tab page (Settings, Friends, later screens): a left column of stacked tab buttons, a divider, the content on

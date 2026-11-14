@@ -54,7 +54,7 @@ bool frontend_init(Frontend *f, GfxContext *g, Arena *scratch)
     mb_cylinder(&mb, HMM_M4D(1.0f), 0.75f, 0.08f, 48, mg_rgb(0x5A6273));
     f->disc = mb_upload(&mb, g);
     arena_reset_to(scratch, mark);
-    return f->room != GFX_MESH_NONE && f->disc != GFX_MESH_NONE;
+    return f->room != GFX_MESH_NONE && f->disc != GFX_MESH_NONE && locker_init(&f->locker, g, scratch);
 }
 
 void frontend_go(Frontend *f, FeState s)
@@ -140,6 +140,9 @@ static void draw_scene(Frontend *f, MgApp *app, const FrontendCtx *ctx, const Av
     gfx_draw(g, f->disc, &id, &gloss, 0);
 
     float dt = mg_minf(app->frame_dt, 0.1f);
+    if (f->state == FE_CREATOR) { /* LOCKER-1: the Locker draws the hero on its own stage */
+        return;
+    }
     f->yaw += HMM_AngleDeg(6.0f) * dt + f->spin_vel * dt;
     f->spin_vel *= 1.0f - mg_minf(dt * 3.0f, 1.0f);
     AvatarPose pose = {HMM_V3(0, 0.08f, 0), f->yaw, HMM_V3(0, 0, 0), true, false, false, false};
@@ -384,30 +387,17 @@ static FeAction username(Frontend *f, Ui *ui, MgApp *app)
     return FE_NONE;
 }
 
+/* LOCKER-1: the Vestiar (locker.c): tabs left, the hero on its backdrop in the middle, the wheel right */
 static FeAction creator(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx)
 {
-    float w = app->width_pt, h = app->height_pt;
-    float x = EDGE_L + 12.0f, cw = creator_w(app), r = x + cw; /* the frosted panel starts at the edge margin */
-    float y = TOP_EDGE + 8.0f;
-    float panel_h = h - y - EDGE_B - 8.0f;
-    ui_card(ui, x - 12.0f, y - 8.0f, cw + 24.0f, panel_h + 8.0f);
-    ui_text(ui, TEXT_FACE_DISPLAY, x, y - 4.0f, 28.0f, ui_rgba(k_ui.ink), str("creator_title"));
-    FeAction a = FE_NONE;
-    char label[48];
-    SDL_snprintf(label, sizeof(label), "%s##dice", str("randomise"));
-    if (ui_button_v(ui, label, r - 120.0f, y - 7.0f, 120.0f, k_ui.target_min, UI_V_SECONDARY, UI_F_SMALL | UI_F_RANDOMISE)) {
-        creator_randomise(ctx->skin);
-        a = FE_SKIN_CHANGED;
-    }
-    y += 46.0f;
-    if (creator_ui(&f->creator, ui, ctx->skin, x, y, cw, panel_h - 110.0f)) {
-        a = FE_SKIN_CHANGED;
-    }
-    SDL_snprintf(label, sizeof(label), "%s##creator", str("done"));
-    if (ui_button_v(ui, label, x, y + panel_h - 110.0f, cw, 54.0f, UI_V_PRIMARY, UI_F_BREATHE)) {
+    const bool show_back = f->depth > 0 && f->stack[f->depth - 1] != FE_USERNAME; /* onboarding: Done only */
+    bool done = false, back = false;
+    FeAction a = locker_ui(&f->locker, ui, app, ctx->skin, show_back, &done, &back) ? FE_SKIN_CHANGED : FE_NONE;
+    if (done) {
         a = FE_CREATOR_DONE;
+    } else if (back) {
+        frontend_back(f);
     }
-    spin_drag(f, app, r + 12.0f, w);
     return a;
 }
 
@@ -595,9 +585,6 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
         break;
     case FE_CREATOR:
         a = creator(f, ui, app, ctx);
-        if (f->depth > 0 && f->stack[f->depth - 1] != FE_USERNAME) {
-            back_button(f, ui, app, frontend_menu_right(app, FE_CREATOR) + 12.0f);
-        }
         break;
     case FE_MAIN_MENU:
         a = main_menu(f, ui, app, ctx);
@@ -612,6 +599,12 @@ FeAction frontend_frame(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ctx,
     default: /* SETTINGS is drawn by the game (the settings panel) */
         break;
     }
+    if (f->state != FE_CREATOR && f->locker.open) {
+        locker_close(&f->locker);
+    }
+    /* LOCKER-1: the stage, the hero and the wheel (3D insets over the library; they fade with the camera's move) */
+    locker_draw(&f->locker, app->gfx, app, meshes, ctx->skin, ctx->world_behind ? ctx->locker_cam_t : (f->locker.open ? 1.0f : 0.0f),
+                !ctx->world_behind, mg_minf(app->frame_dt, 0.1f));
     frontend_toast_draw(f, ui, app);
     return a;
 }

@@ -216,6 +216,10 @@ bool gfx_has_patterns(const GfxContext *g);
 
 bool gfx_frame_begin(GfxContext *g);
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene);
+/* LOCKER-1: every draw that follows is at least this faded (its material's hide raised to it: the screen-door fade; 0.98 and up
+ * are dropped), until set back; 0 is off, and each frame starts at 0. Returns the previous value. The Locker fades the library's
+ * scenery this way round the one hero it keeps. */
+float gfx_set_hide_min(GfxContext *g, float hide);
 /* The category the next draws count their triangles under (GFX_CAT_*); returns the previous one. */
 int gfx_set_category(GfxContext *g, int cat);
 /* The whole-object fade (GFX_MAT_DEPTH / GFX_MAT_TOON_FADE) is allowed only while this is on: the library's shell on the

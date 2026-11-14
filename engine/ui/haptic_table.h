@@ -29,7 +29,7 @@ typedef enum HapticId {
     HAPTIC_TOGGLE_ON, HAPTIC_TOGGLE_OFF,
     HAPTIC_SLIDER_GRAB, HAPTIC_SLIDER_STEP, HAPTIC_SLIDER_END,
     HAPTIC_STEPPER, HAPTIC_FIELD_FOCUS,
-    HAPTIC_SWATCH, HAPTIC_RANDOMISE,
+    HAPTIC_SWATCH, HAPTIC_RANDOMISE, HAPTIC_LOCKER_DETENT,
     /* surfaces */
     HAPTIC_SURFACE_OPEN, HAPTIC_SURFACE_CLOSE, HAPTIC_WARNING_MODAL, HAPTIC_NOTICE,
     HAPTIC_INVITE_ACCEPTED, HAPTIC_INVITE_DECLINED, HAPTIC_PAUSE,
@@ -97,6 +97,7 @@ static const HapticEntry k_haptics[HAPTIC_COUNT] = {
     {"text field focus", 1, 1, {TAP(HR1, HS_SOFT)}},
     {"creator option", 1, 1, {TAP(HR1, HS_CRISP)}},
     {"randomise", 3, 2, {TAP(HR3, HS_SOFT), ECHO}},
+    {"locker wheel detent", 0, 1, {TAP(0.25f, HS_CRISP)}}, /* an item passes the wheel's middle (as a slider step) */
     {"card / panel / modal opens", 2, 1, {TAP(HR2, HS_SOFT)}},
     {"card / panel / modal closes", 0, 1, {TAP(0.2f, HS_SOFT)}},
     {"warning modal", 3, 2, {WARNING_EV}},

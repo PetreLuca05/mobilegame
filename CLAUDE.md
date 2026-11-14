@@ -640,6 +640,16 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   Locker is up, and every refit of the free rect (lobby panel, screen columns) is a quintic too (`FIT_RATE`); the hero's pose (`creator_w`: study blend 0.15, look, hands on the table) follows once no page is in the air, its
   loop paused until it closes. Reduse: at once under the 300 ms cross-dissolve. `--autotest library` with `--frontend welcome`
   checks it (`--lib-walked`: a second launch, no walk-in); pictures docs/autotest/library/step8/.
+- Locker screen (LOCKER-1, `game/locker.c`): tabs left (stacked, `crtab0..5`: body, skin, hair style, hair colour, suit, extras),
+  back + dice icon buttons top left (`feback`, `dice`), my hero centred between them and the wheel (`locker_centre_x` sets
+  `creator_l`), on the right a vertical wheel of the options as real 3D avatar models (heads for skin / hair, whole avatars for the
+  rest), drag with inertia and snap, the middle slot is worn at once (detent = `HAPTIC_LOCKER_DETENT`), a tap brings a slot to the
+  middle; Done under it. The hero is the library's own seat 0 (no copy): from creator_t 0.55 everything else dithers out
+  (`MenuLibrary.locker_hide` through `gfx_set_hide_min`, the hero's draw exempt; fully faded draws cost nothing) onto a backdrop
+  card in a before-world inset at the far end of the depth range; the hero turns in its seat (`locker_yaw`: drag, idle ±25° /
+  4 s ping-pong). Opened from a game (no library) the Locker draws its own hero in an inset. Insets in the main pass now instance
+  (the inset is in the sort key). Ids for tests: `cr<tab>_0_<i>`, `crslot±1`, `crnear`. `--locker-demo rest|drag|move`, perf
+  `locker`, `locker_drag`, `locker_move` (perf_mac: 46 draws at rest / dragging, 60 on the move).
 - People (step 4, `game/lib_people.c`, pure C): the scene's 25 `npcs` (routes, stops, `wait_s` / `face_deg` / `outside` / `book` /
   `leave_cart`, every act of LIB1.md §9 with the prototype's eased weights; seated readers, the sleeper with zees) and the members'
   walks, all `lib_nav` agents (96 % hard rule, also during the ignore-others spell; steering; re-path at 1.2 s; spell at 4 s; stop

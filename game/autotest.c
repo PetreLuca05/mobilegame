@@ -616,11 +616,13 @@ static bool run_markers(Autotest *t, MgApp *app, const AutotestProbe *p, double 
 
 
 static const TapStep k_onboarding[] = {
+    /* LOCKER-1: a tab, then a tap on the wheel's neighbour slot (it comes to the middle and is worn), for every tab */
     {FE_WELCOME, "guest", false},   {FE_USERNAME, "name_ok", false}, {FE_CREATOR, "crtab0", false},
-    {FE_CREATOR, "cr0_0_1", true},  {FE_CREATOR, "crtab1", false},   {FE_CREATOR, "cr1_0_3", true},
-    {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "cr2_0_2", true},   {FE_CREATOR, "cr2_1_4", true},
-    {FE_CREATOR, "crtab3", false},  {FE_CREATOR, "cr3_0_1", true},   {FE_CREATOR, "crtab4", false},
-    {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
+    {FE_CREATOR, "crnear", true},   {FE_CREATOR, "crtab1", false},   {FE_CREATOR, "crnear", true},
+    {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "crnear", true},    {FE_CREATOR, "crtab3", false},
+    {FE_CREATOR, "crnear", true},   {FE_CREATOR, "crtab4", false},   {FE_CREATOR, "crnear", true},
+    {FE_CREATOR, "crtab5", false},  {FE_CREATOR, "crnear", true},    {FE_CREATOR, "dice", true},
+    {FE_CREATOR, "creator", false},
     {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */
     {FE_MAIN_MENU, "account_chip", false}, {FE_FRIENDS, "link_account", false}, /* Cont (the default tab): the Link account dialog */
     {FE_FRIENDS, "link_close", false}, {FE_FRIENDS, "ftab4", false}, {FE_FRIENDS, "friends", false}, /* Setări, then back */

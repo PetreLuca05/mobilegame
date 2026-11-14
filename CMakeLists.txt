@@ -405,6 +405,7 @@ set(MG_GAME_SOURCES
   game/lobby.c
   game/frontend.c
   game/creator.c
+  game/locker.c
   game/prefs.c
   game/save.c
   game/content_cleanup.c

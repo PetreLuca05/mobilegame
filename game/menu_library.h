@@ -309,6 +309,8 @@ typedef struct MenuLibrary {
     bool creator_dissolve_armed;          /* Reduse: the Locker opens / closes next frame; the caller captures this one */
     HMM_Vec3 creator_eye; /* world: the Locker camera's eye (tests) */
     float creator_l;   /* pt: the creator panel's right edge */
+    float locker_hide; /* LOCKER-1: everything but my hero fades by this (0 .. 1, gfx_set_hide_min) */
+    float locker_yaw;  /* LOCKER-1: radians added to my hero's heading while the Locker is up (x creator_w) */
     float creator_shift;
     bool walk_in_seen;    /* §11: the onboarding walk-in started (this run) */
     HMM_Vec2 walk_in_from; /* where it started (hall frame: its bay's door.outside) */

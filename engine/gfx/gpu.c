@@ -187,6 +187,7 @@ struct GfxContext {
     uint64_t ui_atlas_bytes;
     GfxInset insets[GFX_MAX_INSETS];
     int inset_count, current_inset; /* current: index + 1, 0 none */
+    float hide_min; /* gfx_set_hide_min: every draw at least this faded (0 off; reset each frame) */
     int current_cat; /* GFX_CAT_* for the next draws */
     bool fade_allowed, fade_logged; /* gfx_allow_fade; the one log line */
     uint32_t filter; /* gfx_set_filter (--gpu-off, test only); 0 = every draw as asked */
@@ -1697,6 +1698,7 @@ bool gfx_frame_begin(GfxContext *g)
     g->ui_screen[2] = 1.0f;
     g->preview_on = false;
     g->inset_count = g->current_inset = 0;
+    g->hide_min = 0.0f;
 #ifdef MG_RENDER_FULL
     g->light_count = 0;
 #endif
@@ -1725,9 +1727,17 @@ void gfx_set_ui_size(GfxContext *g, float w_pt, float h_pt)
 
 void gfx_set_scene(GfxContext *g, const GfxSceneParams *scene) { g->scene = *scene; }
 
+float gfx_set_hide_min(GfxContext *g, float hide)
+{
+    const float was = g->hide_min;
+    g->hide_min = hide;
+    return was;
+}
+
 void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMaterial *mat, uint32_t flags)
 {
-    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->pool.count || g->draw_count >= GFX_MAX_DRAWS || mat->hide >= 0.98f ||
+    const float hide = fmaxf(mat->hide, g->hide_min); /* LOCKER-1: a fade floor over a whole scene (gfx_set_hide_min) */
+    if (!g->in_frame || mesh == GFX_MESH_NONE || mesh >= g->pool.count || g->draw_count >= GFX_MAX_DRAWS || hide >= 0.98f ||
         g->meshes[mesh].index_count == 0) {
         return; /* fully faded draws (and an empty reserved mesh) cost nothing */
     }
@@ -1750,7 +1760,7 @@ void gfx_draw(GfxContext *g, GfxMeshId mesh, const HMM_Mat4 *model, const GfxMat
     d->tint = mat->tint;
     d->params = mat->params;
     d->extra = mat->extra;
-    d->hide = mat->hide;
+    d->hide = hide;
     d->range_first = d->range_count = 0;
     d->inset = (uint8_t)g->current_inset;
     d->cat = (uint8_t)g->current_cat;
@@ -1930,8 +1940,8 @@ static bool xray_always(const DrawItem *d) { return (d->kind == GFX_MAT_XRAY_RIM
 
 static bool instanceable(const GfxContext *g, const DrawItem *d)
 {
-    if ((d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) || d->inset) {
-        return false;
+    if ((d->flags & (GFX_DRAW_PREVIEW | GFX_DRAW_NO_MAIN)) || (d->inset && g->insets[d->inset - 1].head_cell >= 0)) {
+        return false; /* LOCKER-1: an inset in the main pass instances too (its runs never leave it); the head atlas's cells do not */
     }
     /* sprites: only the flat ground discs; clouds and glows have other shapes */
     if (d->kind == GFX_MAT_SPRITE && !(d->flags & GFX_DRAW_GROUND)) {
@@ -1974,6 +1984,7 @@ static uint64_t draw_key(const GfxContext *g, const DrawItem *d, uint32_t index)
     } else { /* the mesh, then its pipeline (solid / dithered), then depth: one mesh's solid instances are one run and its dithered
               * ones another however they interleave in depth (people fading in or out, LOD crossfades: a body mesh in 7 runs was 2) */
         a = ((uint64_t)d->mesh << 3) | ((uint64_t)toon_variant(g, d) << 1) | (d->hide > 0.0f ? 1u : 0u); /* GFX_MAX_MESHES 512: 10 bits */
+        a |= (uint64_t)d->inset << 13; /* LOCKER-1: an inset's draws together (its runs instance); 0 for the world: keys unchanged */
         b = near_first >> 1; /* 15 bits: 1/128 m */
     }
     const uint64_t always = (d->kind == GFX_MAT_XRAY_RIM || d->kind == GFX_MAT_XRAY) && d->params.W > 0.5f;
@@ -2032,7 +2043,7 @@ static void build_instances(GfxContext *g)
         g->run_first[i] = g->inst_count;
         for (; j < g->draw_count; j++) {
             const DrawItem *e = &g->draws[g->order[j]];
-            if (e->kind != d->kind || e->mesh != d->mesh || (e->hide > 0.0f) != dither || !instanceable(g, e) ||
+            if (e->kind != d->kind || e->mesh != d->mesh || e->inset != d->inset || (e->hide > 0.0f) != dither || !instanceable(g, e) ||
                 draw_bucket(e) != draw_bucket(d) || e->range_first != d->range_first || e->range_count != d->range_count ||
                 xray_always(e) != xray_always(d) || toon_variant(g, e) != toon_variant(g, d)) {
                 break;
@@ -2144,7 +2155,7 @@ static uint32_t draw_list(GfxContext *g, SDL_GPURenderPass *pass, int target, bo
     int bound = -1;
     SDL_GPUGraphicsPipeline *bound_pipe = NULL;
     uint32_t count = 0;
-    const bool can_instance = target == TARGET_MAIN && !preview && inset == 0 && g->inst_count > 0;
+    const bool can_instance = target == TARGET_MAIN && !preview && g->inst_count > 0; /* the world and its insets (instanceable) */
     if (can_instance) {
         SDL_GPUBufferBinding ivb = {g->inst_vb[g->ring % GFX_BUFFER_RING], 0};
         SDL_BindGPUVertexBuffers(pass, 1, &ivb, 1);

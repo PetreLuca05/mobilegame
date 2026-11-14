@@ -39,6 +39,9 @@ static const Scenario k_scenarios[] = {
     {"menu_to_map", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* LIB-1: the Maps camera move looped, forward and back */
     {"menu_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* LIB-1 §8: my trip to a host across the diagonal and back, looped */
     {"ui_juice", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},       /* UI-1: menu + lobby panel, a toast and a T3 reward every 2 s */
+    {"locker", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},         /* LOCKER-1: the Locker at rest (opened from the menu, suits tab) */
+    {"locker_drag", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},    /* LOCKER-1: the suits' wheel swept up and down the whole time */
+    {"locker_move", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},    /* LOCKER-1: the camera move and the stage fade, open / close every 3 s */
     {"worldmap", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0},        /* WORLD-1: the island's overview, labels */
     {"worldmap_travel", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* the ambulance driving hospital to hospital, follow camera */
     {"worldmap_voyage", 0.0f, 0.0f, 0.0f, 0, 0.0f, {{0.0f, 0.0f, 0}}, 0}, /* WORLD-2: by plane between the islands, back and forth */
