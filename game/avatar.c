@@ -783,11 +783,24 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
         return;
     }
-    if (!p->head_only) {
+    if (p->only == AVATAR_ONLY_BODY) { /* the outfit alone */
+        outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, extra);
+        return;
+    }
+    if (p->only == AVATAR_ONLY_HAIR) { /* the hair style alone */
+        if (hair_style != HAIR_NONE && hair_style < AVATAR_HAIRS) {
+            outlined(&dc, m->hair[hair_style], m->hair_hull[hair_style], s.head, hair_rgb, none);
+        }
+        return;
+    }
+    const bool acc_only = p->only == AVATAR_ONLY_ACCESSORY;
+    if (!p->head_only && !acc_only) {
         outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, extra);
     }
-    outlined(&dc, m->head, m->head_hull, s.head, look->skin, none);
-    if (hair_style != HAIR_NONE && hair_style < AVATAR_HAIRS) {
+    if (!acc_only) {
+        outlined(&dc, m->head, m->head_hull, s.head, look->skin, none);
+    }
+    if (!acc_only && hair_style != HAIR_NONE && hair_style < AVATAR_HAIRS) {
         outlined(&dc, m->hair[hair_style], m->hair_hull[hair_style], s.head, hair_rgb, none);
     }
     if (p->small_own) { /* the small parts from here on */
@@ -800,7 +813,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     if (look->accessory == ACC_SUNGLASSES || (look->extras & AVATAR_EXTRA_READING_GLASSES)) {
         part(&dc, m->glasses, s.head, (look->extras & AVATAR_EXTRA_READING_GLASSES) ? 0x8FA3B8 : 0x23222B, SURF_GLOSSY);
     }
-    if (look->accessory != ACC_SUNGLASSES) {
+    if (look->accessory != ACC_SUNGLASSES && !acc_only) {
         part(&dc, m->eye, HMM_MulM4(s.head, HMM_Translate(e)), m->rig.eye_rgb, SURF_FLAT);
         part(&dc, m->eye, HMM_MulM4(s.head, HMM_Translate(HMM_V3(-e.X, e.Y, e.Z))), m->rig.eye_rgb, SURF_FLAT);
     }
@@ -813,7 +826,7 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     if (look->extras & AVATAR_EXTRA_HAT) {
         part(&dc, m->hat, s.head, 0xE8D8A0, SURF_MATTE);
     }
-    if (p->head_only) {
+    if (p->head_only || acc_only) {
         return;
     }
     outlined(&dc, m->hand, m->hand_hull, hm[0], look->skin, none);

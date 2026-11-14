@@ -17,8 +17,8 @@
 #include "platform/app.h"
 #include "ui/widgets.h"
 
-#define LOCKER_TABS 6   /* body, skin, hair style, hair colour, suit, accessory */
-#define LOCKER_SHOWN 5  /* wheel slots drawn: the selection and two each side */
+#define LOCKER_TABS 6   /* body, skin, hair style, hair colour, suit, accessory (hair colour has no tab: a column beside the hair wheel) */
+#define LOCKER_SHOWN 7  /* wheel slots drawn: the selection and three each side */
 
 typedef struct LockerLayout {
     float top, bottom;          /* the safe band the columns use */
@@ -52,6 +52,7 @@ typedef struct Locker {
     bool open;
     AvatarAnim hero_anim, item_anim[LOCKER_SHOWN];
     GfxMeshId quad, disc;     /* a unit quad and a unit disc: rounded cards = 2 quads + 4 discs (instanced) */
+    UiScroll hc_scroll;       /* the hair colours' column (Coafură) */
     float drag_frames;        /* tests: frames the wheel moved */
     bool demo_drag;           /* perf locker_drag / --locker-demo drag: the wheel swept up and down as a drag would */
 } Locker;

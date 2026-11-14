@@ -1372,13 +1372,12 @@ static void locker_watch(LibraryTest *t, const MenuLibrary *L, const AutotestOut
     }
 }
 
-/* open: the camera on the Locker camera, which stands in front of the hero's own seat; the hero sits up, its loop paused */
+/* open: the camera on the Locker camera (the menu's angle, moved onto the hero); the hero faces it, its loop paused */
 static int locker_open_check(LibraryTest *t, const MenuLibrary *L, bool reduced)
 {
     const LibMember *h = &L->seat[0];
-    const HMM_Vec3 seat = menu_library_seat_world(L, 0), fwd = HMM_SubV3(menu_library_seat_point(L, 0, HMM_V3(0, 0, 1)), seat);
-    const HMM_Vec3 to_eye = HMM_SubV3(L->eye, seat);
-    const float facing = HMM_DotV3(HMM_NormV3(HMM_V3(to_eye.X, 0, to_eye.Z)), HMM_NormV3(HMM_V3(fwd.X, 0, fwd.Z)));
+    /* LOCKER-1 (2026-11-14): the camera keeps the menu's angle and only moves; the hero turns to face it */
+    const float facing = L->locker_facing;
     const float off = HMM_LenV3(HMM_SubV3(L->eye, L->creator_eye));
     mg_log_info("autotest library: Locker open: seat %d (yaw %.0f), the eye %.4f from camera.creator moved onto it, facing %.2f, study blend %.3f, "
                 "pose %.2f, camera jump %.3f (top speed %.2f distances/s, %d frames)%s",

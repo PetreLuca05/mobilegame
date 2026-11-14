@@ -13,8 +13,8 @@
 #include "ui/ui_style.h"
 #include "ui/ui_widgets.h"
 
-#define SWING_DEG 25.0f     /* the idle ping-pong: +-25 degrees */
-#define SWING_PERIOD_S 4.0f /* one left-right-left */
+#define SWING_DEG 12.0f     /* the idle ping-pong: +-12 degrees (user decision 2026-11-14: smaller, slower) */
+#define SWING_PERIOD_S 7.0f /* one left-right-left */
 #define SWING_RETURN_S 1.2f /* after a drag, the swing's weight comes back over this */
 #define TURN_DEG_PER_PT 0.6f /* the hero's drag, as on the other screens */
 #define STAGE_FROM 0.55f    /* the backdrop fades in over the last part of the camera move (creator_t 0.55 .. 1) */
@@ -22,12 +22,33 @@
 #define TAP_SLOP_PT 10.0f   /* a wheel touch that moved less than this is a tap on a slot */
 #define SNAP_RATE 14.0f     /* 1 / s: the wheel settling on its middle item */
 #define FRICTION 4.5f       /* 1 / s: the wheel's inertia */
-#define WHEEL_REACH 1.6f    /* slots from the middle that are drawn: fading from 1 to here, then gone (inside the wheel's rect) */
+#define WHEEL_REACH 2.6f    /* slots from the middle that are drawn: fading from 2 to here, then gone (inside the wheel's rect) */
+#define WHEEL_FADE_FROM 2.0f
+#define WHEEL_SHRINK 0.08f  /* per slot from the middle */
 
 static const char *const k_tab_keys[LOCKER_TABS] = {"tab_body", "tab_skin", "hair_style", "tab_hair_colour", "tab_suit", "tab_extras"};
 static const int k_counts[LOCKER_TABS] = {2, AVATAR_SKIN_COLORS, AVATAR_HAIRS, AVATAR_HAIR_COLORS, AVATAR_SUITS, AVATAR_ACCESSORIES};
-/* the wheel shows heads for what is on the head, whole avatars for the rest */
-static const bool k_head_only[LOCKER_TABS] = {false, true, true, true, false, false};
+/* what the wheel shows per tab (user decision 2026-11-14): Corp male / female icons and Ten colour swatches (2D, the UI draw),
+ * Coafură the hair alone (+ its colours in a column beside), Ținută the outfit alone, Accesorii the accessory alone */
+enum { SHOW_GENDER, SHOW_SWATCH, SHOW_HAIR, SHOW_NONE, SHOW_BODY, SHOW_ACCESSORY };
+static const int k_show[LOCKER_TABS] = {SHOW_GENDER, SHOW_SWATCH, SHOW_HAIR, SHOW_NONE, SHOW_BODY, SHOW_ACCESSORY};
+static const int k_tab_order[] = {0, 1, 2, 4, 5}; /* the tab buttons: hair colour (3) has none */
+#define TAB_BUTTONS ((int)(sizeof(k_tab_order) / sizeof(k_tab_order[0])))
+#define HC_COL_W 56.0f /* the hair colours' column, right of the wheel (Coafură) */
+#define HC_ROW 52.0f
+
+/* Coafură: the wheel gives the right part of its column to the hair colours */
+static void tab_layout(int tab, LockerLayout *l, float *col_x)
+{
+    *col_x = 0.0f;
+    if (tab == 2) {
+        *col_x = l->wheel_x + l->wheel_w - HC_COL_W;
+        l->wheel_w -= HC_COL_W + 6.0f;
+    }
+}
+
+static float clamp01(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
+static UiColor rgb_c(uint32_t rgb, float a) { return ui_rgba((rgb << 8) | (uint32_t)(255.0f * clamp01(a))); }
 
 static uint8_t *field(NetSkin *s, int tab)
 {
@@ -102,7 +123,7 @@ void locker_layout(const MgApp *app, LockerLayout *l)
     l->buttons_y = l->bottom - k_ui.target_min;
     l->wheel_y = l->top;
     l->wheel_h = l->buttons_y - 12.0f - l->top;
-    l->slot = clampf(l->wheel_h / 4.2f, k_ui.target_min + 8.0f, 150.0f); /* the ends' slots half under the wheel's edges, like a drum */
+    l->slot = clampf(l->wheel_h / 5.6f, k_ui.target_min + 4.0f, 120.0f); /* five slots and the ends' half under the edges, like a drum */
     (void)buttons_h;
 }
 
@@ -205,7 +226,7 @@ static void wheel_input(Locker *k, Ui *ui, MgApp *app, const LockerLayout *l, Ne
         }
     }
     /* tests and taps by id: every slot on screen, absolute (cr<tab>_0_<i>) and relative to the middle (crslot+1 ..) */
-    for (int d = -1; d <= 1; d++) { /* the slots inside the wheel (WHEEL_REACH) */
+    for (int d = -2; d <= 2; d++) { /* the slots inside the wheel (WHEEL_REACH) */
         const int i = sel + d;
         if (i < 0 || i >= n) {
             continue;
@@ -259,10 +280,88 @@ static void hero_input(Locker *k, MgApp *app, const LockerLayout *l)
     k->swing_t += dt * k->swing_w;
 }
 
+/* the 2D items of the Corp and Ten wheels, in the UI draw over the wheel's 3D cards */
+static void gender_icon(Ui *ui, float cx, float cy, float s, bool female, float a)
+{
+    const UiColor c = rgb_c((female ? k_ui.gender_female : k_ui.gender_male) >> 8, a);
+    const float r = s * 0.3f, t = mg_maxf(3.0f, s * 0.07f);
+    if (female) { /* a ring, a stem and a cross under it */
+        const float ry = cy - s * 0.12f;
+        ui_shape(ui->gfx, &(UiShape){.x = cx - r, .y = ry - r, .w = 2.0f * r, .h = 2.0f * r, .radius = r, .stroke = t, .color = c});
+        ui_line(ui->gfx, ui->font, cx, ry + r, cx, ry + r + s * 0.32f, t, c);
+        ui_line(ui->gfx, ui->font, cx - s * 0.13f, ry + r + s * 0.17f, cx + s * 0.13f, ry + r + s * 0.17f, t, c);
+    } else { /* a ring and an arrow up and to the right */
+        const float rx = cx - s * 0.07f, ry = cy + s * 0.07f, d = r * 0.7071f;
+        ui_shape(ui->gfx, &(UiShape){.x = rx - r, .y = ry - r, .w = 2.0f * r, .h = 2.0f * r, .radius = r, .stroke = t, .color = c});
+        const float x0 = rx + d, y0 = ry - d, x1 = x0 + s * 0.24f, y1 = y0 - s * 0.24f;
+        ui_line(ui->gfx, ui->font, x0, y0, x1, y1, t, c);
+        ui_line(ui->gfx, ui->font, x1 - s * 0.15f, y1, x1, y1, t, c);
+        ui_line(ui->gfx, ui->font, x1, y1, x1, y1 + s * 0.15f, t, c);
+    }
+}
+
+static void wheel_2d(const Locker *k, Ui *ui, const LockerLayout *l, const NetSkin *skin)
+{
+    const int tab = k->tab, show = k_show[tab], n = k_counts[tab];
+    if (show != SHOW_GENDER && show != SHOW_SWATCH) {
+        return;
+    }
+    const float cy = l->wheel_y + l->wheel_h * 0.5f, cx = l->wheel_x + l->wheel_w * 0.5f;
+    for (int i = 0; i < n; i++) {
+        const float d = (float)i - k->pos[tab];
+        if (fabsf(d) > WHEEL_REACH) {
+            continue; /* off the wheel: not drawn */
+        }
+        const float sc = 1.0f - WHEEL_SHRINK * fabsf(d), a = (1.0f - clamp01((fabsf(d) - WHEEL_FADE_FROM) / (WHEEL_REACH - WHEEL_FADE_FROM))) * k->stage;
+        const float y = cy + d * l->slot, size = mg_minf(l->slot - 16.0f, l->wheel_w - 24.0f) * sc;
+        if (show == SHOW_GENDER) {
+            gender_icon(ui, cx, y, size, i == 1, a);
+        } else {
+            const float r = size * 0.36f;
+            ui_circle(ui->gfx, ui->font, cx, y + 2.0f, r + 2.0f, rgb_c(k_ui.secondary_lip >> 8, a)); /* its lip */
+            ui_circle(ui->gfx, ui->font, cx, y, r, rgb_c(avatar_skin_colors()[i], a));
+        }
+    }
+    (void)skin;
+}
+
+/* Coafură: the hair colours as a column of swatches right of the wheel (scrolls on a short screen) */
+static void hair_colours(Locker *k, Ui *ui, float x, const LockerLayout *l, NetSkin *skin, bool *changed)
+{
+    const int n = AVATAR_HAIR_COLORS, cur = skin->hair_color;
+    const float view = l->wheel_h, cx = x + HC_COL_W * 0.5f;
+    const float off = ui_scroll_begin(ui, &k->hc_scroll, x, l->wheel_y, HC_COL_W, view, false);
+    float y = l->wheel_y + 4.0f - off;
+    for (int i = 0; i < n; i++) {
+        char id[16];
+        SDL_snprintf(id, sizeof(id), "crhc%d", i);
+        bool held = false;
+        ui->hclass = HC_SWATCH;
+        if (ui_press(ui, id, x, y, HC_COL_W, HC_ROW - 4.0f, &held, false) && cur != i) {
+            skin->hair_color = (uint8_t)i;
+            *changed = true;
+        }
+        if (i == (cur + 1) % n) {
+            ui_remember(ui, "crhcnear", x, y, HC_COL_W, HC_ROW - 4.0f); /* tests: another colour than the worn one */
+        }
+        const float a = k->stage, r = 17.0f, ycen = y + (HC_ROW - 4.0f) * 0.5f;
+        if (i == cur) {
+            ui_shape(ui->gfx, &(UiShape){.x = cx - r - 5.0f, .y = ycen - r - 5.0f, .w = 2.0f * r + 10.0f, .h = 2.0f * r + 10.0f, .radius = r + 5.0f,
+                                         .stroke = k_ui.ring_width, .color = rgb_c(k_ui.primary_lip >> 8, a)});
+        }
+        ui_circle(ui->gfx, ui->font, cx, ycen + 2.0f, r + 2.0f, rgb_c(k_ui.secondary_lip >> 8, a));
+        ui_circle(ui->gfx, ui->font, cx, ycen, r * (held ? 0.92f : 1.0f), rgb_c(avatar_hair_colors()[i], a));
+        y += HC_ROW;
+    }
+    ui_scroll_end(ui, &k->hc_scroll, view, (float)n * HC_ROW + 8.0f);
+}
+
 bool locker_ui(Locker *k, Ui *ui, MgApp *app, NetSkin *skin, bool show_back, bool *done, bool *back)
 {
     LockerLayout l;
     locker_layout(app, &l);
+    float hc_x;
+    tab_layout(k->tab, &l, &hc_x);
     *done = *back = false;
     if (!k->open) {
         k->open = true;
@@ -276,27 +375,27 @@ bool locker_ui(Locker *k, Ui *ui, MgApp *app, NetSkin *skin, bool show_back, boo
     k->reduced = ui->anim && ui->anim->reduced;
     k->t += mg_minf(app->frame_dt, 0.1f);
     bool changed = false;
-    /* top left: back (not in onboarding) and the dice; the title sits on the backdrop card's corner */
+    /* top left: back (not in onboarding); the title and the dice sit on the backdrop card's top corners, with the hero */
     float x = l.tabs_x, y = l.top;
-    float ix = x;
     if (show_back) {
-        if (ui_icon_button(ui, "feback", UI_ICON_BACK, ix, y, k_ui.icon_button, UI_V_SECONDARY)) {
+        if (ui_icon_button(ui, "feback", UI_ICON_BACK, x, y, k_ui.icon_button, UI_V_SECONDARY)) {
             *back = true;
         }
-        ix += k_ui.icon_button + 10.0f;
-    }
-    if (ui_icon_button_f(ui, "dice", UI_ICON_DICE, ix, y, k_ui.icon_button, UI_V_SECONDARY, UI_F_RANDOMISE)) {
-        creator_randomise(skin);
-        changed = true;
     }
     if (k->stage > 0.5f) {
         ui_text(ui, TEXT_FACE_DISPLAY, l.card_x + 20.0f, l.card_y + 12.0f, 28.0f, ui_rgba(k_ui.ink), str("locker"));
+        if (ui_icon_button_f(ui, "dice", UI_ICON_DICE, l.card_x + l.card_w - k_ui.icon_button - 14.0f, l.card_y + 12.0f, k_ui.icon_button,
+                             UI_V_SECONDARY, UI_F_RANDOMISE)) {
+            creator_randomise(skin);
+            changed = true;
+        }
     }
-    /* the tabs under them */
-    y += k_ui.icon_button + 6.0f;
+    /* the tabs under the back button (from the top in onboarding) */
+    y += show_back ? k_ui.icon_button + 6.0f : 0.0f;
     const float room = l.bottom - y;
-    const float th = clampf(room / (float)LOCKER_TABS - 4.0f, k_ui.target_min, 50.0f);
-    for (int t = 0; t < LOCKER_TABS; t++) { /* stacked buttons, as the Friends page's tabs */
+    const float th = clampf(room / (float)TAB_BUTTONS - 4.0f, k_ui.target_min, 50.0f);
+    for (int b = 0; b < TAB_BUTTONS; b++) { /* stacked buttons, as the Friends page's tabs */
+        const int t = k_tab_order[b];
         char label[64];
         SDL_snprintf(label, sizeof(label), "%s##crtab%d", str(k_tab_keys[t]), t);
         ui->hclass = HC_TAB;
@@ -309,8 +408,15 @@ bool locker_ui(Locker *k, Ui *ui, MgApp *app, NetSkin *skin, bool show_back, boo
         }
         y += th + 4.0f;
     }
-    /* right: the wheel, then Done */
+    if (k->tab == 3) { /* hair colour has no tab of its own any more */
+        k->tab = 2;
+    }
+    /* right: the wheel (its 2D items for Corp / Ten), the hair colours beside it on Coafură, then Done */
     wheel_input(k, ui, app, &l, skin, &changed);
+    wheel_2d(k, ui, &l, skin);
+    if (k->tab == 2) {
+        hair_colours(k, ui, hc_x, &l, skin, &changed);
+    }
     { /* the selection frame round the middle slot (UI over the 3D card), with a chevron on each side */
         const float cy = l.wheel_y + l.wheel_h * 0.5f, s = l.slot;
         ui_depth(ui, 2, 0, 0);
@@ -320,7 +426,9 @@ bool locker_ui(Locker *k, Ui *ui, MgApp *app, NetSkin *skin, bool show_back, boo
     }
     char label[48];
     SDL_snprintf(label, sizeof(label), "%s##creator", str("done"));
-    if (ui_button_v(ui, label, l.wheel_x, l.buttons_y, l.wheel_w, k_ui.target_min, UI_V_PRIMARY, UI_F_SMALL | UI_F_BREATHE)) {
+    LockerLayout full;
+    locker_layout(app, &full);
+    if (ui_button_v(ui, label, full.wheel_x, full.buttons_y, full.wheel_w, k_ui.target_min, UI_V_PRIMARY, UI_F_SMALL | UI_F_BREATHE)) {
         *done = true;
     }
     /* the item's name, on a pill under the hero */
@@ -395,6 +503,8 @@ void locker_draw(Locker *k, GfxContext *g, const MgApp *app, const AvatarMeshes 
     }
     LockerLayout l;
     locker_layout(app, &l);
+    float hc_x;
+    tab_layout(k->tab, &l, &hc_x);
     const float W = app->width_pt, H = app->height_pt;
     const float fade = 1.0f - k->stage; /* screen-door: 1 = gone */
     /* 1: the stage, in pt (x right, y down), ortho; z: nearer is larger. Drawn ahead of the world at the far end of the depth range:
@@ -420,9 +530,9 @@ void locker_draw(Locker *k, GfxContext *g, const MgApp *app, const AvatarMeshes 
             if (fabsf(d) > WHEEL_REACH) {
                 continue; /* not on screen: not drawn */
             }
-            const float sc = 1.0f - 0.12f * fabsf(d), sw = (l.wheel_w - 8.0f) * sc, sh = (l.slot - 8.0f) * sc;
+            const float sc = 1.0f - WHEEL_SHRINK * fabsf(d), sw = (l.wheel_w - 8.0f) * sc, sh = (l.slot - 8.0f) * sc;
             const float y = wcy + d * l.slot - sh * 0.5f, x = l.wheel_x + (l.wheel_w - sw) * 0.5f;
-            const float hide = mg_maxf(k->open ? fade : 1.0f, clampf((fabsf(d) - 1.0f) / (WHEEL_REACH - 1.0f), 0.0f, 1.0f)) /* closed: gone with its UI */;
+            const float hide = mg_maxf(k->open ? fade : 1.0f, clampf((fabsf(d) - WHEEL_FADE_FROM) / (WHEEL_REACH - WHEEL_FADE_FROM), 0.0f, 1.0f)) /* closed: gone with its UI */;
             card(k, g, x, y + k_ui.lip_row, sw, sh - k_ui.lip_row, k_ui.r_row, -1.5f, tok(k_ui.secondary_lip), hide);
             card(k, g, x, y, sw, sh - k_ui.lip_row, k_ui.r_row, -0.5f, tok(i == field_c(skin, tab) ? k_ui.surface : k_ui.surface_tint), hide);
         }
@@ -451,13 +561,15 @@ void locker_draw(Locker *k, GfxContext *g, const MgApp *app, const AvatarMeshes 
         gfx_inset_end(g);
         (void)head_r;
     }
-    /* 3: the wheel's models, orthographic, metres; only the slots on screen */
-    {
-        const int tab = k->tab, n = k_counts[tab];
+    /* 3: the wheel's models (the part alone), orthographic, metres; only the slots on screen; Corp and Ten are 2D (the UI) */
+    if (k_show[k->tab] == SHOW_HAIR || k_show[k->tab] == SHOW_BODY || k_show[k->tab] == SHOW_ACCESSORY) {
+        const int tab = k->tab, n = k_counts[tab], show = k_show[tab];
         float bottom, top, head_r;
         avatar_extent(m, &look, &bottom, &top, &head_r);
-        const bool head = k_head_only[tab];
-        const float item_m = head ? head_r * 2.9f : (top - bottom) * 1.08f; /* what one slot shows, in metres */
+        const bool head = show != SHOW_BODY;
+        const float body_top = top - 2.25f * head_r; /* the head's bottom: where the outfit ends */
+        /* what one slot shows, in metres: the hair round the head; accessories closer (glasses and ears are small) */
+        const float item_m = show == SHOW_ACCESSORY ? head_r * 1.5f : head ? head_r * 2.6f : (body_top - bottom) * 0.8f;
         const float ppm = (l.slot - 14.0f) / item_m;           /* pt per metre */
         const float hw = l.wheel_w * 0.5f / ppm, hh = l.wheel_h * 0.5f / ppm;
         const HMM_Mat4 ortho = HMM_Orthographic_RH_ZO(-hw, hw, -hh, hh, -10.0f, 10.0f);
@@ -481,11 +593,12 @@ void locker_draw(Locker *k, GfxContext *g, const MgApp *app, const AvatarMeshes 
             p.grounded = true;
 
             p.head_only = head;
-            p.scale = 1.0f - 0.12f * fabsf(d);
+            p.only = show == SHOW_HAIR ? AVATAR_ONLY_HAIR : show == SHOW_BODY ? AVATAR_ONLY_BODY : AVATAR_ONLY_ACCESSORY;
+            p.scale = 1.0f - WHEEL_SHRINK * fabsf(d);
             const float yc = -d * l.slot / ppm; /* slot centre, metres (y up) */
-            p.feet = head ? HMM_V3(0.0f, yc, 0.0f) : HMM_V3(0.0f, yc - (top + bottom) * 0.5f * p.scale, 0.0f);
+            p.feet = head ? HMM_V3(0.0f, yc, 0.0f) : HMM_V3(0.0f, yc - (body_top + bottom) * 0.5f * p.scale, 0.0f);
             p.yaw = HMM_PI32 + HMM_AngleDeg(20.0f) * sinf(k->t * 1.3f + (float)i); /* a little turn so the shape reads */
-            p.hide = mg_maxf(k->open ? fade : 1.0f, clampf((fabsf(d) - 1.0f) / (WHEEL_REACH - 1.0f), 0.0f, 1.0f)) /* closed: gone with its UI */;
+            p.hide = mg_maxf(k->open ? fade : 1.0f, clampf((fabsf(d) - WHEEL_FADE_FROM) / (WHEEL_REACH - WHEEL_FADE_FROM), 0.0f, 1.0f)) /* closed: gone with its UI */;
             avatar_animate(m, &k->item_anim[j], &p, dt);
             avatar_draw(g, m, &il, &p, &k->item_anim[j], NULL);
         }

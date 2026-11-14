@@ -619,8 +619,8 @@ static const TapStep k_onboarding[] = {
     /* LOCKER-1: a tab, then a tap on the wheel's neighbour slot (it comes to the middle and is worn), for every tab */
     {FE_WELCOME, "guest", false},   {FE_USERNAME, "name_ok", false}, {FE_CREATOR, "crtab0", false},
     {FE_CREATOR, "crnear", true},   {FE_CREATOR, "crtab1", false},   {FE_CREATOR, "crnear", true},
-    {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "crnear", true},    {FE_CREATOR, "crtab3", false},
-    {FE_CREATOR, "crnear", true},   {FE_CREATOR, "crtab4", false},   {FE_CREATOR, "crnear", true},
+    {FE_CREATOR, "crtab2", false},  {FE_CREATOR, "crnear", true},    {FE_CREATOR, "crhcnear", true}, /* Coafură: a hair colour */
+    {FE_CREATOR, "crtab4", false},   {FE_CREATOR, "crnear", true},
     {FE_CREATOR, "crtab5", false},  {FE_CREATOR, "crnear", true},    {FE_CREATOR, "dice", true},
     {FE_CREATOR, "creator", false},
     {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */

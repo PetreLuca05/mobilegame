@@ -355,6 +355,30 @@ float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *co
     return y;
 }
 
+static float s_press_cx, s_press_cy; /* the open pressable's centre (its T1) */
+static bool s_press_clicked;
+
+bool ui_pressable_begin(Ui *ui, const char *id, float x, float y, float w, float h, int hclass)
+{
+    bool held = false;
+    ui->hclass = hclass;
+    s_press_clicked = ui_press(ui, id, x, y, w, h, &held, false);
+    s_press_cx = x + w * 0.5f, s_press_cy = y + h * 0.5f;
+    ui_depth(ui, 2, ui_key(id), 0);
+    begin_squash(ui, ui_key(id), x + w * 0.5f, y + h, 1.0f);
+    return s_press_clicked;
+}
+
+void ui_pressable_end(Ui *ui)
+{
+    gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
+    if (s_press_clicked && ui->fx) {
+        ui_fx_tier(ui->fx, UI_T1, s_press_cx, s_press_cy, true);
+    }
+    s_press_clicked = false;
+}
+
 bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float h, UiBrand brand, bool enabled)
 {
     const bool g = brand == UI_BRAND_GOOGLE;

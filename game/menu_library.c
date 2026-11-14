@@ -1115,16 +1115,6 @@ static bool hero_paused(const MenuLibrary *L) { return L->creator_w > 0.0f || (L
 /* the seat the Locker frames: where my hero sits (its own copy), the lobby table's slot 0 before it has one */
 static const LibSeat *creator_seat(const MenuLibrary *L) { return L->seat[0].state != LM_EMPTY ? &L->seat[0].at : &L->tseats[0]; }
 
-/* p (bay-local, authored for the scene's seat s0) moved with that seat onto seat hs (hall frame): the same point in the seat's frame */
-static HMM_Vec3 seat_frame_point(const LibSeat *hs, const LibSeat *s0, HMM_Vec3 p)
-{
-    const float a0 = HMM_AngleDeg(s0->yaw_deg), c0 = HMM_CosF(a0), n0 = HMM_SinF(a0);
-    const float dx = p.X - s0->pos.X, dz = p.Z - s0->pos.Y;
-    const float lx = c0 * dx - n0 * dz, lz = n0 * dx + c0 * dz; /* into s0's frame */
-    const float a = HMM_AngleDeg(hs->yaw_deg), c = HMM_CosF(a), n = HMM_SinF(a);
-    return HMM_V3(hs->pos.X + c * lx + n * lz, p.Y, hs->pos.Y - n * lx + c * lz);
-}
-
 void menu_library_fit_box(const MenuLibrary *L, const HMM_Mat4 *vp, float w, float h, float box[4])
 {
     HMM_Vec3 pts[FIT_POINTS];
@@ -1197,17 +1187,19 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
     if (L->creator_t > 0.0f) { /* §11 towards the Locker camera: camera.creator moved with seat 0 onto the hero's own seat (framed
                                 * on it, facing it), the hero re-centred right of the creator panel; the orbit's target, log
                                 * distance, pitch and yaw blend (an even speed in camera distances per second, §15.11) */
+        /* LOCKER-1 (user decision 2026-11-14): the camera keeps the menu's yaw and pitch and only moves (target, distance) until the
+         * hero fits the stage; the hero turns the short way round to face it (locker_face) */
         const LibCam *cc = &s->cam_creator;
-        const LibSeat *s0 = &s->seats[0], *hs = creator_seat(L);
-        const float cyaw = cc->yaw_deg + (hs->yaw_deg - s0->yaw_deg);
+        const LibSeat *hs = creator_seat(L);
+        const float cyaw = c->yaw_deg, cpitch = c->pitch_deg;
         const float cy = HMM_AngleDeg(cyaw);
         const HMM_Vec3 cright = HMM_V3(HMM_CosF(cy), 0.0f, -HMM_SinF(cy));
-        const HMM_Vec3 base = seat_frame_point(hs, s0, cc->target);
+        const HMM_Vec3 base = HMM_V3(hs->pos.X, cc->target.Y, hs->pos.Y);
         const HMM_Vec3 hero = HMM_V3(hs->pos.X, 1.0f, hs->pos.Y);
         float sh = L->creator_shift;
         for (int it = 0; it < 30; it++) {
             const HMM_Vec3 tg = HMM_AddV3(base, HMM_MulV3F(cright, sh));
-            const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cc->pitch_deg, cyaw), tg, HMM_V3(0, 1, 0)));
+            const HMM_Mat4 vp = HMM_MulM4(proj, HMM_LookAt_RH(orbit_eye(tg, cc->dist, cpitch, cyaw), tg, HMM_V3(0, 1, 0)));
             const HMM_Vec4 hc = HMM_MulM4V4(vp, HMM_V4V(hero, 1.0f));
             const float hx = (hc.X / hc.W * 0.5f + 0.5f) * w, want = (L->creator_l + w) * 0.5f;
             if (fabsf(hx - want) < 1.0f) {
@@ -1218,15 +1210,13 @@ void menu_library_camera(MenuLibrary *L, const MgApp *app, float free_l, float f
         L->creator_shift = sh;
         const HMM_Vec3 ctg = HMM_AddV3(base, HMM_MulV3F(cright, sh));
         const float e = L->creator_t, d0 = L->dist * L->cam_zoom;
-        float dyaw = fmodf(cyaw - c->yaw_deg, 360.0f);
-        dyaw = dyaw > 180.0f ? dyaw - 360.0f : dyaw < -180.0f ? dyaw + 360.0f : dyaw;
+        L->locker_eye = orbit_eye(ctg, cc->dist, cpitch, cyaw); /* the hero turns to face it (member_pose) */
         /* the target travels with the distance (the Maps move's rule, §12): w(e) = the distance's integral up to e over its whole, so it
          * moves slowly while the camera is close (speed is measured in camera distances) */
         const float r = cc->dist / d0, wt = fabsf(r - 1.0f) > 1e-3f ? (powf(r, e) - 1.0f) / (r - 1.0f) : e;
         target_l = HMM_LerpV3(target, wt, ctg);
-        eye_l = orbit_eye(target_l, expf(logf(d0) + (logf(cc->dist) - logf(d0)) * e), c->pitch_deg + (cc->pitch_deg - c->pitch_deg) * e,
-                          c->yaw_deg + dyaw * e);
-        L->creator_eye = lib_point(L, orbit_eye(ctg, cc->dist, cc->pitch_deg, cyaw)); /* the Locker camera itself (tests) */
+        eye_l = orbit_eye(target_l, expf(logf(d0) + (logf(cc->dist) - logf(d0)) * e), cpitch, cyaw); /* no turn: only a move */
+        L->creator_eye = lib_point(L, orbit_eye(ctg, cc->dist, cpitch, cyaw)); /* the Locker camera itself (tests) */
     }
     L->eye = lib_point(L, eye_l);
     L->target = lib_point(L, target_l);
@@ -2361,7 +2351,21 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
         p->look = L->creator && L->lock_u > 0.0f ? 1.0f : 0.0f;
         p->head_yaw *= 1.0f - L->creator_w, p->head_pitch *= 1.0f - L->creator_w, p->body_yaw *= 1.0f - L->creator_w;
         p->hands_w *= 1.0f - L->creator_w;
-        p->yaw += L->locker_yaw * L->creator_w; /* LOCKER-1: the Locker turns the hero in its seat (drag, idle ping-pong) */
+        /* LOCKER-1: the hero stands up as the camera comes (user decision 2026-11-14): the standing idle, arms at its sides */
+        p->sit *= 1.0f - L->creator_t;
+        p->carry_w *= 1.0f - L->creator_t;
+        p->lean *= 1.0f - L->creator_t;
+        { /* LOCKER-1: the hero turns the short way round to face the camera as it moves in (from where it stands: on a first launch
+           * it may still be walking to its seat), then the drag and the idle ping-pong. Library yaw 0 faces +z; avatar yaw = that + pi
+           * + the island's turn. */
+            const float face = atan2f(L->locker_eye.X - mb->pos.X, L->locker_eye.Z - mb->pos.Y) + HMM_PI32 + lib_yaw(L);
+            float dy = fmodf(face - p->yaw, 2.0f * HMM_PI32);
+            dy = dy > HMM_PI32 ? dy - 2.0f * HMM_PI32 : dy < -HMM_PI32 ? dy + 2.0f * HMM_PI32 : dy;
+            p->yaw += dy * L->creator_t;
+            /* tests: how squarely the hero faces the Locker camera (1 = straight at it), after the turn, the drag and the swing */
+            ((MenuLibrary *)L)->locker_facing = cosf(dy * (1.0f - L->creator_t) - L->locker_yaw * L->creator_w);
+        }
+        p->yaw += L->locker_yaw * L->creator_w;
         p->flat_ground = p->flat_ground && L->locker_hide < 0.5f; /* its floor has faded: no contact shadow on the backdrop */
     }
 }

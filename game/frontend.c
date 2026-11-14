@@ -501,18 +501,13 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     FeAction a = FE_NONE;
     /* the account, top right: opens Friends */
     const float chip_r = w - EDGE_R, chip_w = head_chip_width(ui->font, ctx->lobby_visible ? ctx->name : str("lobby_offline_chip")), chip_y = TOP_EDGE;
-    bool chip_held = false;
-    ui->hclass = HC_PILL;
-    if (ui_hit_area(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, &chip_held) && !f->confirm_new) {
+    /* the account pill: a Jelly Pop button (press squash, haptic, T1, the action on the touch-up); its depth is the tilt's control layer */
+    const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
+    if (ui_pressable_begin(ui, "account_chip", chip_r - chip_w, chip_y, chip_w, 44.0f, HC_PILL) && !f->confirm_new) {
         a = FE_OPEN_FRIENDS;
     }
-    const char *chip_name = ctx->lobby_visible ? ctx->name : str("lobby_offline_chip");
-    ui_depth(ui, 2, 0, 0); /* TILT-1: the account pill */
     head_chip_draw(ctx->heads, ui->gfx, ui->font, ctx->skin, chip_name, chip_r, chip_y);
-    ui_depth_end(ui);
-    if (chip_held) {
-        ui_round_rect(ui->gfx, ui->font, chip_r - chip_w, chip_y, chip_w, 44.0f, 22.0f, ui_rgba(k_ui.glass));
-    }
+    ui_pressable_end(ui);
     if (ctx->lobby_visible) {
         lobby_panel(f, ui, app, ctx, chip_y + 44.0f + 8.0f, &a);
     }

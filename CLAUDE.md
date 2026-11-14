@@ -640,16 +640,21 @@ Instruments (iOS) and Android GPU Inspector or Snapdragon Profiler.
   Locker is up, and every refit of the free rect (lobby panel, screen columns) is a quintic too (`FIT_RATE`); the hero's pose (`creator_w`: study blend 0.15, look, hands on the table) follows once no page is in the air, its
   loop paused until it closes. Reduse: at once under the 300 ms cross-dissolve. `--autotest library` with `--frontend welcome`
   checks it (`--lib-walked`: a second launch, no walk-in); pictures docs/autotest/library/step8/.
-- Locker screen (LOCKER-1, `game/locker.c`): tabs left (stacked, `crtab0..5`: body, skin, hair style, hair colour, suit, extras),
-  back + dice icon buttons top left (`feback`, `dice`), my hero centred between them and the wheel (`locker_centre_x` sets
-  `creator_l`), on the right a vertical wheel of the options as real 3D avatar models (heads for skin / hair, whole avatars for the
-  rest), drag with inertia and snap, the middle slot is worn at once (detent = `HAPTIC_LOCKER_DETENT`), a tap brings a slot to the
-  middle; Done under it. The hero is the library's own seat 0 (no copy): from creator_t 0.55 everything else dithers out
-  (`MenuLibrary.locker_hide` through `gfx_set_hide_min`, the hero's draw exempt; fully faded draws cost nothing) onto a backdrop
-  card in a before-world inset at the far end of the depth range; the hero turns in its seat (`locker_yaw`: drag, idle ±25° /
-  4 s ping-pong). Opened from a game (no library) the Locker draws its own hero in an inset. Insets in the main pass now instance
-  (the inset is in the sort key). Ids for tests: `cr<tab>_0_<i>`, `crslot±1`, `crnear`. `--locker-demo rest|drag|move`, perf
-  `locker`, `locker_drag`, `locker_move` (perf_mac: 46 draws at rest / dragging, 60 on the move).
+- Locker screen (LOCKER-1, `game/locker.c`): tabs left (stacked `crtab0, 1, 2, 4, 5`: Corp, Ten, Coafură, Ținută, Accesorii; hair
+  colour has no tab), back top left (`feback`), the title and the dice (`dice`) on the backdrop card's top corners with the hero, a
+  vertical wheel on the right (about five slots, 7 drawn): Corp = male / female icons and Ten = skin swatches (2D, the UI draw),
+  Coafură = the hair alone (+ a column of hair-colour swatches right of it, `crhc<i>`, `crhcnear`), Ținută = the outfit alone,
+  Accesorii = the accessory alone (`AvatarPose.only` = `AVATAR_ONLY_*`). Drag with inertia and snap, the middle slot is worn at once
+  (detent = `HAPTIC_LOCKER_DETENT`), a tap brings a slot to the middle; Done under it. The hero is the library's own seat 0 (no copy):
+  the camera keeps the menu's yaw and pitch and only moves (target, log distance) until the hero fits the stage; the hero stands up
+  (sit, carry, lean -> 0: the standing idle, arms at its sides) and turns the short way round to face the camera (`locker_eye`, from
+  where it stands), with creator_t; from creator_t 0.55 everything else dithers out (`MenuLibrary.locker_hide` through
+  `gfx_set_hide_min`) onto a backdrop card in a before-world inset; then `locker_yaw` (drag, idle ±12° / 7 s ping-pong). Opened from a
+  game (no library) the Locker draws its own hero in an inset. Ids for tests: `cr<tab>_0_<i>`, `crslot±1..2`, `crnear`. `--locker-demo
+  rest|drag|move`, perf `locker`, `locker_drag`, `locker_move` (perf_mac: 46 draws at rest / dragging, 60 on the move). `--autotest
+  library` checks `locker_facing` (the hero faces the camera).
+- Custom-drawn controls get the buttons' behaviour with `ui_pressable_begin` / `ui_pressable_end` (press squash, haptic class, T1, the
+  action on the touch-up): the main menu's account chip.
 - People (step 4, `game/lib_people.c`, pure C): the scene's 25 `npcs` (routes, stops, `wait_s` / `face_deg` / `outside` / `book` /
   `leave_cart`, every act of LIB1.md §9 with the prototype's eased weights; seated readers, the sleeper with zees) and the members'
   walks, all `lib_nav` agents (96 % hard rule, also during the ignore-others spell; steering; re-path at 1.2 s; spell at 4 s; stop

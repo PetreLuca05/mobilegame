@@ -94,6 +94,9 @@ typedef struct AvatarAnim {
     float cane_t;     /* seconds walked: the cane gait's steps */
 } AvatarAnim;
 
+/* AvatarPose.only: draw one part alone (positioned as the full avatar would have it; head parts with head_only centre on the head) */
+enum { AVATAR_ONLY_ALL, AVATAR_ONLY_HAIR, AVATAR_ONLY_BODY, AVATAR_ONLY_ACCESSORY };
+
 typedef struct AvatarPose {
     HMM_Vec3 feet;
     float yaw;        /* 0: the avatar looks along -Z (north) */
@@ -119,6 +122,7 @@ typedef struct AvatarPose {
     float stretch;              /* 0 .. 1: hands up */
     float head_lift;            /* metres the head pops up along the body's up axis (a chat) */
     bool head_only;             /* just the head, centred on `feet` (the interact preview) */
+    uint8_t only;               /* AVATAR_ONLY_*: one part alone (the Locker's wheel); 0 = everything */
     /* LIB-1 */
     float seat_y;     /* seated body base above the feet; 0 = the rig's seat_y */
     float browse, push, look;   /* targets 0 / 1, eased by avatar_animate */

@@ -22,6 +22,7 @@ typedef struct UiStyleTable {
     uint32_t white, white_soft, ink_lip, hairline, glass; /* text on colour; version; the ink pill's lip; dividers; chip on the 3D */
     uint32_t status_off, status_menu, status_game;     /* friends' presence dots */
     uint32_t brand_google;
+    uint32_t gender_male, gender_female; /* the Locker's Corp icons */
     uint32_t google_face, google_lip, google_text, apple_face, apple_lip, apple_text; /* sign-in buttons in the providers' colours */
     uint32_t lift_display_bg, lift_display_digit;      /* the lift's floor display: the one dark plate (an elevator display) */
     uint32_t confetti[4];
@@ -85,6 +86,7 @@ static const UiStyleTable k_ui = {
     .white = 0xFFFFFFFF, .white_soft = 0xFFFFFFA0, .ink_lip = 0x0D2626FF, .hairline = 0xFFFFFF22, .glass = 0xFFFFFF26,
     .status_off = 0x8A8F98FF, .status_menu = 0x3B82F6FF, .status_game = 0x34C759FF,
     .brand_google = 0x4285F4FF,
+    .gender_male = 0x3B82F6FF, .gender_female = 0xE8559BFF,
     .google_face = 0xFFFFFFFF, .google_lip = 0xDADCE0FF, .google_text = 0x1F1F1FFF,
     .apple_face = 0x000000FF, .apple_lip = 0x3A3A3CFF, .apple_text = 0xFFFFFFFF,
     .lift_display_bg = 0x14171FFF, .lift_display_digit = 0xFFD166FF,

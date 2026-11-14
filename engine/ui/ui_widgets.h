@@ -41,6 +41,10 @@ void ui_card(Ui *ui, float x, float y, float w, float h);
  * not a target. Returns its width (k_ui.tag_h tall, plus the lip). */
 float ui_tag_chip(Ui *ui, const char *text, float right, float top);
 float ui_tag_chip_w(const Ui *ui, const char *text);
+/* A custom-drawn control with the buttons' behaviour (UI-1): press motion (squash), the haptic of `hclass`, T1 on the tap, the
+ * action on the touch-up. Draw the control between begin and end; begin returns true on the tap (end still has to run). */
+bool ui_pressable_begin(Ui *ui, const char *id, float x, float y, float w, float h, int hclass);
+void ui_pressable_end(Ui *ui);
 /* Buttons: "Text##id"; returns true on the touch-up inside. */
 bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, UiVariant v, int flags);
 /* A sign-in button in its provider's colours (Google: white, grey edge, blue G; Apple: black, white apple); disabled = the same
