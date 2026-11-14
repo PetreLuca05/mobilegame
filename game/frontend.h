@@ -16,6 +16,7 @@
 #include "lobby.h"
 #include "avatar.h"
 #include "creator.h"
+#include "locker.h"
 #include "platform/app.h"
 #include "ui/widgets.h"
 
@@ -74,6 +75,7 @@ typedef struct FrontendCtx {
     HMM_Vec3 slots[LOBBY_MAX_PLAYERS];
     const char *maps_tag; /* WORLD-1: the Maps row's island completion, "Kumar 23%" */
     bool maps_ready;      /* LIB-1: the map is preloaded; the Maps row waits for it */
+    float locker_cam_t;   /* LOCKER-1: how far the menu camera has moved onto the hero (the library's creator_t) */
 } FrontendCtx;
 
 /* A player standing in the menu scene; goes on fading out after they have left the list */
@@ -103,6 +105,7 @@ typedef struct Frontend {
     UiScroll menu_scroll; /* the main menu's rows, when the screen is short */
     bool creator_from_settings;
     Creator creator;
+    Locker locker;       /* LOCKER-1: the Vestiar screen (tabs, hero on a backdrop, the wheel) */
     char toast[96];
     double toast_until;
     int pressed_row;     /* 60 ms press feedback */

@@ -2361,6 +2361,8 @@ static void member_pose(const MenuLibrary *L, int i, AvatarPose *p)
         p->look = L->creator && L->lock_u > 0.0f ? 1.0f : 0.0f;
         p->head_yaw *= 1.0f - L->creator_w, p->head_pitch *= 1.0f - L->creator_w, p->body_yaw *= 1.0f - L->creator_w;
         p->hands_w *= 1.0f - L->creator_w;
+        p->yaw += L->locker_yaw * L->creator_w; /* LOCKER-1: the Locker turns the hero in its seat (drag, idle ping-pong) */
+        p->flat_ground = p->flat_ground && L->locker_hide < 0.5f; /* its floor has faded: no contact shadow on the backdrop */
     }
 }
 
@@ -3014,7 +3016,9 @@ void menu_library_draw(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, con
         filter = gfx_set_filter(g, 0u);
         gfx_set_filter(g, filter | ((L->gpu_off & GPU_OFF_ALPHA) ? 1u << GFX_MAT_ALPHA : 0u) | ((L->gpu_off & GPU_OFF_FLAT) ? GFX_FILTER_FLAT : 0u));
     }
+    const float hide_was = gfx_set_hide_min(g, L->locker_hide); /* LOCKER-1: the scenery fades (my hero alone is exempt, draw_body) */
     draw_body(L, g, m, hero, dt);
+    gfx_set_hide_min(g, hide_was);
     if (menu_off) {
         gfx_set_filter(g, filter);
     }
@@ -3371,7 +3375,11 @@ static void draw_body(MenuLibrary *L, GfxContext *g, const AvatarMeshes *m, cons
         const AvatarLook look = i == 0 ? *hero : avatar_look_from_skin(mb->skin);
         avatar_animate(m, &mb->anim, &p, dt);
         const uint32_t skip_av = gpu_skip(g, (L->gpu_off & GPU_OFF_PEOPLE) != 0u); /* --gpu-off people: the hero too */
+        const float hide_scene = i == 0 ? gfx_set_hide_min(g, 0.0f) : 0.0f; /* LOCKER-1: my hero stays while the scenery fades */
         avatar_draw(g, m, &look, &p, &mb->anim, NULL);
+        if (i == 0) {
+            gfx_set_hide_min(g, hide_scene);
+        }
         gpu_skip_end(g, skip_av);
         if (on_table && L->fid_ok) { /* §6 */
             draw_seat_things(L, g, m, &look, &p, &mb->anim, seat->pos, seat->yaw_deg, &mb->fo);

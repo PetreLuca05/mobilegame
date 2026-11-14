@@ -230,6 +230,8 @@ typedef struct Game {
     int menu_row_count;
     bool lobby_visible;
     bool demo_lobby;       /* --autotest perf menu, --autotest lobbylayout */
+    int locker_demo;       /* LOCKER-1 perf / --locker-demo: 1 rest (the Locker opened from the menu), 2 the wheel dragged, 3 open / close looped */
+    double locker_demo_next;
     HMM_Vec3 menu_hero;
     float frame_alpha;
     bool ia_check;           /* --autotest interact: brute force against the scan */
@@ -1243,6 +1245,19 @@ bool game_init(MgApp *app)
         if (SDL_strcmp(g->perf.scenario, "menu_to_map") == 0) { /* the move itself, looped (not the Reduse cross-dissolve) */
             g->move_demo = 4;
             g->force_full = true;
+        }
+    }
+    { /* LOCKER-1: perf locker / locker_drag / locker_move, desktop --locker-demo rest|drag|move (pictures) */
+        const char *ld = arg_value(app->argc, app->argv, "--locker-demo");
+        const char *sc = g->perf.active ? g->perf.scenario : "";
+        const int mode = SDL_strcmp(sc, "locker") == 0 ? 1 : SDL_strcmp(sc, "locker_drag") == 0 ? 2 : SDL_strcmp(sc, "locker_move") == 0 ? 3
+                         : ld ? (SDL_strcmp(ld, "drag") == 0 ? 2 : SDL_strcmp(ld, "move") == 0 ? 3 : 1) : 0;
+        if (mode) {
+            play_now = false;
+            g->fe.state = FE_MAIN_MENU;
+            g->demo_lobby = g->perf.active; /* perf: the 4-player demo lobby as the menu scenario (outside perf it runs the layout check) */
+            g->locker_demo = mode;
+            g->locker_demo_next = 1.5;
         }
     }
     if (arg_value(app->argc, app->argv, "--autotest") && SDL_strcmp(arg_value(app->argc, app->argv, "--autotest"), "lobbylayout") == 0) {
@@ -2944,7 +2959,9 @@ static bool menu_world(Game *g, MgApp *app)
         menu_library_hero_walk_in(&g->lib);
     }
     const bool panel = st == FE_MAIN_MENU && g->lobby_visible;
-    menu_library_set_creator(&g->lib, st == FE_CREATOR, frontend_menu_right(app, FE_CREATOR), motion_reduced(g));
+    /* LOCKER-1: the camera centres the hero on the Locker's stage (between the tabs and the wheel): the library re-centres it
+     * half way between creator_l and the right edge */
+    menu_library_set_creator(&g->lib, st == FE_CREATOR, 2.0f * locker_centre_x(app) - app->width_pt, motion_reduced(g));
     if (g->lib.creator_dissolve_armed) { /* Reduse: the Locker opens / closes next frame under a 300 ms cross-dissolve of this one */
         gfx_dissolve_capture(app->gfx);
         g->dissolve_t0 = app->time;
@@ -2977,6 +2994,10 @@ static bool menu_world(Game *g, MgApp *app)
     const AvatarLook hero = avatar_look_from_skin(g->profile.skin);
     g->lib.view_eye = g->last_eye;
     g->lib.view_proj = g->view_proj, g->lib.has_vp = true;
+    /* LOCKER-1: my hero is the Locker's: everything else dithers to its backdrop (last frame's stage: it follows the camera's move),
+     * the hero turns in its seat; the library keeps running (people, sounds), a fully faded draw costs nothing (gfx_draw drops it) */
+    g->lib.locker_hide = g->fe.locker.stage;
+    g->lib.locker_yaw = locker_hero_yaw(&g->fe.locker);
     menu_library_draw(&g->lib, app->gfx, &g->avatar_meshes, &hero, g->lib_still ? 0.0f : mg_minf(app->frame_dt, 0.1f));
     return true;
 }
@@ -3587,6 +3608,16 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         map_flow(g, app);
         return;
     }
+    if (g->locker_demo && g->start_time > 0.0 && app->time - g->start_time > g->locker_demo_next) { /* LOCKER-1 demo / perf */
+        if (f->state == FE_MAIN_MENU) {
+            frontend_go(f, FE_CREATOR);
+            f->locker.tab = 4; /* the suits: whole avatars in the wheel (the dearest tab) */
+            f->locker.demo_drag = g->locker_demo == 2;
+        } else if (f->state == FE_CREATOR && g->locker_demo == 3) {
+            frontend_back(f);
+        }
+        g->locker_demo_next = g->locker_demo == 3 ? g->locker_demo_next + 3.0 : 1e9;
+    }
     const bool world_behind = menu_world(g, app);
     if (g->rb.on && f->state == FE_MAIN_MENU) {
         rebay_test(g, app);
@@ -3607,6 +3638,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
                        MG_VERSION};
     ctx.maps_tag = g->maps_tag;
     ctx.maps_ready = g->wm.loaded || g->wm_tried; /* LIB-1: preloaded (or failed: Maps says so) */
+    ctx.locker_cam_t = g->lib.creator_t;          /* LOCKER-1: the stage fades in with the camera's move onto the hero */
     ctx.lobby_visible = g->lobby_visible;
     ctx.lobby_host = (g->demo_lobby || g->lib_demo_join || lobby_is_host(&g->lobby)) && g->lib_demo_ctl != 2; /* the demo lobbies: I host */
     ctx.lobby_open = g->lobby.open;

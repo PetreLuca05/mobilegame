@@ -94,6 +94,14 @@ void ui_icon(Ui *ui, UiIcon icon, float cx, float cy, float size, UiColor c)
         ui_shape(ui->gfx, &(UiShape){.x = x0 + 0.20f * size, .y = y0 + 0.32f * size, .w = 0.42f * size, .h = 0.48f * size, .radius = 3.0f * s, .stroke = w, .color = c});
         ui_shape(ui->gfx, &(UiShape){.x = x0 + 0.38f * size, .y = y0 + 0.18f * size, .w = 0.42f * size, .h = 0.48f * size, .radius = 3.0f * s, .stroke = w, .color = c});
         break;
+    case UI_ICON_DICE: { /* a die showing five: a rounded square outline and five pips */
+        ui_shape(ui->gfx, &(UiShape){.x = x0 + 0.16f * size, .y = y0 + 0.16f * size, .w = 0.68f * size, .h = 0.68f * size, .radius = 5.0f * s, .stroke = w, .color = c});
+        static const float pip[5][2] = {{0.35f, 0.35f}, {0.65f, 0.35f}, {0.5f, 0.5f}, {0.35f, 0.65f}, {0.65f, 0.65f}};
+        for (int i = 0; i < 5; i++) {
+            ui_circle(ui->gfx, ui->font, x0 + pip[i][0] * size, y0 + pip[i][1] * size, 0.065f * size, c);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -396,12 +404,17 @@ bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float
 
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v)
 {
+    return ui_icon_button_f(ui, id, icon, x, y, size, v, 0);
+}
+
+bool ui_icon_button_f(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v, int flags)
+{
     UiColor face, lip, tc;
     ui_variant_colors(v, &face, &lip, &tc);
     const uint32_t key = ui_key(id);
     bool held = false, clicked = false;
     if (v != UI_V_DISABLED) {
-        ui->hclass = HC_SECONDARY; /* icon buttons: the secondary row */
+        ui->hclass = flags ? button_class(v, flags) : HC_SECONDARY; /* icon buttons: the secondary row, unless flagged */
         clicked = ui_press(ui, id, x, y, size, size, &held, false);
     }
     const float lip_h = mg_minf(k_ui.lip_button, size * 0.13f), face_h = size - lip_h;
