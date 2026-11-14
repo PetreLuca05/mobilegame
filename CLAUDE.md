@@ -299,6 +299,10 @@ Google client ids go in `config.local.h` (`MG_GOOGLE_WEB_CLIENT_ID`,
   keeps the locker room. The hospital is no longer built for the menu: a game builds it while loading. Back = Android
   back / Escape (exits from the welcome screen). Desktop: `--frontend
   welcome|username|creator|menu|settings`, `--play new|continue`.
+- The account chip's page (`game/friends_page.c`, shared side-tab component `ui_side_layout` / `ui_side_tabs`) has the tabs Cont
+  (default), Prieteni, Cereri, Adaugă, Setări (`FP_TAB_*`, ids `ftab<value>`); Cont and Setări are `settings_panel` (account /
+  game settings, with the erase and Link account dialogs) drawn in the page's content rect. The main menu has no Setări row;
+  `--frontend settings` opens the Setări tab; the pause card's Settings stays a game-settings-only page (FE_SETTINGS screen).
 - Text lives in `assets/strings.json` (`str("key")`), never in C.
 - Sign-in: Google (both platforms) and Sign in with Apple (iOS,
   `platform/ios/apple_auth.m`), both linking the guest via the id_token

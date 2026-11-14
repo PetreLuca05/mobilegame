@@ -552,11 +552,7 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     if (menu_row(f, ui, app, 31, str("locker"), x, y, rw, false, false, NULL)) {
         frontend_go(f, FE_CREATOR);
     }
-    y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, 2, str("settings"), x, y, rw, false, false, NULL)) {
-        frontend_go(f, FE_SETTINGS);
-    }
-    y += ROW_H;
+    y += ROW_H; /* Setări lives in the account chip's page (its Setări tab) since 2026-11-14 */
     ui_scroll_end(ui, &f->menu_scroll, rows_view, y + rows_off - rows_top);
     if (show_continue) {
         char label[48];

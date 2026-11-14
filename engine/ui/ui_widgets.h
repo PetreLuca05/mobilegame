@@ -55,9 +55,11 @@ bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value);
  * 160 pt and at most up to the middle of the screen; content_x / content_w = what is right of the divider. */
 typedef struct UiSideLayout { float x0, y0, bottom, col_w, content_x, content_w; } UiSideLayout;
 UiSideLayout ui_side_layout(float safe_l, float safe_t, float safe_r, float safe_b, float w_pt, float h_pt, float header_w);
-/* The stacked tab buttons ("label##<id><i>", 50 pt tall, 58 pt apart; badges[i] > 0 draws a count on tab i, NULL = none)
- * and the divider from the page's top to its bottom. Returns the y below the last tab; *sel changes on a tap. */
-float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *badges, int n, int *sel, float y);
+/* The stacked tab buttons ("label##<id><value>", 50 pt tall, 58 pt apart) in display order; values[i] is the tab value row i
+ * stands for (NULL = i), badges[i] > 0 draws a count on row i (NULL = none); then the divider from the page's top to its
+ * bottom. Returns the y below the last tab; *sel becomes the tapped row's value. */
+float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *values, const int *badges, int n,
+                   int *sel, float y);
 /* A tab bar; *sel changes on a tap (T1 tick); returns true then. */
 bool ui_tabs(Ui *ui, const char *id, const char *const *labels, int n, int *sel, float x, float y, float w, float h);
 /* A pill with a number that bumps when it changes (and follows a reward flight into it). */

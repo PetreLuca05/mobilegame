@@ -325,13 +325,15 @@ UiSideLayout ui_side_layout(float safe_l, float safe_t, float safe_r, float safe
     return L;
 }
 
-float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *badges, int n, int *sel, float y)
+float ui_side_tabs(Ui *ui, const UiSideLayout *L, const char *id, const char *const *labels, const int *values, const int *badges, int n,
+                   int *sel, float y)
 {
     for (int t = 0; t < n; t++) {
+        const int v = values ? values[t] : t;
         char label[96];
-        SDL_snprintf(label, sizeof(label), "%s##%s%d", labels[t], id, t);
-        if (ui_button_v(ui, label, L->x0, y, L->col_w, 50.0f, *sel == t ? UI_V_PRIMARY : UI_V_SECONDARY, 0)) {
-            *sel = t;
+        SDL_snprintf(label, sizeof(label), "%s##%s%d", labels[t], id, v);
+        if (ui_button_v(ui, label, L->x0, y, L->col_w, 50.0f, *sel == v ? UI_V_PRIMARY : UI_V_SECONDARY, 0)) {
+            *sel = v;
         }
         if (badges && badges[t] > 0) {
             char num[8];

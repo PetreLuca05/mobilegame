@@ -9,9 +9,14 @@
 #include "ui/head_icons.h"
 #include "ui/widgets.h"
 
+/* Tab values (the ids are ftab<value>); shown as Cont, Prieteni, Cereri, Adaugă, Setări */
+enum { FP_TAB_FRIENDS, FP_TAB_REQUESTS, FP_TAB_ADD, FP_TAB_ACCOUNT, FP_TAB_SETTINGS, FP_TABS };
+
 typedef struct FriendsPage {
     bool open;
-    int tab;       /* 0 friends, 1 requests, 2 add */
+    int tab;       /* FP_TAB_* */
+    bool panel;    /* Cont / Setări: the game draws settings_panel in panel_x/y/w/h this frame */
+    float panel_x, panel_y, panel_w, panel_h;
     bool invite_mode; /* opened from the lobby's Invite button */
     double copied_until;
     UiScroll scroll[3];

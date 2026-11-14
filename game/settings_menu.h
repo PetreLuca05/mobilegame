@@ -89,6 +89,12 @@ bool settings_dev_allowed(const SettingsMenu *m);
 /* The store rule at start: every Developer row's value back to off (a pref or a test flag may have set one). */
 void settings_dev_clear(GameSettings *s);
 
+/* One settings panel inside another page (the Friends page's Cont = 1 and Setări = 0 tabs): the content in the rect,
+ * scrolled, with its dialogs; the actions are the same as settings_menu's. settings_panel_close when the page closes. */
+MenuAction settings_panel(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct, int which, float x, float y, float w,
+                          float h, float w_pt, float h_pt, float safe_l, float safe_r);
+void settings_panel_close(SettingsMenu *m);
+
 /* Draw the gear button (always) and the panel (when open). */
 MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
                          float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,

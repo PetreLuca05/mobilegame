@@ -1208,7 +1208,11 @@ bool game_init(MgApp *app)
                 g->fe.state = (FeState)i;
             }
         }
-        if (g->fe.state == FE_FRIENDS) {
+        if (g->fe.state == FE_SETTINGS) { /* the settings live in the Friends page's Setări tab */
+            g->fe.state = FE_FRIENDS;
+            friends_page_open(&g->fpage, &g->friends);
+            g->fpage.tab = FP_TAB_SETTINGS;
+        } else if (g->fe.state == FE_FRIENDS) {
             friends_page_open(&g->fpage, &g->friends);
         }
         if (SDL_strcmp(fe_arg, "map") == 0 || SDL_strcmp(fe_arg, "books") == 0) { /* WORLD-1: the island */
@@ -1875,6 +1879,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
         break;
     case MENU_FRIENDS:
         friends_page_open(&g->fpage, &g->friends);
+        g->fpage.tab = FP_TAB_FRIENDS; /* the pause card's Prieteni button */
         break;
     case MENU_JOURNAL: /* BOOK-ENGINE S4: the page replaces the card; its tab = the tracked case's chapter */
         g->mui.journal = g->missions.on;
@@ -1882,10 +1887,10 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
             g->mui.arc_tab = SDL_max(missions_arc_of_chapter(&g->book, g->book.missions[g->missions.tracked].chapter), 0);
         }
         break;
-    case MENU_LINK_ACCOUNT: /* never mid-session */
+    case MENU_LINK_ACCOUNT: /* never mid-session: the Friends page's Cont tab */
         leave_play(g, app);
-        g->menu.tab = 1;
-        frontend_go(&g->fe, FE_SETTINGS);
+        friends_page_open(&g->fpage, &g->friends);
+        frontend_go(&g->fe, FE_FRIENDS);
         break;
     case MENU_CAMERA_PITCH:
         g->cam.pitch = HMM_AngleDeg(g->settings.cam_pitch_deg);
@@ -1928,7 +1933,7 @@ static void handle_menu_action(Game *g, MgApp *app, MenuAction a)
             g->play_paused = true;
         }
         g->fe.depth = 0;
-        g->fe.state = g->play_paused ? FE_PLAY : FE_SETTINGS;
+        g->fe.state = g->play_paused ? FE_PLAY : FE_FRIENDS; /* Done returns to the Cont tab */
         frontend_go(&g->fe, FE_CREATOR);
         break;
     case MENU_APPLE:
@@ -2036,6 +2041,26 @@ static SettingsAccount account_view(Game *g)
                          g->session.account_error[0] ? g->session.account_error : g->account_msg,
                          !g->playing && !g->play_paused};
     return a;
+}
+
+/* The Friends page's Cont / Setări tabs: the settings panel in the page's content rect. True when its action left the page. */
+static bool friends_panel(Game *g, MgApp *app)
+{
+    if (!g->fpage.panel) {
+        if (g->menu.editing_name) {
+            g->menu.editing_name = false;
+            app_text_input(app, false);
+        }
+        return false;
+    }
+    const FriendsPage *p = &g->fpage;
+    const FeState before = g->fe.state;
+    SettingsAccount acct = account_view(g);
+    const MenuAction ma = settings_panel(&g->menu, &g->ui, &g->settings, &acct, p->tab == FP_TAB_ACCOUNT ? 1 : 0, p->panel_x, p->panel_y,
+                                         p->panel_w, p->panel_h, app->width_pt, app->height_pt, app->safe_left, app->safe_right);
+    handle_menu_action(g, app, ma);
+    app_text_input(app, g->menu.editing_name);
+    return g->fe.state != before;
 }
 
 /* Native sign-in sheet finished: hand the token to Supabase to link. */
@@ -3626,8 +3651,15 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
         }
     }
     gfx_ui_depth(app->gfx, k_ui.tilt_depth[1], 0);
-    if (f->state == FE_FRIENDS && friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
-        frontend_back(f);
+    if (f->state == FE_FRIENDS) {
+        if (friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
+            settings_panel_close(&g->menu);
+            app_text_input(app, false);
+            save_prefs(g);
+            frontend_back(f);
+        } else if (friends_panel(g, app)) {
+            return; /* the panel's action changed the screen */
+        }
     }
     draw_notices(g, app);
     if (f->state == FE_SETTINGS) { /* the settings panel, full screen over the menu */
@@ -3681,7 +3713,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     case FE_CREATOR_DONE:
         g->prefs.onboarding_done = true;
         profile_changed(g);
-        if (f->depth > 0 && (f->stack[f->depth - 1] == FE_SETTINGS || f->stack[f->depth - 1] == FE_PLAY ||
+        if (f->depth > 0 && (f->stack[f->depth - 1] == FE_SETTINGS || f->stack[f->depth - 1] == FE_FRIENDS || f->stack[f->depth - 1] == FE_PLAY ||
                              f->stack[f->depth - 1] == FE_MAIN_MENU)) {
             frontend_back(f); /* back where the creator was opened from */
         } else {
@@ -3705,7 +3737,7 @@ static void frontend_flow(Game *g, MgApp *app, bool back)
     case FE_OPEN_INVITE:
         friends_page_open(&g->fpage, &g->friends);
         g->fpage.invite_mode = true;
-        g->fpage.tab = 0;
+        g->fpage.tab = FP_TAB_FRIENDS;
         frontend_go(f, FE_FRIENDS);
         break;
     case FE_LOBBY_TOGGLE:
@@ -5444,7 +5476,13 @@ static void game_frame_inner(MgApp *app, float alpha)
     MenuAction action = MENU_NONE;
     missions_frame(g, app); /* BOOK-ENGINE S4: the objective and its marker */
     if (g->fpage.open) { /* opened from the pause card; its back arrow returns there */
-        friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin);
+        if (friends_page_draw(&g->fpage, &g->ui, &g->friends, &g->lobby, &g->heads, app, g->profile.display_name, &g->profile.skin)) {
+            settings_panel_close(&g->menu);
+            app_text_input(app, false);
+            save_prefs(g);
+        } else {
+            friends_panel(g, app);
+        }
     } else if (g->mui.journal && g->menu.open) { /* the missions' journal, a page of the pause card */
         missions_overlays(g, app);
     } else {

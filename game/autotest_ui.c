@@ -564,9 +564,11 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
         return 0;
     }
     case S_SCREENS: { /* 8 + 9: every real screen at rest: targets, the safe rect, a picture */
-        static const struct { const char *tap; int state; const char *name; bool safe; } screens[] = {
-            {NULL, FE_MAIN_MENU, "ui_menu", false},  {"menurow31", FE_CREATOR, "ui_locker", false}, {"menurow2", FE_SETTINGS, "ui_settings", true},
-            {"account_chip", FE_FRIENDS, "ui_friends", true}, {"menurow4", FE_MAP, "ui_map", true}};
+        /* then: a second tap once the screen is up (the Setări tab of the account chip's page); dev: the Developer check */
+        static const struct { const char *tap; int state; const char *name; bool safe; const char *then; bool dev; } screens[] = {
+            {NULL, FE_MAIN_MENU, "ui_menu", false, NULL, false},  {"menurow31", FE_CREATOR, "ui_locker", false, NULL, false},
+            {"account_chip", FE_FRIENDS, "ui_settings", true, "ftab4", true},
+            {"account_chip", FE_FRIENDS, "ui_friends", true, "ftab0", false}, {"menurow4", FE_MAP, "ui_map", true, NULL, false}};
         const int i = t->screen_i;
         if (i >= (int)MG_ARRAY_COUNT(screens)) {
             next(t, now, S_DONE);
@@ -611,17 +613,34 @@ int ut_run(UiTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, doub
             if (now - t->at < 2.0) { /* entered and settled (the map drives its camera in) */
                 return 0;
             }
+            if (screens[i].then && !t->then_done) { /* the second tap, then settle again */
+                float tx, ty;
+                if (!centre(p, screens[i].then, &tx, &ty)) {
+                    return failf(t, "%s: %s not on the screen", screens[i].name, screens[i].then);
+                }
+                autotest_finger(app, SDL_EVENT_FINGER_DOWN, UT_FINGER, tx, ty);
+                t->cx = tx, t->cy = ty;
+                t->then_done = true;
+                t->sub = 5, t->at = now;
+                return 0;
+            }
             if (check_targets(t, app, p, screens[i].name, screens[i].safe, 0) < 0) {
                 return -1;
             }
             SDL_snprintf(out->screenshot, sizeof(out->screenshot), "%s", screens[i].name);
             t->skip = 4;
-            if (screens[i].state == FE_SETTINGS && p->settings_scroll) { /* then the Developer check at the page's end */
+            t->then_done = false;
+            if (screens[i].dev && p->settings_scroll) { /* then the Developer check at the page's end */
                 t->sub = 3, t->at = now;
                 return 0;
             }
             t->screen_i++;
             t->sub = 0, t->at = now;
+        } else if (t->sub == 5) { /* the second tap's up, then back to waiting for the screen to settle */
+            if (now - t->at > 0.06) {
+                autotest_finger(app, SDL_EVENT_FINGER_UP, UT_FINGER, t->cx, t->cy);
+                t->sub = 1, t->at = now;
+            }
         } else if (t->sub == 3) { /* the picture is taken: scroll the game tab to its end (clamped), watch from here */
             if (now - t->at > 0.2) {
                 p->settings_scroll->offset = 1e6f;

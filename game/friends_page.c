@@ -29,6 +29,7 @@ static const char *err_text(const char *prefix, const char *code)
 void friends_page_open(FriendsPage *p, Friends *f)
 {
     p->open = true;
+    p->tab = FP_TAB_ACCOUNT; /* the account first (user decision 2026-11-14); the pause card's Prieteni and Invite pick Prieteni */
     p->invite_mode = false;
     p->confirm_id[0] = 0;
     p->action_id[0] = 0;
@@ -355,11 +356,17 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
     const float name_size = fit_size(ui, my_name, 22.0f, lw - 110.0f);
     ui_text(ui, TEXT_FACE_DISPLAY, x0 + 110.0f, y0 + 24.0f - name_size * 0.62f, name_size, ui_rgba(k_ui.ink), my_name);
     float y = y0 + 64.0f;
-    static const char *const tabs[3] = {"friends_tab_friends", "friends_tab_requests", "friends_tab_add"};
-    const char *const tab_names[3] = {str(tabs[0]), str(tabs[1]), str(tabs[2])};
-    const int badges[3] = {0, f->incoming, 0};
+    /* the tab values (FP_TAB_*) by title; shown as Cont, Prieteni, Cereri, Adaugă, Setări */
+    static const char *const tabs[FP_TABS] = {"friends_tab_friends", "friends_tab_requests", "friends_tab_add", "set_tab_account", "settings"};
+    static const int order[FP_TABS] = {FP_TAB_ACCOUNT, FP_TAB_FRIENDS, FP_TAB_REQUESTS, FP_TAB_ADD, FP_TAB_SETTINGS};
+    const char *tab_names[FP_TABS];
+    int badges[FP_TABS] = {0};
+    for (int i = 0; i < FP_TABS; i++) {
+        tab_names[i] = str(tabs[order[i]]);
+        badges[i] = order[i] == FP_TAB_REQUESTS ? f->incoming : 0;
+    }
     const int tab_was = p->tab;
-    y = ui_side_tabs(ui, &side, "ftab", tab_names, badges, 3, &p->tab, y);
+    y = ui_side_tabs(ui, &side, "ftab", tab_names, order, badges, FP_TABS, &p->tab, y);
     if (p->tab != tab_was) {
         search_clear(p, f);
     }
@@ -378,14 +385,21 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
         ui_text(ui, TEXT_FACE_BOLD, x + w - tw, y + 9.0f, 15.0f, ui_rgba(k_ui.ink_soft), line);
     }
     y += 40.0f;
+    p->panel = p->tab == FP_TAB_ACCOUNT || p->tab == FP_TAB_SETTINGS;
+    if (p->panel) { /* Cont / Setări: the game draws the settings panel here (settings_panel) */
+        p->panel_x = x, p->panel_y = y, p->panel_w = w, p->panel_h = bottom - y;
+    }
     if (p->tab == 2) {
         y += friends_header(p, ui, f, app, x, y, w);
     }
     const float view = bottom - y;
     const float head = HEAD_ROW * k;
-    const float off = ui_scroll_begin(ui, &p->scroll[p->tab], x - 8.0f, y - 4.0f, w + 16.0f, view + 8.0f, false);
+    const int si = p->panel ? 0 : p->tab;
+    const float off = p->panel ? 0.0f : ui_scroll_begin(ui, &p->scroll[si], x - 8.0f, y - 4.0f, w + 16.0f, view + 8.0f, false);
     float used = 0.0f;
-    if (p->tab == 0) {
+    if (p->panel) {
+        /* nothing: the panel is drawn by the game */
+    } else if (p->tab == 0) {
         used = tab_friends(p, ui, f, l, h, x, y - off, w, head);
     } else if (p->tab == 1) {
         used = tab_requests(ui, f, h, x, y - off, w, head);
@@ -395,7 +409,9 @@ bool friends_page_draw(FriendsPage *p, Ui *ui, Friends *f, Lobby *l, HeadIcons *
         ui_text(ui, TEXT_FACE_BODY, x, y - off + 10.0f, 15.0f, ui_rgba(k_ui.ink_soft), str("friend_add_hint"));
         used = 40.0f;
     }
-    ui_scroll_end(ui, &p->scroll[p->tab], view, used);
+    if (!p->panel) {
+        ui_scroll_end(ui, &p->scroll[si], view, used);
+    }
     if (f->error[0]) { /* a refused call: its reason for a moment */
         SDL_snprintf(p->note, sizeof(p->note), "%s", err_text("friend_err", f->error));
         p->note_until = app->time + 3.0;

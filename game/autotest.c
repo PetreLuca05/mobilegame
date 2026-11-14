@@ -622,13 +622,13 @@ static const TapStep k_onboarding[] = {
     {FE_CREATOR, "crtab3", false},  {FE_CREATOR, "cr3_0_1", true},   {FE_CREATOR, "crtab4", false},
     {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
     {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */
-    {FE_MAIN_MENU, "menurow2", false}, {FE_SETTINGS, "tab1", false},     {FE_SETTINGS, "link_account", false}, /* the guest's Link account dialog */
-    {FE_SETTINGS, "link_close", false}, {FE_SETTINGS, "menu", false},
+    {FE_MAIN_MENU, "account_chip", false}, {FE_FRIENDS, "link_account", false}, /* Cont (the default tab): the Link account dialog */
+    {FE_FRIENDS, "link_close", false}, {FE_FRIENDS, "ftab4", false}, {FE_FRIENDS, "friends", false}, /* Setări, then back */
 };
-/* New Game = Settings -> Account -> Erase progress, back, Maps (the first island, no last hospital) */
+/* New Game = the account chip -> Cont -> Erase progress, back, Maps (the first island, no last hospital) */
 static const TapStep k_new_game[] = {
-    {FE_MAIN_MENU, "menurow2", false}, {FE_SETTINGS, "tab1", false},  {FE_SETTINGS, "erase_progress", false},
-    {FE_SETTINGS, "erase_yes", false}, {FE_SETTINGS, "menu", false},  {FE_MAIN_MENU, "menurow4", false},
+    {FE_MAIN_MENU, "account_chip", false}, {FE_FRIENDS, "erase_progress", false},
+    {FE_FRIENDS, "erase_yes", false}, {FE_FRIENDS, "friends", false},  {FE_MAIN_MENU, "menurow4", false},
 };
 static const TapStep k_overwrite[] = {{FE_MAIN_MENU, "ow_new", false}};
 static const TapStep k_continue[] = {{FE_MAIN_MENU, "menurow1", false}};

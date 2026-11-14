@@ -566,72 +566,12 @@ static void haptic_lab(SettingsMenu *m, Ui *ui, float w_pt, float h_pt)
 }
 #endif
 
-MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
-                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
-                         const char *status)
+/* The content of one settings panel in a rect (0 game settings, 1 account), scrolled, with its dialogs (erase, link). */
+static MenuAction settings_panel_body(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct, int which, float x, float y,
+                                      float w, float h, float w_pt, float safe_l, float safe_r)
 {
-    const bool lab = m->lab_open && m->open && !m->card;
-    if (lab) {
-        ui->input_off = true; /* the page under the lab takes no touches */
-    }
     MenuAction action = MENU_NONE;
-    m->preview_visible = false;
-    bool held;
-    if (!m->open) { /* pause button, top right: part of the edge-to-edge HUD */
-        const ui_frame_t uf = ui_hud_frame(w_pt, h_pt, safe_l, safe_r, safe_t, safe_b, 0.0f); /* phones: the safe area */
-        float gs, gx, gy;
-        ui_pause_rect(&uf, &gx, &gy, &gs);
-        if (ui_icon_button(ui, "gear", UI_ICON_PAUSE, gx, gy, gs, UI_V_ACCENT)) {
-            m->open = true;
-            m->card = true;
-            m->from_card = false;
-            SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
-        }
-        (void)held;
-        m->editing_name = false;
-        if (!m->open) {
-            return MENU_NONE;
-        }
-    }
-    if (!m->editing_name && strcmp(m->name, acct->name) != 0 && action == MENU_NONE) {
-        /* keep in sync with the account unless the player is typing */
-        SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
-    }
-
-    text_check_set_screen(m->card ? "PAUSE" : "SETTINGS"); /* the frame's screen was set before a tap opened this */
-    if (m->card) {
-        return pause_card(m, ui, s, w_pt, h_pt, safe_t, safe_b);
-    }
-
-    /* full screen, the shared side-tab page: back + title + tabs left (as wide as the header needs), divider, content right */
-    ui_block(ui, 0, 0, w_pt, h_pt); /* modal: nothing reaches the game */
-    ui->modal = true;
-    ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, w_pt, h_pt, ui_rgba(k_ui.surface_tint)); /* flat, no blur */
-    static const char *const tab_keys[2] = {"set_tab_game", "set_tab_account"};
-    const char *const tab_names[2] = {str(tab_keys[0]), str(tab_keys[1])};
-    const UiSideLayout side = ui_side_layout(safe_l, safe_t, safe_r, safe_b, w_pt, h_pt,
-                                             k_ui.icon_button + 12.0f + ui_text_w(ui, TEXT_FACE_DISPLAY, str("settings"), k_ui.t_title) + 8.0f);
-    const float x0 = side.x0, y0 = side.y0, bottom = side.bottom, lw = side.col_w;
-    if (ui_icon_button(ui, "back##menu", UI_ICON_BACK, x0, y0, k_ui.icon_button, UI_V_SECONDARY)) {
-        if (m->from_card) {
-            m->card = true;
-            m->from_card = false;
-        } else {
-            m->open = false;
-        }
-    }
-    (void)held;
-    ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), str("settings"));
-    float y = y0 + 74.0f;
-    y = ui_side_tabs(ui, &side, "tab", tab_names, NULL, 2, &m->tab, y) + 8.0f;
-    if (status && status[0]) {
-        ui_text(ui, TEXT_FACE_BODY, x0, y, k_ui.t_small, ui_rgba(k_ui.ink_soft), status);
-    }
-
-    float x = side.content_x, w = side.content_w;
-    y = y0 + 4.0f;
-    float h = bottom - y;
-    if (m->tab == 0) {
+    if (which == 0) {
         m->editing_name = false;
         float off = ui_scroll_begin(ui, &m->game_scroll, x - 8.0f, y - 4.0f, w + 16.0f, h + 4.0f, false); /* ends at the safe bottom */
         float used = game_tab(m, ui, s, x, y - off, w, &action);
@@ -681,6 +621,100 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         }
         ui_modal_end(ui);
     }
+    return action;
+}
+
+MenuAction settings_panel(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct, int which, float x, float y, float w,
+                          float h, float w_pt, float h_pt, float safe_l, float safe_r)
+{
+    if (!m->editing_name && strcmp(m->name, acct->name) != 0) { /* keep in sync with the account unless the player is typing */
+        SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
+    }
+    const bool lab = m->lab_open;
+    if (lab) {
+        ui->input_off = true; /* the page under the lab takes no touches */
+    }
+    MenuAction action = settings_panel_body(m, ui, s, acct, which, x, y, w, h, w_pt, safe_l, safe_r);
+#ifndef NDEBUG
+    if (lab) {
+        ui->input_off = false;
+        haptic_lab(m, ui, w_pt, h_pt);
+    }
+#else
+    (void)h_pt;
+#endif
+    return action;
+}
+
+void settings_panel_close(SettingsMenu *m)
+{
+    m->editing_name = false;
+    m->confirm_erase = false;
+    m->link_open = false;
+    m->lab_open = false;
+}
+
+MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const SettingsAccount *acct,
+                         float w_pt, float h_pt, float safe_l, float safe_t, float safe_r, float safe_b,
+                         const char *status)
+{
+    const bool lab = m->lab_open && m->open && !m->card;
+    if (lab) {
+        ui->input_off = true; /* the page under the lab takes no touches */
+    }
+    MenuAction action = MENU_NONE;
+    m->preview_visible = false;
+    bool held;
+    if (!m->open) { /* pause button, top right: part of the edge-to-edge HUD */
+        const ui_frame_t uf = ui_hud_frame(w_pt, h_pt, safe_l, safe_r, safe_t, safe_b, 0.0f); /* phones: the safe area */
+        float gs, gx, gy;
+        ui_pause_rect(&uf, &gx, &gy, &gs);
+        if (ui_icon_button(ui, "gear", UI_ICON_PAUSE, gx, gy, gs, UI_V_ACCENT)) {
+            m->open = true;
+            m->card = true;
+            m->from_card = false;
+            SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
+        }
+        (void)held;
+        m->editing_name = false;
+        if (!m->open) {
+            return MENU_NONE;
+        }
+    }
+    if (!m->editing_name && strcmp(m->name, acct->name) != 0 && action == MENU_NONE) {
+        /* keep in sync with the account unless the player is typing */
+        SDL_snprintf(m->name, sizeof(m->name), "%s", acct->name);
+    }
+
+    text_check_set_screen(m->card ? "PAUSE" : "SETTINGS"); /* the frame's screen was set before a tap opened this */
+    if (m->card) {
+        return pause_card(m, ui, s, w_pt, h_pt, safe_t, safe_b);
+    }
+
+    /* full screen, the shared side-tab page: back + title left, divider, the game settings right (the account lives in the
+     * Friends page's Cont tab, user decision 2026-11-14) */
+    ui_block(ui, 0, 0, w_pt, h_pt); /* modal: nothing reaches the game */
+    ui->modal = true;
+    ui_rect(ui->gfx, ui->font, 0.0f, 0.0f, w_pt, h_pt, ui_rgba(k_ui.surface_tint)); /* flat, no blur */
+    const UiSideLayout side = ui_side_layout(safe_l, safe_t, safe_r, safe_b, w_pt, h_pt,
+                                             k_ui.icon_button + 12.0f + ui_text_w(ui, TEXT_FACE_DISPLAY, str("settings"), k_ui.t_title) + 8.0f);
+    const float x0 = side.x0, y0 = side.y0, bottom = side.bottom, lw = side.col_w;
+    if (ui_icon_button(ui, "back##menu", UI_ICON_BACK, x0, y0, k_ui.icon_button, UI_V_SECONDARY)) {
+        if (m->from_card) {
+            m->card = true;
+            m->from_card = false;
+        } else {
+            m->open = false;
+        }
+    }
+    (void)held;
+    ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), str("settings"));
+    ui_side_tabs(ui, &side, "tab", NULL, NULL, NULL, 0, &m->tab, y0 + 74.0f); /* no tabs: the divider */
+    if (status && status[0]) {
+        ui_text(ui, TEXT_FACE_BODY, x0, y0 + 74.0f, k_ui.t_small, ui_rgba(k_ui.ink_soft), status);
+    }
+    const float y = y0 + 4.0f;
+    action = settings_panel_body(m, ui, s, acct, 0, side.content_x, y, side.content_w, bottom - y, w_pt, safe_l, safe_r);
     if (!m->open) {
         m->editing_name = false;
         m->confirm_erase = false;

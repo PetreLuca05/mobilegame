@@ -374,7 +374,7 @@ int ht_run(HapticTest *t, MgApp *app, const AutotestProbe *p, AutotestOut *out, 
         return 0;
     case S_WALK: { /* 1: every pressable with a touch-down entry on every screen records it */
         static const struct { const char *tap; int state; const char *name; } screens[] = {
-            {NULL, FE_MAIN_MENU, "menu"}, {"menurow31", FE_CREATOR, "Locker"}, {"menurow2", FE_SETTINGS, "Settings"},
+            {NULL, FE_MAIN_MENU, "menu"}, {"menurow31", FE_CREATOR, "Locker"},
             {"account_chip", FE_FRIENDS, "Friends"}, {"menurow4", FE_MAP, "map"}};
         const int n = (int)(sizeof(screens) / sizeof(screens[0]));
         if (t->screen_i >= n) {
