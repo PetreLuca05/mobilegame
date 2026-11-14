@@ -172,6 +172,12 @@ void text_draw_centered(GfxContext *g, const TextFont *f, float cx, float cy, fl
     text_draw(g, f, cx - w * 0.5f, cy + (f->cap_px * 0.5f - f->ascent_px) * scale, size_pt, c, s);
 }
 
+void ui_atlas_image(GfxContext *g, int cell, float x, float y, float w, float h, UiColor c)
+{
+    const float u0 = (float)(cell % 8) / 8.0f, v0 = (float)(cell / 8) / 8.0f, d = 1.0f / 8.0f;
+    put_inst(g, GFX_UI_IMAGE, x, y, x + w, y + h, u0, v0, u0 + d, v0 + d, c);
+}
+
 void ui_textured_quad(GfxContext *g, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, UiColor c)
 {
     if (u0 >= 2.0f) { /* the head atlas (u + 2) */

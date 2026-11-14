@@ -36,7 +36,7 @@ typedef struct GfxVertex {
  *                 shape.z top highlight band (pt, colour2 over the face), shape.w dashes around a circle (0 none)
  *   GFX_UI_HEAD   `uv` + 2 in the head atlas, a circle with a colour ring (head_icons.c)
  *   GFX_UI_FIGURE `uv` in the resident book figure (gfx_set_figure, gfx_figure_uv), times the colour */
-enum { GFX_UI_GLYPH, GFX_UI_SHAPE, GFX_UI_HEAD, GFX_UI_FIGURE };
+enum { GFX_UI_GLYPH, GFX_UI_SHAPE, GFX_UI_HEAD, GFX_UI_FIGURE, GFX_UI_IMAGE }; /* IMAGE: a head-atlas cell as a plain picture */
 
 typedef struct GfxUiInst {
     float rect[4];  /* x, y, w, h */
@@ -296,6 +296,9 @@ void gfx_head_cell_begin(GfxContext *g, int cell, const HMM_Mat4 *view_proj, HMM
 enum { GFX_FIG_RGBA8 = 0, GFX_FIG_ASTC4 = 1 };
 #define GFX_FIG_STAGING_BYTES (2u * 1024u * 1024u)
 bool gfx_figure_reserve(GfxContext *g, int max_w, int max_h, int format);
+/* A fixed picture in one of the head atlas' reserved cells (62, 63): GFX_HEAD_PX square RGBA (straight alpha), copied in once the
+ * atlas exists and again whenever it is re-made or cleared. The pointer must stay valid (an embedded asset). */
+void gfx_set_atlas_image(GfxContext *g, int cell, const uint8_t *rgba);
 bool gfx_set_figure(GfxContext *g, int w, int h, int format, const void *data, uint32_t size);
 /* The resident figure's corner in uv (u1, v1: its share of the texture); false when none is resident. */
 bool gfx_figure_uv(const GfxContext *g, float *u1, float *v1);

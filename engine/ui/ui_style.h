@@ -23,7 +23,8 @@ typedef struct UiStyleTable {
     uint32_t status_off, status_menu, status_game;     /* friends' presence dots */
     uint32_t brand_google;
     uint32_t gender_male, gender_female; /* the Locker's Corp icons */
-    uint32_t google_face, google_lip, google_text, apple_face, apple_lip, apple_text; /* sign-in buttons in the providers' colours */
+    uint32_t google_press, apple_press;  /* the sign-in buttons' held tint */
+    uint32_t google_face, google_lip, google_text, apple_face, apple_lip, apple_text; /* sign-in buttons by their owners' rules (google_lip = the stroke) */
     uint32_t lift_display_bg, lift_display_digit;      /* the lift's floor display: the one dark plate (an elevator display) */
     uint32_t confetti[4];
     uint32_t scrim;
@@ -87,7 +88,8 @@ static const UiStyleTable k_ui = {
     .status_off = 0x8A8F98FF, .status_menu = 0x3B82F6FF, .status_game = 0x34C759FF,
     .brand_google = 0x4285F4FF,
     .gender_male = 0x3B82F6FF, .gender_female = 0xE8559BFF,
-    .google_face = 0xFFFFFFFF, .google_lip = 0xDADCE0FF, .google_text = 0x1F1F1FFF,
+    .google_press = 0x1F1F1F14, .apple_press = 0xFFFFFF22,
+    .google_face = 0xFFFFFFFF, .google_lip = 0x747775FF, .google_text = 0x1F1F1FFF, /* Google's light theme: fill, stroke, text */
     .apple_face = 0x000000FF, .apple_lip = 0x3A3A3CFF, .apple_text = 0xFFFFFFFF,
     .lift_display_bg = 0x14171FFF, .lift_display_digit = 0xFFD166FF,
     .confetti = {0xFFC933FF, 0xFF7A6BFF, 0x12A594FF, 0xFFFFFFFF},

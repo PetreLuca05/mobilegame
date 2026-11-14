@@ -51,6 +51,11 @@ float4 PSMain(UiOut i) : SV_Target0
 float4 shade(UiOut i)
 {
     float kind = i.ptk.z;
+    if (kind > 3.5) // a head-atlas cell as a plain picture (the sign-in logos): straight alpha, times the colour
+    {
+        float4 p = u_heads.Sample(u_heads_sampler, i.uv) * i.col;
+        return float4(p.rgb * p.a, p.a);
+    }
     if (kind > 2.5) // book figure: the texture times the colour
     {
         float4 f = u_figure.Sample(u_figure_sampler, i.uv) * i.col;

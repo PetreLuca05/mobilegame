@@ -9,7 +9,7 @@
 #include "net/net_transport.h"
 #include "text.h"
 
-#define HEAD_ICON_CELLS 64
+#define HEAD_ICON_CELLS 62 /* of the atlas' 64: 62 and 63 hold the sign-in logos (gfx_set_atlas_image) */
 
 typedef struct HeadUv {
     bool ready;

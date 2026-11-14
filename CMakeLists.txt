@@ -108,6 +108,7 @@ set(MG_EMBED_FILES
   ${CMAKE_SOURCE_DIR}/assets/world/lawrance.island.json
   ${CMAKE_SOURCE_DIR}/assets/avatar/avatar.json
   ${CMAKE_SOURCE_DIR}/assets/menu/library.scene.json
+  ${CMAKE_SOURCE_DIR}/assets/brand/brand_cells.rgba
 )
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # Pinned downloads (assets/ASSETS.lock): a missing file or a different hash fails configure and every build

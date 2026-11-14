@@ -33,130 +33,137 @@ struct PSMain_in
 fragment PSMain_out PSMain(PSMain_in in [[stage_in]], texture2d<float> u_atlas [[texture(0)]], texture2d<float> u_heads [[texture(1)]], texture2d<float> u_figure [[texture(2)]], sampler u_sampler [[sampler(0)]], sampler u_heads_sampler [[sampler(1)]], sampler u_figure_sampler [[sampler(2)]])
 {
     PSMain_out out = {};
-    float _1231;
+    float _1283;
     if (in.i_clip.z >= in.i_clip.x)
     {
-        float _644 = fast::min(fast::min(in.i_ptk.x - in.i_clip.x, in.i_clip.z - in.i_ptk.x), fast::min(in.i_ptk.y - in.i_clip.y, in.i_clip.w - in.i_ptk.y));
-        if (_644 < 0.0)
+        float _671 = fast::min(fast::min(in.i_ptk.x - in.i_clip.x, in.i_clip.z - in.i_ptk.x), fast::min(in.i_ptk.y - in.i_clip.y, in.i_clip.w - in.i_ptk.y));
+        if (_671 < 0.0)
         {
             discard_fragment();
         }
-        float _1232;
+        float _1284;
         if (in.i_ptk.w > 0.0)
         {
-            _1232 = fast::clamp(_644 / in.i_ptk.w, 0.0, 1.0);
+            _1284 = fast::clamp(_671 / in.i_ptk.w, 0.0, 1.0);
         }
         else
         {
-            _1232 = 1.0;
+            _1284 = 1.0;
         }
-        _1231 = _1232;
+        _1283 = _1284;
     }
     else
     {
-        _1231 = 1.0;
+        _1283 = 1.0;
     }
-    float4 _1229;
+    float4 _1281;
     do
     {
+        if (in.i_ptk.z > 3.5)
+        {
+            float4 _749 = u_heads.sample(u_heads_sampler, in.i_uv) * in.i_col;
+            float4 _695 = _749;
+            _1281 = float4(_749.xyz * _695.w, _695.w);
+            break;
+        }
         if (in.i_ptk.z > 2.5)
         {
-            float4 _721 = u_figure.sample(u_figure_sampler, in.i_uv) * in.i_col;
-            float4 _668 = _721;
-            _1229 = float4(_721.xyz * _668.w, _668.w);
+            float4 _773 = u_figure.sample(u_figure_sampler, in.i_uv) * in.i_col;
+            float4 _696 = _773;
+            _1281 = float4(_773.xyz * _696.w, _696.w);
             break;
         }
         if (in.i_ptk.z > 1.5)
         {
-            float _745 = length(fract(in.i_uv * 8.0) - float2(0.5)) * 2.0;
-            float _748 = fast::max(fwidth(_745), 0.001000000047497451305389404296875);
-            float _753 = 1.0 - smoothstep(1.0 - _748, 1.0, _745);
-            float _759 = smoothstep(0.89999997615814208984375 - _748, 0.89999997615814208984375, _745) * _753;
-            float4 _764 = u_heads.sample(u_heads_sampler, in.i_uv);
-            float4 _674 = _764;
-            _1229 = float4((mix(_764.xyz, in.i_col.xyz, float3(_759)) * _753) * in.i_col.w, fast::max(_674.w * _753, _759) * in.i_col.w);
+            float _797 = length(fract(in.i_uv * 8.0) - float2(0.5)) * 2.0;
+            float _800 = fast::max(fwidth(_797), 0.001000000047497451305389404296875);
+            float _805 = 1.0 - smoothstep(1.0 - _800, 1.0, _797);
+            float _811 = smoothstep(0.89999997615814208984375 - _800, 0.89999997615814208984375, _797) * _805;
+            float4 _816 = u_heads.sample(u_heads_sampler, in.i_uv);
+            float4 _702 = _816;
+            _1281 = float4((mix(_816.xyz, in.i_col.xyz, float3(_811)) * _805) * in.i_col.w, fast::max(_702.w * _805, _811) * in.i_col.w);
             break;
         }
         if (in.i_ptk.z < 0.5)
         {
-            float4 _802 = u_atlas.sample(u_sampler, in.i_uv);
-            float _803 = _802.x;
-            float _807 = fast::max(fwidth(_803), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
-            float _816 = smoothstep(0.5 - _807, 0.5 + _807, _803) * in.i_col.w;
-            _1229 = float4(in.i_col.xyz * _816, _816);
+            float4 _854 = u_atlas.sample(u_sampler, in.i_uv);
+            float _855 = _854.x;
+            float _859 = fast::max(fwidth(_855), 0.001000000047497451305389404296875) * 0.699999988079071044921875;
+            float _868 = smoothstep(0.5 - _859, 0.5 + _859, _855) * in.i_col.w;
+            _1281 = float4(in.i_col.xyz * _868, _868);
             break;
         }
-        float _1080 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
-        float2 _1087 = (abs(in.i_local) - in.i_half_size) + float2(_1080);
-        float2 _1071 = _1087;
-        float _1099 = (length(fast::max(_1087, float2(0.0))) + fast::min(fast::max(_1071.x, _1071.y), 0.0)) - _1080;
-        float _836 = fwidth(_1099);
-        float _837 = fast::max(_836, 0.001000000047497451305389404296875);
-        float _1220;
+        float _1132 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
+        float2 _1139 = (abs(in.i_local) - in.i_half_size) + float2(_1132);
+        float2 _1123 = _1139;
+        float _1151 = (length(fast::max(_1139, float2(0.0))) + fast::min(fast::max(_1123.x, _1123.y), 0.0)) - _1132;
+        float _888 = fwidth(_1151);
+        float _889 = fast::max(_888, 0.001000000047497451305389404296875);
+        float _1272;
         if (in.i_shape.y < 0.0)
         {
-            _1220 = fast::clamp(0.5 - ((abs(_1099 - (in.i_shape.y * 0.5)) + (in.i_shape.y * 0.5)) / _837), 0.0, 1.0);
+            _1272 = fast::clamp(0.5 - ((abs(_1151 - (in.i_shape.y * 0.5)) + (in.i_shape.y * 0.5)) / _889), 0.0, 1.0);
         }
         else
         {
-            _1220 = 0.0;
+            _1272 = 0.0;
         }
-        float _1216;
+        float _1268;
         if (in.i_shape.y > 0.0)
         {
-            _1216 = abs(_1099 + (in.i_shape.y * 0.5)) - (in.i_shape.y * 0.5);
+            _1268 = abs(_1151 + (in.i_shape.y * 0.5)) - (in.i_shape.y * 0.5);
         }
         else
         {
-            _1216 = _1099;
+            _1268 = _1151;
         }
-        float _876 = fast::clamp(0.5 - (_1216 / _837), 0.0, 1.0);
-        float _1223;
+        float _928 = fast::clamp(0.5 - (_1268 / _889), 0.0, 1.0);
+        float _1275;
         if (in.i_shape.w > 0.5)
         {
-            float _887 = (precise::atan2(in.i_local.y, in.i_local.x) * 0.15915493667125701904296875) + 0.5;
-            float _892 = fract(_887 * in.i_shape.w);
-            float _898 = fast::max(fwidth(_887 * in.i_shape.w), 0.001000000047497451305389404296875);
-            _1223 = _876 * (smoothstep(0.0, _898, _892) * (1.0 - smoothstep(0.5 - _898, 0.5, _892)));
+            float _939 = (precise::atan2(in.i_local.y, in.i_local.x) * 0.15915493667125701904296875) + 0.5;
+            float _944 = fract(_939 * in.i_shape.w);
+            float _950 = fast::max(fwidth(_939 * in.i_shape.w), 0.001000000047497451305389404296875);
+            _1275 = _928 * (smoothstep(0.0, _950, _944) * (1.0 - smoothstep(0.5 - _950, 0.5, _944)));
         }
         else
         {
-            _1223 = _876;
+            _1275 = _928;
         }
-        float3 _1227;
+        float3 _1279;
         if (in.i_shape.z > 0.0)
         {
-            float _1109 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
-            float2 _1116 = (abs(in.i_local) - in.i_half_size) + float2(_1109);
-            float2 _1100 = _1116;
-            float _1128 = (length(fast::max(_1116, float2(0.0))) + fast::min(fast::max(_1100.x, _1100.y), 0.0)) - _1109;
-            float2 _696 = in.i_local - (in.i_tiltv.xy * 2.0);
-            float3 _965 = mix(in.i_col.xyz, in.i_col2.xyz, float3((fast::clamp(((in.i_shape.z - in.i_half_size.y) - _696.y) / fast::max(fwidth(in.i_local.y), 0.001000000047497451305389404296875), 0.0, 1.0) * fast::clamp((-_1128) / _837, 0.0, 1.0)) * in.i_col2.w));
-            float3 _1228;
+            float _1161 = fast::min(in.i_shape.x, fast::min(in.i_half_size.x, in.i_half_size.y));
+            float2 _1168 = (abs(in.i_local) - in.i_half_size) + float2(_1161);
+            float2 _1152 = _1168;
+            float _1180 = (length(fast::max(_1168, float2(0.0))) + fast::min(fast::max(_1152.x, _1152.y), 0.0)) - _1161;
+            float2 _724 = in.i_local - (in.i_tiltv.xy * 2.0);
+            float3 _1017 = mix(in.i_col.xyz, in.i_col2.xyz, float3((fast::clamp(((in.i_shape.z - in.i_half_size.y) - _724.y) / fast::max(fwidth(in.i_local.y), 0.001000000047497451305389404296875), 0.0, 1.0) * fast::clamp((-_1180) / _889, 0.0, 1.0)) * in.i_col2.w));
+            float3 _1280;
             if ((mod(in.i_tiltv.w, 2.0) >= 1.0) && (in.i_tiltv.z > 0.0))
             {
-                _1228 = mix(_965, float3(1.0), float3((((1.0 - smoothstep(0.550000011920928955078125, 1.0, length((in.i_local - float2((in.i_half_size.x * 0.60000002384185791015625) * in.i_tiltv.x, (in.i_half_size.x * 0.20000000298023223876953125) * in.i_tiltv.y)) / float2(in.i_half_size.x * 0.4000000059604644775390625, 0.60000002384185791015625 * in.i_half_size.y)))) * 0.180000007152557373046875) * fast::clamp(length(in.i_tiltv.xy) * 4.0, 0.0, 1.0)) * fast::clamp((-_1128) / _837, 0.0, 1.0)));
+                _1280 = mix(_1017, float3(1.0), float3((((1.0 - smoothstep(0.550000011920928955078125, 1.0, length((in.i_local - float2((in.i_half_size.x * 0.60000002384185791015625) * in.i_tiltv.x, (in.i_half_size.x * 0.20000000298023223876953125) * in.i_tiltv.y)) / float2(in.i_half_size.x * 0.4000000059604644775390625, 0.60000002384185791015625 * in.i_half_size.y)))) * 0.180000007152557373046875) * fast::clamp(length(in.i_tiltv.xy) * 4.0, 0.0, 1.0)) * fast::clamp((-_1180) / _889, 0.0, 1.0)));
             }
             else
             {
-                _1228 = _965;
+                _1280 = _1017;
             }
-            _1227 = _1228;
+            _1279 = _1280;
         }
         else
         {
-            _1227 = in.i_col.xyz;
+            _1279 = in.i_col.xyz;
         }
-        if (_1220 > 0.0)
+        if (_1272 > 0.0)
         {
-            _1229 = ((float4(_1227 * in.i_col.w, in.i_col.w) * (1.0 - _1220)) + (float4(in.i_col2.xyz * in.i_col2.w, in.i_col2.w) * _1220)) * _1223;
+            _1281 = ((float4(_1279 * in.i_col.w, in.i_col.w) * (1.0 - _1272)) + (float4(in.i_col2.xyz * in.i_col2.w, in.i_col2.w) * _1272)) * _1275;
             break;
         }
-        float _1060 = in.i_col.w * _1223;
-        _1229 = float4(_1227 * _1060, _1060);
+        float _1112 = in.i_col.w * _1275;
+        _1281 = float4(_1279 * _1112, _1112);
         break;
     } while(false);
-    out._entryPointOutput = _1229 * _1231;
+    out._entryPointOutput = _1281 * _1283;
     return out;
 }
 

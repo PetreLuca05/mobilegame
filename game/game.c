@@ -3,6 +3,7 @@
  * MG_CAMERA=thirdperson), HUD, settings menu and multiplayer session.
  * Keyboard/mouse also work on desktop. */
 #include "game.h"
+#include "core/assets.h"
 
 #include <math.h>
 #include <stdlib.h> /* _Exit: autotest save */
@@ -1183,6 +1184,23 @@ bool game_init(MgApp *app)
     g->session.listener = on_net_event;
     g->session.listener_user = g;
     head_icons_init(&g->heads, draw_head_icon, head_icon_rgb, g);
+    { /* the sign-in logos in the head atlas' reserved cells (tools/gen_brand_logos.py) */
+        const MgAsset *bc = mg_asset_find("assets/brand/brand_cells.rgba");
+        const size_t cell = (size_t)GFX_HEAD_PX * GFX_HEAD_PX * 4u;
+        if (bc && bc->size >= 2u * cell) {
+            gfx_set_atlas_image(app->gfx, 62, bc->data);
+            bool apple = false;
+            for (size_t i = 3; i < cell && !apple; i += 4) {
+                apple = bc->data[cell + i] != 0;
+            }
+            if (apple) {
+                gfx_set_atlas_image(app->gfx, 63, bc->data + cell);
+            }
+            g->ui.brand_apple_logo = apple;
+        } else {
+            mg_log_error("brand: assets/brand/brand_cells.rgba missing");
+        }
+    }
     account_link_init(&g->link, g->net);
     lobby_init(&g->lobby, &g->session, &g->friends, g->prefs.lobby_open);
     g->lobby.epoch_ms = lobby_epoch;

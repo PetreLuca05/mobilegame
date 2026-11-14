@@ -27,6 +27,7 @@ typedef struct Ui {
     bool press_inside;    /* the active widget is drawn pressed (finger still inside) */
     bool modal;           /* a modal is up: idle loops stop under it */
     int hclass;           /* HapticClass of the next ui_press (the widget sets it; back to HC_LINK after) */
+    bool brand_apple_logo; /* the official Apple logo is in the head atlas' cell 63 (ui_button_brand draws it) */
     uint32_t modal_key, modal_prev; /* this frame's modal and last frame's: open / close haptics */
     float tilt_x, tilt_y;  /* TILT-1 this frame (x strength): what the shaders shift by */
     float safe[4];         /* l, t, r, b: shifts near an edge clamp to the room left */

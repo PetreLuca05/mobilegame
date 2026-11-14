@@ -11,6 +11,19 @@ checks them at configure time and on every build. Only OFL, MIT, CC0 or Apache-2
 
 Fredoka (OFL), the UI font before UI-1, was removed with it.
 
+## Sign-in marks (brand assets, not open source)
+
+Used only on the sign-in buttons (the Link account dialog), under each company's sign-in branding rules: **not** an open-source
+licence, an exception the project owner approved on 2026-11-14 for these two marks only. Drawn unmodified (scaled to fit, no
+recolouring) from the head-icon texture's reserved cells 62 / 63 (`tools/gen_brand_logos.py` -> `assets/brand/brand_cells.rgba`,
+a derived copy of the files below).
+
+| File | What | Source | Date | Terms |
+|---|---|---|---|---|
+| `assets/brand/google_g_logo.png` | Google's standard "G" (200 x 204 PNG) | https://developers.google.com/static/identity/images/g-logo.png, linked from https://developers.google.com/identity/branding-guidelines | 2026-11-14 | Google Sign-In branding guidelines (the button's colours, padding, wording; the G unmodified); other uses of Google brand features need Google's consent (Guidelines for Third Party Use of Google Brand Features) |
+| Apple logo-only artwork (not yet in the repo) | Sign in with Apple logo files (PNG / SVG / PDF) | https://devimages-cdn.apple.com/design/resources/download/Logo-Sign-in-with-Apple.dmg, from https://developer.apple.com/design/resources/ | downloaded 2026-11-14, not unpacked | The disk image carries a Software License Agreement that must be accepted to open it (left to the owner); usage rules: https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple |
+
+
 ## Licence audit (NET-1, 2026-11-10)
 
 Every entry under `third_party/` and `assets/`. Allowed: MIT, BSD, Apache-2.0, zlib, OFL, CC0, public domain.

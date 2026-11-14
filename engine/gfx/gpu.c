@@ -228,6 +228,9 @@ struct GfxContext {
     SDL_GPUTexture *head_atlas;                  /* 8 x 8 cells of GFX_HEAD_PX */
     SDL_GPUTexture *head_color, *head_msaa, *head_depth; /* room for GFX_HEADS_PER_FRAME cells */
     bool head_atlas_cleared;                     /* the atlas is cleared on the first frame, before anything samples it */
+    const uint8_t *atlas_img[2];                 /* cells 62, 63: the sign-in logos (gfx_set_atlas_image) */
+    bool atlas_img_in;                           /* copied into the current atlas */
+    SDL_GPUTransferBuffer *atlas_img_staging;
     /* BOOK-ENGINE: the one resident figure (gfx_set_figure) in the top-left of a texture made at the largest size */
     SDL_GPUTexture *fig_tex;
     SDL_GPUTransferBuffer *fig_staging;
@@ -792,6 +795,14 @@ void gfx_set_toon_mode(GfxContext *g, int mode) { g->toon_mode = mode; }
 /* Between frames' GPU work: pipelines and targets depend on the sample count. */
 /* The head-icon targets, made outside the frame loop (at init and after an MSAA change): a portrait asked for in a
  * level's first frames must not allocate there. */
+void gfx_set_atlas_image(GfxContext *g, int cell, const uint8_t *rgba)
+{
+    if (cell >= 62 && cell <= 63) {
+        g->atlas_img[cell - 62] = rgba;
+        g->atlas_img_in = false;
+    }
+}
+
 static void ensure_head_targets(GfxContext *g)
 {
     const uint32_t tw = GFX_HEAD_PX * GFX_HEADS_PER_FRAME, th = GFX_HEAD_PX;
@@ -1179,6 +1190,9 @@ void gfx_shutdown(GfxContext *g)
     }
     if (g->fig_staging) {
         SDL_ReleaseGPUTransferBuffer(g->dev, g->fig_staging);
+    }
+    if (g->atlas_img_staging) {
+        SDL_ReleaseGPUTransferBuffer(g->dev, g->atlas_img_staging);
     }
     if (g->upd_tb) {
         SDL_ReleaseGPUTransferBuffer(g->dev, g->upd_tb);
@@ -2780,6 +2794,40 @@ static uint32_t render_heads(GfxContext *g)
         clear.store_op = SDL_GPU_STOREOP_STORE;
         SDL_EndGPURenderPass(SDL_BeginGPURenderPass(g->cmd, &clear, 1, NULL));
         g->head_atlas_cleared = true;
+        g->atlas_img_in = false;
+    }
+    if (g->head_atlas && !g->atlas_img_in && (g->atlas_img[0] || g->atlas_img[1])) { /* the logos into their cells (BGRA swapped) */
+        const uint32_t cell_bytes = GFX_HEAD_PX * GFX_HEAD_PX * 4u;
+        if (!g->atlas_img_staging) {
+            SDL_GPUTransferBufferCreateInfo ti = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, cell_bytes * 2u, 0};
+            g->atlas_img_staging = SDL_CreateGPUTransferBuffer(g->dev, &ti);
+        }
+        uint8_t *map = g->atlas_img_staging ? SDL_MapGPUTransferBuffer(g->dev, g->atlas_img_staging, false) : NULL;
+        if (map) {
+            const bool bgra = g->color_fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM || g->color_fmt == SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB;
+            for (int c = 0; c < 2; c++) {
+                const uint8_t *src = g->atlas_img[c];
+                uint8_t *dst = map + cell_bytes * (uint32_t)c;
+                for (uint32_t i = 0; i < GFX_HEAD_PX * GFX_HEAD_PX; i++) {
+                    const uint8_t r = src ? src[i * 4] : 0, gg = src ? src[i * 4 + 1] : 0, b = src ? src[i * 4 + 2] : 0, a = src ? src[i * 4 + 3] : 0;
+                    dst[i * 4 + 0] = bgra ? b : r, dst[i * 4 + 1] = gg, dst[i * 4 + 2] = bgra ? r : b, dst[i * 4 + 3] = a;
+                }
+            }
+            SDL_UnmapGPUTransferBuffer(g->dev, g->atlas_img_staging);
+            SDL_GPUCopyPass *cp = SDL_BeginGPUCopyPass(g->cmd);
+            for (int c = 0; c < 2; c++) {
+                const int cell = 62 + c;
+                SDL_GPUTextureTransferInfo src = {g->atlas_img_staging, cell_bytes * (uint32_t)c, GFX_HEAD_PX, GFX_HEAD_PX};
+                SDL_GPUTextureRegion dst;
+                SDL_zero(dst);
+                dst.texture = g->head_atlas;
+                dst.x = (uint32_t)(cell % 8) * GFX_HEAD_PX, dst.y = (uint32_t)(cell / 8) * GFX_HEAD_PX;
+                dst.w = GFX_HEAD_PX, dst.h = GFX_HEAD_PX, dst.d = 1;
+                SDL_UploadToGPUTexture(cp, &src, &dst, false);
+            }
+            SDL_EndGPUCopyPass(cp);
+            g->atlas_img_in = true;
+        }
     }
     int jobs = 0;
     for (int i = 0; i < g->inset_count; i++) {

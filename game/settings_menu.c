@@ -608,13 +608,13 @@ static MenuAction settings_panel_body(SettingsMenu *m, Ui *ui, GameSettings *s, 
         const float bx = dx + 20.0f, bw = dw - 40.0f;
         char b[64];
         SDL_snprintf(b, sizeof(b), "%s##google", str("link_connect_google"));
-        if (ui_button_brand(ui, b, bx, dy + 112.0f, bw, 50.0f, UI_BRAND_GOOGLE, acct->google_ready)) {
+        if (ui_button_brand(ui, b, bx, dy + 114.0f, bw, 44.0f, UI_BRAND_GOOGLE, acct->google_ready)) {
             action = MENU_GOOGLE;
             m->link_open = false;
         }
         SDL_snprintf(b, sizeof(b), "%s##apple", str("link_connect_apple")); /* for later: Google first (user decision) */
-        ui_button_brand(ui, b, bx, dy + 170.0f, bw, 50.0f, UI_BRAND_APPLE, false);
-        ui_tag_chip(ui, str("friend_soon"), bx + bw - 10.0f, dy + 170.0f + (50.0f - k_ui.tag_h) * 0.5f);
+        ui_button_brand(ui, b, bx, dy + 172.0f, bw, 44.0f, UI_BRAND_APPLE, false); /* 14 pt apart: more than 1/10 of the height */
+        ui_tag_chip(ui, str("friend_soon"), bx + bw + 6.0f, dy + 172.0f - 8.0f); /* outside the Apple button (no extra marks on it) */
         SDL_snprintf(b, sizeof(b), "%s##link_close", str("cancel"));
         if (ui_button_v(ui, b, bx, dy + dh - 66.0f, bw, 46.0f, UI_V_SECONDARY, UI_F_SMALL)) {
             m->link_open = false;
