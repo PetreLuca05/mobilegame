@@ -1,5 +1,28 @@
 # Google sign-in setup
 
+## What was set up (2026-11-14) — working on the iPhone
+
+- Google Cloud project **MobileGame-Rezi** (`mobilegame-rezi`), Google Auth Platform: app name Rezi, audience External,
+  publishing status **Testing** (not submitted for verification), one test user (the owner's Gmail), no scopes added (only
+  the basic openid / email / profile).
+- OAuth clients: **Mobilegame Web (Supabase)** (Web application, redirect `https://kugytvcupelitbaksotg.supabase.co/auth/v1/callback`)
+  and **Mobilegame iOS** (bundle `ro.docvex.mobilegame`, team `9FPB67U7DJ`, App Check off). Client ids are public; they are in
+  the git-ignored `config.local.h` as `MG_GOOGLE_WEB_CLIENT_ID` / `MG_GOOGLE_IOS_CLIENT_ID`.
+- Supabase → Sign In / Providers → Google: enabled, Client IDs = Web id, iOS id; **Client Secret left empty** (the app signs in
+  natively with an ID token, which needs only the client ids; the secret would only matter for a web OAuth redirect flow);
+  Skip nonce checks OFF; Allow users without an email OFF. User Signups: **Allow manual linking ON** (was off), anonymous
+  sign-ins ON.
+- The Web client secret is not stored anywhere in this project. If the web redirect flow is ever added, create a new secret in
+  Google Cloud, paste it into Supabase yourself, and delete the old one.
+- Chrome's password manager auto-fills a saved login into the Supabase Google panel's Client IDs / Client Secret fields; clear
+  them before saving.
+- Release blocker: App Store review requires **Sign in with Apple** whenever a third-party sign-in such as Google is offered
+  (App Review Guideline 4.8). Apple sign-in stays disabled until the paid developer team exists, so the store build is
+  blocked on it; TestFlight builds are not.
+- To add testers before the app is published, add their Gmail under Audience → Test users (max 100 while in Testing).
+
+The original step-by-step notes follow.
+
 Players start as guests. "Continue with Google" (Settings → Skin → Account)
 links the guest to a Google account in place: same user id, so name, skin and
 stats carry over. These steps are one-time and need your Google and Supabase
