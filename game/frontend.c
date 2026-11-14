@@ -163,9 +163,12 @@ static void spin_drag(Frontend *f, MgApp *app, float x0, float x1)
 /* ------------------------------------------------------------------ helpers */
 
 /* A title over the 3D scene: display face, white, on an ink lip (no blurred shadow) */
-static void title_block(Ui *ui, const char *title, float x, float y, float w, bool centred)
+#define TITLE_SIZE 44.0f
+#define MENU_TITLE_SIZE 64.0f /* the main menu's Rezi (user decision 2026-11-14: bigger) */
+#define MENU_ROW_FRAC 0.8f    /* the main menu's rows (Maps, Locker, Settings) against the column; Continue keeps the full width */
+static void title_block_sized(Ui *ui, const char *title, float x, float y, float w, bool centred, float size)
 {
-    const float size = 44.0f, lip = 3.0f;
+    const float lip = size * (3.0f / 44.0f);
     const float tx = centred ? x + (w - ui_text_w(ui, TEXT_FACE_DISPLAY, title, size)) * 0.5f : x;
     /* TILT-1: the ink copy is the slab's lip (1.5x swing); the letters sit one depth above it */
     ui_depth(ui, 1, 0, GFX_TILT_TITLE);
@@ -175,6 +178,11 @@ static void title_block(Ui *ui, const char *title, float x, float y, float w, bo
     ui_depth(ui, 2, 0, 0);
     ui_text(ui, TEXT_FACE_DISPLAY, tx, y - 4.0f, size, ui_rgba(k_ui.white), title);
     ui_depth_end(ui);
+}
+
+static void title_block(Ui *ui, const char *title, float x, float y, float w, bool centred)
+{
+    title_block_sized(ui, title, x, y, w, centred, TITLE_SIZE);
 }
 
 /* greedy word wrap; returns the height used */
@@ -264,15 +272,25 @@ static bool menu_row(Frontend *f, Ui *ui, MgApp *app, int index, const char *lab
 {
     (void)app;
     char id[96];
-    SDL_snprintf(id, sizeof(id), "%s##menurow%d", label, index);
+    /* with a tag, the label is drawn here, centred in the room left of the tag (a narrow row would put the tag over it) */
+    SDL_snprintf(id, sizeof(id), "%s##menurow%d", tag ? "" : label, index);
     ui_stagger(ui, f->stagger_n++);
-    const bool hit = ui_button_v(ui, id, x, y, w, ROW_H, disabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY,
-                                 highlighted && !f->confirm_new ? UI_F_BREATHE : 0);
+    const UiVariant v = disabled ? UI_V_DISABLED : highlighted ? UI_V_PRIMARY : UI_V_SECONDARY;
+    const bool hit = ui_button_v(ui, id, x, y, w, ROW_H, v, highlighted && !f->confirm_new ? UI_F_BREATHE : 0);
     if (tag) {
         const float lip = mg_minf(k_ui.lip_button, ROW_H * 0.13f), tw = ui_text_w(ui, TEXT_FACE_BOLD, tag, 13.0f) + 18.0f;
         const float ty = y + (ROW_H - lip) * 0.5f - 12.0f;
         ui_shape(ui->gfx, &(UiShape){.x = x + w - tw - 12.0f, .y = ty, .w = tw, .h = 24.0f, .radius = -1.0f, .color = ui_rgba(k_ui.surface_tint)});
         ui_text_c(ui, TEXT_FACE_BOLD, x + w - tw * 0.5f - 12.0f, ty + 12.0f, 13.0f, ui_rgba(k_ui.teal_text), tag);
+        const float room = w - tw - 24.0f;
+        float size = mg_minf(k_ui.t_button, (ROW_H - lip) * 0.44f);
+        const float lw = ui_text_w(ui, TEXT_FACE_DISPLAY, label, size);
+        if (lw > room - 16.0f && lw > 0.0f) {
+            size *= (room - 16.0f) / lw;
+        }
+        UiColor face, lipc, tc;
+        ui_variant_colors(v, &face, &lipc, &tc);
+        ui_text_c(ui, TEXT_FACE_DISPLAY, x + room * 0.5f + 6.0f, y + (ROW_H - lip) * 0.5f, size, tc, label);
     }
     ui_stagger_end(ui);
     if (hit) {
@@ -486,8 +504,9 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     float w = app->width_pt, h = app->height_pt;
     float x = EDGE_L, cw = column_w(app);
     float y = TOP_EDGE + 8.0f;
-    title_block(ui, str("menu_title"), x, y - 8.0f, cw, false);
-    y += 54.0f;
+    title_block_sized(ui, str("menu_title"), x, y - 8.0f, cw, false, MENU_TITLE_SIZE);
+    y += 54.0f + (MENU_TITLE_SIZE - TITLE_SIZE);
+    const float rw = cw * MENU_ROW_FRAC; /* the rows; Continue below keeps cw */
     y += 12.0f;
     FeAction a = FE_NONE;
     /* the account, top right: opens Friends */
@@ -522,19 +541,19 @@ static FeAction main_menu(Frontend *f, Ui *ui, MgApp *app, const FrontendCtx *ct
     const float rows_off = ui_scroll_begin(ui, &f->menu_scroll, x - 4.0f, rows_top, cw + 8.0f, rows_view, false);
     y -= rows_off;
     if (guest) {
-        menu_row(f, ui, app, 0, str("lobby_wait_host"), x, y, cw, false, true, NULL);
+        menu_row(f, ui, app, 0, str("lobby_wait_host"), x, y, rw, false, true, NULL);
         y += ROW_H + 8.0f;
     }
     /* New Game is Settings -> Erase progress now; Maps is the main button when there is no save */
-    if (menu_row(f, ui, app, 4, str("maps"), x, y, cw, !show_continue && !guest, guest || !ctx->maps_ready, ctx->maps_tag) && !guest && ctx->maps_ready) {
+    if (menu_row(f, ui, app, 4, str("maps"), x, y, rw, !show_continue && !guest, guest || !ctx->maps_ready, NULL) && !guest && ctx->maps_ready) {
         a = FE_OPEN_MAPS;
     }
     y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, 31, str("locker"), x, y, cw, false, false, NULL)) {
+    if (menu_row(f, ui, app, 31, str("locker"), x, y, rw, false, false, NULL)) {
         frontend_go(f, FE_CREATOR);
     }
     y += ROW_H + 8.0f;
-    if (menu_row(f, ui, app, 2, str("settings"), x, y, cw, false, false, NULL)) {
+    if (menu_row(f, ui, app, 2, str("settings"), x, y, rw, false, false, NULL)) {
         frontend_go(f, FE_SETTINGS);
     }
     y += ROW_H;
