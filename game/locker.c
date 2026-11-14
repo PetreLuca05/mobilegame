@@ -3,6 +3,7 @@
 #include <SDL3/SDL_stdinc.h>
 #include <math.h>
 
+#include "core/log.h"
 #include "creator.h"
 #include "gfx/material.h"
 #include "gfx/mesh.h"
@@ -103,6 +104,24 @@ bool locker_init(Locker *k, GfxContext *g, Arena *scratch)
     }
     arena_reset_to(scratch, mark);
     return ok && k->quad != GFX_MESH_NONE && k->disc != GFX_MESH_NONE;
+}
+
+void locker_fit(Locker *k, GfxContext *g, const AvatarMeshes *m)
+{
+    for (int t = 0; t < 2; t++) {
+        const int n = t == 0 ? AVATAR_SUITS : AVATAR_ACCESSORIES;
+        for (int i = 0; i < n && i < 8; i++) {
+            HMM_Vec3 lo, hi;
+            k->fit_d[t][i] = 0.0f;
+            if (!avatar_part_bounds(m, g, t == 0 ? AVATAR_ONLY_BODY : AVATAR_ONLY_ACCESSORY, i, &lo, &hi)) {
+                continue;
+            }
+            k->fit_c[t][i] = HMM_MulV3F(HMM_AddV3(lo, hi), 0.5f);
+            k->fit_d[t][i] = mg_maxf(hi.X - lo.X, mg_maxf(hi.Y - lo.Y, hi.Z - lo.Z));
+            mg_log_info("locker: fit %s %d: %.3f x %.3f x %.3f m", t == 0 ? "outfit" : "accessory", i, (double)(hi.X - lo.X), (double)(hi.Y - lo.Y),
+                        (double)(hi.Z - lo.Z));
+        }
+    }
 }
 
 void locker_layout(const MgApp *app, LockerLayout *l)
@@ -598,6 +617,20 @@ void locker_draw(Locker *k, GfxContext *g, const MgApp *app, const AvatarMeshes 
             const float yc = -d * l.slot / ppm; /* slot centre, metres (y up) */
             p.feet = head ? HMM_V3(0.0f, yc, 0.0f) : HMM_V3(0.0f, yc - (body_top + bottom) * 0.5f * p.scale, 0.0f);
             p.yaw = HMM_PI32 + HMM_AngleDeg(20.0f) * sinf(k->t * 1.3f + (float)i); /* a little turn so the shape reads */
+            if (show == SHOW_BODY || show == SHOW_ACCESSORY) { /* fitted by its own box: its largest side 70 % of the slot, turning about
+                                                             * the box centre (the box is in the root frame: feet, yaw + pi) */
+                const int ft = show == SHOW_BODY ? 0 : 1;
+                const float fd = i < 8 ? k->fit_d[ft][i] : 0.0f;
+                if (fd <= 0.0f) {
+                    continue; /* draws nothing (None) */
+                }
+                const float card = mg_minf(l.slot - 8.0f, l.wheel_w - 8.0f) * (1.0f - WHEEL_SHRINK * fabsf(d)); /* the slot's card, pt */
+                p.head_only = false;
+                p.scale = 0.70f * card / ppm / fd;
+                const HMM_Vec3 c = HMM_MulV3F(k->fit_c[ft][i], p.scale);
+                const HMM_Vec3 rc = HMM_MulM4V4(HMM_Rotate_RH(p.yaw + HMM_PI32, HMM_V3(0, 1, 0)), HMM_V4V(c, 0.0f)).XYZ;
+                p.feet = HMM_V3(-rc.X, yc - rc.Y, -rc.Z);
+            }
             p.hide = mg_maxf(k->open ? fade : 1.0f, clampf((fabsf(d) - WHEEL_FADE_FROM) / (WHEEL_REACH - WHEEL_FADE_FROM), 0.0f, 1.0f)) /* closed: gone with its UI */;
             avatar_animate(m, &k->item_anim[j], &p, dt);
             avatar_draw(g, m, &il, &p, &k->item_anim[j], NULL);

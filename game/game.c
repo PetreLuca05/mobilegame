@@ -1056,6 +1056,7 @@ bool game_init(MgApp *app)
     if (!avatar_meshes_init(&g->avatar_meshes, app->gfx, &app->perm)) {
         return false;
     }
+    locker_fit(&g->fe.locker, app->gfx, &g->avatar_meshes); /* LOCKER-1: each outfit's and accessory's box, once */
     if (!menu_library_init(&g->lib, app->gfx, &app->perm)) {
         return false; /* LIB-1: the menu has no other backdrop */
     }

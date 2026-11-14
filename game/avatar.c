@@ -315,6 +315,18 @@ bool avatar_meshes_init(AvatarMeshes *m, GfxContext *g, Arena *scratch)
     /* the suit body (zones) and its hull, else the plain exported body */
     const MgmbGroup *profile = mgmb_group(&base, "avatar_body");
     m->body = upload_lathe(g, scratch, o, "body_suit", profile);
+    { /* the stethoscope zone's own box (zone = 255 - vertex alpha), for the Locker's fit */
+        const MgmbGroup *bs = o ? mgmb_group(o, "body_suit") : NULL;
+        m->stetho_lo = HMM_V3(1e9f, 1e9f, 1e9f), m->stetho_hi = HMM_V3(-1e9f, -1e9f, -1e9f);
+        for (uint32_t i = 0; bs && i < bs->vert_count; i++) {
+            const GfxVertex *v = &bs->verts[i];
+            if (255 - v->a == 7) {
+                m->stetho_lo = HMM_V3(fminf(m->stetho_lo.X, v->px), fminf(m->stetho_lo.Y, v->py), fminf(m->stetho_lo.Z, v->pz));
+                m->stetho_hi = HMM_V3(fmaxf(m->stetho_hi.X, v->px), fmaxf(m->stetho_hi.Y, v->py), fmaxf(m->stetho_hi.Z, v->pz));
+                m->stetho_ok = true;
+            }
+        }
+    }
     m->body_hull = upload_hull(g, scratch, o, "body_suit_hull");
     if (m->body == GFX_MESH_NONE) {
         m->body = upload_lathe(g, scratch, &base, "avatar_body", profile);
@@ -794,6 +806,10 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
         return;
     }
     const bool acc_only = p->only == AVATAR_ONLY_ACCESSORY;
+    if (acc_only && look->accessory == ACC_STETHOSCOPE) { /* a zone of the body: the body with that zone alone */
+        outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, HMM_V4(extra.X, extra.Y, extra.Z, (float)(1u << 7)));
+        return;
+    }
     if (!p->head_only && !acc_only) {
         outlined(&dc, m->body, m->body_hull, s.body_s, look->outfit, extra);
     }
@@ -844,6 +860,56 @@ static void draw_avatar(GfxContext *g, const AvatarMeshes *m, const AvatarLook *
     if (!override && p->lying <= 0.0f) {
         draw_contact_shadow(g, m, &shadow_pose, world, shadow_k);
     }
+}
+
+static void box_through(HMM_Mat4 mx, HMM_Vec3 a, HMM_Vec3 b, HMM_Vec3 *lo, HMM_Vec3 *hi)
+{
+    for (int k = 0; k < 8; k++) {
+        const HMM_Vec3 c = xform(mx, HMM_V3(k & 1 ? b.X : a.X, k & 2 ? b.Y : a.Y, k & 4 ? b.Z : a.Z));
+        *lo = HMM_V3(fminf(lo->X, c.X), fminf(lo->Y, c.Y), fminf(lo->Z, c.Z));
+        *hi = HMM_V3(fmaxf(hi->X, c.X), fmaxf(hi->Y, c.Y), fmaxf(hi->Z, c.Z));
+    }
+}
+
+bool avatar_part_bounds(const AvatarMeshes *m, GfxContext *g, int kind, int item, HMM_Vec3 *lo, HMM_Vec3 *hi)
+{
+    NetSkin sk = AVATAR_DEFAULT_SKIN;
+    if (kind == AVATAR_ONLY_BODY) {
+        sk.suit = (uint8_t)item;
+    } else {
+        sk.accessory = (uint8_t)item;
+    }
+    const AvatarLook look = avatar_look_from_skin(sk);
+    AvatarPose p;
+    SDL_zero(p);
+    p.grounded = true;
+    AvatarAnim a;
+    SDL_zero(a);
+    AvatarSolved s;
+    avatar_solve(m, &look, &p, &a, &s);
+    *lo = HMM_V3(1e9f, 1e9f, 1e9f), *hi = HMM_V3(-1e9f, -1e9f, -1e9f);
+    HMM_Vec3 a0, b0;
+    const HMM_Mat4 inv = HMM_InvGeneralM4(s.root); /* into the root frame (feet, heading) */
+    if (kind == AVATAR_ONLY_BODY) {
+        if (!gfx_mesh_bounds(g, m->body, &a0, &b0)) {
+            return false;
+        }
+        box_through(HMM_MulM4(inv, s.body_s), a0, b0, lo, hi);
+        return true;
+    }
+    if (item == ACC_STETHOSCOPE) {
+        if (!m->stetho_ok) {
+            return false;
+        }
+        box_through(HMM_MulM4(inv, s.body_s), m->stetho_lo, m->stetho_hi, lo, hi);
+        return true;
+    }
+    const GfxMeshId id = item == ACC_SUNGLASSES ? m->glasses : item == ACC_CAT_EARS ? m->ears : item == ACC_MASK ? m->mask : GFX_MESH_NONE;
+    if (!gfx_mesh_bounds(g, id, &a0, &b0)) {
+        return false;
+    }
+    box_through(HMM_MulM4(inv, s.head), a0, b0, lo, hi);
+    return true;
 }
 
 void avatar_draw(GfxContext *g, const AvatarMeshes *m, const AvatarLook *look, const AvatarPose *p,

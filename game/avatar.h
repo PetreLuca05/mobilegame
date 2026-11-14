@@ -77,6 +77,8 @@ typedef struct AvatarMeshes {
     GfxMeshId glasses, ears, mask, hat, cane, bucket, shadow;
     /* how far each head-space part's nearest vertex is from the head's surface (m): attached when ~0 */
     float hair_gap[AVATAR_HAIRS], acc_gap[4]; /* acc: glasses, cat ears, mask, hat */
+    HMM_Vec3 stetho_lo, stetho_hi; /* the stethoscope's zone (7) of the suit body, in the body mesh's space (the Locker fits it) */
+    bool stetho_ok;
     AvatarRig rig;
 } AvatarMeshes;
 
@@ -159,6 +161,9 @@ uint32_t avatar_skin_rgb(uint8_t skin); /* 0xRRGGBB */
 /* Placeholder look for a peer whose Presence has not arrived yet. */
 AvatarLook avatar_look_for_slot(int slot);
 const char *avatar_palette_name(int i);
+/* LOCKER-1: one outfit or accessory part's bounding box in the avatar's root frame (scale 1, standard look), for fitting it to a
+ * slot. kind: AVATAR_ONLY_BODY (item = suit) or AVATAR_ONLY_ACCESSORY (item = ACC_*). False when the item draws nothing. */
+bool avatar_part_bounds(const AvatarMeshes *m, GfxContext *g, int kind, int item, HMM_Vec3 *lo, HMM_Vec3 *hi);
 const uint32_t *avatar_skin_colors(void);
 const uint32_t *avatar_hair_colors(void);
 void avatar_suit_colors(int suit, uint32_t *outfit, uint32_t *accent);

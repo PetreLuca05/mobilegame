@@ -53,12 +53,17 @@ typedef struct Locker {
     AvatarAnim hero_anim, item_anim[LOCKER_SHOWN];
     GfxMeshId quad, disc;     /* a unit quad and a unit disc: rounded cards = 2 quads + 4 discs (instanced) */
     UiScroll hc_scroll;       /* the hair colours' column (Coafură) */
+    /* the outfits' and accessories' fit (locker_fit, once at load): each part's box in the avatar root frame */
+    HMM_Vec3 fit_c[2][8];     /* [0] outfits (AVATAR_SUITS), [1] accessories: the box centre */
+    float fit_d[2][8];        /* its largest dimension; 0 = draws nothing */
     float drag_frames;        /* tests: frames the wheel moved */
     bool demo_drag;           /* perf locker_drag / --locker-demo drag: the wheel swept up and down as a drag would */
 } Locker;
 
 bool locker_init(Locker *k, GfxContext *g, Arena *scratch);
 void locker_layout(const MgApp *app, LockerLayout *l);
+/* Once at load, after the avatar meshes: every outfit's and accessory's own bounding box (the wheel fits each to 70 % of its slot). */
+void locker_fit(Locker *k, GfxContext *g, const AvatarMeshes *m);
 /* Where the menu camera must centre the hero (pt from the left): the stage's middle. */
 float locker_centre_x(const MgApp *app);
 /* The screen (UI): tabs, title, back, wheel input, dice, Done. Returns true when the skin changed. Sets *done / *back. */
