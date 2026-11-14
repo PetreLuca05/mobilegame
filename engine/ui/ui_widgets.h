@@ -43,6 +43,10 @@ float ui_tag_chip(Ui *ui, const char *text, float right, float top);
 float ui_tag_chip_w(const Ui *ui, const char *text);
 /* Buttons: "Text##id"; returns true on the touch-up inside. */
 bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, UiVariant v, int flags);
+/* A sign-in button in its provider's colours (Google: white, grey edge, blue G; Apple: black, white apple); disabled = the same
+ * colours dimmed, not a target. */
+typedef enum UiBrand { UI_BRAND_GOOGLE, UI_BRAND_APPLE } UiBrand;
+bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float h, UiBrand brand, bool enabled);
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v);
 /* The switch alone (76 x 44) at (x, y); returns true when it flipped. */
 bool ui_switch(Ui *ui, const char *id, float x, float y, bool *value);

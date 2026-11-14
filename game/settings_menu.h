@@ -3,7 +3,7 @@
  *   Game  camera/control sliders, invert Y, disconnect / main menu, and a
  *         "Developer" fold (colliders, triggers, floor teleports)
  *   Account  name field, "Edit character" (opens the creator) and the
- *            account block (guest -> Continue with Google / Apple, or
+ *            account block (guest -> Link account: a dialog with Google (Apple shown disabled), or
  *            signed in -> Sign out)
  * Changes are reported as actions; the game applies and saves them. */
 #ifndef MG_SETTINGS_MENU_H
@@ -76,6 +76,7 @@ typedef struct SettingsMenu {
     char name[NET_NAME_LEN];
     bool editing_name; /* keep the on-screen keyboard up while true */
     bool confirm_erase; /* the Erase progress dialog is up */
+    bool link_open;     /* guests: the Link account dialog (Google; Apple disabled for now) */
     /* where the live preview goes this frame (valid when preview_visible) */
     bool preview_visible;
     float preview_x, preview_y, preview_size;

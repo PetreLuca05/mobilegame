@@ -622,6 +622,8 @@ static const TapStep k_onboarding[] = {
     {FE_CREATOR, "crtab3", false},  {FE_CREATOR, "cr3_0_1", true},   {FE_CREATOR, "crtab4", false},
     {FE_CREATOR, "cr4_0_1", true},  {FE_CREATOR, "dice", true},      {FE_CREATOR, "creator", false},
     {FE_MAIN_MENU, "menurow31", false}, {FE_CREATOR, "creator", false}, /* Locker, and back */
+    {FE_MAIN_MENU, "menurow2", false}, {FE_SETTINGS, "tab1", false},     {FE_SETTINGS, "link_account", false}, /* the guest's Link account dialog */
+    {FE_SETTINGS, "link_close", false}, {FE_SETTINGS, "menu", false},
 };
 /* New Game = Settings -> Account -> Erase progress, back, Maps (the first island, no last hospital) */
 static const TapStep k_new_game[] = {

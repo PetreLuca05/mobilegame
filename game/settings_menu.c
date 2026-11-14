@@ -79,31 +79,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
 #ifndef MG_CAMERA_THIRDPERSON
     ui_toggle(ui, str("show_stats"), cx, cy, cw, &s->show_stats);
     cy += 52.0f;
-    ui_label_caps(ui, cx, cy + 4.0f, str("chat_bubbles"));
-    cy += 22.0f;
-    static const char *const bubble_keys[3] = {"npc_off##bub", "bubble_active##bub", "npc_all##bub"};
-    const float bub_w = (cw - 16.0f) / 3.0f;
-    for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, str(bubble_keys[i]), cx + (float)i * (bub_w + 8.0f), cy, bub_w, k_ui.target_min, s->chat_bubbles == i)) {
-            s->chat_bubbles = i;
-        }
-    }
-    cy += 52.0f;
-    ui_label_caps(ui, cx, cy + 4.0f, str("npc_density"));
-    cy += 22.0f;
-    static const float npc_d[3] = {0.0f, 0.5f, 1.0f};
-    static const char *const npc_d_keys[3] = {"npc_off##den", "npc_low##den", "npc_normal##den"};
-    const float third = (cw - 16.0f) / 3.0f;
-    for (int i = 0; i < 3; i++) {
-        if (ui_button(ui, str(npc_d_keys[i]), cx + (float)i * (third + 8.0f), cy, third, k_ui.target_min, s->npc_density == npc_d[i])) {
-            s->npc_density = npc_d[i];
-        }
-    }
-    cy += 52.0f;
-    ui_toggle(ui, L("set_show_own_name", "own_name"), cx, cy, cw, &s->show_own_name);
-    cy += 52.0f;
-    ui_toggle(ui, L("set_show_xray", "xray"), cx, cy, cw, &s->show_xray);
-    cy += 52.0f;
     if (ui_haptic_supported()) { /* HAPTIC-1 Vibrații: hidden without a Taptic Engine */
         ui_label_caps(ui, cx, cy + 4.0f, str("haptics"));
         cy += 22.0f;
@@ -116,20 +91,6 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
                 s->haptics = i;
                 ui_haptic_set_level((HapticLevel)i);
                 ui_haptic(HAPTIC_PRIMARY); /* a preview at the new level */
-            }
-        }
-        cy += 56.0f;
-    }
-    { /* TILT-1 Efect 3D la înclinare: Oprit / Fin / Complet */
-        ui_label_caps(ui, cx, cy + 4.0f, str("ui_tilt"));
-        cy += 22.0f;
-        static const char *const tkeys[3] = {"haptics_off", "haptics_fine", "haptics_full"};
-        const float tw3 = (cw - 16.0f) / 3.0f;
-        for (int i = 0; i < 3; i++) {
-            char tl[64];
-            SDL_snprintf(tl, sizeof(tl), "%s##tilt%d", str(tkeys[i]), i);
-            if (ui_button(ui, tl, cx + (float)i * (tw3 + 8.0f), cy, tw3, k_ui.target_min, s->ui_tilt == i)) {
-                s->ui_tilt = i;
             }
         }
         cy += 56.0f;
@@ -216,6 +177,46 @@ static float game_tab(SettingsMenu *m, Ui *ui, GameSettings *s, float x, float y
         }
         y += 56.0f;
 #endif
+        /* player-facing options parked here (user decision 2026-11-14): bubbles, NPC density, own name, x-ray, tilt */
+        ui_label_caps(ui, x, y + 4.0f, str("chat_bubbles"));
+        y += 22.0f;
+        static const char *const bubble_keys[3] = {"npc_off##bub", "bubble_active##bub", "npc_all##bub"};
+        const float bub_w = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            if (ui_button(ui, str(bubble_keys[i]), x + (float)i * (bub_w + 8.0f), y, bub_w, k_ui.target_min, s->chat_bubbles == i)) {
+                s->chat_bubbles = i;
+            }
+        }
+        y += 52.0f;
+        ui_label_caps(ui, x, y + 4.0f, str("npc_density"));
+        y += 22.0f;
+        static const float npc_d[3] = {0.0f, 0.5f, 1.0f};
+        static const char *const npc_d_keys[3] = {"npc_off##den", "npc_low##den", "npc_normal##den"};
+        const float third = (cw - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; i++) {
+            if (ui_button(ui, str(npc_d_keys[i]), x + (float)i * (third + 8.0f), y, third, k_ui.target_min, s->npc_density == npc_d[i])) {
+                s->npc_density = npc_d[i];
+            }
+        }
+        y += 52.0f;
+        ui_toggle(ui, L("set_show_own_name", "own_name"), x, y, cw, &s->show_own_name);
+        y += 52.0f;
+        ui_toggle(ui, L("set_show_xray", "xray"), x, y, cw, &s->show_xray);
+        y += 52.0f;
+        { /* TILT-1 Efect 3D la înclinare: Oprit / Fin / Complet */
+            ui_label_caps(ui, x, y + 4.0f, str("ui_tilt"));
+            y += 22.0f;
+            static const char *const tkeys[3] = {"haptics_off", "haptics_fine", "haptics_full"};
+            const float tw3 = (cw - 16.0f) / 3.0f;
+            for (int i = 0; i < 3; i++) {
+                char tl[64];
+                SDL_snprintf(tl, sizeof(tl), "%s##tilt%d", str(tkeys[i]), i);
+                if (ui_button(ui, tl, x + (float)i * (tw3 + 8.0f), y, tw3, k_ui.target_min, s->ui_tilt == i)) {
+                    s->ui_tilt = i;
+                }
+            }
+            y += 56.0f;
+        }
         ui_toggle(ui, L("dev_colliders", "colliders"), x, y, cw, &s->show_colliders);
         ui_toggle(ui, L("dev_triggers", "triggers"), wide ? x2 : x, wide ? y : y + 52.0f, cw, &s->show_triggers);
         y += wide ? 52.0f : 104.0f;
@@ -347,22 +348,13 @@ static float skin_tab(SettingsMenu *m, Ui *ui, const SettingsAccount *acct, floa
         ui_label(ui, x + hs + 10.0f, y + 18.0f, 13.0f, k_ui_theme.text_dim, str("link_connected"));
     }
     y += 56.0f;
-    if (acct->guest) {
+    if (acct->guest) { /* one button: the Link account dialog (Google; Apple shown, not yet offered) */
         if (acct->busy) {
-            ui_button(ui, "…##google", x, y, cw, 44.0f, false);
+            ui_button(ui, "…##link_account", x, y, cw, 44.0f, false);
         } else {
-            float bw = acct->apple_ready ? (cw - 8.0f) * 0.5f : cw;
-            if (acct->google_ready) {
-                SDL_snprintf(label, sizeof(label), "%s##google", str("link_connect_google"));
-                if (ui_button(ui, label, x, y, bw, 44.0f, true)) {
-                    *action = MENU_GOOGLE;
-                }
-            }
-            if (acct->apple_ready) {
-                SDL_snprintf(label, sizeof(label), "%s##apple", str("link_connect_apple"));
-                if (ui_button(ui, label, acct->google_ready ? x + bw + 8.0f : x, y, bw, 44.0f, false)) {
-                    *action = MENU_APPLE;
-                }
+            SDL_snprintf(label, sizeof(label), "%s##link_account", str("link_row"));
+            if (ui_button_v(ui, label, x, y, cw, 44.0f, UI_V_PRIMARY, UI_F_SMALL)) {
+                m->link_open = true;
             }
         }
     } else if (ui_button(ui, L("sign_out", "sign_out"), x, y, cw, 44.0f, false)) {
@@ -632,9 +624,16 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
     (void)held;
     ui_text(ui, TEXT_FACE_DISPLAY, x0 + k_ui.icon_button + 12.0f, y0 + 2.0f, mg_minf(k_ui.t_title, lw * 0.22f), ui_rgba(k_ui.ink), str("settings"));
     float y = y0 + 74.0f;
-    const char *const tab_names[2] = {str("set_tab_game"), str("set_tab_account")};
-    ui_tabs(ui, "tab", tab_names, 2, &m->tab, x0, y, lw, 50.0f);
-    y += 66.0f;
+    static const char *const tab_keys[2] = {"set_tab_game", "set_tab_account"};
+    for (int t = 0; t < 2; t++) { /* stacked buttons, as the Friends page's Prieteni / Cereri / Adaugă */
+        char tl[64];
+        SDL_snprintf(tl, sizeof(tl), "%s##tab%d", str(tab_keys[t]), t);
+        if (ui_button(ui, tl, x0, y, lw, 50.0f, m->tab == t)) {
+            m->tab = t;
+        }
+        y += 58.0f;
+    }
+    y += 8.0f;
     if (status && status[0]) {
         ui_text(ui, TEXT_FACE_BODY, x0, y, k_ui.t_small, ui_rgba(k_ui.ink_soft), status);
     }
@@ -669,9 +668,33 @@ MenuAction settings_menu(SettingsMenu *m, Ui *ui, GameSettings *s, const Setting
         }
         ui_modal_end(ui);
     }
+    if (m->link_open && acct->guest && !acct->busy) { /* Link account: the guest's data moves into the chosen account */
+        const float dw = mg_minf(420.0f, w_pt - safe_l - safe_r - 32.0f), dh = 300.0f;
+        float dx, dy;
+        ui_modal(ui, "link_account", dw, dh, &dx, &dy);
+        ui_text_c(ui, TEXT_FACE_DISPLAY, dx + dw * 0.5f, dy + 36.0f, 24.0f, ui_rgba(k_ui.ink), str("link_row"));
+        ui_text_c(ui, TEXT_FACE_BODY, dx + dw * 0.5f, dy + 68.0f, k_ui.t_small, ui_rgba(k_ui.ink_soft), str("link_account_body1"));
+        ui_text_c(ui, TEXT_FACE_BODY, dx + dw * 0.5f, dy + 88.0f, k_ui.t_small, ui_rgba(k_ui.ink_soft), str("link_account_body2"));
+        const float bx = dx + 20.0f, bw = dw - 40.0f;
+        char b[64];
+        SDL_snprintf(b, sizeof(b), "%s##google", str("link_connect_google"));
+        if (ui_button_brand(ui, b, bx, dy + 112.0f, bw, 50.0f, UI_BRAND_GOOGLE, acct->google_ready)) {
+            action = MENU_GOOGLE;
+            m->link_open = false;
+        }
+        SDL_snprintf(b, sizeof(b), "%s##apple", str("link_connect_apple")); /* for later: Google first (user decision) */
+        ui_button_brand(ui, b, bx, dy + 170.0f, bw, 50.0f, UI_BRAND_APPLE, false);
+        ui_tag_chip(ui, str("friend_soon"), bx + bw - 10.0f, dy + 170.0f + (50.0f - k_ui.tag_h) * 0.5f);
+        SDL_snprintf(b, sizeof(b), "%s##link_close", str("cancel"));
+        if (ui_button_v(ui, b, bx, dy + dh - 66.0f, bw, 46.0f, UI_V_SECONDARY, UI_F_SMALL)) {
+            m->link_open = false;
+        }
+        ui_modal_end(ui);
+    }
     if (!m->open) {
         m->editing_name = false;
         m->confirm_erase = false;
+        m->link_open = false;
     }
 #ifndef NDEBUG
     if (lab) {

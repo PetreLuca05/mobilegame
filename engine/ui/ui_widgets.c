@@ -311,6 +311,53 @@ bool ui_button_v(Ui *ui, const char *label, float x, float y, float w, float h, 
     return clicked;
 }
 
+bool ui_button_brand(Ui *ui, const char *label, float x, float y, float w, float h, UiBrand brand, bool enabled)
+{
+    const bool g = brand == UI_BRAND_GOOGLE;
+    UiColor face = C(g ? k_ui.google_face : k_ui.apple_face), lip = C(g ? k_ui.google_lip : k_ui.apple_lip);
+    UiColor tc = C(g ? k_ui.google_text : k_ui.apple_text), mark = g ? C(k_ui.brand_google) : tc;
+    if (!enabled) { /* dimmed: the colours stay recognisable */
+        face.a = lip.a = tc.a = mark.a = 110;
+    }
+    const uint32_t key = ui_key(label);
+    bool held = false, clicked = false;
+    if (enabled) {
+        ui->hclass = HC_SECONDARY;
+        clicked = ui_press(ui, label, x, y, w, h, &held, false);
+    }
+    const float lip_h = mg_minf(k_ui.lip_button, h * 0.13f), face_h = h - lip_h, r = mg_minf(k_ui.r_button, face_h * 0.5f);
+    ui_depth(ui, 2, key, 0);
+    begin_squash(ui, key, x + w * 0.5f, y + h, 1.0f);
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = y + lip_h, .w = w, .h = face_h, .radius = r, .lip = lip_h, .color = lip});
+    ui_shape(ui->gfx, &(UiShape){.x = x, .y = y, .w = w, .h = face_h, .radius = r, .stroke = g ? -k_ui.edge_secondary : 0.0f, .color = face, .color2 = lip});
+    char vis[96];
+    const char *hash = strstr(label, "##");
+    const size_t n = hash ? (size_t)(hash - label) : strlen(label);
+    SDL_snprintf(vis, sizeof(vis), "%.*s", (int)(n < sizeof(vis) ? n : sizeof(vis) - 1), label);
+    const float logo = face_h * 0.5f, lx = x + 16.0f + logo * 0.5f, cy = y + face_h * 0.5f; /* the mark at the left, the text centred */
+    float size = k_ui.t_body;
+    const float tw = ui_text_w(ui, TEXT_FACE_DISPLAY, vis, size), room = w - 2.0f * (32.0f + logo);
+    if (tw > room && tw > 0.0f) {
+        size *= room / tw;
+    }
+    if (g) {
+        ui_text_c(ui, TEXT_FACE_DISPLAY, lx, cy, logo * 1.15f, mark, "G");
+    } else { /* a simple apple: body, bite, leaf */
+        const float s = logo / 22.0f;
+        ui_circle(ui->gfx, ui->font, lx - 3.0f * s, cy + 2.0f * s, 7.5f * s, mark);
+        ui_circle(ui->gfx, ui->font, lx + 3.0f * s, cy + 2.0f * s, 7.5f * s, mark);
+        ui_circle(ui->gfx, ui->font, lx + 9.0f * s, cy - 1.0f * s, 3.5f * s, face);
+        ui_circle(ui->gfx, ui->font, lx + 1.0f * s, cy - 9.0f * s, 2.5f * s, mark);
+    }
+    ui_text_c(ui, TEXT_FACE_DISPLAY, x + w * 0.5f, cy, size, tc, vis);
+    gfx_ui_group_off(ui->gfx);
+    ui_depth_end(ui);
+    if (clicked && ui->fx) {
+        ui_fx_tier(ui->fx, UI_T1, x + w * 0.5f, cy, true);
+    }
+    return clicked;
+}
+
 bool ui_icon_button(Ui *ui, const char *id, UiIcon icon, float x, float y, float size, UiVariant v)
 {
     UiColor face, lip, tc;

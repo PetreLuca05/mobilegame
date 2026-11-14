@@ -150,6 +150,8 @@
   "link_welcome_back": "Bine ai revenit, %s",
   "link_summary": "%d sesiuni, %d minute jucate",
   "link_row": "Conectează contul",
+  "link_account_body1": "Numele, personajul, prietenii și progresul de invitat",
+  "link_account_body2": "se mută în contul ales.",
   "link_ok": "Cont conectat",
   "wm_provisional": "Hartă provizorie",
   "ui_sounds": "Sunete interfață",

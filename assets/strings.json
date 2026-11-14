@@ -207,6 +207,8 @@
   "link_welcome_back": "Welcome back, %s",
   "link_summary": "%d sessions, %d minutes played",
   "link_row": "Connect account",
+  "link_account_body1": "Your guest name, character, friends and progress",
+  "link_account_body2": "move into the account you pick.",
   "link_ok": "Account connected",
   "menu_title": "Rezi",
   "maps": "Maps",

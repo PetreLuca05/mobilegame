@@ -176,21 +176,21 @@ static const FtOp k_scroll[] = {
 #define LSTATE(x) {OP_LINK_STATE, NULL, x}
 #define START_GUEST {OP_READY, NULL, 0}, {OP_UID_SAVE, NULL, 0}, {OP_GUEST, NULL, 1}
 static const FtOp k_l1[] = { /* new identity: linked in place */
-    START_GUEST, {OP_SEED, NULL, 0}, {OP_STATS_FLUSH, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), TAP("google"), SHOT("overlay"),
+    START_GUEST, {OP_SEED, NULL, 0}, {OP_STATS_FLUSH, NULL, 0}, SLEEP(2.0), TAP("tab1"), SLEEP(0.5), SHOT("account_guest"), TAP("link_account"), SLEEP(0.6), SHOT("link_dialog"), TAP("google"), SHOT("overlay"),
     {OP_GUEST, NULL, 0}, LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_READY, NULL, 0}, SLEEP(1.5), SHOT("account_linked"), SIG("l1_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_l2[] = { /* identity taken: confirm, merge, the account is loaded */
-    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), SLEEP(0.5), SHOT("dialog"), TAP("link_continue"), LSTATE(AL_RESULT), SLEEP(1.0), SHOT("result"),
+    START_GUEST, {OP_SEED, NULL, 0}, SLEEP(2.0), TAP("tab1"), TAP("link_account"), TAP("google"), LSTATE(AL_DIALOG), SLEEP(0.5), SHOT("dialog"), TAP("link_continue"), LSTATE(AL_RESULT), SLEEP(1.0), SHOT("result"),
     TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0}, {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, SIG("l2_done"), {OP_END, NULL, 0},
 };
 static const FtOp k_l3[] = { /* cancel: nothing changed */
-    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("link_account"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 static const FtOp k_l4[] = { /* the connection dies before the merge: the guest comes back (run with MG_TEST_AUTH_FAIL=redeem) */
-    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_MERGING), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("link_account"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_MERGING), LSTATE(AL_IDLE), SLEEP(1.0), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 static const FtOp k_l5[] = { /* reinstall: a fresh guest signs in and everything is back */
-    START_GUEST, TAP("tab1"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0},
+    START_GUEST, TAP("tab1"), TAP("link_account"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_continue"), LSTATE(AL_RESULT), TAP("link_done"), {OP_UID_DIFF, NULL, 0}, {OP_GUEST, NULL, 0},
     {OP_NAME_IS, "Seeded", 0}, {OP_READY, NULL, 0}, {OP_END, NULL, 0},
 };
 
@@ -200,7 +200,7 @@ static const FtOp k_lw[] = { /* the Welcome screen's button goes through the sam
 };
 static const FtOp k_lp[] = { /* the pause card: saves, closes the lobby, opens Settings -> Account */
     START_GUEST, {OP_PLAYING, NULL, 0}, SLEEP(1.0), TAP("gear"), {OP_DRAG_UP, "p_map", 0}, SLEEP(0.5), TAP("p_link"), {OP_FE_STATE, NULL, FE_SETTINGS}, {OP_LOBBY, NULL, LOBBY_MENU_SOLO}, SLEEP(0.5),
-    TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
+    TAP("link_account"), TAP("google"), LSTATE(AL_DIALOG), TAP("link_cancel"), LSTATE(AL_IDLE), {OP_UID_SAME, NULL, 0}, {OP_GUEST, NULL, 1}, {OP_END, NULL, 0},
 };
 
 /* two devices: the order comes from what each side can see, no shared files */
