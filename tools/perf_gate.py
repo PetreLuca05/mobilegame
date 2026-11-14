@@ -15,7 +15,7 @@ DEVICES = ["ipad"] # the iPad Air 4 is the reference; the iPhone is no longer te
 PRE_FRIENDS_PASSES = 4  # main, two blur (the frosted pause button, e99c268), UI: FRIENDS-1 may not add any
 MENU_TO_MAP_DRAWS_MAX = 60  # the Maps / Back move, the worst frame (user decision 2026-11-12: 60, not 46 + 16)
 MENU_TRIS_STOP_K = 75.0  # the menu at rest (LIB-1 square hall: estimate 58 k)
-SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "menu_front", "menu_to_map", "menu_travel", "ui_juice", "worldmap", "worldmap_travel", "island", "worldmap_voyage", "institute", "book"]
+SCENARIOS = ["yard", "lobby", "corridor_f2", "stress200", "npcs", "lift_panel", "interact_npc", "lobby4", "menu", "menu_front", "menu_to_map", "menu_travel", "ui_juice", "worldmap", "worldmap_travel", "island", "worldmap_voyage", "institute"]  # "book": parked with the missions (user decision 2026-11-14)
 # WORLD-1 estimates (iPad Air 4); a measurement over 2x an estimate fails. Draws counted by the renderer include the
 # HUD batch: <= 16 world + 1 x-ray (a cube hides the parked ambulance) + 1 HUD = 18.
 WORLD_LIMITS = {"worldmap": {"gpu_effective_ms": 1.5, "render_ms": 0.15, "cpu_tick_ms": 0.05},

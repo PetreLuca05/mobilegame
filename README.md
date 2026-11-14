@@ -76,14 +76,8 @@ USB debugging on. Connect, accept the prompt, run `tools/run_android.sh`.
 - **TestFlight**: `MG_IOS_TEAM_ID=... ASC_KEY_ID=... ASC_ISSUER_ID=... ASC_KEY_PATH=... tools/archive_ios.sh --upload`
   (needs the paid Apple Developer Program and an App Store Connect app with
   bundle id `ro.docvex.mobilegame`).
-- **Google Play internal testing**: create an upload key and
-  `platform/android/keystore.properties` (see `tools/build_aab.sh`), run
-  `tools/build_aab.sh`, upload `app-release.aab` in Play Console > Testing >
-  Internal testing.
-- **GitHub**: every push to `main` builds an APK and publishes it as the
-  `android-latest` release (`.github/workflows/android.yml`; add the
-  `MG_SUPABASE_HOST` and `MG_SUPABASE_ANON_KEY` repository secrets for
-  online play).
+- **App Store**: the same with `--store` (no Developer section in Settings).
+- Android was dropped (2026-11-14): the Play and GitHub APK builds were removed (see git history).
 
 ## Supabase setup (once)
 

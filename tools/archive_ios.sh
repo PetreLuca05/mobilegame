@@ -34,13 +34,15 @@ if [[ "$UPLOAD" == 1 ]]; then
     AUTH=(-authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID"
           -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 fi
+# BOOK-1: the leak guard over every tracked file before any archive (the pre-commit hook checks only what is staged)
+python3 -I tools/book/leakguard.py repo tools/book/leakguard.txt . || { echo "archive: the leak guard found book text in the repository, nothing archived" >&2; exit 1; }
 [[ -f config.local.h ]] || { echo "config.local.h missing: copy config.local.h.example and fill it in" >&2; exit 1; }
 
-# a store build needs a supplied content pack (MG_REQUIRE_REAL_CONTENT fails at configure without one);
+# no content pack is required while the missions are parked (user decision 2026-11-14); MG_CONTENT_DIR still embeds one if given.
 # MG_STORE is always explicit: ON only for --store (App Store), OFF for TestFlight
 cmake -S . -B "$BUILD" -G Xcode -DMG_PLATFORM=ios -DCMAKE_SYSTEM_NAME=iOS -DMG_PROF=OFF \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_OSX_ARCHITECTURES=arm64 -DMG_IOS_TEAM_ID="$TEAM" \
-    -DMG_REQUIRE_REAL_CONTENT=ON -DMG_CONTENT_DIR="${MG_CONTENT_DIR:-}" -DMG_STORE="$STORE"
+    -DMG_REQUIRE_REAL_CONTENT=OFF -DMG_CONTENT_DIR="${MG_CONTENT_DIR:-}" -DMG_STORE="$STORE"
 xcodebuild -project "$BUILD/mobilegame.xcodeproj" -scheme mobilegame -configuration Release \
     -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" -allowProvisioningUpdates "${AUTH[@]}" \
     archive

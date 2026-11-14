@@ -10,46 +10,6 @@ red "sign-in failed" message.
 
 ---
 
-## Android (Android 10 or newer)
-
-Almost every Android phone from 2019 onwards works (it needs Vulkan 1.1).
-
-### 1. Get the APK file
-
-Pick one:
-
-- **The file from this chat.** Tap `mobilegame.apk` and download it on your
-  phone.
-- **From GitHub (always the newest build).** Open
-  <https://github.com/PetreLuca05/mobilegame/releases> on your phone (sign in
-  to GitHub if the repository is private), open **Android build (latest
-  main)** and tap **mobilegame.apk**.
-  For online play in these builds, first add two repository secrets once:
-  GitHub → repository → Settings → Secrets and variables → Actions →
-  *New repository secret*:
-  `MG_SUPABASE_HOST` = `kugytvcupelitbaksotg.supabase.co` and
-  `MG_SUPABASE_ANON_KEY` = your publishable key (from `config.local.h`).
-  Then rerun the "android" workflow under the *Actions* tab.
-- **Build it yourself** with a USB cable: see `README.md` → Device setup →
-  Android, then `tools/run_android.sh`.
-
-### 2. Install it
-
-1. Open the downloaded `mobilegame.apk` (from the notification or the
-   **Files / Downloads** app).
-2. Android asks to allow installs from this app (Chrome / Files). Tap
-   **Settings**, switch on **Allow from this source**, go back.
-3. Tap **Install**. If Google Play Protect warns about an unknown app, tap
-   **More details → Install anyway** (it is your own app, not from the Play
-   Store).
-4. Tap **Open**. Later you'll find **Rezi** in your app list.
-
-Updating: install a newer APK over the old one. If Android says *App not
-installed* / *package conflicts*, the new file was signed with a different
-key: uninstall Rezi first, then install again.
-
----
-
 ## iPhone (iOS 17 or newer)
 
 Apple does not allow installing apps from a downloaded file, so an iPhone

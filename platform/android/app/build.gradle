@@ -49,10 +49,7 @@ android {
             if (keystorePropsFile.exists()) {
                 signingConfig signingConfigs.release
             }
-            // BOOK-1: tools/build_aab.sh passes -PmgRequireRealContent=ON (a store build never carries the demo pack);
-            // tools/build_aab.sh --store passes -PmgStore=ON (MG_STORE: no Developer section in Settings)
-            externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=Release', "-DMG_REQUIRE_REAL_CONTENT=${project.findProperty('mgRequireRealContent') ?: 'OFF'}",
-                                                    "-DMG_STORE=${project.findProperty('mgStore') ?: 'OFF'}" } }
+            externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=Release' } }
         }
     }
 

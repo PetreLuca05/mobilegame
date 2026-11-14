@@ -72,6 +72,7 @@ In `config.local.h` (git-ignored):
 
 Rebuild iOS with `MG_IOS_TEAM_ID=9FPB67U7DJ tools/run_ios.sh`.
 
+(History: Android was dropped on 2026-11-14 and its CI build removed; the steps below no longer apply.)
 For the Android CI build, add repository secrets (GitHub → Settings → Secrets
 and variables → Actions → **New repository secret**):
 
